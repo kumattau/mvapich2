@@ -299,8 +299,7 @@ int CR_MPDU_connect_MPD()
     bcopy((void *) hp->h_addr, (void *) &sa.sin_addr, hp->h_length);
     sa.sin_family = AF_INET;
 
-    char *str = getenv("MPIRUN_RSH_LAUNCH");
-    if (str && (atoi(str) == 1)) {
+    if (using_mpirun_rsh) {
         snprintf(session_file, 32, "/tmp/cr.session.%s", getenv("MV2_CKPT_SESSIONID"));
         fd = open(session_file, O_RDWR);
         if (fd < 0) {
@@ -981,6 +980,73 @@ int CR_Reset_proc_info()
     return 0;
 }
 
+static int norsh_cr_callback(void *arg)
+{
+    ++checkpoint_count;
+    CR_Set_state(MPICR_STATE_REQUESTED);
+
+    /* lock shared-memory collectives */
+    if (mv2_enable_shmem_collectives) {
+        PRINT_DEBUG(DEBUG_CR_verbose > 2, "Locking the shmem collectives\n");
+        MPIDI_CH3I_SMC_lock();
+    }
+    
+    /* lock the critical-section */
+    PRINT_DEBUG(DEBUG_CR_verbose > 2, "Locking the critical-section\n");
+    pthread_rwlock_wrlock(&MPICR_cs_lock);
+    wr_CR_lock_tid = pthread_self();
+    lock2_count++;
+
+    /* lock the channel-manager (the lock will be finalized during suspension) */
+    PRINT_DEBUG(DEBUG_CR_verbose > 2, "Locking the channel manager\n");
+    MPICM_lock();
+
+    CR_Set_state(MPICR_STATE_PRE_COORDINATION);
+
+    /* suspend the communication channels */
+    PRINT_DEBUG(DEBUG_CR_verbose, "Suspending communication channels\n");
+    if (CR_IBU_Suspend_channels())
+        return -1;
+
+    /* allow BLCR to proceed with the checkpoint (the launcher will poll for it) */
+    CR_Set_state(MPICR_STATE_CHECKPOINTING);
+    PRINT_DEBUG(DEBUG_CR_verbose, "Calling cr_checkpoint()\n");
+
+    int rc = cr_checkpoint(CR_CHECKPOINT_READY);
+    
+    if (rc < 0) { /* checkpoint failed */
+        PRINT_DEBUG(DEBUG_CR_verbose, "Checkpoint failed: (%d) %s\n", rc, cr_strerror(-rc));
+        return -1;
+    } else { /* process is continuing after checkpoint (or restarting from failure )*/
+        PRINT_DEBUG(DEBUG_CR_verbose,"Reactivating the communication channels\n");
+        if (CR_IBU_Reactivate_channels()) {
+            PRINT_DEBUG(DEBUG_CR_verbose, "CR_IBU_Reactivate_channels failed!\n");
+            return -1;
+        }
+
+        /* unlock shared-memory collectives */
+        if (mv2_enable_shmem_collectives) {
+            MPIDI_CH3I_SMC_unlock();
+            PRINT_DEBUG(DEBUG_CR_verbose, "Unlocked shmem collectives!\n");
+        }
+
+    }
+
+    /*unlock the critical-section*/
+    PRINT_DEBUG(DEBUG_CR_verbose > 2, "Unlocking the CH3 critical section lock\n");
+    pthread_rwlock_unlock(&MPICR_cs_lock);
+    wr_CR_lock_tid = 0;
+    unlock2_count++;
+
+    CR_Set_state(MPICR_STATE_RUNNING);
+
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"Exiting norsh_cr_callback\n");
+    MPICR_callback_fin = 1;
+    
+    return 0;
+
+}
+
 static int CR_Callback(void *arg)
 {
 
@@ -1063,44 +1129,55 @@ void *CR_Thread_entry(void *arg)
         CR_ERR_ABORT("BLCR call cr_init() failed\n");
     }
 
-    MPICR_callback_id = cr_register_callback(CR_Callback, NULL, CR_THREAD_CONTEXT);
-    if (-1 == MPICR_callback_id) {
-        CR_ERR_ABORT("BLCR call cr_register_callback() failed with error %d: %s\n", errno, cr_strerror(errno));
-    }
+    if (using_mpirun_rsh) {
+        MPICR_callback_id = cr_register_callback(CR_Callback, NULL, CR_THREAD_CONTEXT);
+        if (-1 == MPICR_callback_id) {
+            CR_ERR_ABORT("BLCR call cr_register_callback() failed with error %d: %s\n", errno, cr_strerror(errno));
+        }
 
-    char *temp = getenv("MV2_CKPT_MPD_BASE_PORT");
+        char *temp = getenv("MV2_CKPT_MPD_BASE_PORT");
 
-    if (temp) {
-        MPICR_MPD_port = atoi(temp);
+        if (temp) {
+            MPICR_MPD_port = atoi(temp);
+        } else {
+            CR_ERR_ABORT("MV2_CKPT_MPD_BASE_PORT is not set\n");
+        }
+
+        temp = getenv("MV2_CKPT_MAX_SAVE_CKPTS");
+
+        if (temp) {
+            MPICR_max_save_ckpts = atoi(temp);
+            PRINT_DEBUG(DEBUG_CR_verbose > 1,"MV2_CKPT_MAX_SAVE_CKPTS  %s\n", temp);
+        } else {
+            MPICR_max_save_ckpts = 0;
+        }
+
+        #ifdef CR_FTB
+        if (CR_FTB_Init(MPICR_pg_rank, getenv("MV2_CKPT_SESSIONID")) != 0)
+            fprintf(stderr, "CR_FTB_Init() Failed\n");
+        #else
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"Connecting to MPD\n");
+
+        if (CR_MPDU_connect_MPD()) {
+            CR_ERR_ABORT("CR_MPDU_connect_MPD failed\n");
+        }
+        #endif /* CR_FTB */
+
+        CR_Set_state(MPICR_STATE_RUNNING);
+        MPICR_is_initialized = 1;
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"Finish initialization, going to CR_Thread_loop\n");
+
+        CR_Thread_loop();
     } else {
-        CR_ERR_ABORT("MV2_CKPT_MPD_BASE_PORT is not set\n");
+        MPICR_callback_id = cr_register_callback(norsh_cr_callback, NULL, CR_THREAD_CONTEXT);
+        if (-1 == MPICR_callback_id) {
+            CR_ERR_ABORT("BLCR call cr_register_callback() failed with error %d: %s\n", errno, cr_strerror(errno));
+        }
+
+        CR_Set_state(MPICR_STATE_RUNNING);
+        MPICR_is_initialized = 1;
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"Finished initialization for the non-mpirun_rsh case\n");
     }
-
-    temp = getenv("MV2_CKPT_MAX_SAVE_CKPTS");
-
-    if (temp) {
-        MPICR_max_save_ckpts = atoi(temp);
-        PRINT_DEBUG(DEBUG_CR_verbose > 1,"MV2_CKPT_MAX_SAVE_CKPTS  %s\n", temp);
-    } else {
-        MPICR_max_save_ckpts = 0;
-    }
-
-#ifdef CR_FTB
-    if (CR_FTB_Init(MPICR_pg_rank, getenv("MV2_CKPT_SESSIONID")) != 0)
-        fprintf(stderr, "CR_FTB_Init() Failed\n");
-#else
-    PRINT_DEBUG(DEBUG_CR_verbose > 1,"Connecting to MPD\n");
-
-    if (CR_MPDU_connect_MPD()) {
-        CR_ERR_ABORT("CR_MPDU_connect_MPD failed\n");
-    }
-#endif                          /* CR_FTB */
-
-    CR_Set_state(MPICR_STATE_RUNNING);
-    MPICR_is_initialized = 1;
-    PRINT_DEBUG(DEBUG_CR_verbose > 1,"Finish initialization, going to CR_Thread_loop\n");
-
-    CR_Thread_loop();
 
     return NULL;
 }
@@ -1129,18 +1206,19 @@ int MPIDI_CH3I_CR_Init(MPIDI_PG_t * pg, int rank, int size)
 
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"Creating a new thread for running cr controller\n");
 
-    char *str = getenv("MPIRUN_RSH_LAUNCH");
-    if (str && (atoi(str) == 1)) {
-        if (pthread_create(&MPICR_child_thread, NULL, CR_Thread_entry, NULL)) {
-            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                                                "%s: %s",
-                                                                "pthread_create",
-                                                                strerror(errno));
-        }
+    if (pthread_create(&MPICR_child_thread, NULL, CR_Thread_entry, NULL)) {
+        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                                            "%s: %s",
+                                                            "pthread_create",
+                                                            strerror(errno));
     }
 
     /* Initialize the shared memory collectives lock */
-    MPIDI_SMC_CR_Init();
+    if (mv2_enable_shmem_collectives) {
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"Initializing SMC locks\n");
+        MPIDI_SMC_CR_Init();
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"Initialized SMC locks\n");
+    }
 
   fn_exit:
     return mpi_errno;
@@ -1198,14 +1276,14 @@ int MPIDI_CH3I_CR_Finalize()
     pthread_rwlock_destroy(&MPICR_cs_lock);
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"\t done destroy() MPICR_cs_lock\n");
 
-    if (!MPICR_pg_rank) {
+    if ( using_mpirun_rsh && !MPICR_pg_rank) {
         char cr_msg_buf[MAX_CR_MSG_LEN];
 
         sprintf(cr_msg_buf, "cmd=finalize_ckpt\n");
         CR_MPDU_writeline(MPICR_MPD_fd, cr_msg_buf);
     }
 
-    if (MPICR_MPD_fd > 0) {
+    if ( using_mpirun_rsh && MPICR_MPD_fd > 0) {
         close(MPICR_MPD_fd);
     }
 #endif
@@ -1213,7 +1291,11 @@ int MPIDI_CH3I_CR_Finalize()
     MPICR_is_initialized = 0;
 
     /* Uninitialize the shared memory collectives lock */
-    MPIDI_SMC_CR_Finalize();
+    if (mv2_enable_shmem_collectives) {
+        MPIDI_SMC_CR_Finalize();
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"Finalized SMC locks\n");
+    }
+
     PRINT_DEBUG(DEBUG_CR_verbose,"\tCR_Finalize: success\n");
     return MPI_SUCCESS;
 }
@@ -1460,6 +1542,7 @@ int CR_IBU_Rebuild_network()
 
     dreg_reregister_all();
     vbuf_reregister_all();
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"Reregistered dreg and vbufs\n");
 
     /* Post the buffers for the SRQ */
     if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
@@ -1530,8 +1613,10 @@ int CR_IBU_Rebuild_network()
 
             ud_addr_info_t *all_info = (ud_addr_info_t *) MPIU_Malloc(sizeof(ud_addr_info_t) * pg_size);
             /*will be freed in rdma_iba_bootstrap_cleanup */
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"Setting up ring-based exchange\n");
             rdma_setup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
 
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"Ring-based all-gather exchange\n");
             mpi_errno = rdma_ring_based_allgather(&self_info, sizeof(self_info), pg_rank, all_info, pg_size, &mv2_MPIDI_CH3I_RDMA_Process);
             if (mpi_errno) {
                 PRINT_DEBUG(DEBUG_CR_verbose > 2,"rdma-ring-based-allgather failed, ret=%d...\n", mpi_errno);
@@ -1547,6 +1632,7 @@ int CR_IBU_Rebuild_network()
                 lid_all[i] = all_info[i].lid[0][0];
             }
 
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"Cleaning up the startup ring\n");
             mpi_errno = rdma_cleanup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process);
 
             if (mpi_errno) {
@@ -1636,13 +1722,16 @@ int CR_IBU_Rebuild_network()
 
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"Exchanging parameters done\n");
 
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"MPICM_Init_UD_struct\n");
     mpi_errno = MPICM_Init_UD_struct(MPICR_pg, ud_qpn_all, lid_all, gid_all);
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"MPICM_Create_UD_threads\n");
     MPICM_Create_UD_threads();
 
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }
 
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"Waiting in a PMI_Barrier\n");
     if (PMI_Barrier() != 0) {
         CR_ERR_ABORT("PMI_Barrier failed\n");
     }
@@ -1928,7 +2017,7 @@ int CR_IBU_Reactivate_channels()
 
     if(!SMP_ONLY)
     {
-        PRINT_DEBUG(DEBUG_CR_verbose,"CR_IBU_Rebuild_network\n");
+        PRINT_DEBUG(DEBUG_CR_verbose,"Calling CR_IBU_Rebuild_network\n");
         if ((retval = CR_IBU_Rebuild_network()))
         {
             return retval;
@@ -1964,6 +2053,7 @@ int CR_IBU_Reactivate_channels()
 
     PRINT_DEBUG(DEBUG_CR_verbose, "CR_IBU_Prep_remote_update\n");
     if ((retval = CR_IBU_Prep_remote_update())) {
+        PRINT_DEBUG(DEBUG_CR_verbose, "CR_IBU_Prep_remote_update() returned %d\n",retval);
         return retval;
     }
 

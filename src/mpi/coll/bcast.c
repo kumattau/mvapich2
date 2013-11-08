@@ -148,10 +148,10 @@ static int MPIR_Bcast_binomial(
             src = rank - mask; 
             if (src < 0) src += comm_size;
             if (!is_contig || !is_homogeneous)
-                mpi_errno = MPIC_Recv_ft(tmp_buf,nbytes,MPI_BYTE,src,
+                mpi_errno = MPIC_Recv(tmp_buf,nbytes,MPI_BYTE,src,
                                          MPIR_BCAST_TAG,comm, &status, errflag);
             else
-                mpi_errno = MPIC_Recv_ft(buffer,count,datatype,src,
+                mpi_errno = MPIC_Recv(buffer,count,datatype,src,
                                          MPIR_BCAST_TAG,comm, &status, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -194,10 +194,10 @@ static int MPIR_Bcast_binomial(
             dst = rank + mask;
             if (dst >= comm_size) dst -= comm_size;
             if (!is_contig || !is_homogeneous)
-                mpi_errno = MPIC_Send_ft(tmp_buf,nbytes,MPI_BYTE,dst,
+                mpi_errno = MPIC_Send(tmp_buf,nbytes,MPI_BYTE,dst,
                                          MPIR_BCAST_TAG,comm, errflag);
             else
-                mpi_errno = MPIC_Send_ft(buffer,count,datatype,dst,
+                mpi_errno = MPIC_Send(buffer,count,datatype,dst,
                                          MPIR_BCAST_TAG,comm, errflag); 
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -307,7 +307,7 @@ static int scatter_for_bcast(
             }
             else
             {
-                mpi_errno = MPIC_Recv_ft(((char *)tmp_buf +
+                mpi_errno = MPIC_Recv(((char *)tmp_buf +
                                           relative_rank*scatter_size),
                                          recv_size, MPI_BYTE, src,
                                          MPIR_BCAST_TAG, comm, &status, errflag);
@@ -343,7 +343,7 @@ static int scatter_for_bcast(
             {
                 dst = rank + mask;
                 if (dst >= comm_size) dst -= comm_size;
-                mpi_errno = MPIC_Send_ft(((char *)tmp_buf +
+                mpi_errno = MPIC_Send(((char *)tmp_buf +
                                           scatter_size*(relative_rank+mask)),
                                          send_size, MPI_BYTE, dst,
                                          MPIR_BCAST_TAG, comm, errflag);
@@ -523,7 +523,7 @@ static int MPIR_Bcast_scatter_doubling_allgather(
 
         if (relative_dst < comm_size)
         {
-            mpi_errno = MPIC_Sendrecv_ft(((char *)tmp_buf + send_offset),
+            mpi_errno = MPIC_Sendrecv(((char *)tmp_buf + send_offset),
                                          curr_size, MPI_BYTE, dst, MPIR_BCAST_TAG, 
                                          ((char *)tmp_buf + recv_offset),
                                          (nbytes-recv_offset < 0 ? 0 : nbytes-recv_offset), 
@@ -599,7 +599,7 @@ static int MPIR_Bcast_scatter_doubling_allgather(
 
                     /* printf("Rank %d, send to %d, offset %d, size %d\n", rank, dst, offset, recv_size);
                        fflush(stdout); */
-                    mpi_errno = MPIC_Send_ft(((char *)tmp_buf + offset),
+                    mpi_errno = MPIC_Send(((char *)tmp_buf + offset),
                                              recv_size, MPI_BYTE, dst,
                                              MPIR_BCAST_TAG, comm, errflag); 
                     /* recv_size was set in the previous
@@ -620,7 +620,7 @@ static int MPIR_Bcast_scatter_doubling_allgather(
                 {
                     /* printf("Rank %d waiting to recv from rank %d\n",
                        relative_rank, dst); */
-                    mpi_errno = MPIC_Recv_ft(((char *)tmp_buf + offset),
+                    mpi_errno = MPIC_Recv(((char *)tmp_buf + offset),
                                              nbytes - offset, 
                                              MPI_BYTE, dst, MPIR_BCAST_TAG,
                                              comm, &status, errflag); 
@@ -824,7 +824,7 @@ static int MPIR_Bcast_scatter_ring_allgather(
             right_count = 0;
         right_disp = rel_j * scatter_size;
 
-        mpi_errno = MPIC_Sendrecv_ft((char *)tmp_buf + right_disp, right_count,
+        mpi_errno = MPIC_Sendrecv((char *)tmp_buf + right_disp, right_count,
                                      MPI_BYTE, right, MPIR_BCAST_TAG,
                                      (char *)tmp_buf + left_disp, left_count,
                                      MPI_BYTE, left, MPIR_BCAST_TAG,
@@ -886,7 +886,7 @@ fn_fail:
         if (comm_ptr_->coll_fns != NULL && comm_ptr_->coll_fns->Bcast != NULL)                   \
         {                                                                                        \
             /* --BEGIN USEREXTENSION-- */                                                        \
-            mpi_errno_ = comm_ptr->coll_fns->Bcast(buffer_, count_,                              \
+            mpi_errno_ = comm_ptr_->coll_fns->Bcast(buffer_, count_,                              \
                                                    datatype_, root_, comm_ptr_, errflag_);       \
             /* --END USEREXTENSION-- */                                                          \
         }                                                                                        \
@@ -927,9 +927,8 @@ static int MPIR_SMP_Bcast(
     MPI_Status status;
     int recvd_size;
 
-#if !defined(USE_SMP_COLLECTIVES)
-    MPIU_Assert(0);
-#endif
+    if (!MPIR_PARAM_ENABLE_SMP_COLLECTIVES || !MPIR_PARAM_ENABLE_SMP_BCAST)
+        MPIU_Assert(0);
     MPIU_Assert(MPIR_Comm_is_node_aware(comm_ptr));
 
     is_homogeneous = 1;
@@ -963,7 +962,7 @@ static int MPIR_SMP_Bcast(
             MPIU_Get_intranode_rank(comm_ptr, root) > 0) /* is not the node root (0) */ 
         {                                                /* and is on our node (!-1) */
             if (root == comm_ptr->rank) {
-                mpi_errno = MPIC_Send_ft(buffer,count,datatype,0,
+                mpi_errno = MPIC_Send(buffer,count,datatype,0,
                                          MPIR_BCAST_TAG,comm_ptr->node_comm->handle, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
@@ -973,7 +972,7 @@ static int MPIR_SMP_Bcast(
                 }
             }
             else if (0 == comm_ptr->node_comm->rank) {
-                mpi_errno = MPIC_Recv_ft(buffer,count,datatype,MPIU_Get_intranode_rank(comm_ptr, root),
+                mpi_errno = MPIC_Recv(buffer,count,datatype,MPIU_Get_intranode_rank(comm_ptr, root),
                                          MPIR_BCAST_TAG,comm_ptr->node_comm->handle, &status, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
@@ -1161,8 +1160,10 @@ int MPIR_Bcast_intra (
 
     if (count == 0) goto fn_exit;
 
-#if defined(USE_SMP_COLLECTIVES)
-    if (MPIR_Comm_is_node_aware(comm_ptr)) {
+    MPID_Datatype_get_size_macro(datatype, type_size);
+    nbytes = MPIR_PARAM_MAX_SMP_BCAST_MSG_SIZE ? type_size*count : 0;
+    if (MPIR_PARAM_ENABLE_SMP_COLLECTIVES && MPIR_PARAM_ENABLE_SMP_BCAST &&
+        nbytes <= MPIR_PARAM_MAX_SMP_BCAST_MSG_SIZE && MPIR_Comm_is_node_aware(comm_ptr)) {
         #if OSU_MPIT
             mpit_bcast_smp++;
         #endif /* OSU_MPIT */
@@ -1175,7 +1176,6 @@ int MPIR_Bcast_intra (
         }
         goto fn_exit;
     }
-#endif
 
     comm_size = comm_ptr->local_size;
 
@@ -1305,7 +1305,7 @@ int MPIR_Bcast_inter (
     {
         /* root sends to rank 0 on remote group and returns */
         MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-        mpi_errno =  MPIC_Send_ft(buffer, count, datatype, 0,
+        mpi_errno =  MPIC_Send(buffer, count, datatype, 0,
                                   MPIR_BCAST_TAG, comm, errflag); 
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
@@ -1323,7 +1323,7 @@ int MPIR_Bcast_inter (
         
         if (rank == 0)
         {
-            mpi_errno = MPIC_Recv_ft(buffer, count, datatype, root,
+            mpi_errno = MPIC_Recv(buffer, count, datatype, root,
                                      MPIR_BCAST_TAG, comm, &status, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */

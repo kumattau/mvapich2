@@ -72,6 +72,140 @@ int MV2_init_mpit_params(void)
                                 &idx);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
+    /* mpit pvar to track the number of registration cache hits*/
+    mpi_errno = MPIR_T_pvar_add("mv2_reg_cache_hits",
+                                MPI_T_VERBOSITY_TUNER_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of registration cache hits",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &dreg_stat_cache_hit,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    /* mpit pvar to track the number of registration cache misses*/
+    mpi_errno = MPIR_T_pvar_add("mv2_reg_cache_misses",
+                                MPI_T_VERBOSITY_TUNER_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of registration cache misses",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &dreg_stat_cache_miss,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    /* mpit pvars to track vbuf usage */
+    mpi_errno = MPIR_T_pvar_add("mv2_vbuf_allocated",
+                                MPI_T_VERBOSITY_TUNER_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of VBUFs allocated",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &vbuf_n_allocated,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno); 
+
+    mpi_errno = MPIR_T_pvar_add("mv2_vbuf_freed",
+                                MPI_T_VERBOSITY_TUNER_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of VBUFs freed",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &num_vbuf_freed,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    mpi_errno = MPIR_T_pvar_add("mv2_vbuf_available",
+                                MPI_T_VERBOSITY_TUNER_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of VBUFs available",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &num_free_vbuf,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    #if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
+    mpi_errno = MPIR_T_pvar_add("mv2_ud_vbuf_n_allocated",
+                                MPI_T_VERBOSITY_TUNER_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of UD-VBUFs available",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &ud_vbuf_n_allocated,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    mpi_errno = MPIR_T_pvar_add("mv2_ud_vuf_freed",
+                                MPI_T_VERBOSITY_TUNER_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of UD-VBUFs available",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &ud_num_vbuf_freed,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    mpi_errno = MPIR_T_pvar_add("mv2_ud_vbuf_available",
+                                MPI_T_VERBOSITY_TUNER_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of UD-VBUFs available",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &ud_num_free_vbuf,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    
+    #endif
+
     /* mpit pvar to count progress engine polling */
     mpi_errno = MPIR_T_pvar_add("mv2_progress_poll_count",
                                 MPI_T_VERBOSITY_MPIDEV_BASIC,
@@ -349,6 +483,119 @@ int MV2_init_mpit_params(void)
                                 MPIR_T_PVAR_IMPL_SIMPLE,
                                 /*var_state=*/ &mpit_bcast_mv2_pipelined,
                                 &simple_ull_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+ 
+    /* mpit pvars to profile IB channel-manager */
+    mpi_errno = MPIR_T_pvar_add("mv2_ibv_channel_ctrl_packet_count",
+                                MPI_T_VERBOSITY_MPIDEV_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of IB control packets",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &mv2_ibv_channel_ctrl_packet_count,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    
+    mpi_errno = MPIR_T_pvar_add("mv2_ibv_channel_out_of_order_packet_count",
+                                MPI_T_VERBOSITY_MPIDEV_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of IB out-of-order packets",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &mv2_ibv_channel_out_of_order_packet_count,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    mpi_errno = MPIR_T_pvar_add("mv2_ibv_channel_out_of_order_packet_count",
+                                MPI_T_VERBOSITY_MPIDEV_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of IB exact receives",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &mv2_ibv_channel_out_of_order_packet_count,
+                                &simple_ul_creator,
+                                &idx);
+ 
+    /* mpit pvars to count different types of RDMA_FP packets */
+    mpi_errno = MPIR_T_pvar_add("mv2_rdmafp_ctrl_packet_count",
+                                MPI_T_VERBOSITY_MPIDEV_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of RDMA FP control packets",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &mv2_rdmafp_ctrl_packet_count,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    
+    mpi_errno = MPIR_T_pvar_add("mv2_rdmafp_out_of_order_packet_count",
+                                MPI_T_VERBOSITY_MPIDEV_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of RDMA FP out-of-order packets",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &mv2_rdmafp_out_of_order_packet_count,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    mpi_errno = MPIR_T_pvar_add("mv2_rdmafp_exact_recv_count",
+                                MPI_T_VERBOSITY_MPIDEV_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of RDMA FP exact receives",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &mv2_rdmafp_exact_recv_count,
+                                &simple_ul_creator,
+                                &idx);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    mpi_errno = MPIR_T_pvar_add("mv2_rdmafp_sendconn_accepted",
+                                MPI_T_VERBOSITY_MPIDEV_BASIC,
+                                MPI_T_PVAR_CLASS_COUNTER,
+                                MPI_UNSIGNED_LONG,
+                                MPI_T_ENUM_NULL,
+                                "Number of RDMA FP connections",
+                                MPI_T_BIND_NO_OBJECT,
+                                /*readonly=*/TRUE,
+                                /*continuous=*/TRUE,
+                                /*atomic=*/FALSE,
+                                MPIR_T_PVAR_IMPL_SIMPLE,
+                                /*var_state=*/ &rdma_fp_sendconn_accepted,
+                                &simple_ul_creator,
                                 &idx);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 

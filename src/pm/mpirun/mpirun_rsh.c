@@ -353,10 +353,37 @@ int main(int argc, char *argv[])
     sockaddr.sin_family = AF_INET;  
     sockaddr.sin_addr.s_addr = INADDR_ANY;
     sockaddr.sin_port = 0;
-    if (bind(s, (struct sockaddr *) &sockaddr, sockaddr_len) < 0) {
-        perror("bind");
-        exit(EXIT_FAILURE);
+    timeout = env2int("MV2_MPIRUN_BIND_TIMEOUT");
+
+    if (timeout <= 0) {
+        timeout = 60;
     }
+
+    alarm_msg = "Timeout during attempt to bind mpirun_rsh socket.\n";
+    alarm(timeout);
+
+    while (bind(s, (struct sockaddr *) &sockaddr, sockaddr_len)) {
+        static int backoff = 1;
+        struct timeval tv;
+
+        tv.tv_sec = backoff;
+        tv.tv_usec = 0;
+
+        switch (errno) {
+            case EADDRINUSE:
+                /*
+                 * I can't use sleep because that may interfere with SIGARLM
+                 */
+                select(0, NULL, NULL, NULL, &tv);
+                backoff <<= 1;
+                continue;
+            default:
+                perror("bind");
+                exit(EXIT_FAILURE);
+        }
+    }
+
+    alarm(0);
 
     if (getsockname(s, (struct sockaddr *) &sockaddr, &sockaddr_len) < 0) {
         perror("getsockname");
@@ -2465,21 +2492,27 @@ void mpispawn_checkin(int s)
 
     mt_degree = env2int("MV2_MT_DEGREE");
     if (!mt_degree) {
-        mt_degree = ceil(pow(pglist->npgs, (1.0 / (MT_MAX_LEVEL - 1))));
-        if (mt_degree < MT_MIN_DEGREE)
-            mt_degree = MT_MIN_DEGREE;
-        if (mt_degree > MT_MAX_DEGREE)
-            mt_degree = MT_MAX_DEGREE;
-    } else {
-        if (mt_degree < 2) {
-            /*
-             * Shouldn't we detect this error much earlier in this process?
-             */
-            PRINT_ERROR("MV2_MT_DEGREE too low\n");
-            m_state_fail();
+        mt_degree = MT_DEFAULT_DEGREE;
+    }
 
-            return;
-        }
+    else if (mt_degree < MT_MIN_DEGREE) {
+        /*
+         * Shouldn't we detect this error much earlier in this process?
+         */
+        PRINT_ERROR("MV2_MT_DEGREE must be >= %d\n", MT_MIN_DEGREE);
+        m_state_fail();
+
+        return;
+    }
+
+    else if (mt_degree > MT_MAX_DEGREE) {
+        /*
+         * Shouldn't we detect this error much earlier in this process?
+         */
+        PRINT_ERROR("MV2_MT_DEGREE must be <= %d\n", MT_MAX_DEGREE);
+        m_state_fail();
+
+        return;
     }
 
 #if defined(CKPT) && defined(CR_FTB)

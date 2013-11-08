@@ -25,6 +25,11 @@ AC_CHECK_HEADERS(                       \
     openacc.h                           \
 )
 
+AC_SEARCH_LIBS([pthread_create], [pthread])
+AS_IF([test $ac_cv_search_pthread_create = no], [
+    AC_MSG_ERROR([libpthread not found])
+    ])
+
 AC_CHECK_HEADERS([sys/syscall.h syscall.h], [
                   AC_CHECK_FUNCS([syscall])
                   break
@@ -798,7 +803,7 @@ fi
     dnl automake conditionals should not appear in conditional blocks as this
     dnl can cause confusion in the makefiles
     AM_CONDITIONAL([BUILD_MRAIL_OPENACC],
-            [test X$ac_cv_header_openacc_h = Xyes])
+            [test X$ac_cv_header_openacc_h = Xyes -a X$build_mrail_cuda = Xyes])
     AM_CONDITIONAL([BUILD_MRAIL_CUDA], [test X$build_mrail_cuda = Xyes])
     AM_CONDITIONAL([BUILD_MRAIL_CUDA_KERNELS],
             [test X$build_mrail_cuda_kernels = Xyes])

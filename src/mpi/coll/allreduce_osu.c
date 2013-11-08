@@ -212,7 +212,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
     if (rank < 2 * rem) {
         if (rank % 2 == 0) {
             /* even */
-            mpi_errno = MPIC_Send_ft(recvbuf, count, datatype, rank + 1,
+            mpi_errno = MPIC_Send(recvbuf, count, datatype, rank + 1,
                                      MPIR_ALLREDUCE_TAG, comm, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -227,7 +227,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
             newrank = -1;
         } else {
             /* odd */
-            mpi_errno = MPIC_Recv_ft(tmp_buf, count, datatype, rank - 1,
+            mpi_errno = MPIC_Recv(tmp_buf, count, datatype, rank - 1,
                                      MPIR_ALLREDUCE_TAG, comm,
                                      MPI_STATUS_IGNORE, errflag);
             if (mpi_errno) {
@@ -276,7 +276,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
 
             /* Send the most current data, which is in recvbuf. Recv
                into tmp_buf */
-            mpi_errno = MPIC_Sendrecv_ft(recvbuf, count, datatype,
+            mpi_errno = MPIC_Sendrecv(recvbuf, count, datatype,
                                          dst, MPIR_ALLREDUCE_TAG,
                                          tmp_buf, count, datatype, dst,
                                          MPIR_ALLREDUCE_TAG, comm,
@@ -333,7 +333,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
        (rank-1), the ranks who didn't participate above. */
     if (rank < 2 * rem) {
         if (rank % 2) {     /* odd */
-            mpi_errno = MPIC_Send_ft(recvbuf, count,
+            mpi_errno = MPIC_Send(recvbuf, count,
                                      datatype, rank - 1,
                                      MPIR_ALLREDUCE_TAG, comm, errflag);
         } else {            /* even */
@@ -341,7 +341,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
             mpi_errno = MPIC_Recv(recvbuf, count,
                                   datatype, rank + 1,
                                   MPIR_ALLREDUCE_TAG, comm,
-                                  MPI_STATUS_IGNORE);
+                                  MPI_STATUS_IGNORE, errflag);
         }
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
@@ -476,7 +476,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
     if (rank < 2 * rem) {
         if (rank % 2 == 0) {
             /* even */
-            mpi_errno = MPIC_Send_ft(recvbuf, count, datatype, rank + 1,
+            mpi_errno = MPIC_Send(recvbuf, count, datatype, rank + 1,
                                      MPIR_ALLREDUCE_TAG, comm, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -491,7 +491,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
             newrank = -1;
         } else {
             /* odd */
-            mpi_errno = MPIC_Recv_ft(tmp_buf, count, datatype, rank - 1,
+            mpi_errno = MPIC_Recv(tmp_buf, count, datatype, rank - 1,
                                      MPIR_ALLREDUCE_TAG, comm,
                                      MPI_STATUS_IGNORE, errflag);
             if (mpi_errno) {
@@ -541,7 +541,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
 
                 /* Send the most current data, which is in recvbuf. Recv
                    into tmp_buf */
-                mpi_errno = MPIC_Sendrecv_ft(recvbuf, count, datatype,
+                mpi_errno = MPIC_Sendrecv(recvbuf, count, datatype,
                                              dst, MPIR_ALLREDUCE_TAG,
                                              tmp_buf, count, datatype, dst,
                                              MPIR_ALLREDUCE_TAG, comm,
@@ -638,7 +638,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                 }
 
                 /* Send data from recvbuf. Recv into tmp_buf */
-                mpi_errno = MPIC_Sendrecv_ft((char *) recvbuf +
+                mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                              disps[send_idx] * extent,
                                              send_cnt, datatype,
                                              dst, MPIR_ALLREDUCE_TAG,
@@ -707,7 +707,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                     }
                 }
 
-                mpi_errno = MPIC_Sendrecv_ft((char *) recvbuf +
+                mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                              disps[send_idx] * extent,
                                              send_cnt, datatype,
                                              dst, MPIR_ALLREDUCE_TAG,
@@ -737,7 +737,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
        (rank-1), the ranks who didn't participate above. */
     if (rank < 2 * rem) {
         if (rank % 2) {     /* odd */
-            mpi_errno = MPIC_Send_ft(recvbuf, count,
+            mpi_errno = MPIC_Send(recvbuf, count,
                                      datatype, rank - 1,
                                      MPIR_ALLREDUCE_TAG, comm, errflag);
         } else {            /* even */
@@ -745,7 +745,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
             mpi_errno = MPIC_Recv(recvbuf, count,
                                   datatype, rank + 1,
                                   MPIR_ALLREDUCE_TAG, comm,
-                                  MPI_STATUS_IGNORE);
+                                  MPI_STATUS_IGNORE, errflag);
         }
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
@@ -910,7 +910,7 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
         if (rank < 2 * rem) {
             if (rank % 2 == 0) {
                 /* even */
-                mpi_errno = MPIC_Send_ft(recvbuf, count, datatype, rank + 1,
+                mpi_errno = MPIC_Send(recvbuf, count, datatype, rank + 1,
                                          MPIR_ALLREDUCE_TAG, comm, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
@@ -925,7 +925,7 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
                 newrank = -1;
             } else {
                 /* odd */
-                mpi_errno = MPIC_Recv_ft(tmp_buf, count, datatype, rank - 1,
+                mpi_errno = MPIC_Recv(tmp_buf, count, datatype, rank - 1,
                                          MPIR_ALLREDUCE_TAG, comm,
                                          MPI_STATUS_IGNORE, errflag);
                 if (mpi_errno) {
@@ -975,7 +975,7 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
 
                     /* Send the most current data, which is in recvbuf. Recv
                        into tmp_buf */
-                    mpi_errno = MPIC_Sendrecv_ft(recvbuf, count, datatype,
+                    mpi_errno = MPIC_Sendrecv(recvbuf, count, datatype,
                                                  dst, MPIR_ALLREDUCE_TAG,
                                                  tmp_buf, count, datatype, dst,
                                                  MPIR_ALLREDUCE_TAG, comm,
@@ -1072,7 +1072,7 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
                     }
 
                     /* Send data from recvbuf. Recv into tmp_buf */
-                    mpi_errno = MPIC_Sendrecv_ft((char *) recvbuf +
+                    mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                                  disps[send_idx] * extent,
                                                  send_cnt, datatype,
                                                  dst, MPIR_ALLREDUCE_TAG,
@@ -1141,7 +1141,7 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
                         }
                     }
 
-                    mpi_errno = MPIC_Sendrecv_ft((char *) recvbuf +
+                    mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                                  disps[send_idx] * extent,
                                                  send_cnt, datatype,
                                                  dst, MPIR_ALLREDUCE_TAG,
@@ -1171,7 +1171,7 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
            (rank-1), the ranks who didn't participate above. */
         if (rank < 2 * rem) {
             if (rank % 2) {     /* odd */
-                mpi_errno = MPIC_Send_ft(recvbuf, count,
+                mpi_errno = MPIC_Send(recvbuf, count,
                                          datatype, rank - 1,
                                          MPIR_ALLREDUCE_TAG, comm, errflag);
             } else {            /* even */
@@ -1179,7 +1179,7 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
                 mpi_errno = MPIC_Recv(recvbuf, count,
                                       datatype, rank + 1,
                                       MPIR_ALLREDUCE_TAG, comm,
-                                      MPI_STATUS_IGNORE);
+                                      MPI_STATUS_IGNORE, errflag);
             }
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */

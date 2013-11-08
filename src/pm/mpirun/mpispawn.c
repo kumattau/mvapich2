@@ -281,6 +281,265 @@ static inline void setup_local_environment(int index)
 
 }
 
+int initialize_checkin_sock (void)
+{
+    struct sockaddr_in checkin_sockaddr;
+
+    checkin_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (checkin_sock < 0) {
+        perror("socket");
+        exit(EXIT_FAILURE);
+    }
+
+    checkin_sockaddr.sin_family = AF_INET;
+    checkin_sockaddr.sin_addr.s_addr = INADDR_ANY;
+    checkin_sockaddr.sin_port = 0;
+
+    if (bind(checkin_sock, (struct sockaddr *) &checkin_sockaddr, sockaddr_len) < 0) {
+        perror("bind");
+        exit(EXIT_FAILURE);
+    }
+
+    if (getsockname(checkin_sock, (struct sockaddr *) &checkin_sockaddr, &sockaddr_len) < 0) {
+        perror("getsockname");
+        exit(EXIT_FAILURE);
+    }
+
+    listen(checkin_sock, 64);
+
+    return (int) ntohs(checkin_sockaddr.sin_port);
+}
+
+/*Obtain the host_ist from a file. This function is used when the number of
+ * processes is beyond the threshold. */
+char *obtain_host_list_from_file()
+{
+    //Obtain id of the host file and number of byte to read
+    //Number of bytes sent when it is used the file approach to exachange
+    //the host_list
+    int num_bytes;
+    FILE *fp;
+    char *host_list_file = NULL, *host_list = NULL;
+
+    host_list_file = env2str("HOST_LIST_FILE");
+    num_bytes = env2int("HOST_LIST_NBYTES");
+
+    fp = fopen(host_list_file, "r");
+    if (fp == NULL) {
+
+        fprintf(stderr, "host list temp file could not be read\n");
+    }
+
+    host_list = malloc(num_bytes);
+    fscanf(fp, "%s", host_list);
+    fclose(fp);
+    return host_list;
+}
+
+void find_children (int id, int degree, int size, int children[degree])
+{
+    size_t c_start = degree * id + 1;
+    size_t i;
+
+    if (degree < 1) {
+        return;
+    }
+
+    for (i = 0; i < degree; i++) {
+        children[i] = -1;
+    }
+
+    if (c_start < size) {
+        i = (degree > size - c_start) ? size - c_start : degree;
+
+        while (i--) {
+            children[i] = c_start + i;
+        }
+    }
+}
+
+void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
+        mt_degree)
+{
+    int port = initialize_checkin_sock();
+    int nargc = env2int("MPISPAWN_NARGC");
+    int i, j, k, *np;
+    char *mpmd_on = env2str("MPISPAWN_MPMD");
+    char *host_list = env2str("MPISPAWN_HOSTLIST");
+    char *command = mkstr("cd %s; %s", env2str("MPISPAWN_WD"), ENV_CMD);
+    char *mpispawn_env = NULL;
+    char hostname[MAX_HOST_LEN + 1];
+    char hostnameip[MAX_HOST_LEN + 1];
+    char *nargv[7], buf[20], *args, **host;
+    int target[mt_degree];
+
+    for (i = 0; i < nargc; i++) {
+        sprintf(buf, "MPISPAWN_NARGV_%d", i);
+        nargv[i] = env2str(buf);
+    }
+
+    /*
+     * If the number of processes is beyond or equal the PROCS_THRES it
+     * receives the host list in a file
+     */
+    if (host_list == NULL) {
+        host_list = obtain_host_list_from_file();
+    }
+
+    gethostname(hostname, sizeof(hostname));
+    gethostip(hostnameip, sizeof(hostnameip));
+
+    mpispawn_env = mkstr("MPISPAWN_MPIRUN_HOST=%s"
+            " MPISPAWN_MPIRUN_HOSTIP=%s"
+            " MPISPAWN_CHECKIN_PORT=%d"
+            " MPISPAWN_MPIRUN_PORT=%d",
+            hostname, hostnameip, port, port);
+
+    for (i = 0; environ[i] != NULL; i++) {
+        char *var, *val;
+        char *dup = strdup(environ[i]);
+        var = strtok(dup, "=");
+        val = var + strlen(var) + 1;
+        if (val &&
+                0 != strcmp(var, "MPISPAWN_ID") &&
+                0 != strcmp(var, "MPISPAWN_LOCAL_NPROCS") &&
+                0 != strcmp(var, "MPISPAWN_MPIRUN_HOST") &&
+                0 != strcmp(var, "MPISPAWN_CHECKIN_PORT") &&
+                0 != strcmp(var, "MPISPAWN_MPIRUN_PORT")) {
+
+            if (strchr(val, ' ') != NULL) {
+                mpispawn_env = mkstr("%s %s='%s'", mpispawn_env, var, val);
+
+            } else {
+                /*If mpmd is selected the name and args of the executable are written in the HOST_LIST, not in the
+                 * MPISPAWN_ARGV and MPISPAWN_ARGC. So the value of these varibles is not exact and we don't
+                 * read this value.*/
+                if (mpmd_on) {
+                    if (strstr(var, "MPISPAWN_ARGV_") == NULL && strstr(var, "MPISPAWN_ARGC") == NULL) {
+
+                        mpispawn_env = mkstr("%s %s=%s", mpispawn_env, var, val);
+                    }
+                } else
+                    mpispawn_env = mkstr("%s %s=%s", mpispawn_env, var, val);
+            }
+        }
+
+        free(dup);
+    }
+
+    args = mkstr("%s", argv[0]);
+    for (i = 1; i < argc - 1; i++) {
+        args = mkstr("%s %s", args, argv[i]);
+    }
+    nargv[nargc + 2] = NULL;
+
+    host = (char **) malloc(mt_nnodes * sizeof(char *));
+    np = (int *) malloc(mt_nnodes * sizeof(int));
+    ranks = (int **) malloc(mt_nnodes * sizeof(int *));
+
+    /*
+     * These three variables are used to collect information on name, args
+     * and number of args in case of mpmd
+     */
+    char **exe = (char **) malloc(mt_nnodes * sizeof(char *));
+    char **args_exe = (char **) malloc(mt_nnodes * sizeof(char *));
+    int *num_args = (int *) malloc(mt_nnodes * sizeof(int));
+
+    for (i = mt_nnodes, j = 0; i > 0; i--, j++) {
+        if (i == mt_nnodes) {
+            host[j] = strtok(host_list, ":");
+        }
+
+        else {
+            host[j] = strtok(NULL, ":");
+        }
+
+        np[j] = atoi(strtok(NULL, ":"));
+        ranks[j] = (int *) malloc(np[j] * sizeof(int));
+
+        for (k = 0; k < np[j]; k++) {
+            ranks[j][k] = atoi(strtok(NULL, ":"));
+        }
+
+        /* 
+         * If mpmd is selected the executable name and the arguments are
+         * written in the hostlist.  So we need to read these information
+         * from the hostlist.
+         */
+        if (mpmd_on) {
+            exe[j] = strtok(NULL, ":");
+            num_args[j] = atoi(strtok(NULL, ":"));
+
+            if (num_args[j] > 1) {
+                char *arg_tmp = NULL;
+                k = 0;
+
+                while (k < num_args[j] - 1) {
+                    if (k == 0) {
+                        arg_tmp = strtok(NULL, ":");
+                    }
+
+                    else {
+                        arg_tmp = mkstr("%s:%s", arg_tmp, strtok(NULL, ":"));
+                    }
+
+                    k++;
+                }
+
+                args_exe[j] = strdup(arg_tmp);
+            }
+        }
+    }
+
+    find_children(mt_id, mt_degree, mt_nnodes, target);
+
+    /*
+     * Launch mpispawns
+     */
+    for (i = 0; i < mt_degree && target[i] != -1; i++) {
+        /*
+         * If mpmd is selected we need to add the MPISPAWN_ARGC and
+         * MPISPAWN_ARGV to the mpispwan environment using the information
+         * we have read in the host_list.
+         */
+        if (mpmd_on) {
+            char **tmp_arg = tokenize(args_exe[target[i]], ":");
+
+            /*
+             * We need to add MPISPAWN_ARGV
+             */
+            mpispawn_env = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env,
+                    num_args[target[i]]);
+            mpispawn_env = mkstr("%s MPISPAWN_ARGV_0=%s", mpispawn_env,
+                    exe[target[i]]);
+
+            for (j = 0; j < num_args[target[i]] - 1; j++) {
+                mpispawn_env = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env,
+                        j + 1, tmp_arg[j]);
+            }
+        }
+
+        nargv[nargc] = host[target[i]];
+        MPISPAWN_NCHILD++;
+
+        if (0 == fork()) {
+            mpispawn_env = mkstr("%s MPISPAWN_ID=%d MPISPAWN_LOCAL_NPROCS=%d",
+                    mpispawn_env, target[i], np[target[i]]);
+            command = mkstr("%s %s %s %d", command, mpispawn_env, args,
+                    mt_nnodes);
+
+            nargv[nargc + 1] = command;
+            PRINT_DEBUG(DEBUG_Fork_verbose, "FORK mpispawn (pid=%d)\n",
+                    getpid());
+            PRINT_DEBUG(DEBUG_Fork_verbose > 1,
+                    "EXEC mpispawn command line: %s %s\n", argv[0], argv[1]);
+
+            execv(nargv[0], (char *const *) nargv);
+            perror("execv");
+        }
+    }
+}
+
 void spawn_processes(int n)
 {
     char my_host_name[MAX_HOST_LEN + MAX_PORT_LEN];
@@ -799,33 +1058,6 @@ void wait_for_errors(int s, struct sockaddr *sockaddr, unsigned int sockaddr_len
     goto WFE;
 }
 
-/*Obtain the host_ist from a file. This function is used when the number of
- * processes is beyond the threshold. */
-char *obtain_host_list_from_file()
-{
-
-    //Obtain id of the host file and number of byte to read
-    //Number of bytes sent when it is used the file approach to exachange
-    //the host_list
-    int num_bytes;
-    FILE *fp;
-    char *host_list_file = NULL, *host_list = NULL;
-
-    host_list_file = env2str("HOST_LIST_FILE");
-    num_bytes = env2int("HOST_LIST_NBYTES");
-
-    fp = fopen(host_list_file, "r");
-    if (fp == NULL) {
-
-        fprintf(stderr, "host list temp file could not be read\n");
-    }
-
-    host_list = malloc(num_bytes);
-    fscanf(fp, "%s", host_list);
-    fclose(fp);
-    return host_list;
-}
-
 #define MPISPAWN_PARENT_FD mpispawn_fds[0]
 #define MPISPAWN_CHILD_FDS (&mpispawn_fds[MPISPAWN_HAS_PARENT])
 static void dump_fds()
@@ -920,18 +1152,8 @@ int main(int argc, char *argv[])
     
     int l_socket, i;
     char * l_port = init_listening_socket(&l_socket);
-
+    int mt_degree = 0;
     int mt_nnodes;
-    int j, k;
-    char *host_list;
-    char *nargv[7];
-    int nargc;
-    char **host;
-    int *np;
-    char *command, *args, *mpispawn_env = NULL;
-    char hostname[MAX_HOST_LEN + 1];
-    char hostnameip[MAX_HOST_LEN + 1];
-    int port;
 
     // Global variable
     mt_id = env2int("MPISPAWN_ID");
@@ -955,9 +1177,6 @@ int main(int argc, char *argv[])
     if (portname) {
         add_kvc("PARENT_ROOT_PORT_NAME", portname, 1);
     }
-
-    gethostname(hostname, sizeof(hostname));
-    gethostip(hostnameip, sizeof(hostnameip));
 
 #if defined(CKPT) && defined(CR_AGGRE)
     int rv = init_ckpt_aggregation();
@@ -994,178 +1213,25 @@ int main(int argc, char *argv[])
     CR_Init(NCHILD);
 #endif
 
-    int NON_LINEAR_num_mpispawn_children = atoi(argv[1]);
-    
+    mt_degree = env2int("MV2_MT_DEGREE");
+    if (!mt_degree) {
+        mt_degree = MT_DEFAULT_DEGREE;
+    }
+
+    else if (mt_degree < MT_MIN_DEGREE) {
+        mt_degree = MT_MIN_DEGREE;
+    }
+
+    else if (mt_degree > MT_MAX_DEGREE) {
+        mt_degree = MT_MAX_DEGREE;
+    }
+ 
     mpispawn_state = MPISPAWN_STATE_STARTING;
 
     if (!USE_LINEAR_SSH) {
-        checkin_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (checkin_sock < 0) {
-            perror("socket");
-            exit(EXIT_FAILURE);
-        }
-        struct sockaddr_in checkin_sockaddr;
-        checkin_sockaddr.sin_family = AF_INET;
-        checkin_sockaddr.sin_addr.s_addr = INADDR_ANY;
-        checkin_sockaddr.sin_port = 0;
-        if (bind(checkin_sock, (struct sockaddr *) &checkin_sockaddr, sockaddr_len) < 0) {
-            perror("bind");
-            exit(EXIT_FAILURE);
-        }
-        if (getsockname(checkin_sock, (struct sockaddr *) &checkin_sockaddr, &sockaddr_len) < 0) {
-            perror("getsockname");
-            exit(EXIT_FAILURE);
-        }
-        port = (int) ntohs(checkin_sockaddr.sin_port);
-        listen(checkin_sock, 64);
-        char *mpmd_on = env2str("MPISPAWN_MPMD");
-        nargc = env2int("MPISPAWN_NARGC");
-        for (i = 0; i < nargc; i++) {
-            char buf[20];
-            sprintf(buf, "MPISPAWN_NARGV_%d", i);
-            nargv[i] = env2str(buf);
-        }
-
-        host_list = env2str("MPISPAWN_HOSTLIST");
-
-        //If the number of processes is beyond or equal the PROCS_THRES it
-        //receives the host list in a file
-        if (host_list == NULL) {
-            host_list = obtain_host_list_from_file();
-        }
-
-        command = mkstr("cd %s; %s", env2str("MPISPAWN_WD"), ENV_CMD);
-
-        mpispawn_env = mkstr("MPISPAWN_MPIRUN_HOST=%s"
-                " MPISPAWN_MPIRUN_HOSTIP=%s"
-                " MPISPAWN_CHECKIN_PORT=%d"
-                " MPISPAWN_MPIRUN_PORT=%d",
-                hostname, hostnameip, port, port);
-
-        i = 0;
-        while (environ[i] != NULL) {
-            char *var, *val;
-            char *dup = strdup(environ[i]);
-            var = strtok(dup, "=");
-            val = var + strlen(var) + 1;
-            if (val &&
-                0 != strcmp(var, "MPISPAWN_ID") &&
-                0 != strcmp(var, "MPISPAWN_LOCAL_NPROCS") &&
-                0 != strcmp(var, "MPISPAWN_MPIRUN_HOST") &&
-                0 != strcmp(var, "MPISPAWN_CHECKIN_PORT") &&
-                0 != strcmp(var, "MPISPAWN_MPIRUN_PORT")) {
-
-                if (strchr(val, ' ') != NULL) {
-                    mpispawn_env = mkstr("%s %s='%s'", mpispawn_env, var, val);
-
-                } else {
-                    /*If mpmd is selected the name and args of the executable are written in the HOST_LIST, not in the
-                     * MPISPAWN_ARGV and MPISPAWN_ARGC. So the value of these varibles is not exact and we don't
-                     * read this value.*/
-                    if (mpmd_on) {
-                        if (strstr(var, "MPISPAWN_ARGV_") == NULL && strstr(var, "MPISPAWN_ARGC") == NULL) {
-
-                            mpispawn_env = mkstr("%s %s=%s", mpispawn_env, var, val);
-                        }
-                    } else
-                        mpispawn_env = mkstr("%s %s=%s", mpispawn_env, var, val);
-                }
-            }
-
-            free(dup);
-            i++;
-        }
-
-        args = mkstr("%s", argv[0]);
-        for (i = 1; i < argc - 1; i++) {
-            args = mkstr("%s %s", args, argv[i]);
-        }
-        nargv[nargc + 2] = NULL;
-
-        host = (char **) malloc(mt_nnodes * sizeof(char *));
-        np = (int *) malloc(mt_nnodes * sizeof(int));
-        ranks = (int **) malloc(mt_nnodes * sizeof(int *));
-        /* These three variables are used to collect information on name, args and number of args in case of mpmd */
-        char **exe = (char **) malloc(mt_nnodes * sizeof(char *));
-        char **args_exe = (char **) malloc(mt_nnodes * sizeof(char *));
-        int *num_args = (int *) malloc(mt_nnodes * sizeof(int));
-
-        i = mt_nnodes;
-        j = 0;
-
-        while (i > 0) {
-            if (i == mt_nnodes)
-                host[j] = strtok(host_list, ":");
-            else
-                host[j] = strtok(NULL, ":");
-            np[j] = atoi(strtok(NULL, ":"));
-            ranks[j] = (int *) malloc(np[j] * sizeof(int));
-            for (k = 0; k < np[j]; k++) {
-                ranks[j][k] = atoi(strtok(NULL, ":"));
-            }
-            /*If mpmd is selected the executable name and the arguments are written in the hostlist.
-             * So we need to read these information from the hostlist.*/
-            if (mpmd_on) {
-                exe[j] = strtok(NULL, ":");
-                num_args[j] = atoi(strtok(NULL, ":"));
-                if (num_args[j] > 1) {
-                    k = 0;
-                    char *arg_tmp = NULL;
-                    while (k < num_args[j] - 1) {
-                        if (k == 0)
-                            arg_tmp = strtok(NULL, ":");
-                        else
-                            arg_tmp = mkstr("%s:%s", arg_tmp, strtok(NULL, ":"));
-
-                        k++;
-
-                    }
-                    args_exe[j] = strdup(arg_tmp);
-                }
-            }
-
-            i--;
-            j++;
-        }
-
-        /* Launch mpispawns */
-
-        while (NON_LINEAR_num_mpispawn_children > 1) {
-
-            int target = mt_id + ceil(NON_LINEAR_num_mpispawn_children / 2.0);
-            /*If mpmd is selected we need to add the MPISPAWN_ARGC and MPISPAWN_ARGV to the mpispwan
-             * environment using the information we have read in the host_list.*/
-            if (mpmd_on) {
-                //We need to add MPISPAWN_ARGV
-                mpispawn_env = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, num_args[target]);
-                mpispawn_env = mkstr("%s MPISPAWN_ARGV_0=%s", mpispawn_env, exe[target]);
-                char **tmp_arg = tokenize(args_exe[target], ":");
-
-                for (i = 0; i < num_args[target] - 1; i++) {
-                    mpispawn_env = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i + 1, tmp_arg[i]);
-
-                }
-            }
-
-            nargv[nargc] = host[target];
-
-            MPISPAWN_NCHILD++;
-            if (0 == fork()) {
-                mpispawn_env = mkstr("%s MPISPAWN_ID=%d MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env, target, np[target]);
-                command = mkstr("%s %s %s %d", command, mpispawn_env, args, NON_LINEAR_num_mpispawn_children / 2);
-
-                nargv[nargc + 1] = command;
-                PRINT_DEBUG(DEBUG_Fork_verbose, "FORK mpispawn (pid=%d)\n", getpid());
-                PRINT_DEBUG(DEBUG_Fork_verbose > 1, "EXEC mpispawn command line: %s %s\n", argv[0], argv[1]);
-
-                execv(nargv[0], (char *const *) nargv);
-                perror("execv");
-            } else
-                NON_LINEAR_num_mpispawn_children = ceil(NON_LINEAR_num_mpispawn_children / 2.0);
-        }
-
+        spawn_mpispawn_tree(argc, argv, mt_nnodes, mt_degree);
     }
-    /* if (!USE_LINEAR_SSH) */
+
     int r = setup_global_environment();
     if ( r != 0 ) {
         exit(EXIT_FAILURE);
@@ -1178,27 +1244,10 @@ int main(int argc, char *argv[])
 
     mpispawn_checkin(l_port);
 
-    int mt_degree = 0;
-    if (USE_LINEAR_SSH) {
-#ifdef CR_FTB
-        mt_degree = MT_MAX_DEGREE;
-#else                           /* !defined(CR_FTB) */
-        mt_degree = ceil(pow(mt_nnodes, (1.0 / (MT_MAX_LEVEL - 1))));
-
-        if (mt_degree < MT_MIN_DEGREE) {
-            mt_degree = MT_MIN_DEGREE;
-        }
-
-        if (mt_degree > MT_MAX_DEGREE) {
-            mt_degree = MT_MAX_DEGREE;
-        }
-#endif                          /* !defined(CR_FTB) */
-
-#if defined(CKPT) && defined(CR_FTB)
-        mt_degree = MT_MAX_DEGREE;
-#endif
-
 #ifdef CKPT
+    if (USE_LINEAR_SSH) {
+        mt_degree = MT_MAX_DEGREE;
+
         mpispawn_fds = mpispawn_tree_init(mt_id, mt_degree, mt_nnodes, l_socket);
         if (mpispawn_fds == NULL) {
             PRINT_ERROR("Internal error: mpispawn_fds is null\n");
@@ -1207,11 +1256,6 @@ int main(int argc, char *argv[])
     }
 
     mtpmi_init();
-#else
-    }
-#endif
-
-#ifdef CKPT
     cr_spawn_degree = mt_degree;
     dbg("mt_degree=%d\n", mt_degree);
     if (!NCHILD) {

@@ -49,6 +49,7 @@ static int g_mv2_num_cpus = -1;
 #define INTEL_E5630_MODEL   44
 #define INTEL_X5650_MODEL   44
 #define INTEL_E5_2670_MODEL 45
+#define INTEL_XEON_E5_2670_V2_MODEL 62
 
 #define MV2_STR_VENDOR_ID    "vendor_id"
 #define MV2_STR_AUTH_AMD     "AuthenticAMD"
@@ -59,6 +60,7 @@ static int g_mv2_num_cpus = -1;
 
 #define INTEL_E5_2670_MODEL_NAME    "Intel(R) Xeon(R) CPU E5-2670 0 @ 2.60GHz"
 #define INTEL_E5_2680_MODEL_NAME    "Intel(R) Xeon(R) CPU E5-2680 0 @ 2.70GHz"
+#define INTEL_E5_2670_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2670 v2 @ 2.50GHz"
 
 #ifndef HAVE_LIBHWLOC
 
@@ -105,6 +107,7 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_XEON_X5650_12,  "MV2_ARCH_INTEL_XEON_X5650_12"},
     {MV2_ARCH_INTEL_XEON_E5_2670_16,"MV2_ARCH_INTEL_XEON_E5_2670_16"},
     {MV2_ARCH_INTEL_XEON_E5_2680_16,"MV2_ARCH_INTEL_XEON_E5_2680_16"},
+    {MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20,"MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20"},
 
     /* AMD Architectures */
     {MV2_ARCH_AMD_GENERIC,          "MV2_ARCH_AMD_GENERIC"},
@@ -287,8 +290,12 @@ mv2_arch_type mv2_get_arch_type()
                                 arch_type = MV2_ARCH_INTEL_GENERIC;
                             }
                         }
-                    }
-                }
+		    } else if(20 == num_cpus){
+		        if(INTEL_XEON_E5_2670_V2_MODEL == cpu_model) {
+			    arch_type = MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20;
+			}
+		    }
+		}
 
             } else if(CPU_FAMILY_AMD == cpu_type) {
                 arch_type = MV2_ARCH_AMD_GENERIC;
@@ -398,7 +405,7 @@ mv2_arch_type mv2_get_arch_type()
                 core_mapping[core_index++] = physical_id;
             }
         }
-
+	
         /* Set the number of cores per node */
         g_mv2_num_cpus = num_cpus = core_index;
         if ( 4 == num_cpus ) {
@@ -464,6 +471,12 @@ mv2_arch_type mv2_get_arch_type()
                             sizeof(int)*num_cpus)){
                     arch_type = MV2_ARCH_AMD_BULLDOZER_4274HE_16;
                 }
+            }
+        } else if  (20 == num_cpus){
+            if ( CPU_FAMILY_INTEL == cpu_type ){
+	        if(NULL != strstr(model_name, INTEL_E5_2670_V2_MODEL_NAME)){
+		    arch_type = MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20;
+		} 
             }
         } else if  ( 24 == num_cpus ){
             if ( CPU_FAMILY_AMD == cpu_type ){

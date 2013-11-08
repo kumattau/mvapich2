@@ -99,7 +99,7 @@ int MPID_MRAIL_RndvSend (
     if (rdma_enable_cuda && sreq->dev.OnDataAvail == 
                         MPIDI_CH3_ReqHandler_pack_cudabuf) {
         int complete ATTRIBUTE((unused));
-        MPIDI_CH3_ReqHandler_pack_cudabuf(vc, sreq, &complete);
+        MPIDI_CH3_ReqHandler_pack_cudabuf(vc, sreq, &complete, (void *) stream_d2h);
         sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)sreq->dev.tmpbuf;
         sreq->dev.iov[0].MPID_IOV_LEN = sreq->dev.segment_size;
         sreq->dev.iov_count = 1;

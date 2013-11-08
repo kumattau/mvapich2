@@ -202,7 +202,7 @@ int MPIR_Allgather_RD_MV2(const void *sendbuf,
 
             if (dst < comm_size) {
                 mpi_errno =
-                    MPIC_Sendrecv_ft(((char *) recvbuf + send_offset),
+                    MPIC_Sendrecv(((char *) recvbuf + send_offset),
                                      curr_cnt, recvtype, dst,
                                      MPIR_ALLGATHER_TAG,
                                      ((char *) recvbuf + recv_offset),
@@ -269,7 +269,7 @@ int MPIR_Allgather_RD_MV2(const void *sendbuf,
                     if ((dst > rank) && (rank < tree_root + nprocs_completed)
                         && (dst >= tree_root + nprocs_completed)) {
                         mpi_errno =
-                            MPIC_Send_ft(((char *) recvbuf + offset),
+                            MPIC_Send(((char *) recvbuf + offset),
                                          last_recv_cnt, recvtype, dst,
                                          MPIR_ALLGATHER_TAG, comm, errflag);
                         /* last_recv_cnt was set in the previous
@@ -289,7 +289,7 @@ int MPIR_Allgather_RD_MV2(const void *sendbuf,
                              (dst < tree_root + nprocs_completed) &&
                              (rank >= tree_root + nprocs_completed)) {
                         mpi_errno =
-                            MPIC_Recv_ft(((char *) recvbuf + offset),
+                            MPIC_Recv(((char *) recvbuf + offset),
                                          (comm_size -
                                           (my_tree_root +
                                            mask)) * recvcount, recvtype,
@@ -379,7 +379,7 @@ int MPIR_Allgather_RD_MV2(const void *sendbuf,
 
             if (dst < comm_size) {
                 mpi_errno =
-                    MPIC_Sendrecv_ft(((char *) tmp_buf + send_offset),
+                    MPIC_Sendrecv(((char *) tmp_buf + send_offset),
                                      curr_cnt, MPI_BYTE, dst,
                                      MPIR_ALLGATHER_TAG,
                                      ((char *) tmp_buf + recv_offset),
@@ -437,7 +437,7 @@ int MPIR_Allgather_RD_MV2(const void *sendbuf,
                         && (dst >= tree_root + nprocs_completed)) {
 
                         mpi_errno =
-                            MPIC_Send_ft(((char *) tmp_buf + offset),
+                            MPIC_Send(((char *) tmp_buf + offset),
                                          last_recv_cnt, MPI_BYTE, dst,
                                          MPIR_ALLGATHER_TAG, comm, errflag);
                         /* last_recv_cnt was set in the previous
@@ -565,7 +565,7 @@ int MPIR_Allgather_Bruck_MV2(const void *sendbuf,
         src = (rank + pof2) % comm_size;
         dst = (rank - pof2 + comm_size) % comm_size;
 
-        mpi_errno = MPIC_Sendrecv_ft(tmp_buf, curr_cnt, recvtype, dst,
+        mpi_errno = MPIC_Sendrecv(tmp_buf, curr_cnt, recvtype, dst,
                                      MPIR_ALLGATHER_TAG,
                                      ((char *) tmp_buf +
                                       curr_cnt * recvtype_extent), curr_cnt,
@@ -588,7 +588,7 @@ int MPIR_Allgather_Bruck_MV2(const void *sendbuf,
         src = (rank + pof2) % comm_size;
         dst = (rank - pof2 + comm_size) % comm_size;
 
-        mpi_errno = MPIC_Sendrecv_ft(tmp_buf, rem * recvcount, recvtype,
+        mpi_errno = MPIC_Sendrecv(tmp_buf, rem * recvcount, recvtype,
                                      dst, MPIR_ALLGATHER_TAG,
                                      ((char *) tmp_buf +
                                       curr_cnt * recvtype_extent),
@@ -680,7 +680,7 @@ int MPIR_Allgather_Ring_MV2(const void *sendbuf,
     j = rank;
     jnext = left;
     for (i = 1; i < comm_size; i++) {
-        mpi_errno = MPIC_Sendrecv_ft(((char *) recvbuf +
+        mpi_errno = MPIC_Sendrecv(((char *) recvbuf +
                                       j * recvcount * recvtype_extent),
                                      recvcount, recvtype, right,
                                      MPIR_ALLGATHER_TAG,
@@ -765,7 +765,6 @@ int MPIR_2lvl_Allgather_MV2(const void *sendbuf,int sendcnt, MPI_Datatype sendty
                             void *recvbuf, int recvcnt,MPI_Datatype recvtype,
                             MPID_Comm * comm_ptr, int *errflag)
 {
-
     int rank, size;
     int local_rank, local_size;
     int leader_comm_size = 0; 
@@ -808,7 +807,7 @@ int MPIR_2lvl_Allgather_MV2(const void *sendbuf,int sendcnt, MPI_Datatype sendty
     } else {
         /*Since in allgather all the processes could have 
          * its own data in place*/
-        if(sendbuf == MPI_IN_PLACE) {                                     
+        if(sendbuf == MPI_IN_PLACE) {
             mpi_errno = MPIR_Gather_impl((void*)((char*)recvbuf + (rank * recvcnt * recvtype_extent)), 
                                          recvcnt , recvtype, 
                                          recvbuf, recvcnt, recvtype,
@@ -825,7 +824,7 @@ int MPIR_2lvl_Allgather_MV2(const void *sendbuf,int sendcnt, MPI_Datatype sendty
     }
 
     /* Exchange the data between the node leaders*/
-    if(local_rank == 0 && (leader_comm_size > 1)) {
+    if (local_rank == 0 && (leader_comm_size > 1)) {
         /*When data in each socket is different*/
         if (comm_ptr->ch.is_uniform != 1) {
 
@@ -903,8 +902,13 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     int nbytes = 0, comm_size, recvtype_size;
     int range = 0;
+    int partial_sub_ok = 0;
+    int conf_index = 0;
     int range_threshold = 0;
     int is_two_level = 0;
+    int local_size = -1;
+    MPI_Comm shmem_comm;
+    MPID_Comm *shmem_commptr=NULL;
 
     /* Get the size of the communicator */
     comm_size = comm_ptr->local_size;
@@ -987,26 +991,53 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     }
 #endif                          /*#ifdef _ENABLE_CUDA_ */
 
+    /* check if safe to use partial subscription mode */
+    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    
+        shmem_comm = comm_ptr->ch.shmem_comm;
+        MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+        local_size = shmem_commptr->local_size;
+        i = 0;
+        if (mv2_allgather_table_ppn_conf[0] == -1) {
+            // Indicating user defined tuning
+            conf_index = 0;
+            goto conf_check_end;
+        }
+        do {
+            if (local_size == mv2_allgather_table_ppn_conf[i]) {
+                conf_index = i;
+                partial_sub_ok = 1;
+                break;
+            }
+            i++;
+        } while(i < mv2_allgather_num_ppn_conf);
+    }
+
+  conf_check_end:
+    if (partial_sub_ok != 1) {
+        conf_index = 0;
+    }
     /* Search for the corresponding system size inside the tuning table */
-    while ((range < (mv2_size_allgather_tuning_table - 1)) &&
-           (comm_size > mv2_allgather_thresholds_table[range].numproc)) {
+    while ((range < (mv2_size_allgather_tuning_table[conf_index] - 1)) &&
+           (comm_size >
+            mv2_allgather_thresholds_table[conf_index][range].numproc)) {
         range++;
     }
     /* Search for corresponding inter-leader function */
-    while ((range_threshold < (mv2_allgather_thresholds_table[range].size_inter_table - 1))
-           && (nbytes >
-               mv2_allgather_thresholds_table[range].inter_leader[range_threshold].max)
-           && (mv2_allgather_thresholds_table[range].inter_leader[range_threshold].max !=
+    while ((range_threshold <
+         (mv2_allgather_thresholds_table[conf_index][range].size_inter_table - 1))
+           && (nbytes > mv2_allgather_thresholds_table[conf_index][range].inter_leader[range_threshold].max)
+           && (mv2_allgather_thresholds_table[conf_index][range].inter_leader[range_threshold].max !=
                -1)) {
         range_threshold++;
     }
 
     /* Set inter-leader pt */
     MV2_Allgather_function =
-                          mv2_allgather_thresholds_table[range].inter_leader[range_threshold].
+                          mv2_allgather_thresholds_table[conf_index][range].inter_leader[range_threshold].
                           MV2_pt_Allgather_function;
 
-    is_two_level =  mv2_allgather_thresholds_table[range].two_level[range_threshold];
+    is_two_level =  mv2_allgather_thresholds_table[conf_index][range].two_level[range_threshold];
 
     /* intracommunicator */
     if(is_two_level ==1){
@@ -1015,9 +1046,17 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
             #if OSU_MPIT
                 mv2_num_shmem_coll_calls++;
             #endif
-            mpi_errno = MPIR_2lvl_Allgather_MV2(sendbuf, sendcount, sendtype,
-                                                recvbuf, recvcount, recvtype,
-                                                comm_ptr, errflag);
+	   if (1 == comm_ptr->ch.is_blocked) {
+                mpi_errno = MPIR_2lvl_Allgather_MV2(sendbuf, sendcount, sendtype,
+						    recvbuf, recvcount, recvtype,
+						    comm_ptr, errflag);
+	   }
+	   else {
+	       mpi_errno = MPIR_Allgather_intra(sendbuf, sendcount, sendtype,
+						recvbuf, recvcount, recvtype,
+						comm_ptr, errflag);
+	   }
+		
         } else {
             mpi_errno = MPIR_Allgather_RD_MV2(sendbuf, sendcount, sendtype,
                                                 recvbuf, recvcount, recvtype,

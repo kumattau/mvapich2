@@ -28,9 +28,9 @@ main (int argc, char *argv[])
     enable_accel_support();
     po_ret = process_options(argc, argv);
 
-    if (po_okay == po_ret && cuda == options.accel) {
-        if (init_cuda_context()) {
-            fprintf(stderr, "Error initializing cuda context\n");
+    if (po_okay == po_ret && none != options.accel) {
+        if (init_accel()) {
+            fprintf(stderr, "Error initializing device\n");
             exit(EXIT_FAILURE);
         }
     }
@@ -69,24 +69,22 @@ main (int argc, char *argv[])
         options.max_message_size = options.max_mem_limit / numprocs;
     }
 
-    bufsize = options.max_message_size * numprocs;
-
     if (0 == rank) {
+        bufsize = options.max_message_size * numprocs;
         if (allocate_buffer((void**)&recvbuf, bufsize, options.accel)) {
             fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         }
-
         set_buffer(recvbuf, options.accel, 1, bufsize);
     }
 
-    if (allocate_buffer((void**)&sendbuf, options.max_message_size * numprocs,
+    if (allocate_buffer((void**)&sendbuf, options.max_message_size,
                 options.accel)) {
         fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
+    set_buffer(sendbuf, options.accel, 0, options.max_message_size);
 
-    set_buffer(sendbuf, options.accel, 0, bufsize);
     print_preamble(rank);
 
     for (size=1; size <= options.max_message_size; size *= 2) {
@@ -128,14 +126,13 @@ main (int argc, char *argv[])
     if (0 == rank) {
         free_buffer(recvbuf, options.accel);
     }
-
     free_buffer(sendbuf, options.accel);
 
     MPI_Finalize();
 
-    if (cuda == options.accel) {
-        if (destroy_cuda_context()) {
-            fprintf(stderr, "Error destroying cuda context\n");
+    if (none != options.accel) {
+        if (cleanup_accel()) {
+            fprintf(stderr, "Error cleaning up device\n");
             exit(EXIT_FAILURE);
         }
     }

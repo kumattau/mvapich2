@@ -3,6 +3,35 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-2.0b (11/08/2013)
+
+* Features and Enhancements (since 2.0a):
+    - Based on MPICH-3.1b1
+    - Multi-rail support for GPU communication
+    - Non-blocking streams in asynchronous CUDA transfers for better overlap
+    - Initialize GPU resources only when used by MPI transfer
+    - Extended support for MPI-3 RMA in OFA-IB-CH3, OFA-IWARP-CH3, and
+      OFA-RoCE-CH3
+    - Additional MPIT counters and performance variables
+    - Updated compiler wrappers to remove application dependency on network and
+      other extra libraries
+        - Thanks to Adam Moody from LLNL for the suggestion
+    - Capability to checkpoint CH3 channel using the Hydra process manager
+    - Optimized support for broadcast, reduce and other collectives
+    - Tuning for IvyBridge architecture
+    - Improved launch time for large-scale mpirun_rsh jobs
+    - Introduced retry mechanism in mpirun_rsh for socket binding
+    - Updated hwloc to version 1.7.2
+
+* Bug-Fixes (since 2.0a):
+    - Consider list provided by MV2_IBA_HCA when scanning device list
+    - Fix issues in Nemesis interface with --with-ch3-rank-bits=32
+    - Better cleanup of XRC files in corner cases
+    - Initialize using better defaults for ibv_modify_qp (initial ring)
+    - Add unconditional check and addition of pthread library
+    - MPI_Get_library_version updated with proper MVAPICH2 branding
+        - Thanks to Jerome Vienne from the TACC for the report
+
 MVAPICH2-2.0a (08/24/2013)
 
 * Features and Enhancements (since 1.9):

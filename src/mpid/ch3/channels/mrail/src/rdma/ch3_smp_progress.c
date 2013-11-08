@@ -1113,6 +1113,20 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
 
                         if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
+                        while(vc->smp.recv_current_pkt_type==SMP_EAGER_MSG && !complete) {
+                            /* continue to fill request */
+                            mpi_errno = MPIDI_CH3I_SMP_readv(vc,
+                                    &vc->smp.recv_active->dev.iov[vc->smp.recv_active->dev.iov_offset],
+                                    vc->smp.recv_active->dev.iov_count -
+                                    vc->smp.recv_active->dev.iov_offset, &nb);
+
+                            if(!MPIDI_CH3I_Request_adjust_iov(vc->smp.recv_active, nb)) {
+                                goto fn_exit;
+                            }
+                            mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, vc->smp.recv_active, &complete);
+                            if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+                        }
+
                         if (complete) {
 #if defined(_SMP_LIMIC_) || defined(_SMP_CMA_)
                             /* send completion message with sender's send request
@@ -1358,6 +1372,20 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                DEBUG_PRINT("finished handle req, complete %d\n", complete);
 
                if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+               while(vc->smp.recv_current_pkt_type==SMP_EAGER_MSG && !complete) {
+                   /* fill request */
+                   mpi_errno = MPIDI_CH3I_SMP_readv(vc,
+                           &vc->smp.recv_active->dev.iov[vc->smp.recv_active->dev.iov_offset],
+                           vc->smp.recv_active->dev.iov_count -
+                           vc->smp.recv_active->dev.iov_offset, &nb);
+
+                   if(!MPIDI_CH3I_Request_adjust_iov(vc->smp.recv_active, nb)) {
+                       goto fn_exit;
+                   }
+                   mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, vc->smp.recv_active, &complete);
+                   if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+               }
 
                if (complete) {
 #if defined(_SMP_LIMIC_) || defined(_SMP_CMA_)
@@ -2847,7 +2875,7 @@ void smp_cuda_send_copy_enqueue(MPIDI_VC_t * vc, MPID_Request *req, SEND_BUF_T *
     *((volatile int *) ptr_flag) = SMP_CBUF_PENDING;
 
     send_buf->len = size;
-    cuda_err = cudaMemcpyAsync(send_buf->buf, user_buf, size, cudaMemcpyDeviceToHost, 0);
+    cuda_err = cudaMemcpyAsync(send_buf->buf, user_buf, size, cudaMemcpyDeviceToHost, stream_d2h);
     if (cuda_err != cudaSuccess) {
         smp_error_abort(SMP_EXIT_ERR,"cudaMemcpyAsync from device to host failed\n");              
     }
@@ -2870,7 +2898,7 @@ void smp_cuda_send_copy_enqueue(MPIDI_VC_t * vc, MPID_Request *req, SEND_BUF_T *
         cuda_event->req = NULL;
     }
 
-    cuda_err = cudaEventRecord(cuda_event->event, 0);
+    cuda_err = cudaEventRecord(cuda_event->event, stream_d2h);
     if (cuda_err != cudaSuccess) {
         smp_error_abort(SMP_EXIT_ERR,"cudaEventRecord failed\n"); 
     }
@@ -3705,7 +3733,7 @@ void smp_cuda_recv_copy_enqueue(MPIDI_VC_t * vc, MPID_Request *req,
             (void *) ((char *)recv_buf->buf + recv_offset), 
             size, 
             cudaMemcpyHostToDevice, 
-            0);
+            stream_h2d);
     if (cuda_err != cudaSuccess) {
         smp_error_abort(SMP_EXIT_ERR,"cudaMemcpyAsync from host to device failed\n");              
     }
@@ -3728,7 +3756,7 @@ void smp_cuda_recv_copy_enqueue(MPIDI_VC_t * vc, MPID_Request *req,
         cuda_event->req = NULL;
     }
 
-    cuda_err = cudaEventRecord(cuda_event->event, 0);
+    cuda_err = cudaEventRecord(cuda_event->event, stream_h2d);
     if (cuda_err != cudaSuccess) {
         smp_error_abort(SMP_EXIT_ERR,"cudaEventRecord failed\n"); 
     }

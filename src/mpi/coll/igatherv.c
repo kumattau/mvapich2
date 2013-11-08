@@ -109,11 +109,25 @@ int MPIR_Igatherv_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtype
                        int root, MPID_Comm *comm_ptr, MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;
-    int tag = -1;
     MPID_Request *reqp = NULL;
+    int tag = -1;
     MPID_Sched_t s = MPID_SCHED_NULL;
 
     *request = MPI_REQUEST_NULL;
+
+    MPIU_Assert(comm_ptr->coll_fns != NULL);
+    if (comm_ptr->coll_fns->Igatherv_req != NULL) {
+        /* --BEGIN USEREXTENSION-- */
+        mpi_errno = comm_ptr->coll_fns->Igatherv_req(sendbuf, sendcount, sendtype,
+                                                           recvbuf, recvcounts, displs, recvtype,
+                                                           root, comm_ptr, &reqp);
+        if (reqp) {
+            *request = reqp->handle;
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+            goto fn_exit;
+        }
+        /* --END USEREXTENSION-- */
+    }
 
     mpi_errno = MPID_Sched_next_tag(comm_ptr, &tag);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -121,8 +135,8 @@ int MPIR_Igatherv_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     MPIU_Assert(comm_ptr->coll_fns != NULL);
-    MPIU_Assert(comm_ptr->coll_fns->Igatherv != NULL);
-    mpi_errno = comm_ptr->coll_fns->Igatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm_ptr, s);
+    MPIU_Assert(comm_ptr->coll_fns->Igatherv_sched != NULL);
+    mpi_errno = comm_ptr->coll_fns->Igatherv_sched(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm_ptr, s);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     mpi_errno = MPID_Sched_start(&s, comm_ptr, tag, &reqp);

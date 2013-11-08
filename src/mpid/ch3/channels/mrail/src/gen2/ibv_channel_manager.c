@@ -19,6 +19,7 @@
 #include "pmi.h"
 #include "rdma_impl.h"
 #include "mpiutil.h"
+#include "mpit.h"
 #include <debug_utils.h>
 #if defined(_MCST_SUPPORT_)
 #include "ibv_mcast.h"
@@ -39,6 +40,18 @@
 #endif
 
 static pthread_spinlock_t g_apm_lock;
+
+#ifdef OSU_MPIT
+/* IB channel-manager profiling */
+unsigned long mv2_ibv_channel_ctrl_packet_count = 0;
+unsigned long mv2_ibv_channel_out_of_order_packet_count = 0;
+unsigned long mv2_ibv_channel_exact_recv_count = 0;
+
+/* RDMA-FP packet profiling */
+unsigned long mv2_rdmafp_ctrl_packet_count = 0;
+unsigned long mv2_rdmafp_out_of_order_packet_count = 0;
+unsigned long mv2_rdmafp_exact_recv_count = 0;
+#endif
 
 /*
  * TODO add error handling
@@ -340,6 +353,9 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
                 {
                     if (seq == vc->mrail.seqnum_next_torecv)
                     {
+                        #ifdef OSU_MPIT
+                        mv2_rdmafp_exact_recv_count++;
+                        #endif
                         DEBUG_PRINT("Get one exact seq: %d\n", seq);
                         type = T_CHANNEL_EXACT_ARRIVE;
                         ++vc->mrail.seqnum_next_torecv;
@@ -349,6 +365,9 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
                     }
                     else if (seq == PKT_NO_SEQ_NUM)
                     {
+                        #ifdef OSU_MPIT
+                        mv2_rdmafp_ctrl_packet_count++; 
+                        #endif
                         type = T_CHANNEL_CONTROL_MSG_ARRIVE;
                         DEBUG_PRINT("[vbuf_local]: get control msg\n");
                         *vbuf_ptr = v;
@@ -357,6 +376,9 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
                     }
                     else
                     {
+                        #ifdef OSU_MPIT
+                        mv2_rdmafp_out_of_order_packet_count++;
+                        #endif
                         DEBUG_PRINT("Get one out of order seq: %d, expecting %d\n", seq, vc->mrail.seqnum_next_torecv);
                         VQUEUE_ENQUEUE(&vc->mrail.cmanager, INDEX_LOCAL(&vc->mrail.cmanager, 0), v);
                         continue;
@@ -374,6 +396,9 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
             *vc_ptr = (*vbuf_ptr)->vc;
             ++vc->mrail.seqnum_next_torecv;
             type = T_CHANNEL_EXACT_ARRIVE;
+            #ifdef OSU_MPIT
+            mv2_ibv_channel_exact_recv_count++;
+            #endif
             goto fn_exit;
         }
         else if (seq == PKT_NO_SEQ_NUM)
@@ -425,6 +450,9 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
         } else if (PKT_NO_SEQ_NUM == seq) {
             *vbuf_handle = VQUEUE_DEQUEUE(cmanager, i);
             type = T_CHANNEL_CONTROL_MSG_ARRIVE;
+            #ifdef OSU_MPIT
+            mv2_ibv_channel_ctrl_packet_count++;
+            #endif
             goto fn_exit;
         } else if (PKT_IS_NULL == seq) {
             /* Do nothing */
@@ -447,6 +475,9 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
             } else if (seq == PKT_NO_SEQ_NUM) {
                 *vbuf_handle = VQUEUE_DEQUEUE(cmanager, INDEX_LOCAL(cmanager,i));
                 type = T_CHANNEL_CONTROL_MSG_ARRIVE;
+                #ifdef OSU_MPIT
+                mv2_ibv_channel_ctrl_packet_count++;
+                #endif
                 goto fn_exit;
             }
             else if (vc->mrail.rfp.in_polling_set) {
@@ -459,6 +490,9 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
                 }
                 else if( seq == PKT_NO_SEQ_NUM) {
                     type = T_CHANNEL_CONTROL_MSG_ARRIVE;
+                    #ifdef OSU_MPIT
+                    mv2_ibv_channel_ctrl_packet_count++;
+                    #endif
                     goto fn_exit;
                 } else if (*vbuf_handle != NULL){
                     VQUEUE_ENQUEUE(cmanager, INDEX_LOCAL(cmanager,i), *vbuf_handle);
@@ -737,6 +771,9 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                     if (rdma_enable_hybrid){
                         if (IS_CNTL_MSG(p)){
                             type = T_CHANNEL_CONTROL_MSG_ARRIVE;
+                            #ifdef OSU_MPIT
+                            mv2_ibv_channel_ctrl_packet_count++;
+                            #endif
                         } else {
                             type = T_CHANNEL_HYBRID_MSG_ARRIVE;
                         }
@@ -746,6 +783,9 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                     {
                         if (seqnum == PKT_NO_SEQ_NUM){
                             type = T_CHANNEL_CONTROL_MSG_ARRIVE;
+                            #ifdef OSU_MPIT
+                            mv2_ibv_channel_ctrl_packet_count++;
+                            #endif
                         } else if (seqnum == vc->mrail.seqnum_next_torecv) {
                             vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
                             ++vc->mrail.seqnum_next_torecv;

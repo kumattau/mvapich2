@@ -28,7 +28,7 @@
 #endif
 
 /* Enable the use of data within the message packet for small messages */
-#if 0
+#if NEMESIS_BUILD
 #define USE_EAGER_SHORT
 #define MPIDI_EAGER_SHORT_INTS 4
 /* FIXME: This appears to assume that sizeof(int) == 4 (or at least >= 4) */
@@ -641,7 +641,12 @@ MPIDI_CH3_Pkt_accum_t;
 
 typedef struct MPIDI_CH3_Pkt_get_accum_resp
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#else
     MPIDI_CH3_Pkt_type_t type;
+#endif
     MPI_Request request_handle;
 }
 MPIDI_CH3_Pkt_get_accum_resp_t;

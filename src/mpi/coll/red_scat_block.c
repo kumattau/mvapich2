@@ -119,7 +119,7 @@ static int MPIR_Reduce_scatter_block_noncomm (
             send_offset += size;
         }
 
-        mpi_errno = MPIC_Sendrecv_ft(outgoing_data + send_offset*true_extent,
+        mpi_errno = MPIC_Sendrecv(outgoing_data + send_offset*true_extent,
                                      size, datatype, peer, MPIR_REDUCE_SCATTER_BLOCK_TAG,
                                      incoming_data + recv_offset*true_extent,
                                      size, datatype, peer, MPIR_REDUCE_SCATTER_BLOCK_TAG,
@@ -139,7 +139,6 @@ static int MPIR_Reduce_scatter_block_noncomm (
                      outgoing_data + recv_offset*true_extent,
                      size, datatype, op);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-            buf0_was_inout = buf0_was_inout;
         }
         else {
             /* lower ranked value so need to call op(my_data, received_data) */
@@ -338,7 +337,7 @@ int MPIR_Reduce_scatter_block_intra (
 
         if (rank < 2*rem) {
             if (rank % 2 == 0) { /* even */
-                mpi_errno = MPIC_Send_ft(tmp_results, total_count, 
+                mpi_errno = MPIC_Send(tmp_results, total_count,
                                          datatype, rank+1,
                                          MPIR_REDUCE_SCATTER_BLOCK_TAG, comm, errflag);
                 if (mpi_errno) {
@@ -354,7 +353,7 @@ int MPIR_Reduce_scatter_block_intra (
                 newrank = -1; 
             }
             else { /* odd */
-                mpi_errno = MPIC_Recv_ft(tmp_recvbuf, total_count, 
+                mpi_errno = MPIC_Recv(tmp_recvbuf, total_count,
                                          datatype, rank-1,
                                          MPIR_REDUCE_SCATTER_BLOCK_TAG, comm,
                                          MPI_STATUS_IGNORE, errflag);
@@ -432,7 +431,7 @@ int MPIR_Reduce_scatter_block_intra (
 */
                 /* Send data from tmp_results. Recv into tmp_recvbuf */ 
                 if ((send_cnt != 0) && (recv_cnt != 0)) 
-                    mpi_errno = MPIC_Sendrecv_ft((char *) tmp_results +
+                    mpi_errno = MPIC_Sendrecv((char *) tmp_results +
                                                  newdisps[send_idx]*extent,
                                                  send_cnt, datatype,
                                                  dst, MPIR_REDUCE_SCATTER_BLOCK_TAG,
@@ -442,13 +441,13 @@ int MPIR_Reduce_scatter_block_intra (
                                                  MPIR_REDUCE_SCATTER_BLOCK_TAG, comm,
                                                  MPI_STATUS_IGNORE, errflag);
                 else if ((send_cnt == 0) && (recv_cnt != 0))
-                    mpi_errno = MPIC_Recv_ft((char *) tmp_recvbuf +
+                    mpi_errno = MPIC_Recv((char *) tmp_recvbuf +
                                              newdisps[recv_idx]*extent,
                                              recv_cnt, datatype, dst,
                                              MPIR_REDUCE_SCATTER_BLOCK_TAG, comm,
                                              MPI_STATUS_IGNORE, errflag);
                 else if ((recv_cnt == 0) && (send_cnt != 0))
-                    mpi_errno = MPIC_Send_ft((char *) tmp_results +
+                    mpi_errno = MPIC_Send((char *) tmp_results +
                                              newdisps[send_idx]*extent,
                                              send_cnt, datatype,
                                              dst, MPIR_REDUCE_SCATTER_BLOCK_TAG,
@@ -490,13 +489,13 @@ int MPIR_Reduce_scatter_block_intra (
            calculated for that process */
         if (rank < 2*rem) {
             if (rank % 2) { /* odd */
-                mpi_errno = MPIC_Send_ft((char *) tmp_results +
+                mpi_errno = MPIC_Send((char *) tmp_results +
                                          disps[rank-1]*extent, recvcount,
                                          datatype, rank-1,
                                          MPIR_REDUCE_SCATTER_BLOCK_TAG, comm, errflag);
             }
             else  {   /* even */
-                mpi_errno = MPIC_Recv_ft(recvbuf, recvcount,
+                mpi_errno = MPIC_Recv(recvbuf, recvcount,
                                          datatype, rank+1,
                                          MPIR_REDUCE_SCATTER_BLOCK_TAG, comm,
                                          MPI_STATUS_IGNORE, errflag);
@@ -535,14 +534,14 @@ int MPIR_Reduce_scatter_block_intra (
             /* send the data that dst needs. recv data that this process
                needs from src into tmp_recvbuf */
             if (sendbuf != MPI_IN_PLACE) 
-                mpi_errno = MPIC_Sendrecv_ft(((char *)sendbuf+disps[dst]*extent), 
+                mpi_errno = MPIC_Sendrecv(((char *)sendbuf+disps[dst]*extent),
                                              recvcount, datatype, dst,
                                              MPIR_REDUCE_SCATTER_BLOCK_TAG, tmp_recvbuf,
                                              recvcount, datatype, src,
                                              MPIR_REDUCE_SCATTER_BLOCK_TAG, comm,
                                              MPI_STATUS_IGNORE, errflag);
             else
-                mpi_errno = MPIC_Sendrecv_ft(((char *)recvbuf+disps[dst]*extent), 
+                mpi_errno = MPIC_Sendrecv(((char *)recvbuf+disps[dst]*extent),
                                              recvcount, datatype, dst,
                                              MPIR_REDUCE_SCATTER_BLOCK_TAG, tmp_recvbuf,
                                              recvcount, datatype, src,
@@ -708,7 +707,7 @@ int MPIR_Reduce_scatter_block_intra (
                        received in tmp_recvbuf and then accumulated into
                        tmp_results. accumulation is done later below.   */ 
 
-                    mpi_errno = MPIC_Sendrecv_ft(tmp_results, 1, sendtype, dst,
+                    mpi_errno = MPIC_Sendrecv(tmp_results, 1, sendtype, dst,
                                                  MPIR_REDUCE_SCATTER_BLOCK_TAG, 
                                                  tmp_recvbuf, 1, recvtype, dst,
                                                  MPIR_REDUCE_SCATTER_BLOCK_TAG, comm,
@@ -758,7 +757,7 @@ int MPIR_Reduce_scatter_block_intra (
                             (rank < tree_root + nprocs_completed)
                             && (dst >= tree_root + nprocs_completed)) {
                             /* send the current result */
-                            mpi_errno = MPIC_Send_ft(tmp_recvbuf, 1, recvtype,
+                            mpi_errno = MPIC_Send(tmp_recvbuf, 1, recvtype,
                                                      dst, MPIR_REDUCE_SCATTER_BLOCK_TAG,
                                                      comm, errflag);
                             if (mpi_errno) {
@@ -773,7 +772,7 @@ int MPIR_Reduce_scatter_block_intra (
                         else if ((dst < rank) && 
                                  (dst < tree_root + nprocs_completed) &&
                                  (rank >= tree_root + nprocs_completed)) {
-                            mpi_errno = MPIC_Recv_ft(tmp_recvbuf, 1, recvtype, dst,
+                            mpi_errno = MPIC_Recv(tmp_recvbuf, 1, recvtype, dst,
                                                      MPIR_REDUCE_SCATTER_BLOCK_TAG,
                                                      comm, MPI_STATUS_IGNORE, errflag);
                             received = 1;
@@ -790,7 +789,7 @@ int MPIR_Reduce_scatter_block_intra (
                 }
 
                 /* The following reduction is done here instead of after 
-                   the MPIC_Sendrecv_ft or MPIC_Recv_ft above. This is
+                   the MPIC_Sendrecv or MPIC_Recv above. This is
                    because to do it above, in the noncommutative 
                    case, we would need an extra temp buffer so as not to
                    overwrite temp_recvbuf, because temp_recvbuf may have

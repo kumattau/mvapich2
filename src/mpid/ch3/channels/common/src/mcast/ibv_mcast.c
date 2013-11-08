@@ -797,6 +797,7 @@ static inline void mv2_mcast_send_nack(uint32_t psn, int comm_id, int root)
     pkt.comm_id = comm_id;
     pkt.root = root;
     comm_ptr = mv2_mcast_find_comm(comm_id);
+    pkt.src_rank = comm_ptr->rank;
 
     if (mcast_use_mcast_nack) {
         bcast_info = (bcast_info_t *) comm_ptr->ch.bcast_info;
@@ -1046,6 +1047,7 @@ void mv2_mcast_flush_sendwin(message_queue_t * q)
 void mv2_mcast_send(bcast_info_t * bcast_info, char *buf, int len)
 {
     vbuf *v;
+    MPID_Comm *comm_ptr;
     mcast_info_t *minfo = &bcast_info->minfo;
 
     v = get_ud_vbuf();
@@ -1054,6 +1056,8 @@ void mv2_mcast_send(bcast_info_t * bcast_info, char *buf, int len)
     p->rail = 0;
     p->psn = bcast_info->win_head;
     p->comm_id = minfo->grp_info.comm_id;
+    comm_ptr = mv2_mcast_find_comm(p->comm_id);
+    p->src_rank = comm_ptr->rank;
 
     memcpy((char *) p + sizeof(MPIDI_CH3_Pkt_mcast_t), buf, len);
 

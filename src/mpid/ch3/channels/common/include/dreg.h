@@ -63,8 +63,6 @@ typedef struct dreg_entry dreg_entry;
 
 extern int g_is_dreg_initialized; 
 extern int g_is_dreg_finalize;
-extern unsigned long dreg_stat_cache_hit;
-extern unsigned long dreg_stat_cache_miss;
 struct dreg_entry {
     unsigned long pagenum;
 #ifdef DAPL_DEFAULT_PROVIDER

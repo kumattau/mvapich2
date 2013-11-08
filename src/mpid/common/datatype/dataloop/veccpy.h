@@ -54,9 +54,10 @@
 {								\
     type * l_src = (type *) src, * l_dest = (type *) dest;	\
     type * tmp_src = l_src;                                     \
-    register int _i, j, k;		                        \
+    register int k;                                             \
+    register unsigned long _i, j;                               \
     unsigned long total_count = count * nelms;                  \
-    const int l_stride = stride;				\
+    const DLOOP_Offset l_stride = stride;				\
                                                                 \
     if (nelms == 1) {                                           \
         for (_i = total_count; _i; _i--) {			        \
@@ -166,9 +167,9 @@
 {								\
     type * l_src = (type *) src, * l_dest = (type *) dest;	\
     type * tmp_src = l_src;                                     \
-    register int _i, j, k;		                        \
-    unsigned long total_count = count * nelms;                  \
-    const int l_stride = stride;				\
+    register int k;                                                     \
+    register unsigned long _i, j, total_count = count * nelms;          \
+    const DLOOP_Offset l_stride = stride;				\
                                                                 \
     if (nelms == 1) {                                           \
         for (_i = total_count; _i; _i--) {			        \
@@ -278,9 +279,10 @@
 {								\
     type * l_src = (type *) src, * l_dest = (type *) dest;	\
     type * tmp_dest = l_dest;                                   \
-    register int _i, j, k;		                        \
+    register int k;                                             \
+    register unsigned long _i, j;                               \
     unsigned long total_count = count * nelms;                  \
-    const int l_stride = stride;				\
+    const DLOOP_Offset l_stride = stride;				\
                                                                 \
     if (nelms == 1) {                                           \
         for (_i = total_count; _i; _i--) {			        \
@@ -390,9 +392,10 @@
 {								\
     type * l_src = (type *) src, * l_dest = (type *) dest;	\
     type * tmp_dest = l_dest;                                   \
-    register int _i, j, k;		                        \
+    register int k;                                             \
+    register unsigned long _i, j;                               \
     unsigned long total_count = count * nelms;                  \
-    const int l_stride = stride;				\
+    const DLOOP_Offset l_stride = stride;				\
                                                                 \
     if (nelms == 1) {                                           \
         for (_i = total_count; _i; _i--) {			        \

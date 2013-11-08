@@ -38,7 +38,9 @@ int MPID_Issend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif    
+#if !defined(_OSU_MVAPICH_)
     int eager_threshold = -1;
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPID_ISSEND);
 

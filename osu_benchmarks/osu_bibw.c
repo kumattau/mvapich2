@@ -95,13 +95,13 @@ struct {
 } options;
 
 void usage (void);
-int init_cuda_context (void);
-int destroy_cuda_context (void);
 int process_options (int argc, char *argv[]);
 int allocate_memory (char **sbuf, char **rbuf, int rank);
 void print_header (int rank);
 void touch_data (void *sbuf, void *rbuf, int rank, size_t size);
 void free_memory (void *sbuf, void *rbuf, int rank);
+int init_accel (void);
+int cleanup_accel (void);
 
 int main(int argc, char *argv[])
 {
@@ -114,9 +114,9 @@ int main(int argc, char *argv[])
     int skip = 10;
     int po_ret = process_options(argc, argv);
 
-    if (po_okay == po_ret && cuda == options.accel) {
-        if (init_cuda_context()) {
-            fprintf(stderr, "Error initializing cuda context\n");
+    if (po_okay == po_ret && none != options.accel) {
+        if (init_accel()) {
+            fprintf(stderr, "Error initializing device\n");
             exit(EXIT_FAILURE);
         }
     }
@@ -237,9 +237,9 @@ int main(int argc, char *argv[])
     free_memory(s_buf, r_buf, myid);
     MPI_Finalize();
 
-    if (cuda == options.accel) {
-        if (destroy_cuda_context()) {
-            fprintf(stderr, "Error destroying cuda context\n");
+    if (none != options.accel) {
+        if (cleanup_accel()) {
+            fprintf(stderr, "Error cleaning up device\n");
             exit(EXIT_FAILURE);
         }
     }
@@ -359,36 +359,58 @@ process_options (int argc, char *argv[])
 }
 
 int
-init_cuda_context (void)
+init_accel (void)
 {
-#ifdef _ENABLE_CUDA_
-    CUresult curesult = CUDA_SUCCESS;
-    CUdevice cuDevice;
-    int local_rank, dev_count;
-    int dev_id = 0;
-    char * str;
-
-    if ((str = getenv("LOCAL_RANK")) != NULL) {
-        cudaGetDeviceCount(&dev_count);
-        local_rank = atoi(str);
-        dev_id = local_rank % dev_count;
-    }
-
-    curesult = cuInit(0);
-    if (curesult != CUDA_SUCCESS) {
-        return 1;
-    }
-
-    curesult = cuDeviceGet(&cuDevice, dev_id);
-    if (curesult != CUDA_SUCCESS) {
-        return 1;
-    }
-
-    curesult = cuCtxCreate(&cuContext, 0, cuDevice);
-    if (curesult != CUDA_SUCCESS) {
-        return 1;
-    }
+#if defined(_ENABLE_OPENACC_) || defined(_ENABLE_CUDA_)
+     char * str;
+     int local_rank, dev_count;
+     int dev_id = 0;
 #endif
+#ifdef _ENABLE_CUDA_
+     CUresult curesult = CUDA_SUCCESS;
+     CUdevice cuDevice;
+#endif
+
+     switch (options.accel) {
+#ifdef _ENABLE_CUDA_
+        case cuda:
+            if ((str = getenv("LOCAL_RANK")) != NULL) {
+                cudaGetDeviceCount(&dev_count);
+                local_rank = atoi(str);
+                dev_id = local_rank % dev_count;
+            }
+
+            curesult = cuInit(0);
+            if (curesult != CUDA_SUCCESS) {
+                return 1;
+            }
+
+            curesult = cuDeviceGet(&cuDevice, dev_id);
+            if (curesult != CUDA_SUCCESS) {
+                return 1;
+            }
+
+            curesult = cuCtxCreate(&cuContext, 0, cuDevice);
+            if (curesult != CUDA_SUCCESS) {
+                return 1;
+            }
+            break;
+#endif
+#ifdef _ENABLE_OPENACC_
+        case openacc:
+            if ((str = getenv("LOCAL_RANK")) != NULL) {
+                dev_count = acc_get_num_devices(acc_device_not_host);
+                local_rank = atoi(str);
+                dev_id = local_rank % dev_count;
+            }
+            acc_set_device_num (dev_id, acc_device_not_host);
+            break;
+#endif
+        default:
+            fprintf(stderr, "Invalid device type, should be cuda or openacc\n");
+            return 1;
+    }
+
     return 0;
 }
 
@@ -575,16 +597,32 @@ free_device_buffer (void * buf)
 }
 
 int
-destroy_cuda_context (void)
+cleanup_accel (void)
 {
 #ifdef _ENABLE_CUDA_
-    CUresult curesult = CUDA_SUCCESS;
-    curesult = cuCtxDestroy(cuContext);   
-
-    if (curesult != CUDA_SUCCESS) {
-        return 1;
-    }  
+     CUresult curesult = CUDA_SUCCESS;
 #endif
+
+     switch (options.accel) {
+#ifdef _ENABLE_CUDA_
+        case cuda:
+            curesult = cuCtxDestroy(cuContext);
+
+            if (curesult != CUDA_SUCCESS) {
+                return 1;
+            }
+            break;
+#endif
+#ifdef _ENABLE_OPENACC_
+        case openacc:
+            acc_shutdown(acc_device_not_host);
+            break;
+#endif
+        default:
+            fprintf(stderr, "Invalid accel type, should be cuda or openacc\n");
+            return 1;
+    }
+
     return 0;
 }
 

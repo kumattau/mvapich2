@@ -64,6 +64,7 @@ extern int  use_hwloc_cpu_binding;
 extern unsigned long rdma_polling_spin_count_threshold;
 extern int mv2_use_thread_yield;
 extern int mv2_spins_before_lock; 
+extern int mv2_on_demand_ud_info_exchange;
 
 #define MV2_INTER_NODE_KNOMIAL_FACTOR_MAX 8
 #define MV2_INTER_NODE_KNOMIAL_FACTOR_MIN 2

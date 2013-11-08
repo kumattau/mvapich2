@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2012 Inria.  All rights reserved.
+ * Copyright © 2009-2013 Inria.  All rights reserved.
  * Copyright © 2009-2011, 2013 Université Bordeaux 1
  * See COPYING in top-level directory.
  */
@@ -425,7 +425,7 @@ hwloc_pci_find_cap(const unsigned char *config, size_t config_size, unsigned cap
     if (id == 0xff)
       break;
 
-    if (ptr + PCI_CAP_LIST_NEXT >= (unsigned char) config_size)
+    if (ptr + (unsigned) PCI_CAP_LIST_NEXT >= config_size)
       return 0;
   }
   return 0;
@@ -503,6 +503,7 @@ hwloc_look_pci(struct hwloc_backend *backend)
     unsigned isbridge;
     unsigned domain;
     unsigned device_class;
+    unsigned short tmp16;
     char name[128];
     unsigned offset;
 #ifdef HWLOC_HAVE_PCI_FIND_CAP
@@ -559,10 +560,6 @@ hwloc_look_pci(struct hwloc_backend *backend)
     obj->attr->pcidev.class_id = device_class;
     HWLOC_BUILD_ASSERT(PCI_REVISION_ID < CONFIG_SPACE_CACHESIZE);
     obj->attr->pcidev.revision = config_space_cache[PCI_REVISION_ID];
-    HWLOC_BUILD_ASSERT(PCI_SUBSYSTEM_VENDOR_ID < CONFIG_SPACE_CACHESIZE);
-    obj->attr->pcidev.subvendor_id = config_space_cache[PCI_SUBSYSTEM_VENDOR_ID];
-    HWLOC_BUILD_ASSERT(PCI_SUBSYSTEM_ID < CONFIG_SPACE_CACHESIZE);
-    obj->attr->pcidev.subdevice_id = config_space_cache[PCI_SUBSYSTEM_ID];
 
     obj->attr->pcidev.linkspeed = 0; /* unknown */
 #ifdef HWLOC_HAVE_PCI_FIND_CAP
@@ -571,6 +568,51 @@ hwloc_look_pci(struct hwloc_backend *backend)
 #else
     offset = hwloc_pci_find_cap(config_space_cache, config_space_cachesize, PCI_CAP_ID_EXP);
 #endif /* HWLOC_HAVE_PCI_FIND_CAP */
+
+    if (0xffff == pcidev->vendor_id && 0xffff == pcidev->device_id) {
+      /* SR-IOV puts ffff:ffff in Virtual Function config space.
+       * The actual VF device ID is stored at a special (dynamic) location in the Physical Function config space.
+       * VF and PF have the same vendor ID.
+       *
+       * libpciaccess just returns ffff:ffff, needs to be fixed.
+       * linuxpci is OK because sysfs files are already fixed the kernel.
+       * pciutils is OK when it uses those Linux sysfs files.
+       *
+       * Reading these files is an easy way to work around the libpciaccess issue on Linux,
+       * but we have no way to know if this is caused by SR-IOV or not.
+       *
+       * TODO:
+       *  If PF has CAP_ID_PCIX or CAP_ID_EXP (offset>0),
+       *  look for extended capability PCI_EXT_CAP_ID_SRIOV,
+       *  then read the VF device ID after it (PCI_IOV_DID bytes later).
+       *  Needs access to extended config space (needs root on Linux).
+       * TODO:
+       *  Add string info attributes in VF and PF objects?
+       */
+#ifdef HWLOC_LINUX_SYS
+      /* Workaround for Linux (the kernel returns the VF device/vendor IDs). */
+      char path[64];
+      char value[16];
+      FILE *file;
+      snprintf(path, sizeof(path), "/sys/bus/pci/devices/%04x:%02x:%02x.%01x/vendor",
+	       domain, pcidev->bus, pcidev->dev, pcidev->func);
+      file = fopen(path, "r");
+      if (file) {
+	fread(value, sizeof(value), 1, file);
+	fclose(file);
+	obj->attr->pcidev.vendor_id = strtoul(value, NULL, 16);
+      }
+      snprintf(path, sizeof(path), "/sys/bus/pci/devices/%04x:%02x:%02x.%01x/device",
+	       domain, pcidev->bus, pcidev->dev, pcidev->func);
+      file = fopen(path, "r");
+      if (file) {
+	fread(value, sizeof(value), 1, file);
+	fclose(file);
+	obj->attr->pcidev.device_id = strtoul(value, NULL, 16);
+      }
+#endif
+    }
+
     if (offset > 0) {
       if (offset + PCI_EXP_LNKSTA + 4 >= config_space_cachesize) {
         fprintf(stderr, "cannot read PCI_EXP_LNKSTA cap at %d (only %d cached)\n", offset + PCI_EXP_LNKSTA, CONFIG_SPACE_CACHESIZE);
@@ -601,6 +643,20 @@ hwloc_look_pci(struct hwloc_backend *backend)
       obj->attr->bridge.downstream.pci.domain = domain;
       obj->attr->bridge.downstream.pci.secondary_bus = config_space_cache[PCI_SECONDARY_BUS];
       obj->attr->bridge.downstream.pci.subordinate_bus = config_space_cache[PCI_SUBORDINATE_BUS];
+    }
+
+    if (obj->type == HWLOC_OBJ_PCI_DEVICE) {
+      memcpy(&tmp16, &config_space_cache[PCI_SUBSYSTEM_VENDOR_ID], sizeof(tmp16));
+      HWLOC_BUILD_ASSERT(PCI_SUBSYSTEM_VENDOR_ID < CONFIG_SPACE_CACHESIZE);
+      obj->attr->pcidev.subvendor_id = tmp16;
+      memcpy(&tmp16, &config_space_cache[PCI_SUBSYSTEM_ID], sizeof(tmp16));
+      HWLOC_BUILD_ASSERT(PCI_SUBSYSTEM_ID < CONFIG_SPACE_CACHESIZE);
+      obj->attr->pcidev.subdevice_id = tmp16;
+    } else {
+      /* TODO:
+       * bridge must lookup PCI_CAP_ID_SSVID and then look at offset+PCI_SSVID_VENDOR/DEVICE_ID
+       * cardbus must look at PCI_CB_SUBSYSTEM_VENDOR_ID and PCI_CB_SUBSYSTEM_ID
+       */
     }
 
 /* starting from pciutils 2.2, pci_lookup_name() takes a variable number

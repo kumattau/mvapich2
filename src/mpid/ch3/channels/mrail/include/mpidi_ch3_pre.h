@@ -22,6 +22,7 @@
 #include "mpichconf.h"
 #include "mpidi_ch3_rdma_pre.h"
 #include "smp_smpi.h"
+#include "mpiu_os_wrappers_pre.h"
 
 /*#define MPICH_DBG_OUTPUT*/
 
@@ -305,5 +306,90 @@ MPIDI_CH3I_Progress_state;
 extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
 
 #define MPIDI_CH3_PROGRESS_STATE_DECL MPIDI_CH3I_Progress_state ch;
+
+typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
+
+#if defined(_OSU_MVAPICH_)
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+#define RMA_LIMIC_DECL                                                           \
+    limic_user *peer_lu;                                                         \
+    int limic_fallback;
+#else
+#define RMA_LIMIC_DECL
+#endif /*_SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
+
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#define RMA_SHM_DECL                                                             \
+    int shm_fallback;                                                            \
+    int shm_fd;                                                                  \
+    void *shm_control_buf;                                                       \
+    int shm_control_bufsize;                                                     \
+    void **shm_buffer_all;                                                       \
+    void **shm_win_buffer_all;                                                   \
+    long long *shm_cmpl_counter_me;                                              \
+    long long **shm_cmpl_counter_all;                                            \
+    int *shm_post_flag_me;                                                       \
+    int **shm_post_flag_all;                                                     \
+    int *shm_lock;                                                               \
+    long *shm_shared_lock_count;                                                 \
+    int *shm_lock_released;                                                      \
+    int shm_lock_queued;                                                         \
+    pthread_mutex_t *shm_win_mutex;                                              \
+    int shm_l_ranks;                                                             \
+    int *shm_l2g_rank;                                                           \
+    int *shm_g2l_rank;
+#else
+#define RMA_SHM_DECL
+#endif
+
+#define MPIDI_CH3_WIN_DECL                                                       \
+    int  fall_back;                                                              \
+    int  using_lock;                                                             \
+    int  *use_two_sided_lock; /* If RMA Fetch_and_op,                             \
+                                Get_accumulate using shared memory lock for sync \
+                                , set this parameter to 1 disable shared memory  \
+                                lock. Use two sided lock instead.*/              \
+    long long cc_for_test;                                                       \
+    struct dreg_entry* completion_counter_dreg_entry;                            \
+    volatile long long * completion_counter;                                     \
+    long long ** all_completion_counter;                                         \
+    uint32_t  *completion_counter_rkeys; /* rkey for complete couters on         \
+                                            remote nodes */                      \
+    struct dreg_entry* win_dreg_entry;                                           \
+    uint32_t *win_rkeys;          /* exposed buffer addresses on remote          \
+                                    windows */                                   \
+    struct dreg_entry* post_flag_dreg_entry;                                     \
+    volatile int *post_flag;     /* flag from post to complete, one flag for     \
+                                    each target, updated by RDMA */              \
+    uint32_t *post_flag_rkeys;                                                   \
+    int ** remote_post_flags;                                                    \
+                                                                                 \
+    int using_start;                                                             \
+    /*for get/put queue*/                                                        \
+    MPIDI_CH3I_RDMA_put_get_list * put_get_list;                                 \
+    int put_get_list_size;                                                       \
+    int put_get_list_tail;                                                       \
+    int * put_get_list_size_per_process;                                         \
+    int wait_for_complete;                                                       \
+    int rma_issued;                                                              \
+    /* Preregistered buffer for small msg */                                     \
+    char * pinnedpool_1sc_buf;                                                   \
+    int    pinnedpool_1sc_index;                                                 \
+    struct dreg_entry * pinnedpool_1sc_dentry;                                   \
+                                                                                 \
+    int my_id;                                                                   \
+    int comm_size;                                                               \
+    int16_t outstanding_rma;                                                     \
+    volatile int poll_flag; /* flag to indicate if polling for one sided completions is needed */ \
+    void *shm_base_addr;        /* base address of shared memory region */              \
+    MPI_Aint shm_segment_len;   /* size of shared memory region */                      \
+    MPIU_SHMW_Hnd_t shm_segment_handle; /* handle to shared memory region */            \
+    MPIDI_CH3I_SHM_MUTEX *shm_mutex;    /* shared memory windows -- lock for            \
+                                           accumulate/atomic operations */              \
+    MPIU_SHMW_Hnd_t shm_mutex_segment_handle; /* handle to interprocess mutex memory    \
+                                                 region */                              \
+    RMA_SHM_DECL                                                                 \
+    RMA_LIMIC_DECL
+#endif /* defined(_OSU_MVAPICH_) */
 
 #endif /* !defined(MPICH_MPIDI_CH3_PRE_H_INCLUDED) */

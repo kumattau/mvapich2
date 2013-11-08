@@ -18,7 +18,17 @@
 
 extern char *HYD_dbg_prefix;
 
+/* C89 headers can be included without a check */
+#if defined STDC_HEADERS
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <signal.h>
+#else
+#error "STDC_HEADERS are assumed in the Hydra code"
+#endif /* STDC_HEADERS */
 
 #if defined NEEDS_POSIX_FOR_SIGACTION
 #define _POSIX_SOURCE
@@ -33,21 +43,9 @@ extern char *HYD_dbg_prefix;
 #include <unistd.h>
 #endif /* HAVE_UNISTD_H */
 
-#if defined HAVE_STDLIB_H
-#include <stdlib.h>
-#endif /* HAVE_STDLIB_H */
-
-#if defined HAVE_STRING_H
-#include <string.h>
-#endif /* HAVE_STRING_H */
-
 #if defined HAVE_STRINGS_H
 #include <strings.h>
 #endif /* HAVE_STRINGS_H */
-
-#if defined HAVE_STDARG_H
-#include <stdarg.h>
-#endif /* HAVE_STDARG_H */
 
 #if defined HAVE_SYS_TYPES_H
 #include <sys/types.h>
@@ -72,10 +70,6 @@ extern char *HYD_dbg_prefix;
 #if defined HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #endif /* HAVE_ARPA_INET_H */
-
-#if defined HAVE_ERRNO_H
-#include <errno.h>
-#endif /* HAVE_ERRNO_H */
 
 #if !defined HAVE_GETTIMEOFDAY
 #error "hydra requires gettimeofday support"
@@ -112,7 +106,11 @@ extern char *HYD_dbg_prefix;
 
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
-#endif
+#endif /* HAVE_SYS_SOCKET_H */
+
+#ifdef HAVE_SIGNAL_H
+#include <signal.h>
+#endif /* HAVE_SIGNAL_H */
 
 #define HYD_POLLIN  (0x0001)
 #define HYD_POLLOUT (0x0002)
@@ -159,9 +157,70 @@ extern char *HYD_dbg_prefix;
 extern char **environ;
 #endif /* MANUAL_EXTERN_ENVIRON */
 
+#if defined NEEDS_GETTIMEOFDAY_DECL
+int gettimeofday(struct timeval *tv, struct timezone *tz);
+#endif /* NEEDS_GETTIMEOFDAY_DECL */
+
+#if defined NEEDS_GETPGID_DECL
+pid_t getpgid(pid_t pid);
+#endif /* NEEDS_GETPGID_DECL */
+
+#if defined NEEDS_KILLPG_DECL
+int killpg(int pgrp, int sig);
+#endif /* NEEDS_KILLPG_DECL */
+
 #define HYD_SILENT_ERROR(status) (((status) == HYD_GRACEFUL_ABORT) || ((status) == HYD_TIMED_OUT))
 
 #define HYDRA_NAMESERVER_DEFAULT_PORT 6392
+
+struct HYD_string_stash {
+    char **strlist;
+    int max_count;
+    int cur_count;
+};
+
+#define HYD_STRING_STASH_INIT(stash)            \
+    do {                                        \
+        (stash).strlist = NULL;                 \
+        (stash).max_count = 0;                  \
+        (stash).cur_count = 0;                  \
+    } while (0)
+
+#define HYD_STRING_STASH(stash, str, status)                            \
+    do {                                                                \
+        if ((stash).cur_count >= (stash).max_count - 1) {               \
+            HYDU_REALLOC((stash).strlist, char **,                      \
+                         ((stash).max_count + HYD_NUM_TMP_STRINGS) * sizeof(char *), \
+                         (status));                                     \
+            (stash).max_count += HYD_NUM_TMP_STRINGS;                   \
+        }                                                               \
+        (stash).strlist[(stash).cur_count++] = (str);                   \
+        (stash).strlist[(stash).cur_count] = NULL;                      \
+    } while (0)
+
+#define HYD_STRING_SPIT(stash, str, status)                             \
+    do {                                                                \
+        if ((stash).cur_count == 0) {                                   \
+            (str) = HYDU_strdup("");                                    \
+        }                                                               \
+        else {                                                          \
+            (status) = HYDU_str_alloc_and_join((stash).strlist, &(str)); \
+            HYDU_ERR_POP((status), "unable to join strings\n");         \
+            HYDU_free_strlist((stash).strlist);                         \
+            HYDU_FREE((stash).strlist);                                 \
+            HYD_STRING_STASH_INIT((stash));                             \
+        }                                                               \
+    } while (0)
+
+#define HYD_STRING_STASH_FREE(stash)            \
+    do {                                        \
+        if ((stash).strlist == NULL)            \
+            break;                              \
+        HYDU_free_strlist((stash).strlist);     \
+        HYDU_FREE((stash).strlist);             \
+        (stash).max_count = 0;                  \
+        (stash).cur_count = 0;                  \
+    } while (0)
 
 enum HYD_bool {
     HYD_FALSE = 0,
@@ -496,9 +555,7 @@ HYD_status HYDU_create_process(char **client_arg, struct HYD_env *env_list,
 
 /* others */
 int HYDU_dceil(int x, int y);
-HYD_status HYDU_add_to_node_list(const char *hostname, int num_procs,
-                                 struct HYD_node **node_list);
-HYD_status HYDU_gethostname(char *hostname);
+HYD_status HYDU_add_to_node_list(const char *hostname, int num_procs, struct HYD_node **node_list);
 void HYDU_delay(unsigned long delay);
 
 /* signals */
@@ -606,19 +663,6 @@ HYD_status HYDU_sock_cloexec(int fd);
 #define HYDU_FREE(p)                            \
     {                                           \
         HYDU_free((void *) p);                  \
-    }
-
-#define HYDU_STRLIST_CONSOLIDATE(strlist, i, status)                    \
-    {                                                                   \
-        char *out;                                                      \
-        if ((i) >= (HYD_NUM_TMP_STRINGS / 2)) {                         \
-            (strlist)[(i)] = NULL;                                      \
-            (status) = HYDU_str_alloc_and_join((strlist), &out);        \
-            HYDU_ERR_POP((status), "unable to join strings\n");         \
-            HYDU_free_strlist((strlist));                               \
-            strlist[0] = out;                                           \
-            (i) = 1;                                                    \
-        }                                                               \
     }
 
 HYD_status HYDU_list_append_strlist(char **exec, char **client_arg);

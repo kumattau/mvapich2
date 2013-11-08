@@ -95,7 +95,21 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
         *complete = TRUE;
     }
     else {
-        mpi_errno = reqFn( vc, rreq, complete );
+#if defined (_ENABLE_CUDA_)
+        if (rdma_enable_cuda && reqFn == MPIDI_CH3_ReqHandler_unpack_cudabuf) {  
+            /*pass stream if using rndv protocol*/ 
+            if (rreq->mrail.protocol != 0) {
+                mpi_errno = MPIDI_CH3_ReqHandler_unpack_cudabuf (vc, rreq, 
+                        complete, (void *) stream_h2d);
+            } else {
+                 mpi_errno = MPIDI_CH3_ReqHandler_unpack_cudabuf (vc, rreq, 
+                        complete, NULL);
+            }
+        } else 
+#endif
+        {
+            mpi_errno = reqFn( vc, rreq, complete );
+        }
     }
 #if defined(_OSU_MVAPICH_)
 fn_exit:
@@ -231,6 +245,8 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
         rreq->dev.resp_request_handle = MPI_REQUEST_NULL;
     }
 
+    MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
+
     if (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_ACCUM_RESP) {
 #if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
     if (!win_ptr->shm_fallback) {
@@ -241,8 +257,14 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
         }
     }
 #endif
+
+	if (win_ptr->shm_allocated == TRUE)
+	    MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
 	/* accumulate data from tmp_buf into user_buf */
 	mpi_errno = do_accumulate_op(rreq);
+	if (win_ptr->shm_allocated == TRUE)
+	    MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
+
 	if (mpi_errno) {
 	    MPIU_ERR_POP(mpi_errno);
 	}
@@ -256,8 +278,6 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
     }
 #endif
     }
-    
-    MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
     
 #if defined(_OSU_MVAPICH_)
     win_ptr->outstanding_rma--;
@@ -708,7 +728,11 @@ int MPIDI_CH3_ReqHandler_SinglePutAccumComplete( MPIDI_VC_t *vc,
 				       lock_queue_entry->pt_single_op->datatype);
 	}
 	else {
+	    if (win_ptr->shm_allocated == TRUE)
+		MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
 	    mpi_errno = do_simple_accumulate(lock_queue_entry->pt_single_op);
+	    if (win_ptr->shm_allocated == TRUE)
+		MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
 	}
 	
 	if (mpi_errno) {
@@ -800,12 +824,18 @@ int MPIDI_CH3_ReqHandler_FOPComplete( MPIDI_VC_t *vc,
         MPIU_Memcpy( resp_req->dev.tmpbuf, rreq->dev.real_user_buf, len );
     }
 
+    MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
+
     /* Apply the op */
     if (rreq->dev.op != MPI_NO_OP) {
         uop = MPIR_OP_HDL_TO_FN(rreq->dev.op);
         one = 1;
 
+        if (win_ptr->shm_allocated == TRUE)
+            MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
         (*uop)(rreq->dev.user_buf, rreq->dev.real_user_buf, &one, &rreq->dev.datatype);
+        if (win_ptr->shm_allocated == TRUE)
+            MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
     }
 
     /* Send back the original data.  We do this here to ensure that the
@@ -841,8 +871,6 @@ int MPIDI_CH3_ReqHandler_FOPComplete( MPIDI_VC_t *vc,
 
     /* There are additional steps to take if this is a passive 
        target RMA or the last operation from the source */
-
-    MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
 
     mpi_errno = MPIDI_CH3_Finish_rma_op_target(vc, win_ptr, TRUE, rreq->dev.flags,
                                                rreq->dev.source_win_handle);
@@ -1466,7 +1494,14 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
 #endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 	    /* FIXME: MT: The setting of the lock type must be done atomically */
-	    win_ptr->current_lock_type = MPID_LOCK_NONE;
+
+#if defined(_OSU_MVAPICH_) 
+        if (win_ptr->shared_lock_ref_cnt == 0) {
+#endif
+            win_ptr->current_lock_type = MPID_LOCK_NONE;
+#if defined(_OSU_MVAPICH_) 
+        }
+#endif
 	    
 	    /* If there is a lock queue, try to satisfy as many lock requests as 
 	       possible. If the first one is a shared lock, grant it and grant all 
@@ -1510,7 +1545,11 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
                     }
                 }
 #endif
+				if (win_ptr->shm_allocated == TRUE)
+				    MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
 				mpi_errno = do_simple_accumulate(single_op);
+				if (win_ptr->shm_allocated == TRUE)
+				    MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
 #if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
                 if (!win_ptr->shm_fallback) {
                     mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_rank);
@@ -1674,7 +1713,7 @@ int MPIDI_CH3I_Send_pt_rma_done_pkt(MPIDI_VC_t *vc, MPID_Win *win_ptr,
 #endif /* defined(_OSU_MVAPICH_) */
 
 #if defined (_OSU_PSM_)
-    pt_rma_done_pkt->source_rank = win_ptr->myrank;
+    pt_rma_done_pkt->source_rank = win_ptr->comm_ptr->rank;
     pt_rma_done_pkt->target_win_handle = win_ptr->all_win_handles[vc->pg_rank];
 #endif /* _OSU_PSM_ */
 

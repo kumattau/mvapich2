@@ -587,6 +587,12 @@ int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag)
         if(mpi_errno) {
            MPIU_ERR_POP(mpi_errno);
         }
+
+        mpi_errno=PMPI_Group_free(&comm_group);
+        if(mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
     } else {
         /* Set this to -1 so that we never get back in here again
          * for this cyclic comm */
@@ -594,6 +600,7 @@ int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag)
     }
 
 fn_exit: 
+    MPIU_Free(shmem_group);
     return mpi_errno;
 fn_fail: 
     goto fn_exit; 
@@ -610,7 +617,13 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     int input_flag = 0, output_flag = 0;
     int errflag = FALSE;
     int leader_group_size = 0;
-    int mv2_shmem_coll_blk_stat = 0; 
+    int mv2_shmem_coll_blk_stat = 0;
+    int iter;
+    MPID_Node_id_t node_id;
+    int blocked = 0;
+    int up = 0;
+    int down = 0;
+    int prev = -1;
 
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
@@ -623,6 +636,20 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     #endif
 
     MPID_Comm_get_ptr( comm, comm_ptr );
+
+    /* Find out if ranks are block ordered locally */
+    for (iter = 0; iter < size; iter++) {
+        MPID_Get_node_id(comm_ptr, iter, &node_id);
+	if ((node_id != -1) && (prev == -1)) {
+	    up++;
+	}
+	if ((node_id == -1) && (prev == 1)) {
+	    down++;
+	}
+	prev = node_id;
+    }
+    blocked = (up > 1) ? 0 : 1;
+    
     int* shmem_group = MPIU_Malloc(sizeof(int) * size);
     if (NULL == shmem_group){
         mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
@@ -667,6 +694,13 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     if(mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     } 
+
+    mpi_errno = MPIR_Allreduce_impl(&blocked, &(comm_ptr->ch.is_blocked), 1, 
+            MPI_INT, MPI_LAND, comm_ptr, 
+            &errflag);
+    if(mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
 
     if (!output_flag) {
         /* None of the shmem-coll-blocks are available. We cannot support
@@ -864,7 +898,14 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
            MPIU_ERR_POP(mpi_errno);
         } 
     }      
-    
+
+    /* bcast uniformity info to node local processes for tuning selection
+       later */
+    mpi_errno = MPIR_Bcast_impl(&(comm_ptr->ch.is_uniform),1, MPI_INT, 0,
+                           shmem_ptr, &errflag); 
+    if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    } 
     comm_ptr->ch.allgather_comm_ok = 0;
 
     mpi_errno=PMPI_Group_free(&comm_group);
@@ -885,7 +926,8 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     shmem_ptr->ch.shmem_comm_rank = mv2_shmem_coll_blk_stat; 
 
     if (mv2_use_slot_shmem_coll) {
-        comm_ptr->ch.shmem_info = mv2_shm_coll_init(mv2_shmem_coll_blk_stat, my_local_id, my_local_size); 
+        comm_ptr->ch.shmem_info = mv2_shm_coll_init(mv2_shmem_coll_blk_stat, my_local_id, 
+                                                    my_local_size, comm_ptr); 
         if (comm_ptr->ch.shmem_info == NULL) {
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                     FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",

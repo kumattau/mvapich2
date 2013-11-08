@@ -50,7 +50,7 @@ int MPIDI_CH3_SendNoncontig_iov( MPIDI_VC_t *vc, MPID_Request *sreq,
     if (rdma_enable_cuda && sreq->dev.OnDataAvail == 
                         MPIDI_CH3_ReqHandler_pack_cudabuf) {
         int complete ATTRIBUTE((unused));
-        MPIDI_CH3_ReqHandler_pack_cudabuf(vc, sreq, &complete);
+        MPIDI_CH3_ReqHandler_pack_cudabuf(vc, sreq, &complete, NULL);
         iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)sreq->dev.tmpbuf;
         iov[1].MPID_IOV_LEN = sreq->dev.segment_size;
         iov_n = 1;

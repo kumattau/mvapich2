@@ -148,6 +148,8 @@ static int Post_Put_Put_Get_List(MPID_Win *, MPIDI_msg_sz_t,  dreg_entry *,
 
 static int iba_put(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
 static int iba_get(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
+static int iba_fetch_and_add(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
+static int iba_compare_and_swap(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
 int     iba_lock(MPID_Win *, MPIDI_RMA_Op_t *, int);
 int     iba_unlock(MPID_Win *, MPIDI_RMA_Op_t *, int);
 int MRAILI_Handle_one_sided_completions(vbuf * v);                            
@@ -882,7 +884,6 @@ fn_fail:
 int MPIDI_CH3I_RDMA_finish_rma_target(MPID_Win * win_ptr, int target_rank)
 {
     int mpi_errno = MPI_SUCCESS;
-    int i=0;
     while (win_ptr->put_get_list_size_per_process[target_rank] != 0) {
         mpi_errno = MPIDI_CH3I_Progress_test();
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -896,6 +897,8 @@ fn_fail:
 void
 MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
 {
+    intptr_t aligned;
+    int has_iwarp = 0;
     MPIDI_RMA_Op_t *curr_ptr = NULL;
     MPIDI_RMA_Op_t *head = NULL;
     MPIDI_RMA_Ops_list_t *ops_list;
@@ -908,6 +911,9 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
 #endif
     MPIDI_VC_t* vc = NULL;
     MPID_Comm* comm_ptr = NULL;
+#if defined(RDMA_CM)
+    has_iwarp = mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode;
+#endif
 
     if (SMP_INIT)
     {
@@ -945,8 +951,8 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
         }
      }
 
-     if (target_rank != -1 || 
-         passive == 0
+     if ((target_rank != -1 || 
+         passive == 0)
          && win_ptr->post_flag[curr_ptr->target_rank] == 1)
      {
          switch (curr_ptr->type)
@@ -995,14 +1001,20 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
                  break;
               }
             case MPIDI_RMA_ACCUMULATE:
+            case MPIDI_RMA_GET_ACCUMULATE:
                 curr_ptr = curr_ptr->next;
                 break;
             case MPIDI_RMA_FETCH_AND_OP:
                 {
+                    aligned = !(((intptr_t)(win_ptr->base_addrs[target_rank]
+                        + win_ptr->disp_units[target_rank]
+                        * curr_ptr->target_disp)) % 8);
                     MPID_Datatype_get_size_macro(curr_ptr->origin_datatype, origin_type_size);
                     /* IB supports fetch_and_add operation for 8 bytes message
-                     * size, so check the data size here */
-                    if (origin_type_size == 8 && curr_ptr->origin_datatype != MPI_DOUBLE)
+                     * size, so check the data size here 
+                     * IB atomic operations require aligned address*/
+                    if (origin_type_size == 8 && curr_ptr->origin_datatype != MPI_DOUBLE
+                        && aligned && !has_iwarp)
                     {
                         ++win_ptr->rma_issued;
                         iba_fetch_and_add(curr_ptr, win_ptr, origin_type_size);
@@ -1016,10 +1028,14 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
                 }
             case MPIDI_RMA_COMPARE_AND_SWAP:
                 {
+                    aligned = !(((intptr_t)(win_ptr->base_addrs[target_rank]
+                        + win_ptr->disp_units[target_rank]
+                        * curr_ptr->target_disp)) % 8);
                     MPID_Datatype_get_size_macro(curr_ptr->origin_datatype, origin_type_size);
                     /* IB supports compare_and_swap operation for 8 bytes
-                     * message size, so check the data size here */
-                    if (origin_type_size == 8)
+                     * message size, so check the data size here 
+                     * IB atomic operations require aligned address*/
+                    if (origin_type_size == 8 && aligned && !has_iwarp)
                     {
                         ++win_ptr->rma_issued;
                         iba_compare_and_swap(curr_ptr, win_ptr, origin_type_size);
@@ -1761,7 +1777,7 @@ int mv2_rma_allocate_counters(MPID_Win ** win_ptr)
     (*win_ptr)->shm_control_buf = NULL;
     (*win_ptr)->shm_post_flag_all = NULL;
     (*win_ptr)->shm_cmpl_counter_all = NULL;
-    (*win_ptr)->shm_mutex = NULL; 
+    (*win_ptr)->shm_win_mutex = NULL; 
 
     cmpl_counter_size = sizeof(long long) * num_local_procs * num_local_procs;
     post_flag_size = sizeof(int) * num_local_procs * num_local_procs;
@@ -1819,31 +1835,31 @@ int mv2_rma_allocate_counters(MPID_Win ** win_ptr)
          }
     }
 
-    (*win_ptr)->shm_mutex = (pthread_mutex_t *)((uint64_t)(*win_ptr)->shm_control_buf 
+    (*win_ptr)->shm_win_mutex = (pthread_mutex_t *)((uint64_t)(*win_ptr)->shm_control_buf 
                        + cmpl_counter_size + post_flag_size);
 
     /*Initialize pthread mutex attribute and initialize pthread mutex*/
     mpi_errno = pthread_mutexattr_init(&attr);
     if (mpi_errno != MPI_SUCCESS) {
-        (*win_ptr)->shm_mutex = NULL;
+        (*win_ptr)->shm_win_mutex = NULL;
         MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
                    "**fail", "**fail %s","mutex attr initialization failed");
     }
     mpi_errno = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
     if (mpi_errno != MPI_SUCCESS) {
-        (*win_ptr)->shm_mutex = NULL;
+        (*win_ptr)->shm_win_mutex = NULL;
         MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
                    "**fail", "**fail %s","mutex pshared initialization failed");
     }
-    mpi_errno = pthread_mutex_init(&(*win_ptr)->shm_mutex[l_rank], &attr);
+    mpi_errno = pthread_mutex_init(&(*win_ptr)->shm_win_mutex[l_rank], &attr);
     if (mpi_errno != MPI_SUCCESS) {
-        (*win_ptr)->shm_mutex = NULL;
+        (*win_ptr)->shm_win_mutex = NULL;
         MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
                    "**fail", "**fail %s","mutex initialization failed");
     }
     mpi_errno = pthread_mutexattr_destroy(&attr);
     if (mpi_errno != MPI_SUCCESS) {
-        (*win_ptr)->shm_mutex = NULL;
+        (*win_ptr)->shm_win_mutex = NULL;
         MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
                    "**fail", "**fail %s","mutex attr destroy failed");
     }
@@ -1866,8 +1882,8 @@ void mv2_rma_free_counters(MPID_Win ** win_ptr)
 
     l_rank = (*win_ptr)->shm_g2l_rank[(*win_ptr)->my_id];
 
-    if ((*win_ptr)->shm_mutex != NULL) { 
-        pthread_mutex_destroy(&(*win_ptr)->shm_mutex[l_rank]);
+    if ((*win_ptr)->shm_win_mutex != NULL) { 
+        pthread_mutex_destroy(&(*win_ptr)->shm_win_mutex[l_rank]);
     }
     if ((*win_ptr)->shm_control_buf != NULL) { 
         mv2_rma_deallocate_shm((*win_ptr)->shm_control_buf, 
@@ -2886,7 +2902,7 @@ int iba_compare_and_swap(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_
     ++(win_ptr->put_get_list_size_per_process[rma_op->target_rank]);
     v->vc = (void *)vc_ptr;
     v->list = (void *)(&(win_ptr->put_get_list[index]));
-    local_addr = v->buffer;
+    local_addr = (char *)v->buffer;
     *((uint64_t *)local_addr) = 0;
     l_key = v->region->mem_handle[hca_index]->lkey;
 
@@ -2908,8 +2924,6 @@ int iba_fetch_and_add(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr, MPIDI_msg_sz_t 
     int                 mpi_errno = MPI_SUCCESS;
     int                 hca_index, rail, index;
     uint32_t            r_key, l_key;
-    static void * temp_buf = NULL;
-    static struct ibv_mr * temp_mr = NULL;
 
     MPIDI_VC_t          *vc_ptr;
     MPID_Comm           *comm_ptr;

@@ -985,6 +985,25 @@ int MPIDI_CH3I_RDMA_finalize(void)
 
 #ifdef _ENABLE_XRC_
 #undef FUNCNAME
+#define FUNCNAME mv2_xrc_cleanup
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int mv2_xrc_cleanup(int start)
+{
+    int i = 0;
+    char xrc_file[512];
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
+
+    for (i = start; i >= 0; --i) {
+        sprintf(xrc_file, "/dev/shm/%s-%d", ufile, i);
+        close(proc->xrc_fd[i]);
+        unlink(xrc_file);
+    }
+
+    return MPI_SUCCESS;
+}
+
+#undef FUNCNAME
 #define FUNCNAME mv2_xrc_init
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -1012,6 +1031,8 @@ static int mv2_xrc_init(MPIDI_PG_t * pg)
         PRINT_DEBUG(DEBUG_XRC_verbose > 0, "Opening xrc file: %s\n", xrc_file);
         proc->xrc_fd[i] = open(xrc_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
         if (proc->xrc_fd[i] < 0) {
+            /* Cleanup all the XRC files and FD's open till this point */
+            mv2_xrc_cleanup(i-1);
             MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
                                       MPI_ERR_INTERN,
                                       "**fail",
@@ -1022,20 +1043,20 @@ static int mv2_xrc_init(MPIDI_PG_t * pg)
                                                   proc->xrc_fd[i], O_CREAT);
 
         if (NULL == proc->xrc_domain[i]) {
+            /* Cleanup all the XRC files and FD's open till this point */
+            mv2_xrc_cleanup(i);
             perror("xrc_domain");
-            close(proc->xrc_fd[i]);
-            unlink(xrc_file);
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
                                       "**fail %s", "Can't open XRC domain");
         }
-    }
-    if (!MPIDI_CH3I_Process.has_dpm) {
-        if (PMI_Barrier() != PMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                      "**pmi_barrier", "**pmi_barrier %d",
-                                      mpi_errno);
+        if (!MPIDI_CH3I_Process.has_dpm) {
+            if (PMI_Barrier() != PMI_SUCCESS) {
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                          "**pmi_barrier", "**pmi_barrier %d",
+                                          mpi_errno);
+            }
+            unlink(xrc_file);
         }
-        unlink(xrc_file);
     }
 
     PRINT_DEBUG(DEBUG_XRC_verbose > 0, "Init XRC DONE\n");

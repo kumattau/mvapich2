@@ -101,4 +101,8 @@ typedef struct MPIDI_CH3I_Process_group_s
         __p->pkbuf = 0;              \
         __p->pksz = 0                \
 
+#define MPIDI_CH3_WIN_DECL      \
+    int *rank_mapping;          \
+    int16_t outstanding_rma;
+
 #endif

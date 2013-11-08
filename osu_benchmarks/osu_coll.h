@@ -281,8 +281,8 @@ void set_buffer (void * buffer, enum accel_type type, int data, size_t size);
 /*
  * CUDA Context Management
  */
-int init_cuda_context (void);
-int destroy_cuda_context (void);
+int init_accel (void);
+int cleanup_accel (void);
 
 /*
  * Set Benchmark Properties

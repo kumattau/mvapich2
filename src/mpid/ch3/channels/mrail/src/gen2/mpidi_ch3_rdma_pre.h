@@ -147,6 +147,7 @@ struct dreg_entry;
         uint16_t pipeline_nm;               \
         uint8_t num_remote_cuda_pending;    \
         uint8_t num_remote_cuda_done;       \
+        uint8_t num_remote_cuda_inflight;   \
         uint8_t is_cuda_pipeline;           \
         uint8_t cts_received;               \
         MPIDI_CH3I_MRAILI_CUDA_IPC_REQ_DECL 

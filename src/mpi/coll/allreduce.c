@@ -142,6 +142,7 @@ int MPIR_Allreduce_intra (
     int        comm_size, rank, type_size;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
+    int nbytes = 0;
     int mask, dst, is_commutative, pof2, newrank, rem, newdst, i,
         send_idx, recv_idx, last_idx, send_cnt, recv_cnt, *cnts, *disps; 
     MPI_Aint true_extent, true_lb, extent;
@@ -157,9 +158,12 @@ int MPIR_Allreduce_intra (
 
     is_commutative = MPIR_Op_is_commutative(op);
 
-#if defined(USE_SMP_COLLECTIVES)
+    if (MPIR_PARAM_ENABLE_SMP_COLLECTIVES && MPIR_PARAM_ENABLE_SMP_ALLREDUCE) {
     /* is the op commutative? We do SMP optimizations only if it is. */
-    if (MPIR_Comm_is_node_aware(comm_ptr) && is_commutative) {
+    MPID_Datatype_get_size_macro(datatype, type_size);
+    nbytes = MPIR_PARAM_MAX_SMP_ALLREDUCE_MSG_SIZE ? type_size*count : 0;
+    if (MPIR_Comm_is_node_aware(comm_ptr) && is_commutative &&
+        nbytes <= MPIR_PARAM_MAX_SMP_ALLREDUCE_MSG_SIZE) {
         /* on each node, do a reduce to the local root */ 
         if (comm_ptr->node_comm != NULL) {
             /* take care of the MPI_IN_PLACE case. For reduce, 
@@ -218,8 +222,7 @@ int MPIR_Allreduce_intra (
         }
         goto fn_exit;
     }
-#endif
-            
+    }
     
 #ifdef MPID_HAS_HETERO
     if (comm_ptr->is_hetero)
@@ -293,7 +296,7 @@ int MPIR_Allreduce_intra (
         
         if (rank < 2*rem) {
             if (rank % 2 == 0) { /* even */
-                mpi_errno = MPIC_Send_ft(recvbuf, count, 
+                mpi_errno = MPIC_Send(recvbuf, count,
                                          datatype, rank+1,
                                          MPIR_ALLREDUCE_TAG, comm, errflag);
                 if (mpi_errno) {
@@ -309,7 +312,7 @@ int MPIR_Allreduce_intra (
                 newrank = -1; 
             }
             else { /* odd */
-                mpi_errno = MPIC_Recv_ft(tmp_buf, count, 
+                mpi_errno = MPIC_Recv(tmp_buf, count,
                                          datatype, rank-1,
                                          MPIR_ALLREDUCE_TAG, comm,
                                          MPI_STATUS_IGNORE, errflag);
@@ -354,7 +357,7 @@ int MPIR_Allreduce_intra (
 
                     /* Send the most current data, which is in recvbuf. Recv
                        into tmp_buf */ 
-                    mpi_errno = MPIC_Sendrecv_ft(recvbuf, count, datatype, 
+                    mpi_errno = MPIC_Sendrecv(recvbuf, count, datatype,
                                                  dst, MPIR_ALLREDUCE_TAG, tmp_buf,
                                                  count, datatype, dst,
                                                  MPIR_ALLREDUCE_TAG, comm,
@@ -435,7 +438,7 @@ int MPIR_Allreduce_intra (
                            send_cnt, recv_cnt, last_idx);
                            */
                     /* Send data from recvbuf. Recv into tmp_buf */ 
-                    mpi_errno = MPIC_Sendrecv_ft((char *) recvbuf +
+                    mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                                  disps[send_idx]*extent,
                                                  send_cnt, datatype,  
                                                  dst, MPIR_ALLREDUCE_TAG, 
@@ -500,7 +503,7 @@ int MPIR_Allreduce_intra (
                             recv_cnt += cnts[i];
                     }
 
-                    mpi_errno = MPIC_Sendrecv_ft((char *) recvbuf +
+                    mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                                  disps[send_idx]*extent,
                                                  send_cnt, datatype,  
                                                  dst, MPIR_ALLREDUCE_TAG, 
@@ -528,11 +531,11 @@ int MPIR_Allreduce_intra (
            (rank-1), the ranks who didn't participate above. */
         if (rank < 2*rem) {
             if (rank % 2)  /* odd */
-                mpi_errno = MPIC_Send_ft(recvbuf, count, 
+                mpi_errno = MPIC_Send(recvbuf, count,
                                          datatype, rank-1,
                                          MPIR_ALLREDUCE_TAG, comm, errflag);
             else  /* even */
-                mpi_errno = MPIC_Recv_ft(recvbuf, count,
+                mpi_errno = MPIC_Recv(recvbuf, count,
                                          datatype, rank+1,
                                          MPIR_ALLREDUCE_TAG, comm,
                                          MPI_STATUS_IGNORE, errflag);

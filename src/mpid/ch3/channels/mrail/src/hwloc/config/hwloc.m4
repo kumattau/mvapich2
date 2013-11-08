@@ -9,7 +9,7 @@ dnl Copyright (c) 2004-2012 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
 dnl                         University of Stuttgart.  All rights reserved.
-dnl Copyright © 2006-2011  Cisco Systems, Inc.  All rights reserved.
+dnl Copyright © 2006-2013 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright © 2012  Blue Brain Project, BBP/EPFL. All rights reserved.
 dnl Copyright © 2012       Oracle and/or its affiliates.  All rights reserved.
 dnl See COPYING in top-level directory.
@@ -439,6 +439,8 @@ EOF])
       #include <sys/param.h>
       #endif
     ])
+    AC_CHECK_DECLS([strtoull], [], [], [AC_INCLUDES_DEFAULT])
+
     AC_CHECK_FUNCS([sysctl sysctlbyname])
 
     case ${target} in
@@ -971,7 +973,7 @@ EOF])
       [hwloc_pthread_mutex_happy=yes
        HWLOC_LIBS_PRIVATE="$HWLOC_LIBS_PRIVATE -lpthread"
       ],
-      [AC_MSG_CHECKING([fot pthread_mutex_lock with -lpthread])
+      [AC_MSG_CHECKING([for pthread_mutex_lock with -lpthread])
        # Try again with explicit -lpthread, but don't use AC_CHECK_FUNC to avoid the cache
        tmp_save_LIBS=$LIBS
        LIBS="$LIBS -lpthread"
@@ -998,6 +1000,12 @@ EOF])
     AC_MSG_CHECKING([if plugin support is enabled])
     # Plugins (even core support) are totally disabled by default
     AS_IF([test "x$enable_plugins" = "x"], [enable_plugins=no])
+    AS_IF([test "x$enable_plugins" != "xno"], [hwloc_have_plugins=yes], [hwloc_have_plugins=no])
+    AC_MSG_RESULT([$hwloc_have_plugins])
+    AS_IF([test "x$hwloc_have_plugins" = "xyes"],
+          [AC_DEFINE([HWLOC_HAVE_PLUGINS], 1, [Define to 1 if the hwloc library should support dynamically-loaded plugins])])
+
+    # Some sanity checks about plugins
     # libltdl doesn't work on AIX as of 2.4.2
     AS_IF([test "x$enable_plugins" = "xyes" -a "x$hwloc_aix" = "xyes"],
       [AC_MSG_WARN([libltdl does not work on AIX, plugins support cannot be enabled.])
@@ -1007,10 +1015,18 @@ EOF])
       [AC_MSG_WARN([Plugins not supported on non-native Windows build, plugins support cannot be enabled.])
        AC_MSG_ERROR([Cannot continue])])
 
-    AS_IF([test "x$enable_plugins" != "xno"], [hwloc_have_plugins=yes], [hwloc_have_plugins=no])
-    AC_MSG_RESULT([$hwloc_have_plugins])
-    AS_IF([test "x$hwloc_have_plugins" = "xyes"],
-          [AC_DEFINE([HWLOC_HAVE_PLUGINS], 1, [Define to 1 if the hwloc library should support dynamically-loaded plugins])])
+    # If we want plugins, look for ltdl.h and libltdl
+    if test "x$hwloc_have_plugins" = xyes; then
+      AC_CHECK_HEADER([ltdl.h], [],
+	[AC_MSG_WARN([Plugin support requested, but could not find ltdl.h])
+	 AC_MSG_ERROR([Cannot continue])])
+      AC_CHECK_LIB([ltdl], [lt_dlopenext],
+	[HWLOC_LIBS="$HWLOC_LIBS -lltdl"],
+	[AC_MSG_WARN([Plugin support requested, but could not find libltdl])
+	 AC_MSG_ERROR([Cannot continue])])
+      # Add libltdl static-build dependencies to hwloc.pc
+      HWLOC_CHECK_LTDL_DEPS
+    fi
 
     # Static components output file
     hwloc_static_components_dir=${HWLOC_top_builddir}/src
@@ -1064,7 +1080,6 @@ EOF])
     AC_SUBST(HWLOC_CFLAGS)
     HWLOC_CPPFLAGS='-I$(HWLOC_top_builddir)/include -I$(HWLOC_top_srcdir)/include'
     AC_SUBST(HWLOC_CPPFLAGS)
-    HWLOC_LDFLAGS='-L$(HWLOC_top_builddir)/src'
     AC_SUBST(HWLOC_LDFLAGS)
     AC_SUBST(HWLOC_LIBS)
     AC_SUBST(HWLOC_LIBS_PRIVATE)
@@ -1237,3 +1252,72 @@ AC_DEFUN([_HWLOC_CHECK_DECLS], [
     [Define to 1 if you have the declaration of `$1', and to 0 if you don't])
 ])
 
+#-----------------------------------------------------------------------
+
+dnl HWLOC_CHECK_LTDL_DEPS
+dnl
+dnl Add ltdl dependencies to HWLOC_LIBS_PRIVATE
+AC_DEFUN([HWLOC_CHECK_LTDL_DEPS], [
+  # save variables that we'll modify below
+  save_lt_cv_dlopen="$lt_cv_dlopen"
+  save_lt_cv_dlopen_libs="$lt_cv_dlopen_libs"
+  save_lt_cv_dlopen_self="$lt_cv_dlopen_self"
+  ###########################################################
+  # code stolen from LT_SYS_DLOPEN_SELF in libtool.m4
+  case $host_os in
+  beos*)
+    lt_cv_dlopen="load_add_on"
+    lt_cv_dlopen_libs=
+    lt_cv_dlopen_self=yes
+    ;;
+
+  mingw* | pw32* | cegcc*)
+    lt_cv_dlopen="LoadLibrary"
+    lt_cv_dlopen_libs=
+    ;;
+
+  cygwin*)
+    lt_cv_dlopen="dlopen"
+    lt_cv_dlopen_libs=
+    ;;
+
+  darwin*)
+  # if libdl is installed we need to link against it
+    AC_CHECK_LIB([dl], [dlopen],
+                [lt_cv_dlopen="dlopen" lt_cv_dlopen_libs="-ldl"],[
+    lt_cv_dlopen="dyld"
+    lt_cv_dlopen_libs=
+    lt_cv_dlopen_self=yes
+    ])
+    ;;
+
+  *)
+    AC_CHECK_FUNC([shl_load],
+          [lt_cv_dlopen="shl_load"],
+      [AC_CHECK_LIB([dld], [shl_load],
+            [lt_cv_dlopen="shl_load" lt_cv_dlopen_libs="-ldld"],
+        [AC_CHECK_FUNC([dlopen],
+              [lt_cv_dlopen="dlopen"],
+          [AC_CHECK_LIB([dl], [dlopen],
+                [lt_cv_dlopen="dlopen" lt_cv_dlopen_libs="-ldl"],
+            [AC_CHECK_LIB([svld], [dlopen],
+                  [lt_cv_dlopen="dlopen" lt_cv_dlopen_libs="-lsvld"],
+              [AC_CHECK_LIB([dld], [dld_link],
+                    [lt_cv_dlopen="dld_link" lt_cv_dlopen_libs="-ldld"])
+              ])
+            ])
+          ])
+        ])
+      ])
+    ;;
+  esac
+  # end of code stolen from LT_SYS_DLOPEN_SELF in libtool.m4
+  ###########################################################
+
+  HWLOC_LIBS_PRIVATE="$HWLOC_LIBS_PRIVATE $lt_cv_dlopen_libs"
+
+  # restore modified variable in case the actual libtool code uses them
+  lt_cv_dlopen="$save_lt_cv_dlopen"
+  lt_cv_dlopen_libs="$save_lt_cv_dlopen_libs"
+  lt_cv_dlopen_self="$save_lt_cv_dlopen_self"
+])

@@ -20,7 +20,8 @@ void *cuda_stream_region;
 cuda_stream_t *free_cuda_stream_list_head = NULL;
 cuda_stream_t *busy_cuda_stream_list_head = NULL;
 cuda_stream_t *busy_cuda_stream_list_tail = NULL;
-cudaStream_t  stream_d2h = 0, stream_h2d = 0;
+cudaStream_t  stream_d2h = 0, stream_h2d = 0, stream_kernel = 0;
+cudaEvent_t cuda_nbstream_sync_event = 0;
 
 void allocate_cuda_streams()
 {
@@ -34,7 +35,11 @@ void allocate_cuda_streams()
     for (j = 1; j < rdma_cuda_stream_count; j++) {
         curr->next = (cuda_stream_t *) ((size_t) cuda_stream_region +
                                         j * sizeof(cuda_stream_t));
-        result = cudaStreamCreate(&(curr->stream));
+        if (rdma_cuda_nonblocking_streams) { 
+            result = cudaStreamCreateWithFlags(&(curr->stream), cudaStreamNonBlocking);
+        } else { 
+            result = cudaStreamCreate(&(curr->stream));
+        }
         if (result != cudaSuccess) {
             ibv_error_abort(GEN_EXIT_ERR, "Cuda Stream Creation failed \n");
         }
@@ -43,7 +48,11 @@ void allocate_cuda_streams()
         curr = curr->next;
         curr->prev = NULL;
     }
-    result = cudaStreamCreate(&(curr->stream));
+    if (rdma_cuda_nonblocking_streams) { 
+        result = cudaStreamCreateWithFlags(&(curr->stream), cudaStreamNonBlocking);
+    } else { 
+        result = cudaStreamCreate(&(curr->stream));
+    }
     if (result != cudaSuccess) {
         ibv_error_abort(GEN_EXIT_ERR, "Cuda Stream Creation failed \n");
     }
@@ -68,7 +77,11 @@ int allocate_cuda_stream(cuda_stream_t **cuda_stream)
 {
     cudaError_t result;
     *cuda_stream = (cuda_stream_t *) MPIU_Malloc(sizeof(cuda_stream_t));
-    result = cudaStreamCreate(&((*cuda_stream)->stream));
+    if (rdma_cuda_nonblocking_streams) { 
+        result = cudaStreamCreateWithFlags(&((*cuda_stream)->stream), cudaStreamNonBlocking);
+    } else {
+        result = cudaStreamCreate(&((*cuda_stream)->stream));
+    }
     if (result != cudaSuccess) {
         ibv_error_abort(GEN_EXIT_ERR, "Cuda Stream Creation failed \n");
     }
@@ -88,13 +101,16 @@ void deallocate_cuda_stream(cuda_stream_t **cuda_stream)
 void allocate_cuda_rndv_streams()
 {
     cudaError_t result;
-    result = cudaStreamCreate(&(stream_d2h));
-    if (result != cudaSuccess) {
-        ibv_error_abort(GEN_EXIT_ERR, "Cuda Stream Creation failed \n");
-    }
-    result = cudaStreamCreate(&(stream_h2d));
-    if (result != cudaSuccess) {
-        ibv_error_abort(GEN_EXIT_ERR, "Cuda Stream Creation failed \n");
+    if (rdma_cuda_nonblocking_streams) { 
+        CUDA_CHECK(cudaStreamCreateWithFlags(&stream_d2h, cudaStreamNonBlocking));
+        CUDA_CHECK(cudaStreamCreateWithFlags(&stream_h2d, cudaStreamNonBlocking));
+        CUDA_CHECK(cudaStreamCreateWithFlags(&stream_kernel, cudaStreamNonBlocking));
+        CUDA_CHECK(cudaEventCreateWithFlags(&cuda_nbstream_sync_event,
+                  cudaEventDisableTiming));
+    } else { 
+        CUDA_CHECK(cudaStreamCreate(&stream_d2h));
+        CUDA_CHECK(cudaStreamCreate(&stream_h2d));
+        CUDA_CHECK(cudaStreamCreate(&stream_kernel));
     }
 }
 
@@ -105,6 +121,12 @@ void deallocate_cuda_rndv_streams()
     }
     if (stream_h2d) {
         cudaStreamDestroy(stream_h2d);
+    }
+    if (stream_kernel) {
+        cudaStreamDestroy(stream_kernel);
+    }
+    if (cuda_nbstream_sync_event) {
+        cudaEventDestroy(cuda_nbstream_sync_event); 
     }
 }
 
@@ -118,43 +140,99 @@ void process_cuda_stream_op(cuda_stream_t * stream)
     int is_finish = stream->is_finish;
     int is_pipeline = (!displacement && is_finish) ? 0 : 1;
     int size = stream->size;
-    int rail = 0;
-    vbuf *v;
+    int rail, stripe_avg, stripe_size, offset;
+    vbuf *v, *orig_vbuf = NULL;
 
     if (stream->op_type == SEND) {
 
-        v = cuda_vbuf;
-        v->sreq = req;
-
         req->mrail.pipeline_nm++;
         is_finish = (req->mrail.pipeline_nm == req->mrail.num_cuda_blocks)? 1 : 0;
+
+        rail = MRAILI_Send_select_rail(vc);
         
         if (req->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE) {
-            MRAILI_RDMA_Put(vc, v,
-                (char *) (v->buffer),
-                v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
-                (char *) (req->mrail.cuda_remote_addr[req->mrail.num_remote_cuda_done]),
-                req->mrail.cuda_remote_rkey[req->mrail.num_remote_cuda_done]
-                        [vc->mrail.rails[rail].hca_index], size, rail);
+            if (size <= rdma_large_msg_rail_sharing_threshold) {
+                rail = MRAILI_Send_select_rail(vc);
 
-            MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline, is_finish,
+                v = cuda_vbuf;
+                v->sreq = req;
+
+                MRAILI_RDMA_Put(vc, v,
+                   (char *) (v->buffer),
+                    v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
+                    (char *) (req->mrail.cuda_remote_addr[req->mrail.num_remote_cuda_done]),
+                    req->mrail.cuda_remote_rkey[req->mrail.num_remote_cuda_done]
+                            [vc->mrail.rails[rail].hca_index], size, rail);
+            } else {
+                stripe_avg = size / rdma_num_rails;
+                orig_vbuf = cuda_vbuf;
+
+                for (rail = 0; rail < rdma_num_rails; rail++) {
+                    offset = rail*stripe_avg;
+                    stripe_size = (rail < rdma_num_rails-1) ? stripe_avg : (size - offset);
+
+                    v = get_vbuf();
+                    v->sreq = req;
+                    v->orig_vbuf = orig_vbuf;
+
+                    MRAILI_RDMA_Put(vc, v,
+                        (char *) (orig_vbuf->buffer) + offset,
+                        orig_vbuf->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
+                        (char *) (req->mrail.cuda_remote_addr[req->mrail.num_remote_cuda_done])
+                        + offset,
+                        req->mrail.cuda_remote_rkey[req->mrail.num_remote_cuda_done]
+                                [vc->mrail.rails[rail].hca_index], stripe_size, rail);
+                }
+            }
+
+            for(rail = 0; rail < rdma_num_rails; rail++) {
+                MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline, is_finish,
                                         rdma_cuda_block_size * displacement);
+            }
             req->mrail.num_remote_cuda_done++;
-
         } else if (req->mrail.cuda_transfer_mode == DEVICE_TO_HOST) {
-            MRAILI_RDMA_Put(vc, v,
-                (char *) (v->buffer),
-                v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
-                (char *) (req->mrail.remote_addr) + displacement * 
-                rdma_cuda_block_size,
-                req->mrail.rkey[vc->mrail.rails[rail].hca_index],
-                size, rail);
+            if (size <= rdma_large_msg_rail_sharing_threshold) {
+                rail = MRAILI_Send_select_rail(vc);
+
+                v = cuda_vbuf;
+                v->sreq = req;
+
+                MRAILI_RDMA_Put(vc, v,
+                    (char *) (v->buffer),
+                    v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
+                    (char *) (req->mrail.remote_addr) + displacement *
+                    rdma_cuda_block_size,
+                    req->mrail.rkey[vc->mrail.rails[rail].hca_index],
+                    size, rail);
+            } else {
+                stripe_avg = size / rdma_num_rails;
+                orig_vbuf = cuda_vbuf;
+
+                for (rail = 0; rail < rdma_num_rails; rail++) {
+                    offset = rail*stripe_avg;
+                    stripe_size = (rail < rdma_num_rails-1) ? stripe_avg : (size - offset);
+
+                    v = get_vbuf();
+                    v->sreq = req;
+                    v->orig_vbuf = orig_vbuf;
+
+                    MRAILI_RDMA_Put(vc, v,
+                        (char *) (orig_vbuf->buffer) + offset,
+                        orig_vbuf->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
+                        (char *) (req->mrail.remote_addr) + displacement *
+                        rdma_cuda_block_size + offset,
+                        req->mrail.rkey[vc->mrail.rails[rail].hca_index],
+                        stripe_size, rail);
+                }
+            }
 
             if (is_finish) {
-                MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline,
-                                            is_finish,
-                                            rdma_cuda_block_size *
-                                            displacement);
+               for(rail = 0; rail < rdma_num_rails; rail++) {
+                    MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline,
+                                        is_finish,
+                                        rdma_cuda_block_size *
+                                        displacement);
+               }
             }
         }
 

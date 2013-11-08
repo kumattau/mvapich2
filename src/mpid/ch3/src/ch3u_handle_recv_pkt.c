@@ -128,7 +128,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_cas_resp_t),
     sizeof(MPIDI_CH3_Pkt_fop_t),
     sizeof(MPIDI_CH3_Pkt_fop_resp_t),
-    sizeof(MPIDI_CH3_Pkt_get_accum_resp_t),
+    sizeof(MPIDI_CH3_Pkt_accum_t),
     sizeof(MPIDI_CH3_Pkt_get_accum_resp_t),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_flow_cntl),
     sizeof(MPIDI_CH3_Pkt_close_t),

@@ -135,6 +135,11 @@ AC_ARG_ENABLE(checkfaults,
 		[Add some tests for checking on handling of faults in user programs])],,
 	[enable_checkfaults=no])
 
+AC_ARG_ENABLE(checkpointing,
+	[AC_HELP_STRING([--enable-checkpointing],
+		[Add some tests for checkpointing])],,
+	[enable_checkpointing=no])
+
 AC_ARG_ENABLE(fast,
 	[AC_HELP_STRING([--enable-fast],
 		[Indicates that the MPI implementation may have been
@@ -171,6 +176,57 @@ AC_ARG_WITH(mpi,
 	[AC_HELP_STRING([--with-mpi=dir],
 		[Use the selected MPI; compilation scripts for mpicc,
 		mpif77 and mpicxx should be in dir/bin])],,)
+
+AC_ARG_WITH(pm,
+	AC_HELP_STRING([--with-pm=name],
+		[Specify the process manager for MPICH.  "no" or "none" are
+                 valid values.  Multiple process managers may be specified as
+                 long as they all use the same pmi interface by separating them
+                 with colons.  The mpiexec for the first named process manager
+                 will be installed.  Example: "--with-pm=hydra:mpd:gforker"
+                 builds the three process managers hydra, mpd and gforker;
+                 only the mpiexec from hydra is installed into the bin
+                 directory.]),,with_pm=default)
+
+if test "$with_pm" = "none" ; then
+    # add "none" as synonym for "no" to agree with older erroneous docs
+    with_pm="no"
+fi
+if test "$MPID_NO_PM" = yes ; then
+    if test "$with_pm" != "default" -a "$with_pm" != no ; then
+        AC_MSG_ERROR([The PM chosen ($with_pm) is is not valid for the selected device ($with_device)])
+    fi
+    # This is used to change with_pm=default to with_pm=no in the case
+    # where the device does not want a PM
+    with_pm=no
+fi
+if test -z "$with_pm" ; then
+    with_pm="no"
+fi
+if test "$with_pmi" = "uni" -a "$with_pm" = "default" ; then
+    with_pm="no"
+fi
+if test "$with_pm" = "default" -o "$with_pm" = "yes" ; then
+   if test ! -z "$MPID_DEFAULT_PM" ; then
+      with_pm=${MPID_DEFAULT_PM}
+   else
+      with_pm=hydra
+   fi
+fi
+
+# Get the first pm specified
+if test "$with_pm" != "no" ; then
+    first_pm="`echo $with_pm | sed -e 's/:.*//' -e 's/,.*//'`"
+else
+    first_pm=""
+fi
+
+# Only run the fault tolerance tests if hydra is the primary PM
+ftdir="#ft"
+if test "$first_pm" = "hydra"; then
+    ftdir="ft"
+fi
+AC_SUBST(ftdir)
 
 AC_ARG_WITH(config-args,
 	[AC_HELP_STRING([--with-config-args=filename],
@@ -287,6 +343,13 @@ AC_SUBST(perfdir)
 if test "$enable_threads" = "multiple" -o "$enable_threads" = "runtime" ; then
     threadsdir="threads"
 fi
+# 
+# Only run the checkpointing tests if enabled
+ckpointdir="#ckpoint"
+if test "$enable_checkpointing" = "yes" ; then
+    ckpointdir="ckpoint"
+fi
+AC_SUBST(ckpointdir)
 
 PAC_LOAD_BASE_CACHE
 PAC_VPATH_CHECK()
@@ -449,6 +512,7 @@ fi
 
 # Running C compiler tests
 PAC_PROG_CC
+AM_PROG_CC_C_O
 
 # Note that some versions of autoconf will insist that the compiler 
 # produce executables at this point, which is why we must do something
@@ -1353,6 +1417,7 @@ AC_OUTPUT(maint/testmerge \
           f77/io/iooffset.h \
           f77/io/iodisp.h \
           f77/io/ioaint.h \
+	  f77/profile/Makefile \
           f90/Makefile \
           f90/attr/Makefile \
           f90/datatype/Makefile \
@@ -1372,6 +1437,7 @@ AC_OUTPUT(maint/testmerge \
           f90/ext/testlist \
           f90/io/Makefile \
           f90/misc/Makefile \
+	  f90/profile/Makefile \
           cxx/Makefile \
           cxx/util/Makefile \
           cxx/attr/Makefile \
@@ -1385,6 +1451,7 @@ AC_OUTPUT(maint/testmerge \
           cxx/init/Makefile \
           cxx/rma/Makefile \
           cxx/spawn/Makefile \
+	  cxx/topo/Makefile \
           threads/Makefile \
           threads/pt2pt/Makefile \
           threads/util/Makefile \
@@ -1413,6 +1480,8 @@ AC_OUTPUT(maint/testmerge \
 	  errors/f77/errhan/iooffset.h \
           errors/f90/Makefile \
 	  errors/f90/errhan/Makefile \
+	  ckpoint/Makefile \
+	  ft/Makefile \
           manual/Makefile \
           manual/manyconnect \
           manual/mpi_t/Makefile \

@@ -22,6 +22,8 @@
 #include <unistd.h>
 #include "bcast_tuning.h"
 
+#define INTRA_NODE_ROOT 0
+
 #if OSU_MPIT
 unsigned long long mpit_bcast_mv2_binomial = 0;
 unsigned long long mpit_bcast_mv2_scatter_doubling_allgather = 0;
@@ -152,11 +154,11 @@ int MPIR_Bcast_binomial_MV2(void *buffer,
             if (src < 0)
                 src += comm_size;
             if (!is_contig || !is_homogeneous)
-                mpi_errno = MPIC_Recv_ft(tmp_buf, nbytes, MPI_BYTE, src,
+                mpi_errno = MPIC_Recv(tmp_buf, nbytes, MPI_BYTE, src,
                                          MPIR_BCAST_TAG, comm,
                                          MPI_STATUS_IGNORE, errflag);
             else
-                mpi_errno = MPIC_Recv_ft(buffer, count, datatype, src,
+                mpi_errno = MPIC_Recv(buffer, count, datatype, src,
                                          MPIR_BCAST_TAG, comm,
                                          MPI_STATUS_IGNORE, errflag);
             if (mpi_errno) {
@@ -188,10 +190,10 @@ int MPIR_Bcast_binomial_MV2(void *buffer,
             if (dst >= comm_size)
                 dst -= comm_size;
             if (!is_contig || !is_homogeneous)
-                mpi_errno = MPIC_Send_ft(tmp_buf, nbytes, MPI_BYTE, dst,
+                mpi_errno = MPIC_Send(tmp_buf, nbytes, MPI_BYTE, dst,
                                          MPIR_BCAST_TAG, comm, errflag);
             else
-                mpi_errno = MPIC_Send_ft(buffer, count, datatype, dst,
+                mpi_errno = MPIC_Send(buffer, count, datatype, dst,
                                          MPIR_BCAST_TAG, comm, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -292,7 +294,7 @@ static int scatter_for_bcast_MV2(void *buffer ATTRIBUTE((unused)),
                 curr_size = 0;  /* this process doesn't receive any data
                                    because of uneven division */
             } else {
-                mpi_errno = MPIC_Recv_ft(((char *) tmp_buf +
+                mpi_errno = MPIC_Recv(((char *) tmp_buf +
                                           relative_rank * scatter_size),
                                          recv_size, MPI_BYTE, src,
                                          MPIR_BCAST_TAG, comm, &status, errflag);
@@ -326,7 +328,7 @@ static int scatter_for_bcast_MV2(void *buffer ATTRIBUTE((unused)),
                 dst = rank + mask;
                 if (dst >= comm_size)
                     dst -= comm_size;
-                mpi_errno = MPIC_Send_ft(((char *) tmp_buf +
+                mpi_errno = MPIC_Send(((char *) tmp_buf +
                                           scatter_size * (relative_rank +
                                                           mask)), send_size,
                                          MPI_BYTE, dst, MPIR_BCAST_TAG, comm, errflag);
@@ -496,7 +498,7 @@ int MPIR_Bcast_scatter_doubling_allgather_MV2(void *buffer,
         recv_offset = dst_tree_root * scatter_size;
 
         if (relative_dst < comm_size) {
-            mpi_errno = MPIC_Sendrecv_ft(((char *) tmp_buf + send_offset),
+            mpi_errno = MPIC_Sendrecv(((char *) tmp_buf + send_offset),
                                          curr_size, MPI_BYTE, dst,
                                          MPIR_BCAST_TAG,
                                          ((char *) tmp_buf + recv_offset),
@@ -561,7 +563,7 @@ int MPIR_Bcast_scatter_doubling_allgather_MV2(void *buffer,
                     (relative_rank < tree_root + nprocs_completed)
                     && (relative_dst >= tree_root + nprocs_completed)) {
 
-                    mpi_errno = MPIC_Send_ft(((char *) tmp_buf + offset),
+                    mpi_errno = MPIC_Send(((char *) tmp_buf + offset),
                                              recv_size, MPI_BYTE, dst,
                                              MPIR_BCAST_TAG, comm, errflag);
                     /* recv_size was set in the previous
@@ -579,7 +581,7 @@ int MPIR_Bcast_scatter_doubling_allgather_MV2(void *buffer,
                 else if ((relative_dst < relative_rank) &&
                          (relative_dst < tree_root + nprocs_completed) &&
                          (relative_rank >= tree_root + nprocs_completed)) {
-                    mpi_errno = MPIC_Recv_ft(((char *) tmp_buf + offset),
+                    mpi_errno = MPIC_Recv(((char *) tmp_buf + offset),
                                              nbytes - offset,
                                              MPI_BYTE, dst, MPIR_BCAST_TAG,
                                              comm, &status, errflag);
@@ -762,7 +764,7 @@ int MPIR_Bcast_scatter_ring_allgather_MV2(void *buffer,
     jnext = left;
     for (i = 1; i < comm_size; i++) {
         mpi_errno =
-            MPIC_Sendrecv_ft((char *) tmp_buf +
+            MPIC_Sendrecv((char *) tmp_buf +
                              displs[(j - root + comm_size) % comm_size],
                              recvcnts[(j - root + comm_size) % comm_size],
                              MPI_BYTE, right, MPIR_BCAST_TAG,
@@ -835,7 +837,6 @@ int MPIR_Bcast_scatter_ring_allgather_shm_MV2(void *buffer,
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     shmem_comm = comm_ptr->ch.shmem_comm;
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
-    int intra_node_root = 0;
     bcast_ring_allgather_shm_packet para_packet; 
     
     MPIDI_msg_sz_t  shmem_offset, shmem_nbytes;
@@ -918,13 +919,13 @@ int MPIR_Bcast_scatter_ring_allgather_shm_MV2(void *buffer,
         }
        
         /* one chunk is moving along the allgather ring, node-leaders are involved*/
-        MPIC_Irecv_ft((char *) buffer +
+        MPIC_Irecv((char *) buffer +
                    displs[(jnext - root + comm_size) % comm_size],
                    recvcnts[(jnext - root + comm_size) % comm_size],
                    MPI_BYTE, left, MPIR_BCAST_TAG,
                    comm, &request[0]);
 
-        MPIC_Isend_ft((char *) buffer +
+        MPIC_Isend((char *) buffer +
                    displs[(j - root + comm_size) % comm_size], 
                    recvcnts[(j - root + comm_size) % comm_size], 
                    MPI_BYTE, right, MPIR_BCAST_TAG,
@@ -934,9 +935,9 @@ int MPIR_Bcast_scatter_ring_allgather_shm_MV2(void *buffer,
         shmem_nbytes =  recvcnts[(j - root + comm_size) % comm_size];
    
         mpi_errno = MPIR_Shmem_Bcast_MV2(buffer + shmem_offset, shmem_nbytes, MPI_BYTE,
-                                        intra_node_root, shmem_commptr, errflag);
+                                        INTRA_NODE_ROOT, shmem_commptr, errflag);
 
-        mpi_errno = MPIC_Waitall_ft(2, request, status, errflag);
+        mpi_errno = MPIC_Waitall(2, request, status, errflag);
 
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -954,13 +955,13 @@ int MPIR_Bcast_scatter_ring_allgather_shm_MV2(void *buffer,
         */
         for (i = 2; i < comm_size; i++) {
 
-            MPIC_Irecv_ft((char *) buffer +
+            MPIC_Irecv((char *) buffer +
                         displs[(jnext - root + comm_size) % comm_size], 
                         recvcnts[(jnext - root + comm_size) % comm_size], 
                         MPI_BYTE, left, MPIR_BCAST_TAG,
                         comm, &request[0]);
 
-            MPIC_Isend_ft((char *) buffer +
+            MPIC_Isend((char *) buffer +
                         displs[(j - root + comm_size) % comm_size], 
                         recvcnts[(j - root + comm_size) % comm_size], 
                         MPI_BYTE, right, MPIR_BCAST_TAG,
@@ -972,11 +973,11 @@ int MPIR_Bcast_scatter_ring_allgather_shm_MV2(void *buffer,
 
 
             mpi_errno = MPIR_Shmem_Bcast_MV2(buffer + shmem_offset, shmem_nbytes, MPI_BYTE,
-                                             intra_node_root, shmem_commptr, errflag);
+                                             INTRA_NODE_ROOT, shmem_commptr, errflag);
 
 
 
-            mpi_errno = MPIC_Waitall_ft(2, request, status, errflag);
+            mpi_errno = MPIC_Waitall(2, request, status, errflag);
 
             if (mpi_errno) {
                 MPIU_ERR_POP(mpi_errno);
@@ -1035,7 +1036,7 @@ int MPIR_Bcast_scatter_ring_allgather_shm_MV2(void *buffer,
         shmem_nbytes =  recvcnts[(j - root + comm_size) % comm_size];
 
         mpi_errno = MPIR_Shmem_Bcast_MV2(buffer + shmem_offset, shmem_nbytes, MPI_BYTE,
-                                        intra_node_root, shmem_commptr, errflag);
+                                        INTRA_NODE_ROOT, shmem_commptr, errflag);
 
         j = jnext;
         jnext = (comm_size + jnext - 1) % comm_size;
@@ -1052,7 +1053,7 @@ int MPIR_Bcast_scatter_ring_allgather_shm_MV2(void *buffer,
 
 
             mpi_errno = MPIR_Shmem_Bcast_MV2(buffer + shmem_offset, shmem_nbytes, MPI_BYTE,
-                                             intra_node_root, shmem_commptr, errflag);
+                                             INTRA_NODE_ROOT, shmem_commptr, errflag);
 
 
             j = jnext;
@@ -1066,7 +1067,7 @@ int MPIR_Bcast_scatter_ring_allgather_shm_MV2(void *buffer,
     } 
 
     mpi_errno = MPIR_Shmem_Bcast_MV2(buffer + shmem_offset, shmem_nbytes, MPI_BYTE,
-                                         intra_node_root, shmem_commptr, errflag);
+                                         INTRA_NODE_ROOT, shmem_commptr, errflag);
 
 
     /* indicate that we have finished shared-memory bcast */
@@ -1115,7 +1116,7 @@ int MPIR_Shmem_Bcast_MV2(void *buffer,
     local_rank = shmem_comm_ptr->rank;
     local_size = shmem_comm_ptr->local_size;
 
-    if ( count == 0) {
+    if (count == 0) {
         return MPI_SUCCESS;
     }
 
@@ -1176,7 +1177,6 @@ int MPIR_Knomial_Bcast_inter_node_MV2(void *buffer,
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     int local_rank = 0;
     int comm_size = 0, rank = 0;
-    int intra_node_root = 0;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     MPI_Request *reqarray = NULL;
@@ -1207,7 +1207,6 @@ int MPIR_Knomial_Bcast_inter_node_MV2(void *buffer,
                         2 * knomial_factor * sizeof (MPI_Status),
                         mpi_errno, "starray");
     if (local_rank == 0) {
-
         /* inter-node k-nomial bcast  */
         if (comm_size > 1) {
             relative_rank = (rank >= root) ? rank - root : rank - root + comm_size;
@@ -1221,7 +1220,7 @@ int MPIR_Knomial_Bcast_inter_node_MV2(void *buffer,
                         src -= comm_size;
                     }
 
-                    mpi_errno = MPIC_Recv_ft(buffer, count, datatype, src,
+                    mpi_errno = MPIC_Recv(buffer, count, datatype, src,
                                              MPIR_BCAST_TAG, leader_comm,
                                              MPI_STATUS_IGNORE, errflag);
                     if (mpi_errno) {
@@ -1234,29 +1233,6 @@ int MPIR_Knomial_Bcast_inter_node_MV2(void *buffer,
                 }
                 mask *= knomial_factor;
             }
-            if (mv2_use_old_bcast == 0) {
-                /* Start the shmem-bcast before we send the data across the network */
-                mpi_errno = MV2_Bcast_intra_node_function(buffer, count, datatype,
-                                                          intra_node_root,
-                                                          shmem_commptr, errflag);
-            } else {
-                int type_size = 0;
-                MPID_Datatype_get_size_macro(datatype, type_size);
-                MPIDI_msg_sz_t nbytes; 
- 
-                nbytes = (MPIDI_msg_sz_t) (count) * (type_size);
-                if (nbytes <= mv2_knomial_intra_node_threshold) {
-                    mpi_errno = MPIR_Shmem_Bcast_MV2(buffer, count, datatype,
-                                                     intra_node_root,
-                                                     shmem_commptr, errflag);
-                } else {
-                    mpi_errno =
-                        MPIR_Knomial_Bcast_intra_node_MV2(buffer, count, datatype,
-                                                          intra_node_root,
-                                                          shmem_commptr, errflag);
-                }
-            }
-            comm_ptr->ch.intra_node_done = 1;
 
             mask /= knomial_factor;
 
@@ -1268,7 +1244,7 @@ int MPIR_Knomial_Bcast_inter_node_MV2(void *buffer,
                         if (dst >= comm_size) {
                             dst -= comm_size;
                         }
-                        mpi_errno = MPIC_Isend_ft(buffer, count, datatype, dst,
+                        mpi_errno = MPIC_Isend(buffer, count, datatype, dst,
                                                   MPIR_BCAST_TAG, leader_comm,
                                                   &reqarray[reqs++], errflag);
                         if (mpi_errno) {
@@ -1279,7 +1255,7 @@ int MPIR_Knomial_Bcast_inter_node_MV2(void *buffer,
                         }
                     }
                 }
-                mpi_errno = MPIC_Waitall_ft(reqs, reqarray, starray, errflag);
+                mpi_errno = MPIC_Waitall(reqs, reqarray, starray, errflag);
                 if (mpi_errno && mpi_errno != MPI_ERR_IN_STATUS)
                     MPIU_ERR_POP(mpi_errno);
 
@@ -1301,6 +1277,29 @@ int MPIR_Knomial_Bcast_inter_node_MV2(void *buffer,
                 mask /= knomial_factor;
             }
         }
+        if (mv2_use_old_bcast == 0) {
+            /* Start the shmem-bcast before we send the data across the network */
+            mpi_errno = MV2_Bcast_intra_node_function(buffer, count, datatype,
+                                                      INTRA_NODE_ROOT,
+                                                      shmem_commptr, errflag);
+        } else {
+            int type_size = 0;
+            MPID_Datatype_get_size_macro(datatype, type_size);
+            MPIDI_msg_sz_t nbytes; 
+ 
+            nbytes = (MPIDI_msg_sz_t) (count) * (type_size);
+            if (nbytes <= mv2_knomial_intra_node_threshold) {
+                mpi_errno = MPIR_Shmem_Bcast_MV2(buffer, count, datatype,
+                                                 INTRA_NODE_ROOT,
+                                                 shmem_commptr, errflag);
+            } else {
+                mpi_errno =
+                    MPIR_Knomial_Bcast_intra_node_MV2(buffer, count, datatype,
+                                                      INTRA_NODE_ROOT,
+                                                      shmem_commptr, errflag);
+            }
+        }
+        comm_ptr->ch.intra_node_done = 1;
     }
   fn_fail:
 
@@ -1357,7 +1356,7 @@ int MPIR_Knomial_Bcast_intra_node_MV2(void *buffer,
                     src -= local_size;
                 }
 
-                mpi_errno = MPIC_Recv_ft(buffer, count, datatype, src,
+                mpi_errno = MPIC_Recv(buffer, count, datatype, src,
                                          MPIR_BCAST_TAG, comm,
                                          MPI_STATUS_IGNORE, errflag);
                 if (mpi_errno) {
@@ -1380,7 +1379,7 @@ int MPIR_Knomial_Bcast_intra_node_MV2(void *buffer,
                     if (dst >= local_size) {
                         dst -= local_size;
                     }
-                    mpi_errno = MPIC_Isend_ft(buffer, count, datatype, dst,
+                    mpi_errno = MPIC_Isend(buffer, count, datatype, dst,
                                               MPIR_BCAST_TAG, comm,
                                               &reqarray[reqs++], errflag);
                     if (mpi_errno) {
@@ -1391,7 +1390,7 @@ int MPIR_Knomial_Bcast_intra_node_MV2(void *buffer,
                     }
                 }
             }
-            mpi_errno = MPIC_Waitall_ft(reqs, reqarray, starray, errflag);
+            mpi_errno = MPIC_Waitall(reqs, reqarray, starray, errflag);
             if (mpi_errno && mpi_errno != MPI_ERR_IN_STATUS)
                 MPIU_ERR_POP(mpi_errno);
 
@@ -1557,7 +1556,6 @@ int MPIR_Pipelined_Bcast_MV2(void *buffer,
     int local_rank = 0;
     int mpi_errno = MPI_SUCCESS;
     int type_size = 0; 
-    int intra_node_root = 0;
     MPIDI_msg_sz_t nbytes=0, rem_count = 0, bcast_segment_count = 0, bcast_curr_count = 0;
     MPI_Aint extent;
 
@@ -1590,20 +1588,20 @@ int MPIR_Pipelined_Bcast_MV2(void *buffer,
                 mpi_errno = MV2_Bcast_intra_node_function((char *) buffer +
                                                  bcast_curr_count,
                                                  bcast_segment_count,
-                                                 MPI_BYTE, intra_node_root,
+                                                 MPI_BYTE, INTRA_NODE_ROOT,
                                                  shmem_commptr, errflag);
             } else {
                 if (bcast_segment_count * type_size <= mv2_knomial_intra_node_threshold) {
                    mpi_errno = MPIR_Shmem_Bcast_MV2((char *) buffer +
                                                      bcast_curr_count,
                                                      bcast_segment_count,
-                                                     MPI_BYTE, intra_node_root,
+                                                     MPI_BYTE, INTRA_NODE_ROOT,
                                                      shmem_commptr, errflag);
                 } else {
                     mpi_errno = MPIR_Knomial_Bcast_intra_node_MV2((char *) buffer +
                                                                   bcast_curr_count,
                                                                   bcast_segment_count,
-                                                                  MPI_BYTE, intra_node_root,
+                                                                  MPI_BYTE, INTRA_NODE_ROOT,
                                                                   shmem_commptr, errflag);
                 }
             }
@@ -1702,20 +1700,15 @@ int MPIR_Shmem_Bcast_Zcpy_MV2(void *buffer,
                          int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
-    int shmem_comm_rank, type_size;  
+    int type_size;  
     MPIDI_msg_sz_t nbytes;
-    int local_rank;
     MPI_Comm shmem_comm; 
     MPID_Comm *shmem_commptr=NULL;
-    void *shmem_buf = NULL;
 
     MPID_Datatype_get_size_macro(datatype, type_size);
     nbytes = (MPIDI_msg_sz_t) (count) * (type_size);
     shmem_comm = comm_ptr->ch.shmem_comm; 
-    MPID_Comm_get_ptr(shmem_comm, shmem_commptr); 
-    shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
-    
-    local_rank = shmem_commptr->rank;
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
 
     if ( count == 0) {
         return MPI_SUCCESS;
@@ -1758,14 +1751,12 @@ int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
                              MPI_Datatype datatype,
                              int root, MPID_Comm * comm_ptr, int *errflag)
 {
-    MPI_Status status; 
     MPI_Comm shmem_comm;
     MPID_Comm *shmem_commptr = NULL;
     int local_rank = 0, rank=0;
     int mpi_errno = MPI_SUCCESS;
-    int type_size = 0, new_root=0;; 
+    int new_root=0;; 
     MPIDI_msg_sz_t nbytes=0;
-    int intra_node_root = 0;
     int leader_of_root=0, leader_root=0; 
     MPIDI_msg_sz_t   rem_count = 0, bcast_curr_count = 0;
     int bcast_segment_count = 0; 
@@ -1782,7 +1773,6 @@ int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
     MPID_Datatype_get_extent_macro(datatype, extent);
 
     local_rank = shmem_commptr->rank;
-    MPID_Datatype_get_size_macro(datatype, type_size);
     nbytes = count*extent; 
     rem_count = nbytes;
     bcast_segment_count = MIN(rem_count, bcast_segment_size);
@@ -1805,7 +1795,7 @@ int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
              MPIR_Knomial_Bcast_inter_node_trace_MV2(leader_root, zcpy_knomial_factor,   
                                &src, &expected_send_count, 
                                &expected_recv_count, &dst_array, leader_commptr); 
-             (shmem_info)->exchange_rdma_keys = 1;
+             (shmem_info)->bcast_exchange_rdma_keys = 1;
         }
     } 
 
@@ -1817,7 +1807,7 @@ int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
                                bcast_curr_count, bcast_segment_count, 
                                MPI_BYTE, new_root, 
                                MPIR_BCAST_TAG, comm_ptr->handle, 
-                               &prev_request);
+                               &prev_request, errflag);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
@@ -1844,7 +1834,7 @@ int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
                                        bcast_next_segment_count, 
                                        MPI_BYTE, new_root, 
                                        MPIR_BCAST_TAG, comm_ptr->handle, 
-                                       &next_request);
+                                       &next_request, errflag);
                 if (mpi_errno) {
                     MPIU_ERR_POP(mpi_errno);
                 }
@@ -1868,7 +1858,7 @@ int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
 
         if( (rank == root && rank != 0) || 
             (rank == 0 && rank != root)){ 
-             mpi_errno = MPIC_Waitall_ft(1, &prev_request, &prev_status, errflag); 
+             mpi_errno = MPIC_Waitall(1, &prev_request, &prev_status, errflag); 
              prev_request = next_request; 
              prev_status  = next_status; 
         } 
@@ -1958,7 +1948,7 @@ static int MPIR_Bcast_tune_inter_node_helper_MV2(void *buffer,
 
     if (local_size > 1) {
         if ((local_rank == 0) && (root != rank) && (leader_root == global_rank)) {
-            mpi_errno = MPIC_Recv_ft(buffer, count, datatype, root,
+            mpi_errno = MPIC_Recv(buffer, count, datatype, root,
                                      MPIR_BCAST_TAG, comm, MPI_STATUS_IGNORE, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -1968,7 +1958,7 @@ static int MPIR_Bcast_tune_inter_node_helper_MV2(void *buffer,
             }
         }
         if ((local_rank != 0) && (root == rank)) {
-            mpi_errno = MPIC_Send_ft(buffer, count, datatype,
+            mpi_errno = MPIC_Send(buffer, count, datatype,
                                      leader_of_root, MPIR_BCAST_TAG, comm, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -2084,7 +2074,7 @@ static int MPIR_Bcast_inter_node_helper_MV2(void *buffer,
 
     if (local_size > 1) {
         if ((local_rank == 0) && (root != rank) && (leader_root == global_rank)) {
-            mpi_errno = MPIC_Recv_ft(buffer, count, datatype, root,
+            mpi_errno = MPIC_Recv(buffer, count, datatype, root,
                                      MPIR_BCAST_TAG, comm, MPI_STATUS_IGNORE, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -2094,7 +2084,7 @@ static int MPIR_Bcast_inter_node_helper_MV2(void *buffer,
             }
         }
         if ((local_rank != 0) && (root == rank)) {
-            mpi_errno = MPIC_Send_ft(buffer, count, datatype,
+            mpi_errno = MPIC_Send(buffer, count, datatype,
                                      leader_of_root, MPIR_BCAST_TAG, comm, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -2210,7 +2200,6 @@ int MPIR_Bcast_intra_MV2(void *buffer,
     int comm_size, rank;
     int two_level_bcast = 1;
     MPIDI_msg_sz_t nbytes = 0; 
-    int intra_node_root = 0;
     int type_size, is_homogeneous, is_contig, position;
     void *tmp_buf = NULL;
     MPID_Comm *shmem_commptr = NULL;
@@ -2323,13 +2312,13 @@ int MPIR_Bcast_intra_MV2(void *buffer,
                     mpi_errno =
                         MPIR_Knomial_Bcast_intra_node_MV2(tmp_buf, nbytes,
                                                           MPI_BYTE,
-                                                          intra_node_root,
+                                                          INTRA_NODE_ROOT,
                                                           shmem_commptr, errflag);
                 } else {
                     mpi_errno =
                         MPIR_Knomial_Bcast_intra_node_MV2(buffer, count,
                                                           datatype,
-                                                          intra_node_root,
+                                                          INTRA_NODE_ROOT,
                                                           shmem_commptr, errflag);
                 }
             }
@@ -2401,7 +2390,6 @@ int MPIR_Bcast_tune_intra_MV2(void *buffer,
     int comm_size, rank;
     int two_level_bcast = 1;
     MPIDI_msg_sz_t nbytes = 0; 
-    int intra_node_root = 0;
     int range = 0;
     int range_threshold = 0;
     int range_threshold_intra = 0;
@@ -2505,11 +2493,16 @@ int MPIR_Bcast_tune_intra_MV2(void *buffer,
 
     /* If we use previous shmem scheme, fall back to previous threshold for intra-node*/
     if (!mv2_use_slot_shmem_bcast){
+        /* not depending on intra node tuning table with old shmem design */
         if (nbytes <= mv2_knomial_intra_node_threshold){
             MV2_Bcast_intra_node_function = &MPIR_Shmem_Bcast_MV2;
         } else {
             MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
         }
+    } else if(MV2_Bcast_intra_node_function == NULL) {
+        /* if tuning table do not have any intra selection, set func pointer to
+        ** default one for mcast intra node */
+        MV2_Bcast_intra_node_function = &MPIR_Shmem_Bcast_MV2;
     }
 
     /* Set value of pipeline segment size */
@@ -2586,7 +2579,7 @@ int MPIR_Bcast_tune_intra_MV2(void *buffer,
             if (comm_ptr->ch.intra_node_done == 0) {
 
                 if (MV2_Bcast_intra_node_function == &MPIR_Knomial_Bcast_intra_node_MV2) {
-                    root = intra_node_root;
+                    root = INTRA_NODE_ROOT;
                 }
 
                 if (!is_contig || !is_homogeneous) {

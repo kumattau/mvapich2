@@ -7,6 +7,13 @@
 
 #include "adio.h"
 
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+
 /* The following function selects the name of the file to be used to 
    store the shared file pointer. The shared-file-pointer file is a 
    hidden file in the same directory as the real file being accessed.
@@ -21,6 +28,7 @@ void ADIOI_Shfp_fname(ADIO_File fd, int rank)
     double tm;
     int i, len;
     char *slash, *ptr, tmp[128];
+    int pid = 0;
 
     fd->shared_fp_fname = (char *) ADIOI_Malloc(256);
 
@@ -31,6 +39,7 @@ void ADIOI_Shfp_fname(ADIO_File fd, int rank)
 	tm = tm - (double) i;
 	tm *= 1000000.0;
 	i = (int) tm;
+	pid = (int)getpid();
 	
 	ADIOI_Strncpy(fd->shared_fp_fname, fd->filename, 256);
 	
@@ -55,7 +64,7 @@ void ADIOI_Shfp_fname(ADIO_File fd, int rank)
 	    ADIOI_Strncpy(slash + 2, ptr + 1, len);
 	}
 	    
-	ADIOI_Snprintf(tmp, 128, ".shfp.%d", i);
+	ADIOI_Snprintf(tmp, 128, ".shfp.%d.%d", pid, i);
 	ADIOI_Strnapp(fd->shared_fp_fname, tmp, 256);
 	
 	len = (int)strlen(fd->shared_fp_fname);

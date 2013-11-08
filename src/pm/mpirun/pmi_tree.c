@@ -632,19 +632,16 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
             if (kvc_val) {
                 sprintf(resp, "cmd=get_result rc=0 value=%s\n", kvc_val);
                 dbg(" cmd=get, key=%s, find val=%s\n", key, kvc_val);
-                hdr.msg_len = strlen(resp);
-                if (src == MT_CHILD) {
-                    write(fd, &hdr, msg_hdr_s);
-                }
-                writeline(fd, resp, hdr.msg_len);
             } else {
+                sprintf(resp, "cmd=get_result rc=1 value=%s\n", "NOTFOUND");
                 dbg(" ****  ERROR:: PMI key '%s' not found.\n", key);
-                exit(1);
-                /* add pending req */
-                save_pending_req(rank, key, fd);
-                /* send req to parent */
-                send_parent(rank, msg, msg_len);
             }
+
+            hdr.msg_len = strlen(resp);
+            if (src == MT_CHILD) {
+                write(fd, &hdr, msg_hdr_s);
+            }
+            writeline(fd, resp, hdr.msg_len);
         }
         /* cmd=put */
         else if (0 == strcmp(command, "put")) {

@@ -1,6 +1,6 @@
 #define BENCHMARK "OSU One Sided MPI_Put Passive Bandwidth Test"
 /*
- * Copyright (C) 2003-2012 the Network-Based Computing Laboratory
+ * Copyright (C) 2003-2013 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University.
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)

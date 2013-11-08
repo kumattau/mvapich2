@@ -219,6 +219,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         /* The zero-copy bcast design is disabled when 
          * hybrid is used */ 
         mv2_enable_zcpy_bcast = 0; 
+        mv2_enable_zcpy_reduce = 0; 
     } 
 #endif
 

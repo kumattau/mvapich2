@@ -135,7 +135,14 @@ typedef union {
  * upper level code may then modify this value after MPID_Init and before the
  * end of MPIR_Init_thread.  Don't use this value directly, always check the
  * runtime global value. */
-#define MPIDI_TAG_UB (0x7fffffff)
+/* The first bit of the tag space is reserved for error propagation. We are
+ * still well over the required tag size and this allows us to retain the
+ * matching semantics while piggybacking the notification. If the message is
+ * propagating an error, the data being transmitted is probably garbage. The
+ * macros to set/access this bit are in src/include/mpiimpl.h. If the
+ * location of this bit changes, those macros also need to be adjusted.
+ */
+#define MPIDI_TAG_UB (0x3fffffff)
 
 /* Provides MPIDI_CH3_Pkt_t.  Must come after MPIDI_Message_match definition. */
 #include "mpidpkt.h"
@@ -208,7 +215,8 @@ typedef struct MPIDI_CH3I_comm
     int*    leader_rank;
     int*    node_sizes; 
     int*    allgather_new_ranks;
-    int     is_uniform; 
+    int     is_uniform;
+    int     is_blocked;
     int     shmem_comm_rank;
     int     shmem_coll_ok;
     int     allgather_comm_ok; 
@@ -255,83 +263,6 @@ typedef struct MPIDI_VC * MPID_VCR;
 #   define MPIDI_REQUEST_SEQNUM
 #endif
 
-#if defined (_OSU_PSM_)
-#define MPIDI_CH3_WIN_DECL      \
-    int *rank_mapping;          \
-    int16_t outstanding_rma;
-#endif
-
-#if defined(_OSU_MVAPICH_)
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)               
-#define RMA_LIMIC_DECL                                                           \
-    limic_user *peer_lu;                                                         \
-    int limic_fallback;                                                     
-#else
-#define RMA_LIMIC_DECL
-#endif /*_SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
-
-#if !defined(DAPL_DEFAULT_PROVIDER) 
-#define RMA_SHM_DECL                                                             \
-    int shm_fallback;                                                            \
-    int shm_fd;                                                                  \
-    void *shm_control_buf;                                                       \
-    int shm_control_bufsize;                                                     \
-    void **shm_buffer_all;                                                       \
-    void **shm_win_buffer_all;                                                   \
-    long long *shm_cmpl_counter_me;                                              \
-    long long **shm_cmpl_counter_all;                                            \
-    int *shm_post_flag_me;                                                       \
-    int **shm_post_flag_all;                                                     \
-    int *shm_lock;                                                               \
-    long *shm_shared_lock_count;                                                 \
-    int *shm_lock_released;                                                      \
-    int shm_lock_queued;                                                         \
-    pthread_mutex_t *shm_mutex;                                                  \
-    int shm_l_ranks;                                                             \
-    int *shm_l2g_rank;                                                           \
-    int *shm_g2l_rank;                                                           
-#else 
-#define RMA_SHM_DECL
-#endif 
-
-#define MPIDI_CH3_WIN_DECL                                                       \
-    int  fall_back;                                                              \
-    int  using_lock;                                                             \
-    long long cc_for_test;                                                       \
-    struct dreg_entry* completion_counter_dreg_entry;                            \
-    volatile long long * completion_counter;                                     \
-    long long ** all_completion_counter;                                         \
-    uint32_t  *completion_counter_rkeys; /* rkey for complete couters on         \
-                                            remote nodes */                      \
-    struct dreg_entry* win_dreg_entry;                                           \
-    uint32_t *win_rkeys;          /* exposed buffer addresses on remote          \
-                                    windows */                                   \
-    struct dreg_entry* post_flag_dreg_entry;                                     \
-    volatile int *post_flag;     /* flag from post to complete, one flag for     \
-                                    each target, updated by RDMA */              \
-    uint32_t *post_flag_rkeys;                                                   \
-    int ** remote_post_flags;                                                    \
-                                                                                 \
-    int using_start;                                                             \
-    /*for get/put queue*/                                                        \
-    MPIDI_CH3I_RDMA_put_get_list * put_get_list;                                 \
-    int put_get_list_size;                                                       \
-    int put_get_list_tail;                                                       \
-    int * put_get_list_size_per_process;                                         \
-    int wait_for_complete;                                                       \
-    int rma_issued;                                                              \
-    /* Preregistered buffer for small msg */                                     \
-    char * pinnedpool_1sc_buf;                                                   \
-    int    pinnedpool_1sc_index;                                                 \
-    struct dreg_entry * pinnedpool_1sc_dentry;                                   \
-                                                                                 \
-    int my_id;                                                                   \
-    int comm_size;                                                               \
-    int16_t outstanding_rma;                                                     \
-    volatile int poll_flag; /* flag to indicate if polling for one sided completions is needed */ \
-    RMA_SHM_DECL                                                                 \
-    RMA_LIMIC_DECL
-#endif /* defined(_OSU_MVAPICH_) */
 
 enum MPIDI_CH3_Lock_states {
     MPIDI_CH3_WIN_LOCK_NONE = 0,
@@ -369,6 +300,7 @@ struct MPIDI_Win_info_args {
     int accumulate_ops;
     int same_size;              /* valid flavor = allocate */
     int alloc_shared_noncontig; /* valid flavor = allocate shared */
+    int alloc_shm;              /* valid flavor = allocate */
 };
 
 struct MPIDI_RMA_op;            /* forward decl from mpidrma.h */
@@ -425,7 +357,10 @@ struct MPIDI_Win_target_state {
                            this state must be updated collectively (in   \
                            fence) to ensure that the fence state across  \
                            all processes remains consistent. */          \
+    MPID_Group *start_group_ptr; /* group passed in MPI_Win_start */     \
     int start_assert;   /* assert passed to MPI_Win_start */             \
+    int shm_allocated; /* flag: TRUE iff this window has a shared memory \
+                          region associated with it */                   \
     int cas_complete;    /*flag for compare-and-swap to increase counter  \
                           and release lock*/                               
 
@@ -504,7 +439,7 @@ typedef struct MPIDI_Request {
      * unexpected, exclusive access otherwise */
     int            recv_pending_count;
 
-    /* The next 8 are for RMA */
+    /* The next several fields are used to hold state for ongoing RMA operations */
     MPI_Op op;
     /* For accumulate, since data is first read into a tmp_buf */
     void *real_user_buf;

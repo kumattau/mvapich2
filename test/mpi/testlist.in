@@ -21,3 +21,5 @@ topo
 @f90dir@
 @errordir@
 @threadsdir@
+@ckpointdir@
+@ftdir@

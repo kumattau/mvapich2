@@ -37,6 +37,7 @@
 #include <errno.h>
 #include <string.h>
 #include <debug_utils.h>
+#include "mpit.h"
 
 /* vbuf pool info */
 vbuf_pool_t *rdma_vbuf_pools;
@@ -56,17 +57,17 @@ static vbuf *free_vbuf_head = NULL;
  */
 static struct ibv_pd *ptag_save[MAX_NUM_HCAS];
 
-static int vbuf_n_allocated = 0;
-static long num_free_vbuf = 0;
-static long num_vbuf_get = 0;
-static long num_vbuf_freed = 0;
+int vbuf_n_allocated = 0;
+long num_free_vbuf = 0;
+long num_vbuf_get = 0;
+long num_vbuf_freed = 0;
 
 #if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
 static vbuf *ud_free_vbuf_head = NULL;
-static int ud_vbuf_n_allocated = 0;
-static long ud_num_free_vbuf = 0;
-static long ud_num_vbuf_get = 0;
-static long ud_num_vbuf_freed = 0;
+int ud_vbuf_n_allocated = 0;
+long ud_num_free_vbuf = 0;
+long ud_num_vbuf_get = 0;
+long ud_num_vbuf_freed = 0;
 #endif
 
 static pthread_spinlock_t vbuf_lock;
@@ -227,12 +228,21 @@ void deallocate_vbuf_region(void)
 #ifdef _ENABLE_CUDA_
     if (rdma_enable_cuda) {
         int i;
+        static CUcontext active_context = NULL;
+
+        /*check if three is an active context, or else skip cuda_unregister,
+         *the application might have called destroyed the context before finalize
+         */
+        CU_CHECK(cuCtxGetCurrent(&active_context));
+
         for(i = 0; i < NUM_CUDA_BUF_POOLS; i++) {
             curr = rdma_vbuf_pools[i].region_head;
             while (curr) {
                 next = curr->next;
                 free(curr->malloc_start);
-                if (( rdma_vbuf_pools[i].index == CUDA_RNDV_BLOCK_BUF ||
+  
+                if (active_context != NULL && 
+                    (rdma_vbuf_pools[i].index == CUDA_RNDV_BLOCK_BUF ||
                     (rdma_eager_cudahost_reg && 
                              rdma_vbuf_pools[i].index == CUDA_EAGER_BUF))) {
                     ibv_cuda_unregister(curr->malloc_buf_start);
@@ -302,6 +312,10 @@ static int allocate_vbuf_region(int nvbufs)
     int alignment_vbuf = 64;
     int alignment_dma = getpagesize();
     int result = 0;
+
+    if (nvbufs <= 0) {
+        return 0;
+    }
 
     DEBUG_PRINT("Allocating a new vbuf region.\n");
 
@@ -646,6 +660,9 @@ vbuf* get_cuda_vbuf(int offset)
     v->coalesce = 0;
     v->content_size = 0;
     v->eager = 0;
+    v->finish_count = 0;
+    v->orig_vbuf = NULL;
+    v->displacement = 0;
     /* Decide which transport need to assign here */
     v->transport = IB_TRANSPORT_RC;
 
@@ -679,7 +696,7 @@ void release_cuda_vbuf(vbuf* v)
         pthread_spin_lock(&vbuf_lock);
     }
 
-    DEBUG_PRINT("release_vbuf: releasing %p previous head = %p, padding %d\n", v, rdma_vbuf_pool->free_head, v->padding);
+    DEBUG_PRINT("release_vbuf: releasing %p padding %d\n", v, rdma_vbuf_pool->free_head, v->padding);
 
     if (v->padding != NORMAL_VBUF_FLAG
             && v->padding != RPUT_VBUF_FLAG
@@ -695,6 +712,9 @@ void release_cuda_vbuf(vbuf* v)
     v->content_size = 0;
     v->sreq = NULL;
     v->vc = NULL;
+    v->finish_count = 0;
+    v->orig_vbuf = NULL;
+    v->displacement = 0;
 
     v->desc.next = rdma_vbuf_pool->free_head;
     rdma_vbuf_pool->free_head = v;

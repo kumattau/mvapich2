@@ -25,20 +25,31 @@ enum {
     SCATTER_MCAST,                    
 };
 
-int mv2_size_scatter_tuning_table = 0;
-mv2_scatter_tuning_table *mv2_scatter_thresholds_table = NULL;
+int *mv2_scatter_table_ppn_conf = NULL;
+int mv2_scatter_num_ppn_conf = 1;
+int *mv2_size_scatter_tuning_table = NULL;
+mv2_scatter_tuning_table **mv2_scatter_thresholds_table = NULL;
 
 int MV2_set_scatter_tuning_table(int heterogeneity)
 {
+    int agg_table_sum = 0;
+    int i;
+    mv2_scatter_tuning_table **table_ptrs = NULL;
 #if defined(_OSU_MVAPICH_) && !defined(_OSU_PSM_)
     if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
         MV2_ARCH_INTEL_XEON_X5650_12, MV2_HCA_MLX_CX_QDR) && !heterogeneity){
-        mv2_size_scatter_tuning_table = 6;
-        mv2_scatter_thresholds_table = MPIU_Malloc(mv2_size_scatter_tuning_table *
-                                                  sizeof(mv2_scatter_tuning_table));
-        MPIU_Memset(mv2_scatter_thresholds_table, 0, mv2_size_scatter_tuning_table *
-                    sizeof(mv2_scatter_tuning_table)); 
-        mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table[] = {
+        mv2_scatter_num_ppn_conf = 1;
+        mv2_scatter_thresholds_table
+            = MPIU_Malloc(sizeof(mv2_scatter_tuning_table *)
+              * mv2_scatter_num_ppn_conf);
+        table_ptrs = MPIU_Malloc(sizeof(mv2_scatter_tuning_table *)
+                     * mv2_scatter_num_ppn_conf);
+        mv2_size_scatter_tuning_table = MPIU_Malloc(sizeof(int) *
+                                                      mv2_scatter_num_ppn_conf);
+        mv2_scatter_table_ppn_conf = MPIU_Malloc(mv2_scatter_num_ppn_conf * sizeof(int));
+        mv2_scatter_table_ppn_conf[0] = 12;
+        mv2_size_scatter_tuning_table[0] = 6;
+        mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table_12ppn[] = {
             {
                 12,
                 2,
@@ -121,18 +132,191 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
                 },  
             },  
         };
-    
-        MPIU_Memcpy(mv2_scatter_thresholds_table, mv2_tmp_scatter_thresholds_table,
-                  mv2_size_scatter_tuning_table * sizeof (mv2_scatter_tuning_table));
+        table_ptrs[0] = mv2_tmp_scatter_thresholds_table_12ppn;
+        agg_table_sum = 0;
+        for (i = 0; i < mv2_scatter_num_ppn_conf; i++) {
+            agg_table_sum += mv2_size_scatter_tuning_table[i];
+        }
+        mv2_scatter_thresholds_table[0] =
+            MPIU_Malloc(agg_table_sum * sizeof (mv2_scatter_tuning_table));
+        MPIU_Memcpy(mv2_scatter_thresholds_table[0], table_ptrs[0],
+                    (sizeof(mv2_scatter_tuning_table)
+                     * mv2_size_scatter_tuning_table[0]));
+        for (i = 1; i < mv2_scatter_num_ppn_conf; i++) {
+            mv2_scatter_thresholds_table[i] =
+            mv2_scatter_thresholds_table[i - 1]
+            + mv2_size_scatter_tuning_table[i - 1];
+            MPIU_Memcpy(mv2_scatter_thresholds_table[i], table_ptrs[i],
+                      (sizeof(mv2_scatter_tuning_table)
+                       * mv2_size_scatter_tuning_table[i]));
+        }
+        MPIU_Free(table_ptrs);
     } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
         MV2_ARCH_INTEL_XEON_E5_2680_16, MV2_HCA_MLX_CX_FDR) && !heterogeneity){
         /*Stampede,*/
-        mv2_size_scatter_tuning_table = 8;
-        mv2_scatter_thresholds_table = MPIU_Malloc(mv2_size_scatter_tuning_table *
-                                                  sizeof(mv2_scatter_tuning_table));
-        MPIU_Memset(mv2_scatter_thresholds_table, 0, mv2_size_scatter_tuning_table * 
-                    sizeof(mv2_scatter_tuning_table)); 
-        mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table[] = {
+        mv2_scatter_num_ppn_conf = 3;
+        mv2_scatter_thresholds_table
+            = MPIU_Malloc(sizeof(mv2_scatter_tuning_table *)
+                  * mv2_scatter_num_ppn_conf);
+        table_ptrs = MPIU_Malloc(sizeof(mv2_scatter_tuning_table *)
+                                 * mv2_scatter_num_ppn_conf);
+        mv2_size_scatter_tuning_table = MPIU_Malloc(sizeof(int) *
+                                                      mv2_scatter_num_ppn_conf);
+        mv2_scatter_table_ppn_conf 
+            = MPIU_Malloc(mv2_scatter_num_ppn_conf * sizeof(int));
+        mv2_scatter_table_ppn_conf[0] = 1;
+        mv2_size_scatter_tuning_table[0] = 6;
+        mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table_1ppn[] = {
+            {2,
+                1, 
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Binomial},
+                },
+                1,
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Binomial},
+                },
+            },
+
+            {4,
+                1, 
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                1,
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Direct},
+                },
+            },
+  
+            {8,
+                1, 
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                1,
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Direct},
+                },
+            },
+  
+            {16,
+                1, 
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                1,
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Direct},
+                },
+            },
+  
+            {32,
+                1, 
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                1,
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Direct},
+                },
+            },
+  
+            {64,
+                2, 
+                {
+                    {0, 32, &MPIR_Scatter_MV2_Binomial},
+                    {32, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                1,
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Binomial},
+                },
+            },
+        };
+        table_ptrs[0] = mv2_tmp_scatter_thresholds_table_1ppn;
+        mv2_scatter_table_ppn_conf[1] = 2;
+        mv2_size_scatter_tuning_table[1] = 6;
+        mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table_2ppn[] = {
+            {4,
+                2, 
+                {
+                    {0, 4096, &MPIR_Scatter_MV2_Binomial},
+                    {4096, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                1,
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Direct},
+                },
+            },
+  
+            {8,
+                2, 
+                {
+                    {0, 512, &MPIR_Scatter_MV2_two_level_Direct},
+                    {512, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                1,
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Binomial},
+                },
+            },
+  
+            {16,
+                2, 
+                {
+                    {0, 2048, &MPIR_Scatter_MV2_two_level_Direct},
+                    {2048, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                1,
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Binomial},
+                },
+            },
+  
+            {32,
+                2, 
+                {
+                    {0, 2048, &MPIR_Scatter_MV2_two_level_Direct},
+                    {2048, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                1,
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Binomial},
+                },
+            },
+  
+            {64,
+                2, 
+                {
+                    {0, 8192, &MPIR_Scatter_MV2_two_level_Direct},
+                    {8192, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                1,
+                {
+                    {0, -1, &MPIR_Scatter_MV2_Binomial},
+                },
+            },
+  
+            {128,
+                4, 
+                {
+                    {0, 16, &MPIR_Scatter_MV2_Binomial},
+                    {16, 128, &MPIR_Scatter_MV2_two_level_Binomial},
+                    {128, 16384, &MPIR_Scatter_MV2_two_level_Direct},
+                    {16384, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                1,
+                {
+                    {0, 128, &MPIR_Scatter_MV2_Direct},
+                    {128, -1, &MPIR_Scatter_MV2_Binomial},
+                },
+            },
+        };
+        table_ptrs[1] = mv2_tmp_scatter_thresholds_table_2ppn;
+        mv2_scatter_table_ppn_conf[2] = 16;
+        mv2_size_scatter_tuning_table[2] = 8;
+        mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table_16ppn[] = {
             {
                 16,
                 2,
@@ -254,19 +438,41 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
                 },
             }, 
         };
-    
-        MPIU_Memcpy(mv2_scatter_thresholds_table, mv2_tmp_scatter_thresholds_table,
-                  mv2_size_scatter_tuning_table * sizeof (mv2_scatter_tuning_table));
-
+        table_ptrs[2] = mv2_tmp_scatter_thresholds_table_16ppn;
+        agg_table_sum = 0;
+        for (i = 0; i < mv2_scatter_num_ppn_conf; i++) {
+            agg_table_sum += mv2_size_scatter_tuning_table[i];
+        }
+        mv2_scatter_thresholds_table[0] =
+            MPIU_Malloc(agg_table_sum * sizeof (mv2_scatter_tuning_table));
+        MPIU_Memcpy(mv2_scatter_thresholds_table[0], table_ptrs[0],
+            (sizeof(mv2_scatter_tuning_table)
+                     * mv2_size_scatter_tuning_table[0]));
+        for (i = 1; i < mv2_scatter_num_ppn_conf; i++) {
+            mv2_scatter_thresholds_table[i] =
+            mv2_scatter_thresholds_table[i - 1]
+            + mv2_size_scatter_tuning_table[i - 1];
+            MPIU_Memcpy(mv2_scatter_thresholds_table[i], table_ptrs[i],
+                      (sizeof(mv2_scatter_tuning_table)
+                       * mv2_size_scatter_tuning_table[i]));
+        }
+        MPIU_Free(table_ptrs);
     } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
         MV2_ARCH_AMD_OPTERON_6136_32, MV2_HCA_MLX_CX_QDR) && !heterogeneity){
         /*Trestles*/
-        mv2_size_scatter_tuning_table = 6;
-        mv2_scatter_thresholds_table = MPIU_Malloc(mv2_size_scatter_tuning_table *
-                                                  sizeof(mv2_scatter_tuning_table));
-        MPIU_Memset(mv2_scatter_thresholds_table, 0, mv2_size_scatter_tuning_table * 
-                    sizeof(mv2_scatter_tuning_table)); 
-        mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table[] = {
+        mv2_scatter_num_ppn_conf = 1;
+        mv2_scatter_thresholds_table
+            = MPIU_Malloc(sizeof(mv2_scatter_tuning_table *)
+                  * mv2_scatter_num_ppn_conf);
+        table_ptrs = MPIU_Malloc(sizeof(mv2_scatter_tuning_table *)
+                                 * mv2_scatter_num_ppn_conf);
+        mv2_size_scatter_tuning_table = MPIU_Malloc(sizeof(int) *
+                                                      mv2_scatter_num_ppn_conf);
+        mv2_scatter_table_ppn_conf 
+            = MPIU_Malloc(mv2_scatter_num_ppn_conf * sizeof(int));
+        mv2_scatter_table_ppn_conf[0] = 32;
+        mv2_size_scatter_tuning_table[0] = 6;
+        mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table_32ppn[] = {
             {
                 32,
                 2,
@@ -356,19 +562,42 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
                 },
             }, 
         };
-    
-        MPIU_Memcpy(mv2_scatter_thresholds_table, mv2_tmp_scatter_thresholds_table,
-                  mv2_size_scatter_tuning_table * sizeof (mv2_scatter_tuning_table));
+        table_ptrs[0] = mv2_tmp_scatter_thresholds_table_32ppn;
+        agg_table_sum = 0;
+        for (i = 0; i < mv2_scatter_num_ppn_conf; i++) {
+            agg_table_sum += mv2_size_scatter_tuning_table[i];
+        }
+        mv2_scatter_thresholds_table[0] =
+            MPIU_Malloc(agg_table_sum * sizeof (mv2_scatter_tuning_table));
+        MPIU_Memcpy(mv2_scatter_thresholds_table[0], table_ptrs[0],
+            (sizeof(mv2_scatter_tuning_table)
+                     * mv2_size_scatter_tuning_table[0]));
+        for (i = 1; i < mv2_scatter_num_ppn_conf; i++) {
+            mv2_scatter_thresholds_table[i] =
+            mv2_scatter_thresholds_table[i - 1]
+            + mv2_size_scatter_tuning_table[i - 1];
+            MPIU_Memcpy(mv2_scatter_thresholds_table[i], table_ptrs[i],
+                      (sizeof(mv2_scatter_tuning_table)
+                       * mv2_size_scatter_tuning_table[i]));
+        }
+        MPIU_Free(table_ptrs);
     } else
 
 #endif /* (_OSU_MVAPICH_) && !defined(_OSU_PSM_) */
     {
-        mv2_size_scatter_tuning_table = 7;
-        mv2_scatter_thresholds_table = MPIU_Malloc(mv2_size_scatter_tuning_table *
-                                                  sizeof(mv2_scatter_tuning_table));
-        MPIU_Memset(mv2_scatter_thresholds_table, 0, mv2_size_scatter_tuning_table * 
-                    sizeof(mv2_scatter_tuning_table)); 
-        mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table[] = {
+        mv2_scatter_num_ppn_conf = 1;
+        mv2_scatter_thresholds_table
+            = MPIU_Malloc(sizeof(mv2_scatter_tuning_table *)
+                  * mv2_scatter_num_ppn_conf);
+        table_ptrs = MPIU_Malloc(sizeof(mv2_scatter_tuning_table *)
+                                 * mv2_scatter_num_ppn_conf);
+        mv2_size_scatter_tuning_table = MPIU_Malloc(sizeof(int) *
+                                                      mv2_scatter_num_ppn_conf);
+        mv2_scatter_table_ppn_conf 
+            = MPIU_Malloc(mv2_scatter_num_ppn_conf * sizeof(int));
+        mv2_scatter_table_ppn_conf[0] = 8;
+        mv2_size_scatter_tuning_table[0] = 7;
+        mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table_8ppn[] = {
             {
                 8,
                 2,
@@ -480,20 +709,37 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
                 },
             },
         };
-    
-        MPIU_Memcpy(mv2_scatter_thresholds_table, mv2_tmp_scatter_thresholds_table,
-                  mv2_size_scatter_tuning_table * sizeof (mv2_scatter_tuning_table));
-
+        table_ptrs[0] = mv2_tmp_scatter_thresholds_table_8ppn;
+        agg_table_sum = 0;
+        for (i = 0; i < mv2_scatter_num_ppn_conf; i++) {
+            agg_table_sum += mv2_size_scatter_tuning_table[i];
+        }
+        mv2_scatter_thresholds_table[0] =
+            MPIU_Malloc(agg_table_sum * sizeof (mv2_scatter_tuning_table));
+        MPIU_Memcpy(mv2_scatter_thresholds_table[0], table_ptrs[0],
+            (sizeof(mv2_scatter_tuning_table)
+                     * mv2_size_scatter_tuning_table[0]));
+        for (i = 1; i < mv2_scatter_num_ppn_conf; i++) {
+            mv2_scatter_thresholds_table[i] =
+            mv2_scatter_thresholds_table[i - 1]
+            + mv2_size_scatter_tuning_table[i - 1];
+            MPIU_Memcpy(mv2_scatter_thresholds_table[i], table_ptrs[i],
+                      (sizeof(mv2_scatter_tuning_table)
+                       * mv2_size_scatter_tuning_table[i]));
+        }
+        MPIU_Free(table_ptrs);
     }
     return 0;
 }
 
 void MV2_cleanup_scatter_tuning_table()
 {
+    MPIU_Free(mv2_scatter_thresholds_table[0]);
+    MPIU_Free(mv2_scatter_table_ppn_conf);
+    MPIU_Free(mv2_size_scatter_tuning_table);
     if (mv2_scatter_thresholds_table != NULL) {
         MPIU_Free(mv2_scatter_thresholds_table);
     }
-
 }
 
 /* Return the number of separator inside a string */
@@ -509,21 +755,33 @@ int MV2_internode_Scatter_is_define(char *mv2_user_scatter_inter, char
     int i = 0;
     int nb_element = count_sep(mv2_user_scatter_inter) + 1;
 
+
+    mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table[1];
+    mv2_scatter_num_ppn_conf = 1;
+    if (mv2_size_scatter_tuning_table == NULL) {
+        mv2_size_scatter_tuning_table =
+	  MPIU_Malloc(mv2_scatter_num_ppn_conf * sizeof(int));
+    }
+    mv2_size_scatter_tuning_table[0] = 1;
+
+    if (mv2_scatter_table_ppn_conf == NULL) {
+        mv2_scatter_table_ppn_conf =
+	  MPIU_Malloc(mv2_scatter_num_ppn_conf * sizeof(int));
+    }
+    mv2_scatter_table_ppn_conf[0] = -1;
+
     /* If one scatter tuning table is already defined */
     if (mv2_scatter_thresholds_table != NULL) {
         MPIU_Free(mv2_scatter_thresholds_table);
     }
-
-    mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table[1];
-    mv2_size_scatter_tuning_table = 1;
-
     /* We realloc the space for the new scatter tuning table */
-    mv2_scatter_thresholds_table = MPIU_Malloc(mv2_size_scatter_tuning_table *
-                                             sizeof(mv2_scatter_tuning_table));
+    mv2_scatter_thresholds_table =
+      MPIU_Malloc(mv2_scatter_num_ppn_conf *
+		  sizeof(mv2_scatter_tuning_table *));
+    mv2_scatter_thresholds_table[0] =
+      MPIU_Malloc(mv2_size_scatter_tuning_table[0] *
+		  sizeof(mv2_scatter_tuning_table));
 
-    MPIU_Memset(mv2_scatter_thresholds_table, 0, mv2_size_scatter_tuning_table * 
-                sizeof(mv2_scatter_tuning_table)); 
-    MPIU_Memset(&mv2_tmp_scatter_thresholds_table, 0, sizeof(mv2_scatter_tuning_table)); 
     if (nb_element == 1) {
         mv2_tmp_scatter_thresholds_table[0].numproc = 1;
         mv2_tmp_scatter_thresholds_table[0].size_inter_table = 1;
@@ -634,21 +892,96 @@ int MV2_internode_Scatter_is_define(char *mv2_user_scatter_inter, char
     }
     mv2_tmp_scatter_thresholds_table[0].size_intra_table = 2;
 
-    MPIU_Memcpy(mv2_scatter_thresholds_table, mv2_tmp_scatter_thresholds_table, sizeof
-                (mv2_scatter_tuning_table));
     if (mv2_user_scatter_intra != NULL) {
-        MV2_intranode_Scatter_is_define(mv2_user_scatter_intra);
+        i = 0;
+        nb_element = count_sep(mv2_user_scatter_intra) + 1;        
+	if (nb_element == 1) {
+	    mv2_tmp_scatter_thresholds_table[0].size_intra_table = 1;
+	    mv2_tmp_scatter_thresholds_table[0].intra_node[0].min = 0;
+	    mv2_tmp_scatter_thresholds_table[0].intra_node[0].max = -1;
+    
+	    switch (atoi(mv2_user_scatter_intra)) {
+	    case SCATTER_DIRECT:
+	      mv2_tmp_scatter_thresholds_table[0].intra_node[0].MV2_pt_Scatter_function =
+		&MPIR_Scatter_MV2_Direct;
+	      break;
+	    case SCATTER_BINOMIAL:
+	      mv2_tmp_scatter_thresholds_table[0].intra_node[0].MV2_pt_Scatter_function =
+		&MPIR_Scatter_MV2_Binomial;
+	      break;
+	    default:
+	      mv2_tmp_scatter_thresholds_table[0].intra_node[0].MV2_pt_Scatter_function =
+		&MPIR_Scatter_MV2_Direct;
+	  }
+        
+	} else {
+	    char *dup, *p, *save_p;
+	    regmatch_t match[NMATCH];
+	    regex_t preg;
+	    const char *regexp = "([0-9]+):([0-9]+)-([0-9]+|\\+)";
+
+	    if (!(dup = MPIU_Strdup(mv2_user_scatter_intra))) {
+	      fprintf(stderr, "failed to duplicate `%s'\n", mv2_user_scatter_intra);
+	      return 1;
+	    }
+
+	    if (regcomp(&preg, regexp, REG_EXTENDED)) {
+	      fprintf(stderr, "failed to compile regexp `%s'\n", mv2_user_scatter_intra);
+	      MPIU_Free(dup);
+	      return 2;
+	    }
+
+	    mv2_tmp_scatter_thresholds_table[0].numproc = 1;
+	    mv2_tmp_scatter_thresholds_table[0].size_intra_table = 2;
+	    i = 0;
+	    for (p = strtok_r(dup, ",", &save_p); p; p = strtok_r(NULL, ",", &save_p)) {
+	      if (regexec(&preg, p, NMATCH, match, 0)) {
+		fprintf(stderr, "failed to match on `%s'\n", p);
+		regfree(&preg);
+		MPIU_Free(dup);
+		return 2;
+	      }
+	      /* given () start at 1 */
+	      switch (atoi(p + match[1].rm_so)) {
+
+	      case SCATTER_DIRECT:
+		mv2_tmp_scatter_thresholds_table[0].intra_node[i].MV2_pt_Scatter_function =
+		  &MPIR_Scatter_MV2_Direct;
+		break;
+	      case SCATTER_BINOMIAL:
+		mv2_tmp_scatter_thresholds_table[0].intra_node[i].MV2_pt_Scatter_function =
+		  &MPIR_Scatter_MV2_Binomial;
+		break;
+	      default:
+		mv2_tmp_scatter_thresholds_table[0].intra_node[i].MV2_pt_Scatter_function =
+		  &MPIR_Scatter_MV2_Direct;
+	      }
+
+	      mv2_tmp_scatter_thresholds_table[0].intra_node[i].min = atoi(p +
+									  match[2].rm_so);
+	      if (p[match[3].rm_so] == '+') {
+		mv2_tmp_scatter_thresholds_table[0].intra_node[i].max = -1;
+	      } else {
+		mv2_tmp_scatter_thresholds_table[0].intra_node[i].max =
+		  atoi(p + match[3].rm_so);
+	      }
+	      i++;
+	    }
+	    MPIU_Free(dup);
+	    regfree(&preg);
+	}
     } else {
-        mv2_scatter_thresholds_table[0].size_intra_table = 1;
-        mv2_scatter_thresholds_table[0].intra_node[0].min = 0;
-        mv2_scatter_thresholds_table[0].intra_node[0].max = -1;
-        mv2_scatter_thresholds_table[0].intra_node[0].MV2_pt_Scatter_function =
+        mv2_tmp_scatter_thresholds_table[0].size_intra_table = 1;
+        mv2_tmp_scatter_thresholds_table[0].intra_node[0].min = 0;
+        mv2_tmp_scatter_thresholds_table[0].intra_node[0].max = -1;
+        mv2_tmp_scatter_thresholds_table[0].intra_node[0].MV2_pt_Scatter_function =
             &MPIR_Scatter_MV2_Direct;
-   }
+    }
+    MPIU_Memcpy(mv2_scatter_thresholds_table[0], mv2_tmp_scatter_thresholds_table, sizeof
+                (mv2_scatter_tuning_table));
 
     return 0;
 }
-
 
 int MV2_intranode_Scatter_is_define(char *mv2_user_scatter_intra)
 {
@@ -656,21 +989,21 @@ int MV2_intranode_Scatter_is_define(char *mv2_user_scatter_intra)
     int nb_element = count_sep(mv2_user_scatter_intra) + 1;
 
     if (nb_element == 1) {
-        mv2_scatter_thresholds_table[0].size_intra_table = 1;
-        mv2_scatter_thresholds_table[0].intra_node[0].min = 0;
-        mv2_scatter_thresholds_table[0].intra_node[0].max = -1;
+        mv2_scatter_thresholds_table[0][0].size_intra_table = 1;
+        mv2_scatter_thresholds_table[0][0].intra_node[0].min = 0;
+        mv2_scatter_thresholds_table[0][0].intra_node[0].max = -1;
     
         switch (atoi(mv2_user_scatter_intra)) {
         case SCATTER_DIRECT:
-            mv2_scatter_thresholds_table[0].intra_node[0].MV2_pt_Scatter_function =
+            mv2_scatter_thresholds_table[0][0].intra_node[0].MV2_pt_Scatter_function =
                 &MPIR_Scatter_MV2_Direct;
             break;
         case SCATTER_BINOMIAL:
-            mv2_scatter_thresholds_table[0].intra_node[0].MV2_pt_Scatter_function =
+            mv2_scatter_thresholds_table[0][0].intra_node[0].MV2_pt_Scatter_function =
                 &MPIR_Scatter_MV2_Binomial;
             break;
         default:
-            mv2_scatter_thresholds_table[0].intra_node[0].MV2_pt_Scatter_function =
+            mv2_scatter_thresholds_table[0][0].intra_node[0].MV2_pt_Scatter_function =
                 &MPIR_Scatter_MV2_Direct;
         }
         
@@ -691,8 +1024,8 @@ int MV2_intranode_Scatter_is_define(char *mv2_user_scatter_intra)
             return 2;
         }
 
-        mv2_scatter_thresholds_table[0].numproc = 1;
-        mv2_scatter_thresholds_table[0].size_intra_table = 2;
+        mv2_scatter_thresholds_table[0][0].numproc = 1;
+        mv2_scatter_thresholds_table[0][0].size_intra_table = 2;
         i = 0;
         for (p = strtok_r(dup, ",", &save_p); p; p = strtok_r(NULL, ",", &save_p)) {
             if (regexec(&preg, p, NMATCH, match, 0)) {
@@ -705,24 +1038,24 @@ int MV2_intranode_Scatter_is_define(char *mv2_user_scatter_intra)
             switch (atoi(p + match[1].rm_so)) {
 
             case SCATTER_DIRECT:
-                mv2_scatter_thresholds_table[0].intra_node[i].MV2_pt_Scatter_function =
+                mv2_scatter_thresholds_table[0][0].intra_node[i].MV2_pt_Scatter_function =
                     &MPIR_Scatter_MV2_Direct;
                 break;
             case SCATTER_BINOMIAL:
-                mv2_scatter_thresholds_table[0].intra_node[i].MV2_pt_Scatter_function =
+                mv2_scatter_thresholds_table[0][0].intra_node[i].MV2_pt_Scatter_function =
                     &MPIR_Scatter_MV2_Binomial;
                 break;
             default:
-                mv2_scatter_thresholds_table[0].intra_node[i].MV2_pt_Scatter_function =
+                mv2_scatter_thresholds_table[0][0].intra_node[i].MV2_pt_Scatter_function =
                     &MPIR_Scatter_MV2_Direct;
             }
 
-            mv2_scatter_thresholds_table[0].intra_node[i].min = atoi(p +
+            mv2_scatter_thresholds_table[0][0].intra_node[i].min = atoi(p +
                                                                          match[2].rm_so);
             if (p[match[3].rm_so] == '+') {
-                mv2_scatter_thresholds_table[0].intra_node[i].max = -1;
+                mv2_scatter_thresholds_table[0][0].intra_node[i].max = -1;
             } else {
-                mv2_scatter_thresholds_table[0].intra_node[i].max =
+                mv2_scatter_thresholds_table[0][0].intra_node[i].max =
                     atoi(p + match[3].rm_so);
             }
             i++;
@@ -733,4 +1066,4 @@ int MV2_intranode_Scatter_is_define(char *mv2_user_scatter_intra)
     return 0;
 }
 
-#endif                          /* if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /*defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */

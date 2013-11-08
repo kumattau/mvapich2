@@ -218,6 +218,9 @@ typedef struct vbuf
 #ifdef _ENABLE_CUDA_
     void *pool_index;
     void *next;
+    void *orig_vbuf;
+    uint8_t finish_count;
+    uint16_t displacement;
 #endif
 } vbuf;
 
@@ -373,6 +376,25 @@ void vbuf_init_rma_put(
     void* remote_address,
     uint32_t rkey,
     int nbytes,
+    int rail);
+
+void vbuf_init_rma_compare_and_swap(
+    vbuf *v, 
+    void *local_address,
+    uint32_t lkey,
+    void *remote_address, 
+    uint32_t rkey, 
+    uint64_t compare,
+    uint64_t swap, 
+    int rail);
+
+void vbuf_init_rma_fetch_and_add(
+    vbuf *v, 
+    void *local_address, 
+    uint32_t lkey,
+    void *remote_address, 
+    uint32_t rkey, 
+    uint64_t add,
     int rail);
 
 #if defined(CKPT)

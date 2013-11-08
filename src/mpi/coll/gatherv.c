@@ -116,7 +116,7 @@ int MPIR_Gatherv (
                     }
                 }
                 else {
-                    mpi_errno = MPIC_Irecv_ft(((char *)recvbuf+displs[i]*extent), 
+                    mpi_errno = MPIC_Irecv(((char *)recvbuf+displs[i]*extent),
                                               recvcounts[i], recvtype, i,
                                               MPIR_GATHERV_TAG, comm,
                                               &reqarray[reqs++]);
@@ -125,7 +125,7 @@ int MPIR_Gatherv (
             }
         }
         /* ... then wait for *all* of them to finish: */
-        mpi_errno = MPIC_Waitall_ft(reqs, reqarray, starray, errflag);
+        mpi_errno = MPIC_Waitall(reqs, reqarray, starray, errflag);
         if (mpi_errno&& mpi_errno != MPI_ERR_IN_STATUS) MPIU_ERR_POP(mpi_errno);
         
         /* --BEGIN ERROR HANDLING-- */
@@ -159,7 +159,7 @@ int MPIR_Gatherv (
                 MPIR_PARAM_GET_DEFAULT_INT(GATHERV_INTER_SSEND_MIN_PROCS,&min_procs);
 
             if (comm_size >= min_procs) {
-                mpi_errno = MPIC_Ssend_ft(sendbuf, sendcount, sendtype, root,
+                mpi_errno = MPIC_Ssend(sendbuf, sendcount, sendtype, root,
                                           MPIR_GATHERV_TAG, comm, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
@@ -169,7 +169,7 @@ int MPIR_Gatherv (
                 }
             }
             else {
-                mpi_errno = MPIC_Send_ft(sendbuf, sendcount, sendtype, root,
+                mpi_errno = MPIC_Send(sendbuf, sendcount, sendtype, root,
                                          MPIR_GATHERV_TAG, comm, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */

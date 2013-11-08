@@ -40,6 +40,9 @@
 #include <netinet/in.h>
 #endif
 
+#if defined(_OSU_MVAPICH_)
+#include "rdma_impl.h"
+#endif
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 #include "coll_shmem_internal.h"
@@ -80,6 +83,7 @@ int mv2_inter_node_knomial_factor = 4;
 int mv2_knomial_2level_bcast_message_size_threshold = 2048;
 int mv2_knomial_2level_bcast_system_size_threshold = 64;
 int mv2_enable_zcpy_bcast=1; 
+int mv2_enable_zcpy_reduce=1; 
 
 int mv2_shmem_coll_size = 0;
 char *mv2_shmem_coll_file = NULL;
@@ -128,7 +132,9 @@ int mv2_mcast_allreduce_large_msg_size = 128 * 1024;
 int mv2_disable_shmem_reduce = 0;
 int mv2_use_knomial_reduce = 1;
 int mv2_reduce_inter_knomial_factor = -1;
+int mv2_reduce_zcopy_inter_knomial_factor = 4;
 int mv2_reduce_intra_knomial_factor = -1;
+int mv2_reduce_zcopy_max_inter_knomial_factor = 4; 
 int mv2_disable_shmem_barrier = 0;
 int mv2_use_two_level_gather = 1;
 int mv2_use_direct_gather = 1;
@@ -228,7 +234,8 @@ int mv2_use_anl_collectives = 0;
 int mv2_shmem_coll_num_procs = 64;
 int mv2_shmem_coll_num_comm = 20;
 
-int mv2_shm_window_size = 16;
+int mv2_shm_window_size = 32;
+int mv2_shm_reduce_tree_degree = 4; 
 int mv2_shm_slot_len = 8192;
 int mv2_use_slot_shmem_coll = 1;
 int mv2_use_slot_shmem_bcast = 1;
@@ -260,9 +267,9 @@ int smc_store_set;
 #endif
 
 #if OSU_MPIT
-int mv2_num_2level_comm_requests            = 0; 
-int mv2_num_2level_comm_success             = 0; 
-int mv2_num_shmem_coll_calls                = 0;
+unsigned long mv2_num_2level_comm_requests            = 0; 
+unsigned long mv2_num_2level_comm_success             = 0; 
+unsigned long mv2_num_shmem_coll_calls                = 0;
 #endif /* OSU_MPIT */
 
 #ifdef _ENABLE_CUDA_
@@ -282,7 +289,6 @@ static void *mv2_cuda_original_send_buf = NULL;
 static void *mv2_cuda_original_recv_buf = NULL;
 void *mv2_cuda_allgather_store_buf = NULL;
 int mv2_cuda_allgather_store_buf_size = 256 * 1024;
-cudaEvent_t *mv2_cuda_sync_event = NULL;
 static void *mv2_cuda_coll_pack_buf = 0;
 static int mv2_cuda_coll_pack_buf_size = 0;
 static void *mv2_cuda_coll_unpack_buf = 0;
@@ -1289,6 +1295,13 @@ void MV2_Read_env_vars(void)
         if (flag >= 0)
             mv2_reduce_inter_knomial_factor = flag;
     }
+    if ((value = getenv("MV2_USE_ZCOPY_INTER_KNOMIAL_REDUCE_FACTOR")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag >= 0) { 
+            mv2_reduce_zcopy_inter_knomial_factor = flag;
+            mv2_reduce_zcopy_max_inter_knomial_factor = flag;
+        } 
+    }
     if ((value = getenv("MV2_USE_INTRA_KNOMIAL_REDUCE_FACTOR")) != NULL) {
         flag = (int) atoi(value);
         if (flag >= 0)
@@ -1706,6 +1719,11 @@ void MV2_Read_env_vars(void)
         if (flag >= 0)
            mv2_enable_zcpy_bcast = flag;
     }
+    if ((value = getenv("MV2_USE_ZCOPY_REDUCE")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag >= 0)
+           mv2_enable_zcpy_reduce = flag;
+    }
 
     if ((value = getenv("MV2_RED_SCAT_SHORT_MSG")) != NULL) {
         flag = (int) atoi(value);
@@ -1765,6 +1783,9 @@ void MV2_Read_env_vars(void)
 
     if ((value = getenv("MV2_SHMEM_COLL_WINDOW_SIZE")) != NULL) {
         mv2_shm_window_size = atoi(value);
+    }
+    if ((value = getenv("MV2_SHMEM_REDUCE_TREE_DEGREE")) != NULL) {
+        mv2_shm_reduce_tree_degree = atoi(value);
     }
     if ((value = getenv("MV2_SHMEM_COLL_SLOT_LEN")) != NULL) {
         mv2_shm_slot_len = atoi(value);
@@ -2153,11 +2174,6 @@ void CUDA_COLL_Finalize()
         mv2_cuda_allgather_store_buf = NULL;
     }
 
-    if (mv2_cuda_sync_event) {
-        cudaEventDestroy(*mv2_cuda_sync_event);
-        MPIU_Free(mv2_cuda_sync_event);
-    }
-
     if (mv2_cuda_coll_pack_buf_size) {
         MPIU_Free_CUDA(mv2_cuda_coll_pack_buf);
         mv2_cuda_coll_pack_buf_size = 0;
@@ -2535,13 +2551,31 @@ void mv2_shm_barrier(shmem_info_t * shmem)
     shmem->read++;
 }
 
-void mv2_shm_reduce(shmem_info_t * shmem, char *buf, int len,
-                    int count, int root, MPI_User_function * uop, MPI_Datatype datatype)
-{
 
+
+void mv2_shm_reduce(shmem_info_t * shmem, char *in_buf, int len,
+                    int count, int root, MPI_User_function * uop, MPI_Datatype datatype, 
+                    int is_cxx_uop) 
+{
+    char *buf=NULL; 
     int i, nspin = 0;
     int windex = shmem->write % mv2_shm_window_size;
     int rindex = shmem->read % mv2_shm_window_size;
+
+    /* Copy the data from the input buffer to the shm slot. This is to
+     * ensure that we don't mess with the sendbuf supplied 
+     * by the application */
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        MPIR_Localcopy(in_buf, len, MPI_BYTE,
+            shmem->queue[shmem->local_rank].shm_slots[windex]->buf, len, MPI_BYTE);
+    } else
+#endif
+    {
+        MPIU_Memcpy(shmem->queue[shmem->local_rank].shm_slots[windex]->buf, in_buf, len);
+    }
+
+    buf = shmem->queue[shmem->local_rank].shm_slots[windex]->buf;
 
     if (shmem->local_rank == root) {
         for (i = 1; i < shmem->local_size; i++) {
@@ -2551,35 +2585,121 @@ void mv2_shm_reduce(shmem_info_t * shmem, char *buf, int len,
                     mv2_shm_progress(&nspin);
                 }
             }
+#ifdef HAVE_CXX_BINDING
+            if (is_cxx_uop) {
+                (*MPIR_Process.cxx_call_op_fn) (
+                    shmem->queue[i].shm_slots[rindex]->buf, buf,
+                    count, datatype, uop);
+            } else
+#endif
             (*uop) (shmem->queue[i].shm_slots[rindex]->buf, buf, &count, &datatype);
         }
     } else {
+        shmem->queue[shmem->local_rank].shm_slots[windex]->psn = shmem->write;
+    }
+}
+
+void mv2_shm_tree_reduce(shmem_info_t * shmem, char *in_buf, int len,
+                    int count, int root, MPI_User_function * uop, MPI_Datatype datatype, 
+                    int is_cxx_uop)
+{
+    void *buf=NULL; 
+    int i, nspin = 0;
+    int start=0, end=0;
+    int windex = shmem->write % mv2_shm_window_size;
+    int rindex = shmem->read % mv2_shm_window_size;
+
+    if (shmem->local_rank == root || shmem->local_rank % mv2_shm_reduce_tree_degree == 0) {
+        start = shmem->local_rank;
+        end   = shmem->local_rank +  mv2_shm_reduce_tree_degree;
+        if(end > shmem->local_size) end = shmem->local_size;
+
+        /* Copy the data from the input buffer to the shm slot. This is to ensure
+        * that we don't mess with the sendbuf supplied by the application */ 
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda) { 
-            MPIR_Localcopy(buf, len, MPI_BYTE, 
+        if (rdma_enable_cuda) {
+            MPIR_Localcopy(in_buf, len, MPI_BYTE,
                 shmem->queue[shmem->local_rank].shm_slots[windex]->buf, len, MPI_BYTE);
         } else
 #endif
         {
-            MPIU_Memcpy(shmem->queue[shmem->local_rank].shm_slots[windex]->buf, buf, len);
+            MPIU_Memcpy(shmem->queue[shmem->local_rank].shm_slots[windex]->buf, in_buf, len);
         }
+
+        buf = shmem->queue[shmem->local_rank].shm_slots[windex]->buf;
+
+
+        for(i=start + 1; i<end; i++) {
+            while (shmem->queue[i].shm_slots[rindex]->psn != shmem->read) {
+                nspin++;
+                if (nspin % mv2_shmem_coll_spin_count == 0) {
+                    mv2_shm_progress(&nspin);
+                }
+            }
+#ifdef HAVE_CXX_BINDING
+            if (is_cxx_uop) {
+                (*MPIR_Process.cxx_call_op_fn) (
+                    shmem->queue[i].shm_slots[rindex]->buf, buf, 
+                    count, datatype, uop);
+            } else
+#endif
+            (*uop) (shmem->queue[i].shm_slots[rindex]->buf, buf, &count, &datatype);
+        }
+
+        if(shmem->local_rank == root) {
+            for (i = mv2_shm_reduce_tree_degree; i < shmem->local_size; 
+                 i = i + mv2_shm_reduce_tree_degree) {
+                while (shmem->queue[i].shm_slots[rindex]->psn != shmem->read) {
+                    nspin++;
+                    if (nspin % mv2_shmem_coll_spin_count == 0) {
+                        mv2_shm_progress(&nspin);
+                    }
+                }
+#ifdef HAVE_CXX_BINDING
+                if (is_cxx_uop) {
+                    (*MPIR_Process.cxx_call_op_fn) (
+                        shmem->queue[i].shm_slots[rindex]->buf, buf,
+                        count, datatype, uop);
+                } else
+#endif
+
+                (*uop) (shmem->queue[i].shm_slots[rindex]->buf, buf, &count, &datatype);
+            }
+        } else {
+            shmem->queue[shmem->local_rank].shm_slots[windex]->psn = shmem->write;
+        }
+
+    } else {
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda) {
+            MPIR_Localcopy(in_buf, len, MPI_BYTE,
+                shmem->queue[shmem->local_rank].shm_slots[windex]->buf, len, MPI_BYTE);
+        } else
+#endif
+        {
+            MPIU_Memcpy(shmem->queue[shmem->local_rank].shm_slots[windex]->buf, in_buf, len);
+        }
+
         shmem->queue[shmem->local_rank].shm_slots[windex]->psn = shmem->write;
     }
+} 
 
-    shmem->write++;
-    shmem->read++;
-    if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
-        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %d \n", shmem->write);
-        mv2_shm_barrier(shmem);
-        shmem->tail = shmem->read;
-    }
-}
-
-void mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
+int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
 {
-    int nspin = 0;
-    int windex = shmem->write % mv2_shm_window_size;
-    int rindex = shmem->read % mv2_shm_window_size;
+    int mpi_errno = MPI_SUCCESS; 
+    int nspin = 0, intra_node_root=0;
+    int windex = -1, rindex=-1; 
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL, *comm_ptr=NULL;
+
+    MPID_Comm_get_ptr(shmem->comm, comm_ptr);
+    MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_commptr);
+    MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
+    shmem  = shmem_commptr->ch.shmem_info; 
+    windex = shmem->write % mv2_shm_window_size;
+    rindex = shmem->read % mv2_shm_window_size;
+
+
+
     if(shmem->local_size > 0) { 
         if (shmem->local_rank == root) {
 #if defined(_ENABLE_CUDA_)
@@ -2612,11 +2732,76 @@ void mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
     } 
     shmem->write++;
     shmem->read++;
+#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) 
+    if (shmem->half_full_complete == 0 &&
+        IS_SHMEM_WINDOW_HALF_FULL(shmem->write, shmem->tail)) {
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window half full: %d \n", shmem->write);
+        mv2_shm_barrier(shmem);
+        if (shmem->local_rank == intra_node_root &&
+            leader_commptr->local_size > 1) {
+            MPI_Status status;
+
+            if(shmem->end_request_active == 1){ 
+                /* Wait for previous ibarrier with end-request 
+                 * to complete */ 
+                mpi_errno = MPIR_Wait_impl(&(shmem->end_request),
+                                           &status);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                (shmem->end_request) = MPI_REQUEST_NULL;
+                shmem->end_request_active = 0;
+            } 
+
+            if(shmem->mid_request_active == 0){ 
+                /* Post Ibarrier with mid-request */ 
+                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
+                                      &(shmem->mid_request));
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                shmem->mid_request_active = 1;
+            } 
+        } 
+        shmem->half_full_complete = 1;
+    } 
+
+    if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %d \n", shmem->write);
+        mv2_shm_barrier(shmem);
+        if (shmem->local_rank == intra_node_root &&
+            leader_commptr->local_size > 1) {
+            MPI_Status status; 
+
+            if(shmem->mid_request_active == 1){ 
+                /* Wait for previous ibarrier with mid-request 
+                 * to complete */ 
+                mpi_errno = MPIR_Wait_impl(&(shmem->mid_request),
+                                           &status);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                (shmem->mid_request) = MPI_REQUEST_NULL; 
+                shmem->mid_request_active = 0; 
+            } 
+
+            if(shmem->end_request_active == 0){ 
+                /* Post Ibarrier with mid-request */ 
+                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
+                                               &(shmem->end_request));
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                shmem->end_request_active = 1;
+            } 
+        }
+        shmem->tail = shmem->read;
+        shmem->half_full_complete = 0;
+    }
+#else /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
     if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
         PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %d \n", shmem->write);
         mv2_shm_barrier(shmem);
         shmem->tail = shmem->read;
     }
+#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
+
+fn_exit:
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
 }
 
 
@@ -2635,8 +2820,8 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
     MPIDI_VC_t *vc=NULL;
     MPID_Comm *shmem_commptr=NULL, *leader_commptr=NULL;
     shm_coll_pkt pkt;
-    shm_coll_pkt *remote_handle_info_parent = shmem->remote_handle_info_parent;
-    shm_coll_pkt *remote_handle_info_children = shmem->remote_handle_info_children;
+    shm_coll_pkt *remote_handle_info_parent = shmem->bcast_remote_handle_info_parent;
+    shm_coll_pkt *remote_handle_info_children = shmem->bcast_remote_handle_info_children;
 
     MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_commptr);
     MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
@@ -2651,14 +2836,13 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
        }
     }
 
-
     if (shmem->local_rank == intra_node_root) {
         MPID_Comm *leader_commptr=NULL;
         MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
 
         if(leader_commptr->local_size > 1) {
             /*Exchange keys, (if needed) */
-            if(shmem->exchange_rdma_keys == 1) {
+            if(shmem->bcast_exchange_rdma_keys == 1) {
                 if(remote_handle_info_parent != NULL) {
                     MPIU_Free(remote_handle_info_parent);
                     remote_handle_info_parent = NULL;
@@ -2677,7 +2861,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                     } while( i < rdma_num_hcas);
 
                     mpi_errno = MPIC_Send(&pkt, sizeof(shm_coll_pkt), MPI_BYTE, src,
-                                             MPIR_BCAST_TAG, comm_ptr->ch.leader_comm);
+                                             MPIR_BCAST_TAG, comm_ptr->ch.leader_comm, &errflag);
                     if (mpi_errno) {
                                 MPIU_ERR_POP(mpi_errno);
                     }
@@ -2692,7 +2876,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                     /* Sending to dst. Receive its key info */
                     int j=0;
                     mpi_errno = MPIC_Recv(&pkt, sizeof(shm_coll_pkt), MPI_BYTE, dst_array[i],
-                                              MPIR_BCAST_TAG, comm_ptr->ch.leader_comm, MPI_STATUS_IGNORE);
+                                              MPIR_BCAST_TAG, comm_ptr->ch.leader_comm, MPI_STATUS_IGNORE, &errflag);
                     if (mpi_errno) {
                         MPIU_ERR_POP(mpi_errno);
                     }
@@ -2704,11 +2888,11 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                     } while( j < rdma_num_hcas);
                     remote_handle_info_children[i].peer_rank = dst_array[i];
                 }
-                shmem->exchange_rdma_keys          = 0;
-                shmem->bcast_knomial_factor        = knomial_degree;
-                shmem->remote_handle_info_parent   = remote_handle_info_parent;
-                shmem->remote_handle_info_children = remote_handle_info_children;
-                shmem->bcast_expected_send_count   = expected_send_count;
+                shmem->bcast_exchange_rdma_keys          = 0;
+                shmem->bcast_knomial_factor              = knomial_degree;
+                shmem->bcast_remote_handle_info_parent   = remote_handle_info_parent;
+                shmem->bcast_remote_handle_info_children = remote_handle_info_children;
+                shmem->bcast_expected_send_count         = expected_send_count;
             }
 
             /********************************************
@@ -2822,17 +3006,62 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
     shmem->write++;
     shmem->read++;
 
+    if (shmem->half_full_complete == 0 &&
+        IS_SHMEM_WINDOW_HALF_FULL(shmem->write, shmem->tail)) {
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window half full: %d \n", shmem->write);
+        mv2_shm_barrier(shmem);
+        if (shmem->local_rank == intra_node_root &&
+            leader_commptr->local_size > 1) {
+            MPI_Status status;
+            
+            if(shmem->end_request_active == 1){ 
+                /* Wait for previous ibarrier with end-request 
+                 * to complete */ 
+                mpi_errno = MPIR_Wait_impl(&(shmem->end_request),
+                                           &status);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                (shmem->end_request) = MPI_REQUEST_NULL;
+                shmem->end_request_active = 0;
+            } 
+
+            if(shmem->mid_request_active == 0){ 
+                /* Post Ibarrier with mid-request */ 
+                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
+                                      &(shmem->mid_request));
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                shmem->mid_request_active = 1;
+            } 
+        } 
+        shmem->half_full_complete = 1; 
+    } 
+
     if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
         PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %d \n", shmem->write);
         mv2_shm_barrier(shmem);
-        if (shmem->local_rank == intra_node_root) {
-            MPID_Comm *leader_commptr=NULL;
-            MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
-            if(leader_commptr->local_size > 1) {
-                MPIR_Barrier_MV2(leader_commptr, &errflag);
-            }
+        if (shmem->local_rank == intra_node_root &&
+            leader_commptr->local_size > 1) {
+            MPI_Status status; 
+
+            if(shmem->mid_request_active == 1){ 
+                /* Wait for previous ibarrier with mid-request 
+                 * to complete */ 
+                mpi_errno = MPIR_Wait_impl(&(shmem->mid_request),
+                                           &status);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                (shmem->mid_request) = MPI_REQUEST_NULL; 
+                shmem->mid_request_active = 0; 
+            } 
+
+            if(shmem->end_request_active == 0){ 
+                /* Post Ibarrier with end-request */ 
+                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
+                                               &(shmem->end_request));
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                shmem->end_request_active = 1;
+            } 
         }
         shmem->tail = shmem->read;
+        shmem->half_full_complete = 0; 
     }
 
 fn_exit:
@@ -2840,16 +3069,421 @@ fn_exit:
 fn_fail:
     goto fn_exit;
 }
+
+int mv2_shm_zcpy_reduce(shmem_info_t * shmem, 
+                         void *in_buf, void **out_buf, 
+                         int count, int len, 
+                         MPI_Datatype datatype, 
+                         MPI_Op op, int root, 
+                         int expected_recv_count, int *src_array,
+                         int expected_send_count, int dst,
+                         int knomial_degree,
+                         MPID_Comm * comm_ptr, int *errflag)
+{
+    void *buf=NULL; 
+    int mpi_errno = MPI_SUCCESS;
+    int nspin = 0, i=0, j=0, intra_node_root=0;
+    int windex = 0, rindex=0;
+    MPIDI_VC_t *vc=NULL;
+    MPID_Comm *shmem_commptr=NULL, *leader_commptr=NULL;
+    shm_coll_pkt pkt;
+    shm_coll_pkt *remote_handle_info_parent = shmem->reduce_remote_handle_info_parent;
+    shm_coll_pkt *remote_handle_info_children = shmem->reduce_remote_handle_info_children;
+    int *inter_node_reduce_status_array =  shmem->inter_node_reduce_status_array;  
+    MPI_User_function *uop;
+    MPID_Op *op_ptr;
+    int slot_len; 
+    slot_len = mv2_shm_slot_len + sizeof (shm_slot_t) + sizeof(volatile uint32_t);
+    MV2_SHM_ALIGN_LEN(slot_len, MV2_SHM_ALIGN); 
+#ifdef HAVE_CXX_BINDING
+    int is_cxx_uop = 0;
+#endif
+    int shmem_comm_rank, local_size, local_rank; 
+
+    MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_commptr);
+    MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
+
+    shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank; 
+    local_rank = shmem_commptr->rank;
+    local_size = shmem_commptr->local_size;
+
+    windex = shmem->write % mv2_shm_window_size;
+    rindex = shmem->read % mv2_shm_window_size;
+
+    if (shmem->half_full_complete == 0 && 
+        (IS_SHMEM_WINDOW_HALF_FULL(shmem->write, shmem->tail))) { 
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window half full: %d \n", shmem->write);
+
+        if (shmem->local_rank == intra_node_root &&
+            leader_commptr->local_size > 1) {
+            MPI_Status status;
+            
+            if(shmem->mid_request_active == 0){
+                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
+                                      &(shmem->mid_request));
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                shmem->mid_request_active = 1;
+            } 
+
+            if(shmem->end_request_active == 1){
+                mpi_errno = MPIR_Wait_impl(&(shmem->end_request),
+                                           &status);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                (shmem->end_request) = MPI_REQUEST_NULL;
+                shmem->end_request_active = 0;
+            }
+     
+        }
+        shmem->write++;
+        shmem->read++;
+        shmem->half_full_complete = 1; 
+        windex = shmem->write % mv2_shm_window_size;
+        rindex = shmem->read % mv2_shm_window_size;
+    }
+
+    if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)   ||
+       ((mv2_shm_window_size - windex < 2) || (mv2_shm_window_size - rindex < 2))) {
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %d \n", shmem->write);
+        if (shmem->local_size > 1) {
+             MPIDI_CH3I_SHMEM_COLL_Barrier_gather(local_size, local_rank,
+                                             shmem_comm_rank);
+        } 
+
+        if (shmem->local_rank == intra_node_root &&
+            leader_commptr->local_size > 1) {
+            MPI_Status status;
+            if(shmem->end_request_active == 0){
+                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
+                                               &(shmem->end_request));
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                shmem->end_request_active = 1;
+            }
+            
+            
+            if(shmem->mid_request_active == 1){
+                mpi_errno = MPIR_Wait_impl(&(shmem->mid_request),
+                                           &status);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                (shmem->mid_request) = MPI_REQUEST_NULL;
+                shmem->mid_request_active = 0;
+            }
+
+        } 
+  
+        if (shmem->local_size > 1) {
+             MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(local_size, local_rank,
+                                            shmem_comm_rank);
+        }
+        shmem->half_full_complete = 0; 
+        shmem->write++;
+        shmem->read++;
+        shmem->tail = shmem->read;
+        windex = shmem->write % mv2_shm_window_size;
+        rindex = shmem->read % mv2_shm_window_size;
+        
+    }
+    
+    /* Get the operator and check whether it is commutative or not */
+    if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
+        /* get the function by indexing into the op table */
+        uop = MPIR_Op_table[op % 16 - 1];
+    } else {
+        MPID_Op_get_ptr(op, op_ptr);
+#if defined(HAVE_CXX_BINDING)
+        if (op_ptr->language == MPID_LANG_CXX) {
+            uop = (MPI_User_function *) op_ptr->function.c_function;
+            is_cxx_uop = 1;
+        } else {
+#endif                          /* defined(HAVE_CXX_BINDING) */
+            if ((op_ptr->language == MPID_LANG_C)) {
+                uop = (MPI_User_function *) op_ptr->function.c_function;
+            } else {
+                uop = (MPI_User_function *) op_ptr->function.f77_function;
+            }
+#if defined(HAVE_CXX_BINDING)
+        }
+#endif                          /* defined(HAVE_CXX_BINDING) */
+    }
+
+
+   if (shmem->local_rank == intra_node_root) {
+        MPID_Comm *leader_commptr=NULL;
+        int inter_node_reduce_completions=0; 
+        MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
+    
+        if(leader_commptr->local_size > 1) {
+            if(shmem->buffer_registered == 0) {
+                mpi_errno = mv2_shm_coll_reg_buffer(shmem->buffer, shmem->size,
+                                                   shmem->mem_handle, &(shmem->buffer_registered));
+                if(mpi_errno) {   
+                    MPIU_ERR_POP(mpi_errno);
+                }                 
+            }
+
+            /*Exchange keys, (if needed) */
+            if(shmem->reduce_exchange_rdma_keys == 1) {
+                if(remote_handle_info_parent != NULL) {
+                    MPIU_Free(remote_handle_info_parent);
+                    remote_handle_info_parent = NULL;
+                }
+                if(remote_handle_info_children != NULL) {
+                    MPIU_Free(remote_handle_info_children);
+                    remote_handle_info_children = NULL;
+                }
+               if( shmem->inter_node_reduce_status_array != NULL ) { 
+                    MPIU_Free(shmem->inter_node_reduce_status_array); 
+                    shmem->inter_node_reduce_status_array = NULL; 
+                } 
+ 
+               if(expected_send_count > 0) { 
+                    MPI_Status status; 
+                    remote_handle_info_parent = MPIU_Malloc(sizeof(shm_coll_pkt)*
+                                                  expected_send_count);
+                    if (remote_handle_info_parent == NULL) {
+                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                                                  "**nomem %s", "mv2_shmem_file");
+                    }
+                    j=0;
+
+                    /* I am sending data to "dst". I will be needing dst's 
+                     * RDMA info */ 
+                    mpi_errno = MPIC_Recv(&pkt, sizeof(shm_coll_pkt), MPI_BYTE, dst,
+                                          MPIR_REDUCE_TAG, comm_ptr->ch.leader_comm, 
+                                          &status, errflag);
+                    if (mpi_errno) {
+                         MPIU_ERR_POP(mpi_errno);
+                    }
+
+                   do {
+                        remote_handle_info_parent->key[j] = pkt.key[j];
+                        remote_handle_info_parent->addr[j] = pkt.addr[j];
+                        j++;
+                    } while( j < rdma_num_hcas);
+                    remote_handle_info_parent->peer_rank = dst;
+                    remote_handle_info_parent->recv_id   = pkt.recv_id; 
+               } 
+ 
+               if(expected_recv_count > 0) { 
+                    int j=0; 
+                    MPI_Request *request_array = NULL; 
+                    MPI_Status *status_array = NULL; 
+                    shm_coll_pkt *pkt_array = NULL; 
+                    remote_handle_info_children = MPIU_Malloc(sizeof(shm_coll_pkt)*
+                                                  expected_recv_count);
+
+                    pkt_array = MPIU_Malloc(sizeof(shm_coll_pkt)*expected_recv_count); 
+                    request_array = MPIU_Malloc(sizeof(MPI_Request)*expected_recv_count); 
+                    status_array = MPIU_Malloc(sizeof(MPI_Status)*expected_recv_count); 
+
+                    if (pkt_array == NULL || request_array == NULL || 
+                        status_array == NULL || remote_handle_info_children == NULL) {
+                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                                                  "**nomem %s", "mv2_shmem_file");
+                    }
+
+                    for(i=0 ; i< expected_recv_count; i++) {
+                        j=0; 
+                        do {
+                            pkt_array[i].key[j]  =  shmem->mem_handle[j]->rkey;
+                            pkt_array[i].addr[j] =  (uintptr_t) (shmem->buffer);
+                            j++;
+                        } while( j < rdma_num_hcas);
+                    } 
+
+                    for(i=0 ; i< expected_recv_count; i++) {
+                        int src=-1; 
+                        /* Receiving data from src. Send my key info to src*/
+                        src = src_array[i]; 
+                        pkt_array[i].recv_id =  i;
+                        mpi_errno = MPIC_Isend(&pkt_array[i], sizeof(shm_coll_pkt), MPI_BYTE, src,
+                                             MPIR_REDUCE_TAG, comm_ptr->ch.leader_comm, 
+                                             &request_array[i], errflag);
+                        if (mpi_errno) {
+                                MPIU_ERR_POP(mpi_errno);
+                        }
+                        remote_handle_info_children[i].peer_rank = src_array[i];
+                    }
+                    mpi_errno = MPIC_Waitall(expected_recv_count, request_array, 
+                                                status_array, errflag); 
+                    if (mpi_errno) {
+                          MPIU_ERR_POP(mpi_errno);
+                    }
+                    MPIU_Free(request_array); 
+                    MPIU_Free(status_array); 
+                    MPIU_Free(pkt_array); 
+               } 
+               shmem->reduce_exchange_rdma_keys          = 0;
+               shmem->reduce_knomial_factor              = knomial_degree;
+               shmem->reduce_remote_handle_info_parent   = remote_handle_info_parent;
+               shmem->reduce_remote_handle_info_children = remote_handle_info_children;
+               shmem->reduce_expected_recv_count         = expected_recv_count;
+               shmem->reduce_expected_send_count         = expected_send_count;
+               if(shmem->reduce_expected_recv_count > 0) { 
+                   inter_node_reduce_status_array = MPIU_Malloc(sizeof(int)*
+                                                    shmem->reduce_expected_recv_count); 
+                    if (inter_node_reduce_status_array == NULL) {  
+                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                                                  "**nomem %s", "mv2_shmem_file");
+                    }
+                   MPIU_Memset(inter_node_reduce_status_array, '0', 
+                               sizeof(int)*shmem->reduce_expected_recv_count); 
+                   shmem->inter_node_reduce_status_array = inter_node_reduce_status_array; 
+               } 
+               if(src_array != NULL) { 
+                  MPIU_Free(src_array); 
+               }  
+           }
+       } 
+
+       /********************************************
+       * the RDMA keys for the shmem buffer has been exchanged
+       * We are ready to move the data around
+        **************************************/
+
+      
+       /* Lets start with intra-node, shmem, slot-based reduce*/ 
+     
+       buf = shmem->queue[shmem->local_rank].shm_slots[windex]->buf; 
+
+       /* Now, do the intra-node shm-slot reduction */ 
+       mv2_shm_tree_reduce(shmem, in_buf, len, count, intra_node_root, uop, 
+                      datatype, is_cxx_uop); 
+
+       shmem->queue[shmem->local_rank].shm_slots[windex]->psn = shmem->write;
+       shmem->queue[shmem->local_rank].shm_slots[windex]->tail_psn = (volatile uint32_t *)
+                             ((char *) (shmem->queue[shmem->local_rank].shm_slots[windex]->buf) + len);
+        *((volatile uint32_t *) shmem->queue[shmem->local_rank].shm_slots[windex]->tail_psn) =
+                                  shmem->write;
+
+
+       /* I am my node's leader, if I am an intermediate process in the  tree, 
+        * I need to wait until my inter-node peers have written their data
+        */ 
+   
+       while(inter_node_reduce_completions <  shmem->reduce_expected_recv_count) { 
+           for(i=0; i< shmem->reduce_expected_recv_count ; i++) { 
+               /* Wait until the peer is yet to update the psn flag and 
+                * until the psn and the tail flags have the same values*/
+               if(inter_node_reduce_status_array[i] != 1) { 
+                   shmem->queue[i].shm_slots[windex + 1]->tail_psn =  (volatile uint32_t *)
+                                  ((char *) (shmem->queue[i].shm_slots[windex + 1]->buf) + len);
+                   if(shmem->write ==
+                           (volatile uint32_t ) *(shmem->queue[i].shm_slots[windex + 1]->tail_psn)) {
+#ifdef HAVE_CXX_BINDING
+                    if (is_cxx_uop) {
+                        (*MPIR_Process.cxx_call_op_fn) (
+                            shmem->queue[i].shm_slots[rindex+1]->buf, buf,
+                            count, datatype, uop);
+                    } else
+#endif
+                       (*uop) (shmem->queue[i].shm_slots[(rindex+1)]->buf, buf, &count, &datatype);
+                       inter_node_reduce_completions++; 
+                       inter_node_reduce_status_array[i] = 1; 
+                   }
+               } 
+           } 
+           if (nspin % mv2_shmem_coll_spin_count == 0) {
+               mv2_shm_progress(&nspin);
+           } 
+           nspin++; 
+       } 
+
+       /* Post the rdma-write to the parent in the tree */
+       if(shmem->reduce_expected_send_count > 0) {
+            uint32_t local_rdma_key, remote_rdma_key;
+            uint64_t local_rdma_addr, remote_rdma_addr, offset;
+            int rail=0, row_id=0, hca_num;
+
+            MPIDI_Comm_get_vc(leader_commptr, remote_handle_info_parent->peer_rank, &vc);
+
+            row_id = remote_handle_info_parent->recv_id; 
+            offset = (slot_len*mv2_shm_window_size)*(row_id) 
+                             + slot_len*(windex + 1) 
+                             + sizeof(shm_slot_cntrl_t); 
+            rail = MRAILI_Send_select_rail(vc);
+            hca_num = rail / (rdma_num_rails / rdma_num_hcas);
+
+            local_rdma_addr  =  (uint64_t) (shmem->queue[intra_node_root].shm_slots[windex]->buf);
+            local_rdma_key   = (shmem->mem_handle[hca_num])->lkey;
+            remote_rdma_addr =  (uint64_t) remote_handle_info_parent->addr[hca_num] + offset;
+            remote_rdma_key  = remote_handle_info_parent->key[hca_num];
+
+            mv2_shm_coll_prepare_post_send(local_rdma_addr, remote_rdma_addr,
+                              local_rdma_key, remote_rdma_key,
+                              len + sizeof(volatile uint32_t), rail,  vc);
+       }
+       if(shmem->reduce_expected_recv_count > 0) { 
+           MPIU_Memset(inter_node_reduce_status_array, '0', 
+                   sizeof(int)*shmem->reduce_expected_recv_count); 
+       } 
+    } else { 
+       mv2_shm_tree_reduce(shmem, in_buf, len, count, intra_node_root, uop, 
+                      datatype, is_cxx_uop); 
+       shmem->queue[shmem->local_rank].shm_slots[windex]->psn = shmem->write;
+    } 
+
+    *out_buf = buf; 
+    shmem->write = shmem->write + 2;
+    shmem->read = shmem->read + 2;
+
+fn_exit:
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+
+}
 #endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) */ 
 
 
+int mv2_reduce_knomial_trace(int root, int mv2_reduce_knomial_factor,
+        MPID_Comm *comm_ptr, int *expected_send_count, 
+        int *expected_recv_count)
+{ 
+    int mask=0x1, k, comm_size, rank, relative_rank, lroot=0;
+    int recv_iter=0, send_iter=0, dst;
 
+    rank      = comm_ptr->rank;
+    comm_size = comm_ptr->local_size;
 
+    lroot = root;
+    relative_rank = (rank - lroot + comm_size) % comm_size;
 
-shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size)
+    /* First compute to whom we need to send data */
+    while (mask < comm_size) {
+        if (relative_rank % (mv2_reduce_knomial_factor*mask)) {
+            dst = relative_rank/(mv2_reduce_knomial_factor*mask)*
+                (mv2_reduce_knomial_factor*mask)+root;
+            if (dst >= comm_size) {
+                dst -= comm_size;
+            }
+            send_iter++;
+            break;
+        }
+        mask *= mv2_reduce_knomial_factor;
+    }
+    mask /= mv2_reduce_knomial_factor;
+
+    /* Now compute how many children we have in the knomial-tree */
+    while (mask > 0) {
+        for(k=1;k<mv2_reduce_knomial_factor;k++) {
+            if (relative_rank + mask*k < comm_size) {
+                recv_iter++;
+            }
+        }
+        mask /= mv2_reduce_knomial_factor;
+    }
+
+    *expected_recv_count = recv_iter; 
+    *expected_send_count = send_iter; 
+    return 0;
+}
+   
+shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size, 
+                                MPID_Comm *comm_ptr)
 {
     int slot_len, i, k;
     int mpi_errno = MPI_SUCCESS;
+    int root=0, expected_max_send_count=0, expected_max_recv_count=0; 
     size_t size;
     char *shmem_dir, *ptr;
     char s_hostname[SHMEM_COLL_HOSTNAME_LEN];
@@ -2868,10 +3502,19 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size)
     shmem->size = 0;
     shmem->buffer = NULL;
     shmem->local_rank = local_rank;
-    shmem->local_size = local_size;
+    shmem->local_size = local_size; 
+    shmem->comm   = comm_ptr->handle; 
 
     slot_len = mv2_shm_slot_len + sizeof (shm_slot_t) + sizeof(volatile uint32_t);
+                                
     MV2_SHM_ALIGN_LEN(slot_len, MV2_SHM_ALIGN)
+
+    mpi_errno = mv2_reduce_knomial_trace(root, mv2_reduce_zcopy_max_inter_knomial_factor,
+                             comm_ptr, &expected_max_send_count,
+                             &expected_max_recv_count); 
+    if(local_size < expected_max_recv_count) { 
+         local_size = expected_max_recv_count;
+    } 
 
     size = (shmem->count) * slot_len * local_size;
 
@@ -2921,7 +3564,7 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size)
             goto cleanup_slot_shmem;
         }
         usleep(1);
-    } while (file_status.st_size != size);
+    } while (file_status.st_size < size);
 
     shmem->buffer =
         mmap(0, size, (PROT_READ | PROT_WRITE), (MAP_SHARED), shmem->file_fd, 0);
@@ -2944,12 +3587,27 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size)
     }
 
 #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) 
-    shmem->remote_handle_info_parent = NULL; 
-    shmem->remote_handle_info_children = NULL; 
+    shmem->bcast_remote_handle_info_parent = NULL; 
+    shmem->bcast_remote_handle_info_children = NULL; 
     shmem->bcast_knomial_factor = -1; 
-    shmem->exchange_rdma_keys   = 1; 
+    shmem->bcast_exchange_rdma_keys   = 1; 
     shmem->buffer_registered = 0;  
     shmem->bcast_expected_send_count = 0;  
+
+    shmem->reduce_remote_handle_info_parent = NULL; 
+    shmem->reduce_remote_handle_info_children = NULL; 
+    shmem->inter_node_reduce_status_array = NULL; 
+
+    shmem->reduce_knomial_factor = -1; 
+    shmem->reduce_exchange_rdma_keys   = 1; 
+    shmem->reduce_expected_send_count = 0;  
+    shmem->reduce_expected_recv_count = 0;  
+    shmem->mid_request_active=0;
+    shmem->end_request_active=0;
+    shmem->end_request = MPI_REQUEST_NULL;
+    shmem->mid_request = MPI_REQUEST_NULL;
+    shmem->half_full_complete = 0; 
+
     for ( k = 0 ; k < rdma_num_hcas; k++ ) {
         shmem->mem_handle[k] = NULL; 
     } 
@@ -2983,19 +3641,43 @@ void mv2_shm_coll_cleanup(shmem_info_t * shmem)
     PRINT_DEBUG(DEBUG_SHM_verbose > 0, " Cleanup shmem file:%s fd:%d size:%d\n",
                 shmem->file_name, shmem->file_fd, shmem->size);
 #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
-    int i=0; 
+    int mpi_errno = MPI_SUCCESS;
+    MPI_Status status;
+
+    if (shmem->end_request_active) {
+        mpi_errno = MPIR_Wait_impl(&(shmem->end_request),
+                &status);
+        if (mpi_errno) PRINT_ERROR("MPIR_Wait_impl failure \n");
+        shmem->end_request_active = 0;
+    }
+    if (shmem->mid_request_active) {
+        mpi_errno = MPIR_Wait_impl(&(shmem->mid_request),
+                &status);
+        if (mpi_errno) PRINT_ERROR("MPIR_Wait_impl failure \n");
+        shmem->mid_request_active = 0;
+    }
+
     if(shmem->local_rank == 0) { 
         if(shmem->buffer_registered == 1) { 
             mv2_shm_coll_dereg_buffer(shmem->mem_handle); 
         } 
         shmem->buffer_registered = 0; 
     } 
-    if(shmem->remote_handle_info_parent != NULL) { 
-        MPIU_Free(shmem->remote_handle_info_parent); 
+    if(shmem->bcast_remote_handle_info_parent != NULL) { 
+        MPIU_Free(shmem->bcast_remote_handle_info_parent); 
     } 
-    if(shmem->remote_handle_info_children != NULL) { 
-        MPIU_Free(shmem->remote_handle_info_children); 
+    if(shmem->bcast_remote_handle_info_children != NULL) { 
+        MPIU_Free(shmem->bcast_remote_handle_info_children); 
     } 
+    if(shmem->reduce_remote_handle_info_parent != NULL) { 
+        MPIU_Free(shmem->reduce_remote_handle_info_parent); 
+    } 
+    if(shmem->reduce_remote_handle_info_children != NULL) { 
+        MPIU_Free(shmem->reduce_remote_handle_info_children); 
+    } 
+    if( shmem->inter_node_reduce_status_array != NULL ) {
+        MPIU_Free(shmem->inter_node_reduce_status_array);
+    }
 #endif /*#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) */
     if (shmem->buffer != NULL) {
         munmap(shmem->buffer, shmem->size);

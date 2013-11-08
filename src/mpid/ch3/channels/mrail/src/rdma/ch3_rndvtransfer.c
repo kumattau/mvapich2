@@ -1206,26 +1206,21 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RNDV_RPUT_FINISH);
 
     MPID_Request_get_ptr(rf_pkt->receiver_req_id, rreq);
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && rf_pkt->is_cuda) {
-        /* In cuda multi-rail case, the finish message will be sent
-           only on rail 0 for pipepine RDMA transfers.*/
-        rreq->mrail.completion_counter = rdma_num_rails - 1;
-    }
-#endif
-
-    if (!MPIDI_CH3I_MRAIL_Finish_request(rreq))
-    {
-        return MPI_SUCCESS;
-    }
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE) {
+    if (rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE 
+        && rreq->mrail.cuda_transfer_mode != DEVICE_TO_HOST) {
         if (MPIDI_CH3I_MRAILI_Process_cuda_finish(vc, rreq, rf_pkt) != 1) {
             goto fn_exit;
         }
-    }
+    } else 
 #endif
+    {
+        if (!MPIDI_CH3I_MRAIL_Finish_request(rreq))
+        {
+            return MPI_SUCCESS;
+        } 
+    }
 
     if (rreq->mrail.rndv_buf_alloc == 1){
         MPIDI_CH3_Rendezvous_unpack_data(vc, rreq);

@@ -65,31 +65,20 @@ MPIDI_Put_use_pami_rput(pami_context_t context, MPIDI_Win_request * req,int *fre
 {
   pami_result_t rc;
   void  *map;
+  pami_rput_simple_t params;
+  /* params need to zero out to avoid passing garbage to PAMI */
+  params=zero_rput_parms;
 
-  pami_rput_simple_t params = {
-    .rma = {
-      .dest = req->dest,
-      .hints = {
-	.buffer_registered = PAMI_HINT_ENABLE,
-	.use_rdma          = PAMI_HINT_ENABLE,
-      },
-      .bytes   = 0,
-      .cookie  = req,
-      .done_fn = NULL,
-    },
-    .rdma = {
-      .local = {
-	.mr = &req->origin.memregion,
-      },
-      .remote = {
-	.mr     = &req->win->mpid.info[req->target.rank].memregion,
-	.offset = req->offset,
-      },
-    },
-    .put = {
-      .rdone_fn = MPIDI_Win_DoneCB,
-    },
-  };
+  params.rma.dest=req->dest;
+  params.rma.hints.buffer_registered = PAMI_HINT_ENABLE;
+  params.rma.hints.use_rdma          = PAMI_HINT_ENABLE;
+  params.rma.bytes   = 0;
+  params.rma.cookie  = req;
+  params.rma.done_fn = NULL;
+  params.rdma.local.mr=&req->origin.memregion;
+  params.rdma.remote.mr=&req->win->mpid.info[req->target.rank].memregion;
+  params.rdma.remote.offset= req->offset;
+  params.put.rdone_fn= MPIDI_Win_DoneCB;
 
   struct MPIDI_Win_sync* sync = &req->win->mpid.sync;
   TRACE_ERR("Start       index=%u/%d  l-addr=%p  r-base=%p  r-offset=%zu (sync->started=%u  sync->complete=%u)\n",
@@ -112,7 +101,12 @@ MPIDI_Put_use_pami_rput(pami_context_t context, MPIDI_Win_request * req,int *fre
 #endif
     TRACE_ERR("  Sub     index=%u  bytes=%zu  l-offset=%zu  r-offset=%zu  buf=%p  *(int*)buf=0x%08x\n",
 	      req->state.index, params.rma.bytes, params.rdma.local.offset, params.rdma.remote.offset, buf, *buf);
-    if (sync->total - sync->complete == 1) {
+
+    /** sync->total will be updated with every RMA and the complete
+	will not change till that RMA has completed. In the meanwhile
+	the rest of the RMAs will have memory leaks */
+    if (req->target.dt.num_contig - req->state.index == 1) {
+    //if (sync->total - sync->complete == 1) {
          map=NULL;
          if (req->target.dt.map != &req->target.dt.__map) {
              map=(void *) req->target.dt.map;
@@ -140,28 +134,22 @@ MPIDI_Put_use_pami_put(pami_context_t   context, MPIDI_Win_request * req,int *fr
 {
   pami_result_t rc;
   void  *map;
+  pami_put_simple_t params;
 
-  pami_put_simple_t params = {
-    .rma  = {
-      .dest    = req->dest,
-      .hints   = {
-	.use_rdma=       PAMI_HINT_DEFAULT,
+  params = zero_put_parms;
+
+  params.rma.dest=req->dest;
+  params.rma.hints.use_rdma          = PAMI_HINT_DEFAULT;
 #ifndef OUT_OF_ORDER_HANDLING
-	.no_long_header= 1,
+  params.rma.hints.no_long_header= 1,
 #endif
-      },
-      .bytes   = 0,
-      .cookie  = req,
-      .done_fn = NULL,
-    },
-    .addr = {
-      .local   = req->buffer,
-      .remote  = req->win->mpid.info[req->target.rank].base_addr,
-    },
-    .put = {
-      .rdone_fn = MPIDI_Win_DoneCB,
-    },
-  };
+  params.rma.bytes   = 0;
+  params.rma.cookie  = req;
+  params.rma.done_fn = NULL;
+  params.addr.local=req->buffer;
+  params.addr.remote=req->win->mpid.info[req->target.rank].base_addr;
+  params.put.rdone_fn= MPIDI_Win_DoneCB;
+
   struct MPIDI_Win_sync* sync = &req->win->mpid.sync;
   TRACE_ERR("Start       index=%u/%d  l-addr=%p  r-base=%p  r-offset=%zu (sync->started=%u  sync->complete=%u)\n",
 	    req->state.index, req->target.dt.num_contig, req->buffer, req->win->mpid.info[req->target.rank].base_addr, req->offset, sync->started, sync->complete);
@@ -183,7 +171,11 @@ MPIDI_Put_use_pami_put(pami_context_t   context, MPIDI_Win_request * req,int *fr
 #endif
     TRACE_ERR("  Sub     index=%u  bytes=%zu  l-offset=%zu  r-offset=%zu  buf=%p  *(int*)buf=0x%08x\n",
 	      req->state.index, params.rma.bytes, params.addr.local, params.addr.remote, buf, *buf);
-    if (sync->total - sync->complete == 1) {
+
+    /** sync->total will be updated with every RMA and the complete
+	will not change till that RMA has completed. In the meanwhile
+	the rest of the RMAs will have memory leaks */
+    if (req->target.dt.num_contig - req->state.index == 1) {
         map=NULL;
         if (req->target.dt.map != &req->target.dt.__map) {
             map=(void *) req->target.dt.map;
@@ -220,6 +212,10 @@ MPIDI_Put_use_pami_put(pami_context_t   context, MPIDI_Win_request * req,int *fr
  * \param[in] win              Window
  * \return MPI_SUCCESS
  */
+#undef FUNCNAME
+#define FUNCNAME MPID_Put
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int
 MPID_Put(void         *origin_addr,
          int           origin_count,
@@ -230,9 +226,22 @@ MPID_Put(void         *origin_addr,
          MPI_Datatype  target_datatype,
          MPID_Win     *win)
 {
+  int mpi_errno = MPI_SUCCESS;
   MPIDI_Win_request *req = MPIU_Calloc0(1, MPIDI_Win_request);
   req->win          = win;
   req->type         = MPIDI_WIN_REQUEST_PUT;
+
+  if(win->mpid.sync.origin_epoch_type == win->mpid.sync.target_epoch_type &&
+     win->mpid.sync.origin_epoch_type == MPID_EPOTYPE_REFENCE){
+     win->mpid.sync.origin_epoch_type = MPID_EPOTYPE_FENCE;
+     win->mpid.sync.target_epoch_type = MPID_EPOTYPE_FENCE;
+  }
+
+  if(win->mpid.sync.origin_epoch_type == MPID_EPOTYPE_NONE ||
+     win->mpid.sync.origin_epoch_type == MPID_EPOTYPE_POST){
+    MPIU_ERR_SETANDSTMT(mpi_errno, MPI_ERR_RMA_SYNC,
+                        return mpi_errno, "**rmasync");
+  }
 
   req->offset = target_disp * win->mpid.info[target_rank].disp_unit;
 
@@ -299,6 +308,13 @@ MPID_Put(void         *origin_addr,
 
   pami_result_t rc;
   pami_task_t task = MPID_VCR_GET_LPID(win->comm_ptr->vcr, target_rank);
+  if (win->mpid.sync.origin_epoch_type == MPID_EPOTYPE_START &&
+    !MPIDI_valid_group_rank(task, win->mpid.sync.sc.group))
+  {
+       MPIU_ERR_SETANDSTMT(mpi_errno, MPI_ERR_RMA_SYNC,
+                          return mpi_errno, "**rmasync");
+  }
+
   rc = PAMI_Endpoint_create(MPIDI_Client, task, 0, &req->dest);
   MPID_assert(rc == PAMI_SUCCESS);
 
@@ -331,7 +347,6 @@ MPID_Put(void         *origin_addr,
   MPIDI_Win_datatype_map(&req->target.dt);
   win->mpid.sync.total += req->target.dt.num_contig;
 
-
   /* The pamid one-sided design requires context post in order to handle the
    * case where the number of pending rma operation exceeds the
    * 'PAMID_RMA_PENDING' threshold. When there are too many pending requests the
@@ -344,8 +359,9 @@ MPID_Put(void         *origin_addr,
    *        the rma pending threshold has been reached. This would result in
    *        better latency for one-sided operations.
    */
-  PAMI_Context_post(MPIDI_Context[0], &req->post_request, MPIDI_Put, req);
+  PAMI_Context_post(MPIDI_Context[0], &req->post_request, MPIDI_Put, req);  
+  //MPIDI_Put(MPIDI_Context[0], req);
 
-
-  return MPI_SUCCESS;
+fn_fail:
+  return mpi_errno;
 }

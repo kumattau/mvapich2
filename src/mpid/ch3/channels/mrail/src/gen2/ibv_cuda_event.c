@@ -140,43 +140,96 @@ void process_cuda_event_op(cuda_event_t * event)
     int is_finish = event->is_finish;
     int is_pipeline = (!displacement && is_finish) ? 0 : 1;
     int size = event->size;
-    int rail = 0;
-    vbuf *v;
+    int rail, stripe_avg, stripe_size, offset;
+    vbuf *v, *orig_vbuf = NULL;
 
     if (event->op_type == SEND) {
 
-        v = cuda_vbuf;
-        v->sreq = req;
-
         req->mrail.pipeline_nm++;
         is_finish = (req->mrail.pipeline_nm == req->mrail.num_cuda_blocks)? 1 : 0;
-        
+ 
         if (req->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE) {
-            MRAILI_RDMA_Put(vc, v,
-                (char *) (v->buffer),
-                v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
-                (char *) (req->mrail.cuda_remote_addr[req->mrail.num_remote_cuda_done]),
-                req->mrail.cuda_remote_rkey[req->mrail.num_remote_cuda_done]
-                        [vc->mrail.rails[rail].hca_index], size, rail);
+            if (size <= rdma_large_msg_rail_sharing_threshold) {
+                rail = MRAILI_Send_select_rail(vc);
 
-            MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline, is_finish,
+                v = cuda_vbuf;
+                v->sreq = req;        
+
+                MRAILI_RDMA_Put(vc, v,
+                    (char *) (v->buffer),
+                    v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
+                    (char *) (req->mrail.cuda_remote_addr[req->mrail.num_remote_cuda_done]),
+                    req->mrail.cuda_remote_rkey[req->mrail.num_remote_cuda_done]
+                            [vc->mrail.rails[rail].hca_index], size, rail);
+            } else {
+                stripe_avg = size / rdma_num_rails;
+                orig_vbuf = cuda_vbuf;
+
+                for (rail = 0; rail < rdma_num_rails; rail++) {
+                    offset = rail*stripe_avg; 
+                    stripe_size = (rail < rdma_num_rails-1) ? stripe_avg : (size - offset);
+
+                    v = get_vbuf();
+                    v->sreq = req;
+                    v->orig_vbuf = orig_vbuf;
+
+                    MRAILI_RDMA_Put(vc, v,
+                        (char *) (orig_vbuf->buffer) + offset,
+                        orig_vbuf->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
+                        (char *) (req->mrail.cuda_remote_addr[req->mrail.num_remote_cuda_done]) 
+                        + offset,
+                        req->mrail.cuda_remote_rkey[req->mrail.num_remote_cuda_done]
+                                [vc->mrail.rails[rail].hca_index], stripe_size, rail);
+                }
+            }
+
+            for(rail = 0; rail < rdma_num_rails; rail++) {
+                MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline, is_finish,
                                         rdma_cuda_block_size * displacement);
+            }
             req->mrail.num_remote_cuda_done++;
-
         } else if (req->mrail.cuda_transfer_mode == DEVICE_TO_HOST) {
-            MRAILI_RDMA_Put(vc, v,
-                (char *) (v->buffer),
-                v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
-                (char *) (req->mrail.remote_addr) + displacement * 
-                rdma_cuda_block_size,
-                req->mrail.rkey[vc->mrail.rails[rail].hca_index],
-                size, rail);
+            if (size <= rdma_large_msg_rail_sharing_threshold) {
+                rail = MRAILI_Send_select_rail(vc);
 
+                v = cuda_vbuf;
+                v->sreq = req;
+
+                MRAILI_RDMA_Put(vc, v,
+                    (char *) (v->buffer),
+                    v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
+                    (char *) (req->mrail.remote_addr) + displacement * 
+                    rdma_cuda_block_size,
+                    req->mrail.rkey[vc->mrail.rails[rail].hca_index],
+                    size, rail);
+            } else {   
+                stripe_avg = size / rdma_num_rails;
+                orig_vbuf = cuda_vbuf;
+
+                for (rail = 0; rail < rdma_num_rails; rail++) {
+                    offset = rail*stripe_avg;
+                    stripe_size = (rail < rdma_num_rails-1) ? stripe_avg : (size - offset);
+
+                    v = get_vbuf();
+                    v->sreq = req;
+                    v->orig_vbuf = orig_vbuf;
+
+                    MRAILI_RDMA_Put(vc, v,
+                        (char *) (orig_vbuf->buffer) + offset,
+                        orig_vbuf->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
+                        (char *) (req->mrail.remote_addr) + displacement *
+                        rdma_cuda_block_size + offset,
+                        req->mrail.rkey[vc->mrail.rails[rail].hca_index],
+                        stripe_size, rail);
+                } 
+            }
             if (is_finish) {
-                MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline,
-                                            is_finish,
-                                            rdma_cuda_block_size *
-                                            displacement);
+               for(rail = 0; rail < rdma_num_rails; rail++) {
+                    MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline,
+                                        is_finish,
+                                        rdma_cuda_block_size *
+                                        displacement);
+               }
             }
         }
 

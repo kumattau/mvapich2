@@ -39,6 +39,11 @@
  *        MV2_INTER_SCATTER_TUNING=4 MV2_INTRA_SCATTER_TUNING=2
  */
 
+/* Indicates number of processes per node */
+extern int *mv2_scatter_table_ppn_conf;
+/* Indicates total number of configurations */
+extern int mv2_scatter_num_ppn_conf;
+
 typedef struct {
     int min;
     int max;
@@ -59,8 +64,8 @@ typedef struct {
     mv2_scatter_tuning_element intra_node[MV2_MAX_NB_THRESHOLDS];
 } mv2_scatter_tuning_table;
 
-extern int mv2_size_scatter_tuning_table;
-extern mv2_scatter_tuning_table *mv2_scatter_thresholds_table;
+extern int *mv2_size_scatter_tuning_table;
+extern mv2_scatter_tuning_table **mv2_scatter_thresholds_table;
 extern int mv2_use_old_scatter;
 
 

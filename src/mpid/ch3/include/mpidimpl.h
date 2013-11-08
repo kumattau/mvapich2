@@ -1276,7 +1276,8 @@ int MPIDI_CH3U_Comm_FinishPending( MPID_Comm * );
 typedef struct {
     int (*create)(void *, MPI_Aint, int, MPID_Info *, MPID_Comm *, MPID_Win **);
     int (*allocate)(MPI_Aint, int, MPID_Info *, MPID_Comm *, void *, MPID_Win **);
-    int (*allocate_shared)(MPI_Aint, int, MPID_Info *, MPID_Comm *, void **, MPID_Win **);
+    int (*allocate_shared)(MPI_Aint, int, MPID_Info *, MPID_Comm *, void *, MPID_Win **);
+    int (*allocate_shm)(MPI_Aint, int, MPID_Info *, MPID_Comm *, void *, MPID_Win **);
     int (*create_dynamic)(MPID_Info *, MPID_Comm *, MPID_Win **);
 } MPIDI_CH3U_Win_fns_t;
 
@@ -1291,8 +1292,8 @@ int MPIDI_CH3U_Win_create(void *, MPI_Aint, int, MPID_Info *, MPID_Comm *,
                          MPID_Win **);
 int MPIDI_CH3U_Win_allocate(MPI_Aint size, int disp_unit, MPID_Info *info,
                            MPID_Comm *comm, void *baseptr, MPID_Win **win);
-int MPIDI_CH3U_Win_allocate_shared(MPI_Aint size, int disp_unit, MPID_Info *info_ptr,
-                                   MPID_Comm *comm_ptr, void **baseptr, MPID_Win **win_ptr);
+int MPIDI_CH3U_Win_allocate_no_shm(MPI_Aint size, int disp_unit, MPID_Info *info,
+                                   MPID_Comm *comm_ptr, void *baseptr, MPID_Win **win_ptr);
 int MPIDI_CH3U_Win_create_dynamic(MPID_Info *info, MPID_Comm *comm, MPID_Win **win);
 
 
@@ -1380,7 +1381,6 @@ void *MPIDI_Alloc_mem(size_t size, MPID_Info *info_ptr);
 int MPIDI_Free_mem(void *ptr);
 
 /* internal */
-int MPIDI_SHM_Win_free(MPID_Win **);
 int MPIDI_CH3I_Release_lock(MPID_Win * win_ptr);
 int MPIDI_CH3I_Try_acquire_win_lock(MPID_Win * win_ptr, int requested_lock);
 int MPIDI_CH3I_Send_lock_granted_pkt(MPIDI_VC_t * vc, MPID_Win *win_ptr, int source_win_hdl);
@@ -2167,8 +2167,8 @@ int MPIDI_CH3I_MRAIL_Rndv_transfer_cuda_ipc (MPIDI_VC_t * vc,
 int MPIDI_CH3_Prepare_rndv_cts_cuda(MPIDI_VC_t * vc, 
         MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt,
         MPID_Request * rreq);
-int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *);
-int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *);
+int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *, void *);
+int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *, void *);
 void MPIDI_CH3I_CUDA_SMP_cuda_init(MPIDI_PG_t * pg);
 void MPIDI_CH3I_CUDA_SMP_cuda_finalize(MPIDI_PG_t * pg);
 void cuda_cleanup();

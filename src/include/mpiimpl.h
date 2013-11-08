@@ -1536,6 +1536,8 @@ typedef struct MPID_Request {
      * bloated request for regular pt2pt and NBC requests. */
     struct MPID_Grequest_fns *greq_fns;
 
+    struct MPIR_Sendq *dbg_next;
+
     /* Other, device-specific information */
 #ifdef MPID_DEV_REQUEST_DECL
     MPID_DEV_REQUEST_DECL
@@ -1748,10 +1750,7 @@ typedef struct MPID_Win {
     MPI_Aint    size;        
     int          disp_unit;      /* Displacement unit of *local* window */
     MPID_Attribute *attributes;
-    MPID_Group *start_group_ptr; /* group passed in MPI_Win_start */
     MPID_Comm *comm_ptr;         /* Pointer to comm of window (dup) */
-    int         myrank;          /* Rank of this process in comm (used to 
-				    detect operations on self) */
 #ifdef USE_THREADED_WINDOW_CODE
     /* These were causing compilation errors.  We need to figure out how to
        integrate threads into MPICH before including these fields. */
@@ -2033,51 +2032,96 @@ typedef struct MPID_Collops {
                            MPID_Comm *, int *);
 
     /* MPI-3 nonblocking collectives */
-    int (*Ibarrier)(MPID_Comm *comm_ptr, MPID_Sched_t s);
-    int (*Ibcast)(void *buffer, int count, MPI_Datatype datatype, int root,
+    int (*Ibarrier_sched)(MPID_Comm *comm_ptr, MPID_Sched_t s);
+    int (*Ibarrier_req)(MPID_Comm *comm_ptr, MPID_Request **request);
+    int (*Ibcast_sched)(void *buffer, int count, MPI_Datatype datatype, int root,
                   MPID_Comm *comm_ptr, MPID_Sched_t s);
-    int (*Igather)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+    int (*Ibcast_req)(void *buffer, int count, MPI_Datatype datatype, int root,
+                            MPID_Comm *comm_ptr, MPID_Request **request);
+    int (*Igather_sched)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
                    int recvcount, MPI_Datatype recvtype, int root, MPID_Comm *comm_ptr,
                    MPID_Sched_t s);
-    int (*Igatherv)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+    int (*Igather_req)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+                             int recvcount, MPI_Datatype recvtype, int root, MPID_Comm *comm_ptr,
+                             MPID_Request **request);
+    int (*Igatherv_sched)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
                     const int *recvcounts, const int *displs, MPI_Datatype recvtype, int root,
                     MPID_Comm *comm_ptr, MPID_Sched_t s);
-    int (*Iscatter)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+    int (*Igatherv_req)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+                              const int *recvcounts, const int *displs, MPI_Datatype recvtype, int root,
+                              MPID_Comm *comm_ptr, MPID_Request **request);
+    int (*Iscatter_sched)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
                     int recvcount, MPI_Datatype recvtype, int root, MPID_Comm *comm_ptr,
                     MPID_Sched_t s);
-    int (*Iscatterv)(const void *sendbuf, const int *sendcounts, const int *displs,
+    int (*Iscatter_req)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+                              int recvcount, MPI_Datatype recvtype, int root, MPID_Comm *comm_ptr,
+                              MPID_Request **request);
+    int (*Iscatterv_sched)(const void *sendbuf, const int *sendcounts, const int *displs,
                      MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype,
                      int root, MPID_Comm *comm_ptr, MPID_Sched_t s);
-    int (*Iallgather)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+    int (*Iscatterv_req)(const void *sendbuf, const int *sendcounts, const int *displs,
+                               MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype,
+                               int root, MPID_Comm *comm_ptr, MPID_Request **request);
+    int (*Iallgather_sched)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
                       int recvcount, MPI_Datatype recvtype, MPID_Comm *comm_ptr,
                       MPID_Sched_t s);
-    int (*Iallgatherv)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+    int (*Iallgather_req)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+                                int recvcount, MPI_Datatype recvtype, MPID_Comm *comm_ptr,
+                                MPID_Request **request);
+    int (*Iallgatherv_sched)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
                        const int *recvcounts, const int *displs, MPI_Datatype recvtype,
                        MPID_Comm *comm_ptr, MPID_Sched_t s);
-    int (*Ialltoall)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+    int (*Iallgatherv_req)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+                                 const int *recvcounts, const int *displs, MPI_Datatype recvtype,
+                                 MPID_Comm *comm_ptr, MPID_Request ** request);
+    int (*Ialltoall_sched)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
                      int recvcount, MPI_Datatype recvtype, MPID_Comm *comm_ptr,
                      MPID_Sched_t s);
-    int (*Ialltoallv)(const void *sendbuf, const int *sendcounts, const int *sdispls,
+    int (*Ialltoall_req)(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+                               int recvcount, MPI_Datatype recvtype, MPID_Comm *comm_ptr,
+                               MPID_Request **request);
+    int (*Ialltoallv_sched)(const void *sendbuf, const int *sendcounts, const int *sdispls,
                       MPI_Datatype sendtype, void *recvbuf, const int *recvcounts,
                       const int *rdispls, MPI_Datatype recvtype, MPID_Comm *comm_ptr,
                       MPID_Sched_t s);
-    int (*Ialltoallw)(const void *sendbuf, const int *sendcounts, const int *sdispls,
+    int (*Ialltoallv_req)(const void *sendbuf, const int *sendcounts, const int *sdispls,
+                                MPI_Datatype sendtype, void *recvbuf, const int *recvcounts,
+                                const int *rdispls, MPI_Datatype recvtype, MPID_Comm *comm_ptr,
+                                MPID_Request **request);
+    int (*Ialltoallw_sched)(const void *sendbuf, const int *sendcounts, const int *sdispls,
                       const MPI_Datatype *sendtypes, void *recvbuf, const int *recvcounts,
                       const int *rdispls, const MPI_Datatype *recvtypes,
                       MPID_Comm *comm_ptr, MPID_Sched_t s);
-    int (*Ireduce)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op,
+    int (*Ialltoallw_req)(const void *sendbuf, const int *sendcounts, const int *sdispls,
+                                const MPI_Datatype *sendtypes, void *recvbuf, const int *recvcounts,
+                                const int *rdispls, const MPI_Datatype *recvtypes,
+                                MPID_Comm *comm_ptr, MPID_Request **request);
+    int (*Ireduce_sched)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op,
                    int root, MPID_Comm *comm_ptr, MPID_Sched_t s);
-    int (*Iallreduce)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+    int (*Ireduce_req)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op,
+                   int root, MPID_Comm *comm_ptr, MPID_Request **request);
+    int (*Iallreduce_sched)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                       MPI_Op op, MPID_Comm *comm_ptr, MPID_Sched_t s);
-    int (*Ireduce_scatter)(const void *sendbuf, void *recvbuf, const int *recvcounts,
+    int (*Iallreduce_req)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+                                MPI_Op op, MPID_Comm *comm_ptr, MPID_Request **request);
+    int (*Ireduce_scatter_sched)(const void *sendbuf, void *recvbuf, const int *recvcounts,
                            MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPID_Sched_t s);
-    int (*Ireduce_scatter_block)(const void *sendbuf, void *recvbuf, int recvcount,
+    int (*Ireduce_scatter_req)(const void *sendbuf, void *recvbuf, const int *recvcounts,
+                                     MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPID_Request **request);
+    int (*Ireduce_scatter_block_sched)(const void *sendbuf, void *recvbuf, int recvcount,
                                  MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr,
                                  MPID_Sched_t s);
-    int (*Iscan)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op,
+    int (*Ireduce_scatter_block_req)(const void *sendbuf, void *recvbuf, int recvcount,
+                                           MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr,
+                                           MPID_Request **request);
+    int (*Iscan_sched)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op,
                  MPID_Comm *comm_ptr, MPID_Sched_t s);
-    int (*Iexscan)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op,
+    int (*Iscan_req)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op,
+                           MPID_Comm *comm_ptr, MPID_Request **request);
+    int (*Iexscan_sched)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op,
                    MPID_Comm *comm_ptr, MPID_Sched_t s);
+    int (*Iexscan_req)(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op,
+                             MPID_Comm *comm_ptr, MPID_Request **request);
 
     struct MPID_Collops *prev_coll_fns; /* when overriding this table, set this to point to the old table */
 
@@ -3891,8 +3935,31 @@ posted at once. */
 #define MPIR_TOPO_A_TAG               26
 #define MPIR_TOPO_B_TAG               27
 #define MPIR_REDUCE_SCATTER_BLOCK_TAG 28
-#define MPIR_ERROR_TAG                29
-#define MPIR_FIRST_NBC_TAG            30
+#define MPIR_FIRST_NBC_TAG            29
+
+/* These macros must be used carefully. These macros will not work with
+ * negative tags. By definition, users are not to use negative tags and the
+ * only negative tag in MPICH is MPI_ANY_TAG which is checked seperately, but
+ * if there is a time where negative tags become more common, this setup won't
+ * work anymore. */
+
+/* This bitmask can be used to manually mask the tag space wherever it might
+ * be necessary to do so (for instance in the receive queue */
+#define MPIR_TAG_ERROR_BIT (1 << 30)
+
+/* This macro checks the value of the error bit in the MPI tag and returns 1
+ * if the tag is set and 0 if it is not. */
+#define MPIR_TAG_CHECK_ERROR_BIT(tag) ((MPIR_TAG_ERROR_BIT & tag) == MPIR_TAG_ERROR_BIT ? 1 : 0)
+
+/* This macro sets the value of the error bit in the MPI tag to 1 */
+#define MPIR_TAG_SET_ERROR_BIT(tag) (tag |= MPIR_TAG_ERROR_BIT)
+
+/* This macro clears the value of the error bit in the MPI tag */
+#define MPIR_TAG_CLEAR_ERROR_BIT(tag) (tag &= ~MPIR_TAG_ERROR_BIT)
+
+/* This macro masks the value of the error bit in the MPI tag */
+#define MPIR_TAG_MASK_ERROR_BIT(tag) (tag & ~MPIR_TAG_ERROR_BIT)
+
 #if defined(_OSU_MVAPICH_) || (_OSU_PSM_)
 #define SHMEM_ALLREDUCE_THRESHOLD (1<<15)
 #define MPIR_ALLREDUCE_2LEVEL_THRESHOLD (1<<18)
@@ -3920,20 +3987,6 @@ struct coll_runtime {
    other internal operations. They are wrappers around MPID send/recv
    functions. They do sends/receives by setting the context offset to
    MPID_CONTEXT_INTRA(INTER)_COLL. */
-int MPIC_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
-              MPI_Comm comm);
-int MPIC_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
-              MPI_Comm comm, MPI_Status *status);
-int MPIC_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
-               MPI_Comm comm);
-int MPIC_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
-                  int dest, int sendtag, void *recvbuf, int recvcount,
-                  MPI_Datatype recvtype, int source, int recvtag,
-                  MPI_Comm comm, MPI_Status *status);
-int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype type,
-                          int dest, int sendtag,
-                          int source, int recvtag,
-                          MPI_Comm comm, MPI_Status *status);
 int MPIR_Localcopy(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    void *recvbuf, int recvcount, MPI_Datatype recvtype);
 #ifdef _ENABLE_CUDA_
@@ -3952,33 +4005,29 @@ int MPIR_Alltoall_CUDA_cleanup();
 int MPIR_Allgather_cuda_intra_MV2 (const void *, int, MPI_Datatype, void *,
             int, MPI_Datatype, MPID_Comm*, int *);
 #endif
-int MPIC_Irecv(void *buf, int count, MPI_Datatype datatype, int
-               source, int tag, MPI_Comm comm, MPI_Request *request);
-int MPIC_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
-               MPI_Comm comm, MPI_Request *request);
 int MPIC_Wait(MPID_Request * request_ptr);
 int MPIC_Probe(int source, int tag, MPI_Comm comm, MPI_Status *status);
 
 /* FT versions of te MPIC_ functions */
-int MPIC_Send_ft(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
                  MPI_Comm comm, int *errflag);
-int MPIC_Recv_ft(void *buf, int count, MPI_Datatype datatype, int source, int tag,
+int MPIC_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
                  MPI_Comm comm, MPI_Status *status, int *errflag);
-int MPIC_Ssend_ft(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
                   MPI_Comm comm, int *errflag);
-int MPIC_Sendrecv_ft(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+int MPIC_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                      int dest, int sendtag, void *recvbuf, int recvcount,
                      MPI_Datatype recvtype, int source, int recvtag,
                      MPI_Comm comm, MPI_Status *status, int *errflag);
-int MPIC_Sendrecv_replace_ft(void *buf, int count, MPI_Datatype datatype,
+int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
                              int dest, int sendtag,
                              int source, int recvtag,
                              MPI_Comm comm, MPI_Status *status, int *errflag);
-int MPIC_Isend_ft(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
                   MPI_Comm comm, MPI_Request *request, int *errflag);
-int MPIC_Irecv_ft(void *buf, int count, MPI_Datatype datatype, int source,
+int MPIC_Irecv(void *buf, int count, MPI_Datatype datatype, int source,
                   int tag, MPI_Comm comm, MPI_Request *request);
-int MPIC_Waitall_ft(int numreq, MPI_Request requests[], MPI_Status statuses[], int *errflag);
+int MPIC_Waitall(int numreq, MPI_Request requests[], MPI_Status statuses[], int *errflag);
 
 
 void MPIR_MAXF  ( void *, void *, int *, MPI_Datatype * ) ;
@@ -4232,6 +4281,8 @@ int MPIR_Reduce_local_impl(const void *inbuf, void *inoutbuf, int count, MPI_Dat
 int MPIR_Setup_intercomm_localcomm( MPID_Comm * );
 
 int MPIR_Comm_create( MPID_Comm ** );
+int MPIR_Comm_create_group(MPID_Comm * comm_ptr, MPID_Group * group_ptr, int tag,
+                           MPID_Comm ** newcomm);
 
 /* comm_create helper functions, used by both comm_create and comm_create_group */
 int MPIR_Comm_create_calculate_mapping(MPID_Group  *group_ptr,
@@ -4243,6 +4294,11 @@ int MPIR_Comm_create_create_and_map_vcrt(int n,
                                          MPID_VCR *mapping_vcr,
                                          MPID_VCRT *out_vcrt,
                                          MPID_VCR **out_vcr);
+
+/* implements the logic for MPI_Comm_create for intracommunicators only */
+int MPIR_Comm_create_intra(MPID_Comm *comm_ptr, MPID_Group *group_ptr,
+                           MPID_Comm **newcomm_ptr);
+
 
 int MPIR_Comm_commit( MPID_Comm * );
 

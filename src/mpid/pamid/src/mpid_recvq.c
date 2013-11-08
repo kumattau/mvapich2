@@ -83,6 +83,11 @@ MPIDI_Recvq_FU(int source, int tag, int context_id, MPI_Status * status)
 #ifdef USE_STATISTICS
   unsigned search_length = 0;
 #endif
+#ifdef OUT_OF_ORDER_HANDLING
+  MPIDI_In_cntr_t *in_cntr;
+  uint nMsgs=0;
+  pami_task_t pami_source;
+#endif
 
   if (tag != MPI_ANY_TAG && source != MPI_ANY_SOURCE)
     {
@@ -96,12 +101,27 @@ MPIDI_Recvq_FU(int source, int tag, int context_id, MPI_Status * status)
              (MPIDI_Request_getMatchTag(rreq)  == tag       )
              )
           {
+  #ifdef OUT_OF_ORDER_HANDLING
+            pami_source= MPIDI_Request_getPeerRank_pami(rreq);
+            in_cntr=&MPIDI_In_cntr[pami_source];
+            nMsgs = in_cntr->nMsgs + 1;
+            if( ((int)(nMsgs-MPIDI_Request_getMatchSeq(rreq))) >= 0 )
+            {
+              if (rreq->mpid.nextR != NULL) {  /* recv is in the out of order list */
+                 if (MPIDI_Request_getMatchSeq(rreq) == nMsgs) {
+                     in_cntr->nMsgs=nMsgs;
+                     MPIDI_Recvq_remove_req_from_ool(rreq,in_cntr);
+                 } 
+              } 
+  #endif
             found = TRUE;
             if(status != MPI_STATUS_IGNORE)
               *status = (rreq->status);
             break;
-          }
-
+#ifdef OUT_OF_ORDER_HANDLING
+             }
+#endif
+       }
         rreq = rreq->mpid.next;
       }
     }
@@ -143,12 +163,31 @@ MPIDI_Recvq_FU(int source, int tag, int context_id, MPI_Status * status)
              ( (MPIDI_Request_getMatchTag(rreq)  & mask.tag ) == match.tag       )
              )
           {
+#ifdef OUT_OF_ORDER_HANDLING
+            pami_source= MPIDI_Request_getPeerRank_pami(rreq);
+            in_cntr=&MPIDI_In_cntr[pami_source];
+            nMsgs = in_cntr->nMsgs + 1;
+            if(( ( (int)(nMsgs-MPIDI_Request_getMatchSeq(rreq))) >= 0) || (source == MPI_ANY_SOURCE)) {
+               if(source == MPI_ANY_SOURCE) {
+                 if((int) (nMsgs-MPIDI_Request_getMatchSeq(rreq)) < 0 )
+                    goto NEXT_MSG;
+               }
+            if (rreq->mpid.nextR != NULL)  { /* recv is in the out of order list */
+              if (MPIDI_Request_getMatchSeq(rreq) == nMsgs)
+                in_cntr->nMsgs=nMsgs;
+              MPIDI_Recvq_remove_req_from_ool(rreq,in_cntr);
+            }
+#endif
             found = TRUE;
-            if(status != MPI_STATUS_IGNORE)
+            if(status != MPI_STATUS_IGNORE) 
               *status = (rreq->status);
             break;
-          }
+#ifdef OUT_OF_ORDER_HANDLING
+           }
+#endif
 
+        }
+     NEXT_MSG:
         rreq = rreq->mpid.next;
       }
     }
@@ -277,9 +316,7 @@ MPIDI_Recvq_FDU(int source, pami_task_t pami_source, int tag, int context_id, in
 #endif
             MPIDI_Recvq_remove(MPIDI_Recvq.unexpected, rreq, prev_rreq);
             found = TRUE;
-#ifdef MPIDI_TRACE
-            MPIDI_In_cntr[(rreq->mpid.partner_id)].R[(rreq->mpid.idx)].matchedInUQ2=1;
-#endif
+            TRACE_SET_R_BIT((rreq->mpid.partner_id),(rreq->mpid.idx),fl.f.matchedInUQ2);
             goto fn_exit;
           }
 #ifdef OUT_OF_ORDER_HANDLING
@@ -468,11 +505,10 @@ MPIDI_Recvq_AEU(MPID_Request *newreq, int source, pami_task_t pami_source, int t
   MPID_Request *rreq;
   rreq = newreq;
   rreq->kind = MPID_REQUEST_RECV;
-#ifdef  MPIDI_TRACE
-  rreq->mpid.envelope.msginfo.MPIseqno=-1;
-  rreq->mpid.envelope.length=0;
-  rreq->mpid.envelope.data=NULL;
-#endif
+  TRACE_MEMSET_R(pami_source,msg_seqno,recv_status);
+  TRACE_SET_REQ_VAL(rreq->mpid.envelope.msginfo.MPIseqno,-1);
+  TRACE_SET_REQ_VAL(rreq->mpid.envelope.length,-1);
+  TRACE_SET_REQ_VAL(rreq->mpid.envelope.data,(void *) 0);
 #ifndef OUT_OF_ORDER_HANDLING
   MPIDI_Request_setMatch(rreq, tag, source, context_id);
   MPIDI_Recvq_append(MPIDI_Recvq.unexpected, rreq);
@@ -480,14 +516,6 @@ MPIDI_Recvq_AEU(MPID_Request *newreq, int source, pami_task_t pami_source, int t
   MPID_Request *q;
   MPIDI_In_cntr_t *in_cntr;
   int insert, i;
-#ifdef MPIDI_TRACE
-  int idx;
-  idx=(msg_seqno & SEQMASK);
-  recv_status *rstatus;
-  rstatus=&MPIDI_In_cntr[pami_source].R[idx];
-  memset(rstatus,0,sizeof(recv_status));
-#endif
-
 
   in_cntr = &MPIDI_In_cntr[pami_source];
   MPIDI_Request_setMatch(rreq, tag, source, context_id); /* mpi rank needed */
@@ -514,16 +542,14 @@ MPIDI_Recvq_AEU(MPID_Request *newreq, int source, pami_task_t pami_source, int t
       MPIDI_Recvq_append(MPIDI_Recvq.unexpected, rreq);
     }
    }
-#ifdef MPIDI_TRACE
-   rstatus->req=rreq;
-   rstatus->msgid=msg_seqno;
-   rstatus->ool=1;
-   rstatus->rtag=tag;
-   rstatus->rctx=context_id;
-   rreq->mpid.idx=idx;
-   rstatus->rsource=pami_source;
-   rreq->mpid.partner_id=pami_source;
-#endif
+   TRACE_SET_R_VAL(pami_source,(msg_seqno & SEQMASK),req,rreq);
+   TRACE_SET_R_VAL(pami_source,(msg_seqno & SEQMASK),msgid,msg_seqno);
+   TRACE_SET_R_BIT(pami_source,(msg_seqno & SEQMASK),fl.f.ool);
+   TRACE_SET_R_VAL(pami_source,(msg_seqno & SEQMASK),rtag,tag);
+   TRACE_SET_R_VAL(pami_source,(msg_seqno & SEQMASK),rctx,context_id);
+   TRACE_SET_REQ_VAL(rreq->mpid.idx,(msg_seqno & SEQMASK));
+   TRACE_SET_R_VAL(pami_source,(msg_seqno & SEQMASK),rsource,pami_source);
+   TRACE_SET_REQ_VAL(rreq->mpid.partner_id,pami_source);
 
   if (((int)(in_cntr->nMsgs - msg_seqno)) < 0) { /* seqno > nMsgs, out of order */
     MPIDI_Recvq_enqueue_ool(pami_source,rreq);

@@ -199,6 +199,7 @@ extern int mv2_mcast_scatter_large_sys_size;
 /* Use inside reduce_osu.c*/
 extern int mv2_user_reduce_two_level;
 extern int mv2_user_allgather_two_level;
+extern int mv2_reduce_zcopy_inter_knomial_factor;
 
 /* Use inside allreduce_osu.c*/
 extern int mv2_disable_shmem_allreduce;
@@ -251,6 +252,7 @@ extern int mv2_bcast_scatter_ring_overlap;
 extern int mv2_bcast_scatter_ring_overlap_msg_upperbound;
 extern int mv2_bcast_scatter_ring_overlap_cores_lowerbound;
 extern int mv2_enable_zcpy_bcast; 
+extern int mv2_enable_zcpy_reduce; 
 
 /* Used inside reduce_osu.c */
 extern int mv2_disable_shmem_reduce;
@@ -359,9 +361,16 @@ extern int mv2_use_mcast_pipeline_shm;
 #define IS_SHMEM_WINDOW_FULL(start, end) \
     ((((int)(start) - (end)) >= mv2_shm_window_size -1) ? 1 : 0)
 
+#define IS_SHMEM_WINDOW_HALF_FULL(start, end) \
+    ((((int)(start) - (end)) >= mv2_shm_window_size/2) ? 1 : 0)
+
+
+int IS_SHMEM_WINDOW_REDUCE_HALF_FULL(int start, int end); 
+
 #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
 typedef struct shm_coll_pkt{
      int  peer_rank;
+     int  recv_id;
      uint32_t key[MAX_NUM_HCAS]; 
      uint64_t addr[MAX_NUM_HCAS]; 
 } shm_coll_pkt; 
@@ -372,6 +381,11 @@ typedef struct shm_slot_t {
     volatile uint32_t *tail_psn __attribute__((aligned(MV2_SHM_ALIGN)));
     char buf[] __attribute__((aligned(MV2_SHM_ALIGN)));
 } shm_slot_t;
+
+typedef struct shm_slot_cntrl_t {
+    volatile uint32_t psn __attribute__((aligned(MV2_SHM_ALIGN)));
+    volatile uint32_t *tail_psn __attribute__((aligned(MV2_SHM_ALIGN)));
+} shm_slot_cntrl_t;
 
 typedef struct shm_queue_t {
     shm_slot_t **shm_slots;
@@ -389,26 +403,48 @@ typedef struct shm_info_t {
     int read;
     int tail;
     shm_queue_t *queue;
+    MPI_Comm comm; 
 #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
-    int exchange_rdma_keys; 
     int buffer_registered; 
+    /* zcpy bcast */
+    int bcast_exchange_rdma_keys; 
     int bcast_knomial_factor; 
     int bcast_expected_send_count; 
+    shm_coll_pkt  *bcast_remote_handle_info_parent; 
+    shm_coll_pkt  *bcast_remote_handle_info_children; 
+    /* zcpy reduce */
+    int reduce_exchange_rdma_keys; 
+    int reduce_knomial_factor; 
+    int reduce_expected_recv_count; 
+    int reduce_expected_send_count; 
+    shm_coll_pkt  *reduce_remote_handle_info_parent; 
+    shm_coll_pkt  *reduce_remote_handle_info_children; 
+    int *inter_node_reduce_status_array; 
+    /* request info */
+    int mid_request_active; 
+    int end_request_active; 
+    MPI_Request   mid_request; 
+    MPI_Request   end_request; 
+    int half_full_complete; 
     struct ibv_mr *mem_handle[MAX_NUM_HCAS]; /* mem hndl for entire region */
-    shm_coll_pkt  *remote_handle_info_parent; 
-    shm_coll_pkt  *remote_handle_info_children; 
 #endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
 } shmem_info_t;
 
-shmem_info_t * mv2_shm_coll_init(int id, int local_rank, int local_size);
+shmem_info_t * mv2_shm_coll_init(int id, int local_rank, int local_size, 
+                                 MPID_Comm *comm_ptr);
 void mv2_shm_coll_cleanup(shmem_info_t * shmem);
 void mv2_shm_barrier(shmem_info_t * shmem);
-void mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root);
+int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root);
 void mv2_shm_reduce(shmem_info_t *shmem, char *buf, int len, 
-                        int count, int root, MPI_User_function *uop, MPI_Datatype datatype);
+                        int count, int root, MPI_User_function *uop, MPI_Datatype datatype, int is_cxx_uop);  
+void mv2_shm_tree_reduce(shmem_info_t * shmem, char *in_buf, int len,
+                    int count, int root, MPI_User_function * uop, MPI_Datatype datatype, 
+                    int is_cxx_uop); 
+
 #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
 int mv2_shm_coll_reg_buffer(void *buffer, int size, struct ibv_mr *mem_handle[], 
                            int *buffer_registered); 
+int mv2_shm_coll_dereg_buffer(struct ibv_mr *mem_handle[]);
 void mv2_shm_coll_prepare_post_send(uint64_t local_rdma_addr, uint64_t remote_rdma_addr,
                       uint32_t local_rdma_key, uint32_t remote_rdma_key,
                       int len, int rail, MPIDI_VC_t * vc); 
@@ -416,7 +452,16 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                        int src, int expected_recv_count,
                        int *dst_array, int expected_send_count,
                        int knomial_degree,
-                       MPID_Comm *comm_ptr); 
+                       MPID_Comm *comm_ptr);
+int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
+                         void *in_buf, void **out_buf,
+                         int count, int len,
+                         MPI_Datatype datatype,
+                         MPI_Op op, int root,
+                         int expected_recv_count, int *src_array,
+                         int expected_send_count, int dst,
+                         int knomial_degree,
+                         MPID_Comm * comm_ptr, int *errflag);
 #endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
 
 #endif  /* _COLL_SHMEM_ */

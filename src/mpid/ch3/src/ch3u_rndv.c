@@ -235,9 +235,10 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
             vc->smp.local_rank != -1 &&
             (rreq->mrail.cuda_transfer_mode != NONE || 
              rts_pkt->rndv.cuda_transfer_mode != NONE) &&
-            vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
-                MPIU_Assert (cuda_initialized == 1);
-                cudaipc_init_dynamic (vc);
+             vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
+                if (cuda_initialized) {
+                    cudaipc_init_dynamic (vc);
+                }
         }
 #endif
 
@@ -643,8 +644,9 @@ int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
 
             if (rdma_cuda_dynamic_init && 
                 vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
-                MPIU_Assert (cuda_initialized == 1);
-                cudaipc_init_dynamic (vc);
+                if (cuda_initialized) {
+                    cudaipc_init_dynamic (vc);
+                }
             }
 
             /*revert to RGET if using IPC and rdma is possible*/
@@ -682,8 +684,9 @@ int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
         (rreq->mrail.cuda_transfer_mode != NONE ||
          rreq->mrail.protocol == MV2_RNDV_PROTOCOL_CUDAIPC) && 
         vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
-            MPIU_Assert (cuda_initialized == 1);
-            cudaipc_init_dynamic (vc);
+            if (cuda_initialized) {
+                cudaipc_init_dynamic (vc);
+            }
     }
 #endif
 

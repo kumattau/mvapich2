@@ -65,9 +65,11 @@ put_base 2
 put_bottom 2
 win_flavors 4 mpiversion=3.0
 manyrma2 2 timeLimit=500
+manyrma3 2
 win_shared 4 mpiversion=3.0
 win_shared_noncontig 4 mpiversion=3.0
 win_shared_noncontig_put 4 mpiversion=3.0
+win_zero 4 mpiversion=3.0
 win_dynamic_acc 4 mpiversion=3.0
 get_acc_local 1 mpiversion=3.0
 linked_list 4 mpiversion=3.0
@@ -90,6 +92,7 @@ get_accumulate_short_derived 4 mpiversion=3.0
 flush 4 mpiversion=3.0
 reqops 4 mpiversion=3.0
 req_example 4 mpiversion=3.0
+req_example_shm 4 mpiversion=3.0
 win_info 4 mpiversion=3.0
 linked_list_lockall 4 mpiversion=3.0
 pscw_ordering 4 mpiversion=3.0
@@ -99,3 +102,6 @@ linked_list_bench_lock_shr 4 mpiversion=3.0
 linked_list_bench_lock_shr_nocheck 4 mpiversion=3.0
 mutex_bench 4 mpiversion=3.0
 mutex_bench_shared 4 mpiversion=3.0
+mutex_bench_shm 4 mpiversion=3.0
+rma-contig 4 mpiversion=3.0 timeLimit=600
+badrma 2 mpiversion=3.0

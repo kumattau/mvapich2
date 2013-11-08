@@ -36,6 +36,10 @@
  * 2-level ring:  MV2_INTER_ALLGATHER_TUNING=4
  *                MV2_INTER_ALLGATHER_TUNING_TWO_LEVEL=1
  */
+/* Indicates number of processes per node */
+extern int *mv2_allgather_table_ppn_conf;
+/* Indicates total number of configurations */
+extern int mv2_allgather_num_ppn_conf;
 
 typedef struct {
     int min;
@@ -56,8 +60,8 @@ typedef struct {
     mv2_allgather_tuning_element inter_leader[MV2_MAX_NB_THRESHOLDS];
 } mv2_allgather_tuning_table;
 
-extern int mv2_size_allgather_tuning_table;
-extern mv2_allgather_tuning_table *mv2_allgather_thresholds_table;
+extern int *mv2_size_allgather_tuning_table;
+extern mv2_allgather_tuning_table **mv2_allgather_thresholds_table;
 extern int mv2_use_old_allgather;
 
 extern int MPIR_Allgather_RD_Allgather_Comm_MV2(const void *sendbuf,

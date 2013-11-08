@@ -25,7 +25,6 @@
 
 extern void *mv2_cuda_allgather_store_buf;
 extern int mv2_cuda_allgather_store_buf_size;
-extern cudaEvent_t *mv2_cuda_sync_event;
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allgather_cuda_intra_MV2
@@ -92,17 +91,6 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
         mv2_cuda_allgather_store_buf_size = max_size;
     }
 
-    /*Creating event to synchronize at end*/
-    if (!mv2_cuda_sync_event) {
-        mv2_cuda_sync_event = (cudaEvent_t *) MPIU_Malloc(sizeof(cudaEvent_t));
-        cudaerr = cudaEventCreateWithFlags(mv2_cuda_sync_event, cudaEventDisableTiming);
-        if(cudaerr != cudaSuccess) {
-            mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
-                    __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-            return mpi_errno;
-        }
-    }
-
     if (recvcount*recvtype_extent > rdma_cuda_allgather_rd_limit*comm_size || 
             !comm_size_is_pof2) { // RING
             
@@ -116,6 +104,21 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                 MPIU_ERR_POP(mpi_errno);
             }
         }
+        
+    /* This synchronization is needed because MPIR_Localcopy calls cudamemcpy
+     * on the default stream (0) but subsequent MPI_Isend/Irecv calls access
+     * GPU buffers using non-default streams which don't wait for the initial
+     * local copy to complete*/
+        if (rdma_enable_cuda && cuda_initialized && enable_device_ptr_checks
+            && rdma_cuda_nonblocking_streams) {
+                if (rdma_cuda_event_sync) { 
+                    CUDA_CHECK(cudaEventRecord(cuda_nbstream_sync_event, 0));
+                    CUDA_CHECK(cudaStreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 0));
+                } else { /*using streams for pipelining, dont know which stream will be used*/   
+                    CUDA_CHECK(cudaStreamSynchronize(0));
+                }
+        }
+        
 
         /*Starting the RING stages*/
         left  = (comm_size + rank - 1) % comm_size;
@@ -136,8 +139,8 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                             right,
                             MPIR_ALLGATHER_TAG,
                             comm,
-                            &send_req );
-        mpi_errno = MPIC_Waitall_ft(1, &recv_req, &status, errflag);
+                            &send_req, errflag);
+        mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
 	    if (mpi_errno) {
             /* for communication errors, just record the error but continue */
             *errflag = TRUE;
@@ -149,9 +152,9 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                 (void *)((char *)mv2_cuda_allgather_store_buf + jnext*recvcount*recvtype_extent),
                 recvcount*recvtype_extent,
                 cudaMemcpyHostToDevice,
-                0 );
+                stream_h2d );
 
-        mpi_errno = MPIC_Waitall_ft(1, &send_req, &status, errflag);
+        mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
 	    if (mpi_errno) {
             /* for communication errors, just record the error but continue */
             *errflag = TRUE;
@@ -177,8 +180,8 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                     right,
                                     MPIR_ALLGATHER_TAG,
                                     comm,
-                                    &send_req );
-            mpi_errno = MPIC_Waitall_ft(1, &recv_req, &status, errflag);
+                                    &send_req, errflag);
+            mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
 	        if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = TRUE;
@@ -190,9 +193,9 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                     (void *)((char *)mv2_cuda_allgather_store_buf + jnext*recvcount*recvtype_extent),
                     recvcount*recvtype_extent,
                     cudaMemcpyHostToDevice,
-                    0 );
+                    stream_h2d );
 
-            mpi_errno = MPIC_Waitall_ft(1, &send_req, &status, errflag);
+            mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
 	        if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = TRUE;
@@ -219,15 +222,15 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                     right,
                     MPIR_ALLGATHER_TAG,
                     comm,
-                    &send_req );
-            mpi_errno = MPIC_Waitall_ft(1, &recv_req, &status, errflag);
+                    &send_req, errflag);
+            mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
 	        if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = TRUE;
                 MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
                 MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
 	        }
-            mpi_errno = MPIC_Waitall_ft(1, &send_req, &status, errflag);
+            mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
 	        if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = TRUE;
@@ -249,6 +252,16 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                 if (mpi_errno) {
                     MPIU_ERR_POP(mpi_errno);
                 }
+            }
+    /* This synchronization is needed because MPIR_Localcopy calls cudamemcpy
+     * on the default stream (0) but subsequent MPI_Isend/Irecv calls access
+     * GPU buffers using non-default streams which don't wait for the initial
+     * local copy to complete*/
+            if (rdma_enable_cuda && cuda_initialized && enable_device_ptr_checks
+                && rdma_cuda_nonblocking_streams) {
+                    CUDA_CHECK(cudaEventRecord(cuda_nbstream_sync_event, 0));
+                    CUDA_CHECK(cudaStreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 
+                              0));
             }
             
             curr_cnt = recvcount;
@@ -287,9 +300,9 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                         dst, 
                                         MPIR_ALLGATHER_TAG,
                                         comm,
-                                        &send_req );
+                                        &send_req, errflag);
 
-                mpi_errno = MPIC_Waitall_ft(1, &recv_req, &status, errflag);
+                mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
                 if (mpi_errno) {
                            /* for communication errors, just record the error but continue */
                             *errflag = TRUE;
@@ -301,9 +314,9 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                     (void*)((char *)mv2_cuda_allgather_store_buf + recv_offset),
                                     (mask)*recvcount*recvtype_extent,
                                     cudaMemcpyHostToDevice,
-                                    0 );
+                                    stream_h2d );
 
-                mpi_errno = MPIC_Waitall_ft(1, &send_req, &status, errflag);
+                mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
                 if (mpi_errno) {
                            /* for communication errors, just record the error but continue */
                             *errflag = TRUE;
@@ -359,8 +372,8 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                             dst, 
                                             MPIR_ALLGATHER_TAG,
                                             comm,
-                                            &send_req );
-                    mpi_errno = MPIC_Waitall_ft(1, &recv_req, &status, errflag);
+                                            &send_req, errflag);
+                    mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
                     if (mpi_errno) {
                                /* for communication errors, just record the error but continue */
                                 *errflag = TRUE;
@@ -373,9 +386,9 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                             (void *)((char *)mv2_cuda_allgather_store_buf + recv_offset),
                                             (mask)*recvcount*recvtype_extent,
                                             cudaMemcpyHostToDevice,
-                                            0 );
+                                            stream_h2d );
                     }
-                    mpi_errno = MPIC_Waitall_ft(1, &send_req, &status, errflag);
+                    mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
                     if (mpi_errno) {
                                /* for communication errors, just record the error but continue */
                                 *errflag = TRUE;
@@ -392,13 +405,13 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
     }
 
     /* wait for the receive copies into the device to complete */
-    cudaerr = cudaEventRecord(*mv2_cuda_sync_event, 0);
+    cudaerr = cudaEventRecord(cuda_nbstream_sync_event, stream_h2d);
     if (cudaerr != cudaSuccess) {
         mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
                 __LINE__, MPI_ERR_OTHER, "**cudaEventRecord", 0);
         return mpi_errno;
     }
-    cudaEventSynchronize(*mv2_cuda_sync_event);
+    cudaEventSynchronize(cuda_nbstream_sync_event);
 
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);

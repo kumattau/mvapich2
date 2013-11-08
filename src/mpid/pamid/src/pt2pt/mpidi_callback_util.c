@@ -34,10 +34,6 @@ MPIDI_Callback_process_unexp(MPID_Request *newreq,
                              unsigned              isSync)
 {
   MPID_Request *rreq = NULL;
-#ifdef MPIDI_TRACE
-  int  idx=(msginfo->MPIseqno & SEQMASK);
-  int  source=PAMIX_Endpoint_query(sender);
-#endif
 
   /* ---------------------------------------------------- */
   /*  Fallback position:                                  */
@@ -77,16 +73,14 @@ MPIDI_Callback_process_unexp(MPID_Request *newreq,
 #endif
 
   MPID_assert(!sndlen || rreq->mpid.uebuf != NULL);
-#ifdef MPIDI_TRACE
-   memset(&MPIDI_In_cntr[source].R[idx],0,sizeof(recv_status));
-   MPIDI_In_cntr[source].R[idx].msgid=msginfo->MPIseqno;
-   MPIDI_In_cntr[source].R[idx].rtag=tag;
-   MPIDI_In_cntr[source].R[idx].rctx=msginfo->MPIctxt;
-   MPIDI_In_cntr[source].R[idx].rlen=sndlen;
-   MPIDI_In_cntr[source].R[idx].sync=isSync;
-   MPIDI_In_cntr[source].R[idx].rsource=source;
-   rreq->mpid.idx=idx;
-#endif
+  TRACE_MEMSET_R(PAMIX_Endpoint_query(sender),msg_seqno,recv_status);
+  TRACE_SET_R_VAL(PAMIX_Endpoint_query(sender),(msginfo->MPIseqno & SEQMASK),msgid,msginfo->MPIseqno);
+  TRACE_SET_R_VAL(PAMIX_Endpoint_query(sender),(msginfo->MPIseqno & SEQMASK),rtag,tag);
+  TRACE_SET_R_VAL(PAMIX_Endpoint_query(sender),(msginfo->MPIseqno & SEQMASK),rctx,msginfo->MPIctxt);
+  TRACE_SET_R_VAL(PAMIX_Endpoint_query(sender),(msginfo->MPIseqno & SEQMASK),rlen,sndlen);
+  TRACE_SET_R_VAL(PAMIX_Endpoint_query(sender),(msginfo->MPIseqno & SEQMASK),fl.f.sync,isSync);
+  TRACE_SET_R_VAL(PAMIX_Endpoint_query(sender),(msginfo->MPIseqno & SEQMASK),rsource,PAMIX_Endpoint_query(sender));
+  TRACE_SET_REQ_VAL(rreq->mpid.idx,(msginfo->MPIseqno & SEQMASK));
 
   if (recv != NULL)
     {
@@ -127,7 +121,7 @@ MPIDI_Callback_process_trunc(pami_context_t  context,
       rreq->mpid.uebuflen = rreq->status.count;
       rreq->mpid.uebuf    = MPIU_Malloc(rreq->status.count);
       MPID_assert(rreq->mpid.uebuf != NULL);
-      rreq->mpid.uebuf_malloc = 1;
+      rreq->mpid.uebuf_malloc = mpiuMalloc;
 
       recv->addr = rreq->mpid.uebuf;
     }

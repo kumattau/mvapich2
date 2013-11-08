@@ -406,9 +406,6 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
 
     /* MPIU_Timer_pre_init(); */
 
-    mpi_errno = MPIR_Param_init_params();
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-
     /* Wait for debugger to attach if requested. */
     if (MPIR_PARAM_DEBUG_HOLD) {
         volatile int hold = 1;
@@ -607,21 +604,27 @@ int MPI_Init_thread( int *argc, char ***argv, int required, int *provided )
 
     /* ... body of routine ... */
 
+    mpi_errno = MPIR_Param_init_params();
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
     /* If the user requested for asynchronous progress, request for
      * THREAD_MULTIPLE. */
-    rc = 0;
-    MPL_env2bool("MPICH_ASYNC_PROGRESS", &rc);
-    if (rc)
+    if (MPIR_PARAM_ASYNC_PROGRESS)
         reqd = MPI_THREAD_MULTIPLE;
 
     mpi_errno = MPIR_Init_thread( argc, argv, reqd, provided );
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
-    if (rc && *provided == MPI_THREAD_MULTIPLE) {
-        mpi_errno = MPIR_Init_async_thread();
-        if (mpi_errno) goto fn_fail;
+    if (MPIR_PARAM_ASYNC_PROGRESS) {
+        if (*provided == MPI_THREAD_MULTIPLE) {
+            mpi_errno = MPIR_Init_async_thread();
+            if (mpi_errno) goto fn_fail;
 
-        MPIR_async_thread_initialized = 1;
+            MPIR_async_thread_initialized = 1;
+        }
+        else {
+            printf("WARNING: No MPI_THREAD_MULTIPLE support (needed for async progress)\n");
+        }
     }
 
     /* ... end of body of routine ... */

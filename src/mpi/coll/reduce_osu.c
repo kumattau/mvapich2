@@ -181,7 +181,7 @@ int MPIR_Reduce_binomial_MV2(const void *sendbuf,
             source = (relrank | mask);
             if (source < comm_size) {
                 source = (source + lroot) % comm_size;
-                mpi_errno = MPIC_Recv_ft(tmp_buf, count, datatype, source,
+                mpi_errno = MPIC_Recv(tmp_buf, count, datatype, source,
                                          MPIR_REDUCE_TAG, comm, &status,
                                          errflag);
                 if (mpi_errno) {
@@ -220,7 +220,7 @@ int MPIR_Reduce_binomial_MV2(const void *sendbuf,
             /* I've received all that I'm going to.  Send my result to 
                my parent */
             source = ((relrank & (~mask)) + lroot) % comm_size;
-            mpi_errno = MPIC_Send_ft(recvbuf, count, datatype,
+            mpi_errno = MPIC_Send(recvbuf, count, datatype,
                                      source, MPIR_REDUCE_TAG, comm, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -235,10 +235,10 @@ int MPIR_Reduce_binomial_MV2(const void *sendbuf,
 
     if (!is_commutative && (root != 0)) {
         if (rank == 0) {
-            mpi_errno = MPIC_Send_ft(recvbuf, count, datatype, root,
+            mpi_errno = MPIC_Send(recvbuf, count, datatype, root,
                                      MPIR_REDUCE_TAG, comm, errflag);
         } else if (rank == root) {
-            mpi_errno = MPIC_Recv_ft(recvbuf, count, datatype, 0,
+            mpi_errno = MPIC_Recv(recvbuf, count, datatype, 0,
                                      MPIR_REDUCE_TAG, comm, &status, errflag);
         }
         if (mpi_errno) {
@@ -407,7 +407,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
 
     if (rank < 2 * rem) {
         if (rank % 2 != 0) {    /* odd */
-            mpi_errno = MPIC_Send_ft(recvbuf, count,
+            mpi_errno = MPIC_Send(recvbuf, count,
                                      datatype, rank - 1,
                                      MPIR_REDUCE_TAG, comm, errflag);
             if (mpi_errno) {
@@ -422,7 +422,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                doubling */
             newrank = -1;
         } else {                /* even */
-            mpi_errno = MPIC_Recv_ft(tmp_buf, count,
+            mpi_errno = MPIC_Recv(tmp_buf, count,
                                      datatype, rank + 1,
                                      MPIR_REDUCE_TAG, comm,
                                      MPI_STATUS_IGNORE, errflag);
@@ -497,7 +497,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                   send_cnt, recv_cnt, last_idx);
 */
             /* Send data from recvbuf. Recv into tmp_buf */
-            mpi_errno = MPIC_Sendrecv_ft((char *) recvbuf +
+            mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                          disps[send_idx] * extent,
                                          send_cnt, datatype,
                                          dst, MPIR_REDUCE_TAG,
@@ -561,7 +561,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                 for (i = 1; i < pof2; i++)
                     disps[i] = disps[i - 1] + cnts[i - 1];
 
-                mpi_errno = MPIC_Recv_ft(recvbuf, cnts[0], datatype,
+                mpi_errno = MPIC_Recv(recvbuf, cnts[0], datatype,
                                          0, MPIR_REDUCE_TAG, comm,
                                          MPI_STATUS_IGNORE, errflag);
                 if (mpi_errno) {
@@ -574,7 +574,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                 send_idx = 0;
                 last_idx = 2;
             } else if (newrank == 0) {  /* send */
-                mpi_errno = MPIC_Send_ft(recvbuf, cnts[0], datatype,
+                mpi_errno = MPIC_Send(recvbuf, cnts[0], datatype,
                                          root, MPIR_REDUCE_TAG, comm, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
@@ -643,7 +643,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                 /* printf("Rank %d, send_idx %d, send_cnt %d, last_idx %d\n", newrank, send_idx, send_cnt, last_idx);
                    fflush(stdout); */
                 /* Send data from recvbuf. Recv into tmp_buf */
-                mpi_errno = MPIC_Send_ft((char *) recvbuf +
+                mpi_errno = MPIC_Send((char *) recvbuf +
                                          disps[send_idx] * extent,
                                          send_cnt, datatype,
                                          dst, MPIR_REDUCE_TAG, comm, errflag);
@@ -658,7 +658,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                 /* recv and continue */
                 /* printf("Rank %d, recv_idx %d, recv_cnt %d, last_idx %d\n", newrank, recv_idx, recv_cnt, last_idx);
                    fflush(stdout); */
-                mpi_errno = MPIC_Recv_ft((char *) recvbuf +
+                mpi_errno = MPIC_Recv((char *) recvbuf +
                                          disps[recv_idx] * extent,
                                          recv_cnt, datatype, dst,
                                          MPIR_REDUCE_TAG, comm,
@@ -986,7 +986,7 @@ int MPIR_Reduce_knomial_MV2 (
         while(recv_iter  < expected_recv_count) {
             src = src_array[expected_recv_count - (recv_iter+1)];
 
-            mpi_errno = MPIC_Irecv_ft (tmp_buf[recv_iter], count, datatype ,src,
+            mpi_errno = MPIC_Irecv (tmp_buf[recv_iter], count, datatype ,src,
                     MPIR_REDUCE_TAG, comm, &requests[recv_iter]);
             recv_iter++;
 
@@ -1034,7 +1034,7 @@ int MPIR_Reduce_knomial_MV2 (
     } 
 
     if(rank != root) {
-        mpi_errno = MPIC_Isend_ft(recvbuf,count, datatype, dst,
+        mpi_errno = MPIC_Isend(recvbuf,count, datatype, dst,
                 MPIR_REDUCE_TAG,comm,&send_request,
                 errflag);
         if (mpi_errno) {
@@ -1044,7 +1044,7 @@ int MPIR_Reduce_knomial_MV2 (
             MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
             MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
-        mpi_errno = MPIC_Waitall_ft(1, &send_request, &status, errflag);
+        mpi_errno = MPIC_Waitall(1, &send_request, &status, errflag);
     }
 
     /* FIXME does this need to be checked after each uop invocation for
@@ -1118,6 +1118,139 @@ int MPIR_Reduce_intra_knomial_wrapper_MV2 (
 fn_fail:
    return mpi_errno;
 }
+
+#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
+#undef FUNCNAME
+#define FUNCNAME MPIR_Reduce_Zcpy_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Reduce_Zcpy_MV2(const void *sendbuf,
+                                     void *recvbuf,
+                                     int count,
+                                     MPI_Datatype datatype,
+                                     MPI_Op op,
+                                     int root,
+                                     MPID_Comm * comm_ptr, int *errflag)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    int my_rank, local_rank;
+    MPI_Comm comm, shmem_comm, leader_comm;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
+    void *in_buf = NULL, *out_buf = NULL;
+    MPI_Aint true_lb, true_extent, extent;
+    MPID_Op *op_ptr;
+    int stride = 0;
+    int dst, expected_send_count, expected_recv_count;
+    int *src_array=NULL;
+    int pseudo_root = 0;
+    static int fn_call=0;  
+    MPI_Status status; 
+    fn_call++; 
+
+    my_rank = comm_ptr->rank;
+    comm = comm_ptr->handle;
+    shmem_comm = comm_ptr->ch.shmem_comm;
+
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+    local_rank = shmem_commptr->rank;
+
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+    stride = count * MPIR_MAX(extent, true_extent);
+
+    if (local_rank == 0) {
+        int leader_of_psuedo_root, leader_psuedo_root; 
+        shmem_info_t *shmem_info = NULL;
+        leader_comm = comm_ptr->ch.leader_comm;
+        MPID_Comm_get_ptr(leader_comm, leader_commptr);
+ 
+        leader_of_psuedo_root = comm_ptr->ch.leader_map[pseudo_root];
+        leader_psuedo_root = comm_ptr->ch.leader_rank[leader_of_psuedo_root];
+
+        shmem_info = comm_ptr->ch.shmem_info;
+        /* If the knomial_factor requested for this specific bcast 
+         * is the same as the one that we have used before, the communication
+         * tree is already setup and cached. No need to do it again
+         */
+        if((shmem_info)->reduce_knomial_factor != mv2_reduce_zcopy_inter_knomial_factor) {
+             MPIR_Reduce_knomial_trace(leader_psuedo_root, 
+                               mv2_reduce_zcopy_inter_knomial_factor,
+                               leader_commptr, &dst, &expected_send_count,
+                               &expected_recv_count, &src_array);
+             (shmem_info)->reduce_exchange_rdma_keys = 1;
+        }
+    }
+
+    if (sendbuf != MPI_IN_PLACE) {
+        in_buf = (void *)sendbuf;
+    } else {
+        in_buf = recvbuf;
+    } 
+    mpi_errno = mv2_shm_zcpy_reduce(shmem_commptr->ch.shmem_info, 
+                                  in_buf, &out_buf, count, stride, 
+                                  datatype, op,
+                                  root,
+                                  expected_recv_count, src_array, 
+                                  expected_send_count, dst, 
+                                  mv2_reduce_zcopy_inter_knomial_factor, 
+                                  comm_ptr, 
+                                  errflag);
+    if (mpi_errno) {
+        /* for communication errors, just record the error
+         * but continue */
+        *errflag = TRUE;
+        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+    }
+
+    if(my_rank == 0 && root == my_rank) { 
+         MPIU_Memcpy(recvbuf, out_buf, stride);
+    } else {  
+        /* Send the message to the root if the root is not rank0 */ 
+        if ((my_rank == 0) && (root != my_rank)) { 
+            mpi_errno = MPIC_Send(out_buf, count, datatype, root,
+                                     MPIR_REDUCE_TAG, comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error 
+                 * but continue */
+                fprintf(stderr,"%d send to %d failed, mpi_errno %d\n", comm_ptr->rank, root, mpi_errno); 
+                
+                *errflag = TRUE;
+                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+
+        if ((my_rank != 0) && (root == my_rank)) {
+            mpi_errno = MPIC_Recv(recvbuf, count, datatype,
+                                     pseudo_root,
+                                     MPIR_REDUCE_TAG, comm,
+                                     &status, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but
+                 * continue */
+                fprintf(stderr,"%d send to %d failed, mpi_errno %d\n", comm_ptr->rank, root, mpi_errno); 
+                *errflag = TRUE;
+                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+    } 
+
+  fn_exit:
+    if (mpi_errno_ret)
+        mpi_errno = mpi_errno_ret;
+    else if (*errflag)
+        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+    return mpi_errno;
+  fn_fail:
+    goto fn_exit;
+}
+#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) */ 
+
+
+
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Reduce_two_level_helper_MV2
@@ -1213,11 +1346,11 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
                                               datatype, op,
                                               0, shmem_commptr, errflag);
             if (local_rank == 0 && root != my_rank) {
-                mpi_errno = MPIC_Send_ft(out_buf, count, datatype, root,
+                mpi_errno = MPIC_Send(out_buf, count, datatype, root,
                                          MPIR_REDUCE_TAG, comm, errflag);
             }
             if ((local_rank != 0) && (root == my_rank)) {
-                mpi_errno = MPIC_Recv_ft(recvbuf, count, datatype,
+                mpi_errno = MPIC_Recv(recvbuf, count, datatype,
                                          leader_of_root, MPIR_REDUCE_TAG, comm,
                                          MPI_STATUS_IGNORE, errflag);
             }
@@ -1242,6 +1375,27 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
         /* We are done */
         goto fn_exit;
     }
+    
+#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
+    if(mv2_enable_zcpy_reduce == 1 && 
+       stride <= mv2_shm_slot_len && 
+       comm_ptr->ch.shmem_coll_ok == 1 &&
+       mv2_disable_shmem_reduce == 0 && is_commutative == 1){ 
+        mpi_errno = MPIR_Reduce_Zcpy_MV2(sendbuf, recvbuf, count,
+                                         datatype, op,
+                                         root, comm_ptr,
+                                         errflag); 
+        if (mpi_errno) {
+            /* for communication errors, just record the error but
+             * continue */
+            *errflag = TRUE;
+            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+        }
+        /* We are done */
+        goto fn_exit;
+    } 
+#endif  /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) */ 
 
     if (local_rank == 0) {
         leader_comm = comm_ptr->ch.leader_comm;
@@ -1263,6 +1417,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
     } else {
         out_buf = NULL;
     }
+
 
     if(local_size > 1) { 
         /* Lets do the intra-node reduce operations, if we have more than one
@@ -1345,7 +1500,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
          * root of the reduce operation. The reduced data is in tmp_buf */
         if ((local_rank == 0) && (root != my_rank)
             && (leader_root == leader_comm_rank)) {
-            mpi_errno = MPIC_Send_ft(tmp_buf, count, datatype, root,
+            mpi_errno = MPIC_Send(tmp_buf, count, datatype, root,
                                      MPIR_REDUCE_TAG, comm, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error 
@@ -1357,7 +1512,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
         }
 
         if ((local_rank != 0) && (root == my_rank)) {
-            mpi_errno = MPIC_Recv_ft(recvbuf, count, datatype,
+            mpi_errno = MPIC_Recv(recvbuf, count, datatype,
                                      leader_of_root,
                                      MPIR_REDUCE_TAG, comm,
                                      MPI_STATUS_IGNORE, errflag);
@@ -1574,7 +1729,6 @@ int MPIR_Reduce_MV2(const void *sendbuf,
     if(mv2_reduce_thresholds_table[range].is_two_level_reduce[range_threshold] == 1){
                is_two_level = 1;
     }
-
     /* We call Reduce function */
     if(is_two_level == 1)
     {

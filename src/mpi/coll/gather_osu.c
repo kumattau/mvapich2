@@ -100,7 +100,7 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
                                                recvcnt, recvtype);
                 }
             } else {
-                mpi_errno = MPIC_Irecv_ft(((char *) recvbuf +
+                mpi_errno = MPIC_Irecv(((char *) recvbuf +
                                            i * recvcnt * extent),
                                           recvcnt, recvtype, i,
                                           MPIR_GATHER_TAG, comm,
@@ -119,7 +119,7 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
             /* --END ERROR HANDLING-- */
         }
         /* ... then wait for *all* of them to finish: */
-        mpi_errno = MPIC_Waitall_ft(reqs, reqarray, starray, errflag);
+        mpi_errno = MPIC_Waitall(reqs, reqarray, starray, errflag);
         /* --BEGIN ERROR HANDLING-- */
         if (mpi_errno == MPI_ERR_IN_STATUS) {
             for (i = 0; i < reqs; i++) {
@@ -140,10 +140,10 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
         if (sendcnt) {
             comm_size = comm_ptr->local_size;
             if (sendbuf != MPI_IN_PLACE) {
-                mpi_errno = MPIC_Send_ft(sendbuf, sendcnt, sendtype, root,
+                mpi_errno = MPIC_Send(sendbuf, sendcnt, sendtype, root,
                                          MPIR_GATHER_TAG, comm, errflag);
             } else {
-                mpi_errno = MPIC_Send_ft(recvbuf, sendcnt, sendtype, root,
+                mpi_errno = MPIC_Send(recvbuf, sendcnt, sendtype, root,
                                          MPIR_GATHER_TAG, comm, errflag);
             }
             if (mpi_errno) {
@@ -179,7 +179,7 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
     int mpi_errno_ret = MPI_SUCCESS;
     MPI_Aint extent = 0;        /* Datatype extent */
     MPI_Comm comm;
-    int reqs = 0, i = 0;
+    int i = 0;
 
     comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
@@ -199,7 +199,6 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
                                          recvbuf +
                                          (extent * recvcnt * comm_size));
 
-        reqs = 0;
         for (i = 0; i < comm_size; i++) {
             if (i == rank) {
                 if (sendbuf != MPI_IN_PLACE) {
@@ -210,7 +209,7 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
                     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
                 }
             } else {
-                mpi_errno = MPIC_Recv_ft(((char *) recvbuf +
+                mpi_errno = MPIC_Recv(((char *) recvbuf +
                                            i * recvcnt * extent),
                                           recvcnt, recvtype, i,
                                           MPIR_GATHER_TAG, comm,
@@ -232,10 +231,10 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
         if (sendcnt) {
             comm_size = comm_ptr->local_size;
             if (sendbuf != MPI_IN_PLACE) {
-                mpi_errno = MPIC_Send_ft(sendbuf, sendcnt, sendtype, root,
+                mpi_errno = MPIC_Send(sendbuf, sendcnt, sendtype, root,
                                          MPIR_GATHER_TAG, comm, errflag);
             } else {
-                mpi_errno = MPIC_Send_ft(recvbuf, sendcnt, sendtype, root,
+                mpi_errno = MPIC_Send(recvbuf, sendcnt, sendtype, root,
                                          MPIR_GATHER_TAG, comm, errflag);
             }
             if (mpi_errno) {
@@ -615,7 +614,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
     }
     if ((local_rank == 0) && (root != rank)
         && (leader_of_root == rank)) {
-        mpi_errno = MPIC_Send_ft(leader_gather_buf,
+        mpi_errno = MPIC_Send(leader_gather_buf,
                                  nbytes * comm_size, MPI_BYTE,
                                  root, MPIR_GATHER_TAG, comm, errflag);
         if (mpi_errno) {
@@ -630,7 +629,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
     if (rank == root && local_rank != 0) {
         /* The root of the gather operation is not the node leader. Receive
          y* data from the node leader */
-        mpi_errno = MPIC_Recv_ft(recvbuf, recvcnt * comm_size, recvtype,
+        mpi_errno = MPIC_Recv(recvbuf, recvcnt * comm_size, recvtype,
                                  leader_of_root, MPIR_GATHER_TAG, comm,
                                  &status, errflag);
         if (mpi_errno) {

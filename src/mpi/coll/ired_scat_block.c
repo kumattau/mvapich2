@@ -576,7 +576,7 @@ int MPIR_Ireduce_scatter_block_rec_dbl(const void *sendbuf, void *recvbuf, int r
          * will in the future when we update the NBC code to be fault-tolerant
          * in roughly the same fashion. [goodell@ 2011-03-03] */
         /* The following reduction is done here instead of after
-           the MPIC_Sendrecv_ft or MPIC_Recv_ft above. This is
+           the MPIC_Sendrecv or MPIC_Recv above. This is
            because to do it above, in the noncommutative
            case, we would need an extra temp buffer so as not to
            overwrite temp_recvbuf, because temp_recvbuf may have
@@ -727,7 +727,6 @@ int MPIR_Ireduce_scatter_block_noncomm(const void *sendbuf, void *recvbuf, int r
                                           (outgoing_data + recv_offset*true_extent),
                                           size, datatype, op, s);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-            buf0_was_inout = buf0_was_inout;
         }
         else {
             /* lower ranked value so need to call op(my_data, received_data) */
@@ -847,11 +846,11 @@ int MPIR_Ireduce_scatter_block_inter(const void *sendbuf, void *recvbuf, int rec
 
     /* first do a reduce from right group to rank 0 in left group,
        then from left group to rank 0 in right group*/
-    MPIU_Assert(comm_ptr->coll_fns && comm_ptr->coll_fns->Ireduce);
+    MPIU_Assert(comm_ptr->coll_fns && comm_ptr->coll_fns->Ireduce_sched);
     if (comm_ptr->is_low_group) {
         /* reduce from right group to rank 0*/
         root = (rank == 0) ? MPI_ROOT : MPI_PROC_NULL;
-        mpi_errno = comm_ptr->coll_fns->Ireduce(sendbuf, tmp_buf, total_count,
+        mpi_errno = comm_ptr->coll_fns->Ireduce_sched(sendbuf, tmp_buf, total_count,
                                                 datatype, op, root, comm_ptr, s);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -860,14 +859,14 @@ int MPIR_Ireduce_scatter_block_inter(const void *sendbuf, void *recvbuf, int rec
 
         /* reduce to rank 0 of right group */
         root = 0;
-        mpi_errno = comm_ptr->coll_fns->Ireduce(sendbuf, tmp_buf, total_count,
+        mpi_errno = comm_ptr->coll_fns->Ireduce_sched(sendbuf, tmp_buf, total_count,
                                                 datatype, op, root, comm_ptr, s);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
     else {
         /* reduce to rank 0 of right group */
         root = 0;
-        mpi_errno = comm_ptr->coll_fns->Ireduce(sendbuf, tmp_buf, total_count,
+        mpi_errno = comm_ptr->coll_fns->Ireduce_sched(sendbuf, tmp_buf, total_count,
                                                 datatype, op, root, comm_ptr, s);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -876,7 +875,7 @@ int MPIR_Ireduce_scatter_block_inter(const void *sendbuf, void *recvbuf, int rec
 
         /* reduce from right group to rank 0*/
         root = (rank == 0) ? MPI_ROOT : MPI_PROC_NULL;
-        mpi_errno = comm_ptr->coll_fns->Ireduce(sendbuf, tmp_buf, total_count,
+        mpi_errno = comm_ptr->coll_fns->Ireduce_sched(sendbuf, tmp_buf, total_count,
                                                 datatype, op, root, comm_ptr, s);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
@@ -890,8 +889,8 @@ int MPIR_Ireduce_scatter_block_inter(const void *sendbuf, void *recvbuf, int rec
 
     newcomm_ptr = comm_ptr->local_comm;
 
-    MPIU_Assert(newcomm_ptr->coll_fns && newcomm_ptr->coll_fns->Iscatter);
-    mpi_errno = newcomm_ptr->coll_fns->Iscatter(tmp_buf, recvcount, datatype,
+    MPIU_Assert(newcomm_ptr->coll_fns && newcomm_ptr->coll_fns->Iscatter_sched);
+    mpi_errno = newcomm_ptr->coll_fns->Iscatter_sched(tmp_buf, recvcount, datatype,
                                                 recvbuf, recvcount, datatype, 0,
                                                 newcomm_ptr, s);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -911,11 +910,25 @@ fn_fail:
 int MPIR_Ireduce_scatter_block_impl(const void *sendbuf, void *recvbuf, int recvcount, MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;
-    int tag = -1;
     MPID_Request *reqp = NULL;
+    int tag = -1;
     MPID_Sched_t s = MPID_SCHED_NULL;
 
     *request = MPI_REQUEST_NULL;
+
+    MPIU_Assert(comm_ptr->coll_fns != NULL);
+    if (comm_ptr->coll_fns->Ireduce_scatter_block_req != NULL) {
+        /* --BEGIN USEREXTENSION-- */
+        mpi_errno = comm_ptr->coll_fns->Ireduce_scatter_block_req(sendbuf, recvbuf, recvcount,
+                                                                        datatype, op,
+                                                                        comm_ptr, &reqp);
+        if (reqp) {
+            *request = reqp->handle;
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+            goto fn_exit;
+        }
+        /* --END USEREXTENSION-- */
+    }
 
     mpi_errno = MPID_Sched_next_tag(comm_ptr, &tag);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -923,8 +936,8 @@ int MPIR_Ireduce_scatter_block_impl(const void *sendbuf, void *recvbuf, int recv
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     MPIU_Assert(comm_ptr->coll_fns != NULL);
-    MPIU_Assert(comm_ptr->coll_fns->Ireduce_scatter_block != NULL);
-    mpi_errno = comm_ptr->coll_fns->Ireduce_scatter_block(sendbuf, recvbuf, recvcount, datatype, op, comm_ptr, s);
+    MPIU_Assert(comm_ptr->coll_fns->Ireduce_scatter_block_sched != NULL);
+    mpi_errno = comm_ptr->coll_fns->Ireduce_scatter_block_sched(sendbuf, recvbuf, recvcount, datatype, op, comm_ptr, s);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     mpi_errno = MPID_Sched_start(&s, comm_ptr, tag, &reqp);

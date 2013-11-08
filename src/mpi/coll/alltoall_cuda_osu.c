@@ -24,7 +24,6 @@ typedef enum _send_stat_ {
 } send_stat;
 
 cudaEvent_t *send_events = NULL, *recv_event = NULL;
-cudaStream_t *send_stream = NULL, *recv_stream = NULL;
 int send_events_count = 0;
 
 
@@ -47,25 +46,6 @@ int MPIR_Alltoall_CUDA_cleanup ()
     if (recv_event) {
         cudaEventDestroy(*recv_event); 
         MPIU_Free(recv_event); 
-    }
-
-    if (send_stream) {
-        cudaerr = cudaStreamDestroy(*send_stream);
-        if(cudaerr != cudaSuccess) {
-            mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
-                    __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-            return mpi_errno;
-        }
-        MPIU_Free(send_stream);
-    }
-    if (recv_stream) {
-        cudaerr = cudaStreamDestroy(*recv_stream);
-        if(cudaerr != cudaSuccess) {
-            mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
-                    __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-            return mpi_errno;
-        }
-        MPIU_Free(recv_stream);
     }
 
     return mpi_errno; 
@@ -134,34 +114,6 @@ int MPIR_Alltoall_CUDA_intra_MV2(
                     MPIU_Malloc(sizeof(MPIDI_CH3U_COLL_SRBuf_element_t *)*num_rbufs);
     for (i = 0; i < num_rbufs; i++) { 
         MPIDI_CH3U_COLL_SRBuf_alloc(recv_buf[i]);
-    }
-
-    /*Creating send and recv stream*/
-    if (!send_stream) {
-        send_stream = (cudaStream_t *) MPIU_Malloc (sizeof(cudaStream_t));
-        if (send_stream == NULL) { 
-            mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
-                    __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-        }
-        cudaerr = cudaStreamCreate(send_stream);
-        if(cudaerr != cudaSuccess) {
-            mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
-                    __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-            return mpi_errno;
-        }
-    }
-    if (!recv_stream) {
-        recv_stream = (cudaStream_t *) MPIU_Malloc (sizeof(cudaStream_t));
-        if (recv_stream == NULL) { 
-            mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
-                    __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-        }
-        cudaerr = cudaStreamCreate(recv_stream);
-        if(cudaerr != cudaSuccess) {
-            mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
-                    __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-            return mpi_errno;
-        }
     }
 
     /*create events to make copies in and out of the GPU asynchronous*/
@@ -257,13 +209,13 @@ int MPIR_Alltoall_CUDA_intra_MV2(
                     ((char *) sendbuf
                      + begin*sendcount*sendtype_extent),
                     (end - begin + 1)*sendcount*sendtype_extent,
-                    cudaMemcpyDeviceToHost, *send_stream);
+                    cudaMemcpyDeviceToHost, stream_d2h);
         } else {
             MPIU_Memcpy_CUDA_Async(send_buf[sbufs_filled]->buf, 
                     ((char *) sendbuf
                      + begin*sendcount*sendtype_extent),
                     (comm_size - begin)*sendcount*sendtype_extent,
-                    cudaMemcpyDeviceToHost, *send_stream);
+                    cudaMemcpyDeviceToHost, stream_d2h);
 
             bytes_copied = (comm_size - begin)*sendcount*sendtype_extent; 
 
@@ -271,10 +223,10 @@ int MPIR_Alltoall_CUDA_intra_MV2(
                         + bytes_copied),
                     sendbuf,
                     (end + 1)*sendcount*sendtype_extent,
-                    cudaMemcpyDeviceToHost, *send_stream);
+                    cudaMemcpyDeviceToHost, stream_d2h);
         }
 
-        cudaerr = cudaEventRecord(send_events[sbufs_filled], *send_stream);
+        cudaerr = cudaEventRecord(send_events[sbufs_filled], stream_d2h);
         if (cudaerr != cudaSuccess) {
             mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
                     __LINE__, MPI_ERR_OTHER, "**cudaEventRecord", 0);
@@ -329,7 +281,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
                         disp,
                         sendcount, sendtype, dst,
                         MPIR_ALLTOALL_TAG, comm,
-                        &sendreq[i*sblock + j]);
+                        &sendreq[i*sblock + j], errflag);
                     if (mpi_errno) {
                         MPIU_ERR_POP(mpi_errno);
                     }
@@ -369,13 +321,13 @@ int MPIR_Alltoall_CUDA_intra_MV2(
                                 + begin*recvcount*recvtype_extent),
                             recv_buf[rbufs_filled]->buf, 
                             procs_in_block*recvcount*recvtype_extent,
-                            cudaMemcpyHostToDevice, *recv_stream);
+                            cudaMemcpyHostToDevice, stream_h2d);
                 } else {
                     MPIU_Memcpy_CUDA_Async(((char *) recvbuf 
                                 + begin*recvcount*recvtype_extent),
                             recv_buf[rbufs_filled]->buf,  
                             (comm_size - begin)*recvcount*recvtype_extent,
-                            cudaMemcpyHostToDevice, *recv_stream);
+                            cudaMemcpyHostToDevice, stream_h2d);
 
                     bytes_copied = (comm_size - begin)*recvcount*recvtype_extent;
 
@@ -383,7 +335,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
                             ((char *) recv_buf[rbufs_filled]->buf  
                              + bytes_copied), 
                             (end + 1)*recvcount*recvtype_extent,
-                            cudaMemcpyHostToDevice, *recv_stream);
+                            cudaMemcpyHostToDevice, stream_h2d);
                 }
                 rbufs_filled++;
             }
@@ -391,13 +343,13 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     } 
 
     /* wait for ss sends and recvs to finish: */
-    mpi_errno = MPIC_Waitall_ft(comm_size, sendreq, sendstat, errflag);
+    mpi_errno = MPIC_Waitall(comm_size, sendreq, sendstat, errflag);
     if (mpi_errno && mpi_errno != MPI_ERR_IN_STATUS) {
           MPIU_ERR_POP(mpi_errno);
     }
 
     /* wait for the receive copies into the device to complete */
-    cudaerr = cudaEventRecord(*recv_event, *recv_stream);
+    cudaerr = cudaEventRecord(*recv_event, stream_h2d);
     if (cudaerr != cudaSuccess) {
         mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
                 __LINE__, MPI_ERR_OTHER, "**cudaEventRecord", 0);

@@ -27,7 +27,8 @@
 
 #define MT_MAX_LEVEL    4
 #define MT_MIN_DEGREE   4
-#define MT_MAX_DEGREE   64
+#define MT_DEFAULT_DEGREE   32
+#define MT_MAX_DEGREE   512
 
 typedef struct {
     int rank;

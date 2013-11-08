@@ -93,7 +93,8 @@ extern void *cuda_stream_region;
 extern cuda_stream_t *free_cuda_stream_list_head;
 extern cuda_stream_t *busy_cuda_stream_list_head;
 extern cuda_stream_t *busy_cuda_stream_list_tail;
-extern cudaStream_t stream_d2h, stream_h2d;
+extern cudaStream_t stream_d2h, stream_h2d, stream_kernel;
+extern cudaEvent_t cuda_nbstream_sync_event;
 
 #define CUDA_LIST_ADD(item, head, tail)         \
 do {                                            \
@@ -292,9 +293,9 @@ extern int cudaipc_sync_limit;
 #endif
 #endif
 #if defined(USE_GPU_KERNEL)
-void pack_subarray( void *dst, void *src, int nx, int ny, int nz, int sub_nx, int sub_ny, int sub_nz, int h_x, int h_y, int h_z, int el_size );
-void unpack_subarray( void *dst, void *src, int nx, int ny, int nz, int sub_nx, int sub_ny, int sub_nz, int h_x, int h_y, int h_z, int el_size);
-void pack_unpack_vector_kernel( void *dst, int dpitch, void *src, int spitch, int width, int height);
+void pack_subarray( void *dst, void *src, int nx, int ny, int nz, int sub_nx, int sub_ny, int sub_nz, int h_x, int h_y, int h_z, int el_size, cudaStream_t stream);
+void unpack_subarray( void *dst, void *src, int nx, int ny, int nz, int sub_nx, int sub_ny, int sub_nz, int h_x, int h_y, int h_z, int el_size, cudaStream_t stream);
+void pack_unpack_vector_kernel( void *dst, int dpitch, void *src, int spitch, int width, int height, cudaStream_t stream);
 #endif
 #endif /* _IBV_CUDA_UTIL_H_ */
 

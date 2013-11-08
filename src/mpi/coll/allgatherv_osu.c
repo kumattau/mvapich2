@@ -188,7 +188,7 @@ int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
                     recv_offset += recvcounts[j];
 
                 mpi_errno =
-                    MPIC_Sendrecv_ft(((char *) tmp_buf +
+                    MPIC_Sendrecv(((char *) tmp_buf +
                                       send_offset * recvtype_extent),
                                      curr_cnt, recvtype, dst,
                                      MPIR_ALLGATHERV_TAG,
@@ -262,7 +262,7 @@ int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
                         offset *= recvtype_extent;
 
                         mpi_errno =
-                            MPIC_Send_ft(((char *) tmp_buf + offset),
+                            MPIC_Send(((char *) tmp_buf + offset),
                                          last_recv_cnt, recvtype, dst,
                                          MPIR_ALLGATHERV_TAG, comm, errflag);
                         if (mpi_errno) {
@@ -286,7 +286,7 @@ int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
                             offset += recvcounts[j];
 
                         mpi_errno =
-                            MPIC_Recv_ft(((char *) tmp_buf +
+                            MPIC_Recv(((char *) tmp_buf +
                                           offset * recvtype_extent),
                                          total_count - offset, recvtype,
                                          dst, MPIR_ALLGATHERV_TAG, comm,
@@ -407,7 +407,7 @@ int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
 
             if (dst < comm_size) {
                 mpi_errno =
-                    MPIC_Sendrecv_ft(((char *) tmp_buf + send_offset),
+                    MPIC_Sendrecv(((char *) tmp_buf + send_offset),
                                      curr_cnt, MPI_BYTE, dst,
                                      MPIR_ALLGATHERV_TAG,
                                      ((char *) tmp_buf + recv_offset),
@@ -471,7 +471,7 @@ int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
                         && (dst >= tree_root + nprocs_completed)) {
 
                         mpi_errno =
-                            MPIC_Send_ft(((char *) tmp_buf + offset),
+                            MPIC_Send(((char *) tmp_buf + offset),
                                          last_recv_cnt, MPI_BYTE, dst,
                                          MPIR_ALLGATHERV_TAG, comm, errflag);
                         if (mpi_errno) {
@@ -490,7 +490,7 @@ int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
                              (dst < tree_root + nprocs_completed) &&
                              (rank >= tree_root + nprocs_completed)) {
                         mpi_errno =
-                            MPIC_Recv_ft(((char *) tmp_buf + offset),
+                            MPIC_Recv(((char *) tmp_buf + offset),
                                          tmp_buf_size - offset, MPI_BYTE,
                                          dst, MPIR_ALLGATHERV_TAG, comm,
                                          &status, errflag);
@@ -626,7 +626,7 @@ int MPIR_Allgatherv_Bruck_MV2(const void *sendbuf,
         src = (rank + pof2) % comm_size;
         dst = (rank - pof2 + comm_size) % comm_size;
 
-        mpi_errno = MPIC_Sendrecv_ft(tmp_buf, curr_cnt, recvtype, dst,
+        mpi_errno = MPIC_Sendrecv(tmp_buf, curr_cnt, recvtype, dst,
                                      MPIR_ALLGATHERV_TAG,
                                      ((char *) tmp_buf +
                                       curr_cnt * recvtype_extent),
@@ -657,7 +657,7 @@ int MPIR_Allgatherv_Bruck_MV2(const void *sendbuf,
         for (i = 0; i < rem; i++)
             send_cnt += recvcounts[(rank + i) % comm_size];
 
-        mpi_errno = MPIC_Sendrecv_ft(tmp_buf, send_cnt, recvtype,
+        mpi_errno = MPIC_Sendrecv(tmp_buf, send_cnt, recvtype,
                                      dst, MPIR_ALLGATHERV_TAG,
                                      ((char *) tmp_buf +
                                       curr_cnt * recvtype_extent),
@@ -764,6 +764,21 @@ int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
         if (mpi_errno)
             MPIU_ERR_POP(mpi_errno);
     }
+#ifdef _ENABLE_CUDA_ 
+    /* This synchronization is needed because MPIR_Localcopy calls cudamemcpy
+     * on the default stream (0) but subsequent MPI_Isend/Irecv calls access
+     * GPU buffers using non-default streams which don't wait for the initial
+     * local copy to complete*/
+    if (rdma_enable_cuda && cuda_initialized && enable_device_ptr_checks
+        && rdma_cuda_nonblocking_streams) {
+            if (rdma_cuda_event_sync) {
+                CUDA_CHECK(cudaEventRecord(cuda_nbstream_sync_event, 0));
+                CUDA_CHECK(cudaStreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 0));
+            } else { /*using streams for pipelining, dont know which stream will be used*/
+                CUDA_CHECK(cudaStreamSynchronize(0));
+            }
+    }
+#endif
 
     left = (comm_size + rank - 1) % comm_size;
     right = (rank + 1) % comm_size;
@@ -810,7 +825,7 @@ int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
              * consecutive processes contribute 0 bytes each. */
         } else if (!sendnow) {  /* If there's no data to send, just do a recv call */
             mpi_errno =
-                MPIC_Recv_ft(rbuf, recvnow, recvtype, left,
+                MPIC_Recv(rbuf, recvnow, recvtype, left,
                              MPIR_ALLGATHERV_TAG, comm, &status, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -821,7 +836,7 @@ int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
             torecv -= recvnow;
         } else if (!recvnow) {  /* If there's no data to receive, just do a send call */
             mpi_errno =
-                MPIC_Send_ft(sbuf, sendnow, recvtype, right,
+                MPIC_Send(sbuf, sendnow, recvtype, right,
                              MPIR_ALLGATHERV_TAG, comm, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -832,7 +847,7 @@ int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
             tosend -= sendnow;
         } else {                /* There's data to be sent and received */
             mpi_errno =
-                MPIC_Sendrecv_ft(sbuf, sendnow, recvtype, right,
+                MPIC_Sendrecv(sbuf, sendnow, recvtype, right,
                                  MPIR_ALLGATHERV_TAG, rbuf, recvnow,
                                  recvtype, left, MPIR_ALLGATHERV_TAG, comm,
                                  &status, errflag);

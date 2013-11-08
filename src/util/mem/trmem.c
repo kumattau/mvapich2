@@ -22,7 +22,7 @@
 
 #define MPI_T_COOKIE_VALUE   0xf0e0d0c9
 
-unsigned long long  mpit_mem_allocated_current=0;
+unsigned long long mpit_mem_allocated_current=0;
 unsigned long long mpit_mem_allocated_max=0;
 unsigned long long mpit_mem_allocated_min=UINT_MAX;
 

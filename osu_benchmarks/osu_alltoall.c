@@ -28,9 +28,9 @@ main (int argc, char *argv[])
     enable_accel_support();
     po_ret = process_options(argc, argv);
 
-    if (po_okay == po_ret && cuda == options.accel) {
-        if (init_cuda_context()) {
-            fprintf(stderr, "Error initializing cuda context\n");
+    if (po_okay == po_ret && none != options.accel) {
+        if (init_accel()) {
+            fprintf(stderr, "Error initializing device\n");
             exit(EXIT_FAILURE);
         }
     }
@@ -128,9 +128,9 @@ main (int argc, char *argv[])
 
     MPI_Finalize();
 
-    if (cuda == options.accel) {
-        if (destroy_cuda_context()) {
-            fprintf(stderr, "Error destroying cuda context\n");
+    if (none != options.accel) {
+        if (cleanup_accel()) {
+            fprintf(stderr, "Error cleaning up device\n");
             exit(EXIT_FAILURE);
         }
     }

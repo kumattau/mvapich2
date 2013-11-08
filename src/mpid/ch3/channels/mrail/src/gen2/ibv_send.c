@@ -1435,6 +1435,16 @@ int MRAILI_Process_send(void *vbuf_addr)
                     time_taken;
             }
 
+#ifdef _ENABLE_CUDA_
+            if (rdma_enable_cuda
+                && v->orig_vbuf != NULL) {
+                vbuf *orig_vbuf = (vbuf *) (v->orig_vbuf);
+                orig_vbuf->finish_count++;
+                if (orig_vbuf->finish_count == rdma_num_rails) {
+                    MRAILI_Release_vbuf(orig_vbuf);
+                }
+            }
+#endif
             MRAILI_Release_vbuf(v);
             goto fn_exit;
         }
@@ -1569,12 +1579,6 @@ int MRAILI_Process_send(void *vbuf_addr)
             if (req->mrail.cuda_transfer_mode == NONE 
                         || rput_pkt->cuda_pipeline_finish) {
                 process_rput_finish = 1;
-                if (req->mrail.cuda_transfer_mode !=NONE &&
-                        rput_pkt->cuda_pipeline_finish) {
-                    /* In cuda multi-rail case, the finish message will be sent
-                       only on rail 0 for pipepine RDMA transfers.*/
-                    req->mrail.completion_counter = rdma_num_rails - 1;
-                }
             }
         }
         if (!rdma_enable_cuda || process_rput_finish)
@@ -1584,7 +1588,7 @@ int MRAILI_Process_send(void *vbuf_addr)
 
         DEBUG_PRINT("req pointer %p, entry %p\n", req, req->mrail.d_entry);
 
-        if((req->mrail.completion_counter == rdma_num_rails)){
+        if((req->mrail.completion_counter == rdma_num_rails)) {
 
             if (req->mrail.d_entry != NULL) {
                 dreg_unregister(req->mrail.d_entry);

@@ -1,4 +1,4 @@
-#define BENCHMARK "OSU MPI One Sided MPI_Fetch_and_op with Flush Latency Test"
+#define BENCHMARK "OSU MPI%s One Sided MPI_Fetch_and_op with Flush Latency Test"
 /*
  * Copyright (C) 2002-2013 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 
@@ -51,13 +51,12 @@ void print_header (int rank);
 int 
 main (int argc, char *argv[])
 {
-    int         myid, nprocs, destrank; 
-    long        i, j, k, size, count;
-    MPI_Group   comm_group, group;
+    int         myid, nprocs; 
+    long        i, size;
+    MPI_Group   comm_group;
     MPI_Win     win;
     double      t_start = 0.0, t_end = 0.0;
     uint64_t    *s_buf, *r_buf, *t_buf;
-    long        buffer_size;
     size = sizeof(MPI_LONG_LONG);
 
     MPI_Init(&argc, &argv);

@@ -93,7 +93,7 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
                 if (rank == i) {
                     /* also covers the (rank == i && rank == j) case */
                     mpi_errno =
-                        MPIC_Sendrecv_replace_ft(((char *) recvbuf +
+                        MPIC_Sendrecv_replace(((char *) recvbuf +
                                                   rdispls[j] * recv_extent),
                                                  recvcnts[j], recvtype, j,
                                                  MPIR_ALLTOALL_TAG, j,
@@ -109,7 +109,7 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
                 } else if (rank == j) {
                     /* same as above with i/j args reversed */
                     mpi_errno =
-                        MPIC_Sendrecv_replace_ft(((char *) recvbuf +
+                        MPIC_Sendrecv_replace(((char *) recvbuf +
                                                   rdispls[i] * recv_extent),
                                                  recvcnts[i], recvtype, i,
                                                  MPIR_ALLTOALL_TAG, i,
@@ -153,7 +153,7 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
                 dst = (rank + i) % comm_size;
             }
 
-            mpi_errno = MPIC_Sendrecv_ft(((char *) sendbuf +
+            mpi_errno = MPIC_Sendrecv(((char *) sendbuf +
                                           sdispls[dst] * send_extent),
                                          sendcnts[dst], sendtype, dst,
                                          MPIR_ALLTOALL_TAG,

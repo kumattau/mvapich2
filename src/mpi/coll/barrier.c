@@ -76,7 +76,7 @@ int MPIR_Barrier_intra( MPID_Comm *comm_ptr, int *errflag )
     while (mask < size) {
         dst = (rank + mask) % size;
         src = (rank - mask + size) % size;
-        mpi_errno = MPIC_Sendrecv_ft(NULL, 0, MPI_BYTE, dst,
+        mpi_errno = MPIC_Sendrecv(NULL, 0, MPI_BYTE, dst,
                                      MPIR_BARRIER_TAG, NULL, 0, MPI_BYTE,
                                      src, MPIR_BARRIER_TAG, comm,
                                      MPI_STATUS_IGNORE, errflag);
@@ -273,8 +273,8 @@ int MPIR_Barrier_impl(MPID_Comm *comm_ptr, int *errflag)
     else
     {
         if (comm_ptr->comm_kind == MPID_INTRACOMM) {
-#if defined(USE_SMP_COLLECTIVES)
-            if (MPIR_Comm_is_node_aware(comm_ptr)) {
+            if (MPIR_PARAM_ENABLE_SMP_COLLECTIVES && MPIR_PARAM_ENABLE_SMP_BARRIER &&
+                MPIR_Comm_is_node_aware(comm_ptr)) {
 
                 /* do the intranode barrier on all nodes */
                 if (comm_ptr->node_comm != NULL)
@@ -317,10 +317,6 @@ int MPIR_Barrier_impl(MPID_Comm *comm_ptr, int *errflag)
                 mpi_errno = MPIR_Barrier_intra( comm_ptr, errflag );
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
             }
-#else
-            mpi_errno = MPIR_Barrier_intra( comm_ptr, errflag );
-            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-#endif
         }
         else {
             /* intercommunicator */ 

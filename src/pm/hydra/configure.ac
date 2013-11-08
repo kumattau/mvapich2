@@ -18,6 +18,7 @@ AC_ARG_PROGRAM
 dnl must come before LT_INIT, which AC_REQUIREs AC_PROG_CC
 dnl must also come before AC_USE_SYSTEM_EXTENSIONS
 PAC_PROG_CC
+AM_PROG_CC_C_O
 
 # also needed by hwloc in embedded mode, must also come early for expansion
 # ordering reasons
@@ -32,7 +33,7 @@ AS_CASE([$host],
 )
 
 
-AM_INIT_AUTOMAKE([-Wall -Werror foreign 1.12.3])
+AM_INIT_AUTOMAKE([-Wall -Werror foreign 1.12.3 subdir-objects])
 
 AM_PROG_AR
 
@@ -44,7 +45,6 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 # Reset link flags
 PAC_RESET_LINK_FLAGS()
 
-AM_PROG_CC_C_O
 
 PAC_ARG_STRICT
 
@@ -134,18 +134,38 @@ AC_SUBST(top_srcdir)
 PAC_ENABLE_COVERAGE
 
 # Check if the necessary headers are available
-AC_CHECK_HEADERS(unistd.h stdlib.h string.h strings.h stdarg.h sys/types.h sys/socket.h \
-		 sched.h sys/stat.h sys/param.h netinet/in.h netinet/tcp.h \
-		 sys/un.h netdb.h sys/time.h time.h ifaddrs.h arpa/inet.h \
-		 errno.h poll.h fcntl.h netdb.h winsock2.h windows.h)
+AC_HEADER_STDC
+AC_CHECK_HEADERS(unistd.h strings.h sys/types.h sys/socket.h sched.h sys/stat.h sys/param.h \
+		 netinet/in.h netinet/tcp.h sys/un.h netdb.h sys/time.h time.h ifaddrs.h arpa/inet.h \
+		 poll.h fcntl.h netdb.h winsock2.h windows.h)
 
 AC_CHECK_LIB(socket,socket,LDFLAGS="$LDFLAGS -lsocket",)
 AC_CHECK_LIB(nsl,gethostbyname,LDFLAGS="$LDFLAGS -lnsl",)
 
 # Check for necessary functions
 AC_CHECK_FUNCS(gettimeofday time strdup sigaction signal usleep alloca unsetenv \
-	       strerror strsignal stat getifaddrs fcntl alarm isatty inet_ntop getpgid \
-	       setsid)
+	       strerror strsignal stat fcntl alarm isatty inet_ntop getpgid \
+	       setsid killpg)
+
+if test "$ac_cv_func_gettimeofday" = "yes" ; then
+   PAC_FUNC_NEEDS_DECL([#include <sys/time.h>],gettimeofday)
+fi
+
+if test "$ac_cv_func_getpgid" = "yes" ; then
+   PAC_FUNC_NEEDS_DECL([#include <unistd.h>],getpgid)
+fi
+
+if test "$ac_cv_func_killpg" = "yes" ; then
+   PAC_FUNC_NEEDS_DECL([#include <signal.h>],killpg)
+fi
+
+AC_TRY_LINK([
+	#include <stdio.h>
+	#include <sys/types.h>
+	#include <ifaddrs.h>
+	],
+	[return getifaddrs(NULL);],
+	[AC_DEFINE([HAVE_GETIFADDRS],1,[Define to '1' if getifaddrs is present and usable])])
 
 # Check what we need to do about the environ extern
 AC_CACHE_CHECK([for environ in unistd.h],pac_cv_environ_in_unistd,
@@ -352,6 +372,8 @@ AC_MSG_CHECKING([desired processor topology libraries])
 AC_MSG_RESULT([$hydra_topolib_list])
 
 hydra_topolibs="`echo $hydra_topolib_list | sed -e 's/:/ /g' -e 's/,/ /g'`"
+
+enable_cuda=no
 
 # Unconditionally include the hwloc macros, even if we are using an
 # external hwloc (or hwloc is disabled). This is needed for the

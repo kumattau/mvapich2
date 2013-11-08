@@ -78,6 +78,8 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda(MPIDI_VC_t * vc,
     req->mrail.num_remote_cuda_pending =
         MIN(req->mrail.num_cuda_blocks, rdma_num_cuda_rndv_blocks);
     req->mrail.num_remote_cuda_done = 0;
+    req->mrail.num_remote_cuda_inflight = 0;
+    req->mrail.completion_counter = 0;
 
     return 1;
 }
@@ -574,6 +576,7 @@ void MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(MPIDI_VC_t * vc, MPID_Request * req)
     MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA(cts_pkt, req);
 
     req->mrail.num_remote_cuda_done = 0;
+    req->mrail.num_remote_cuda_inflight = 0;
     vbuf_init_send(v, sizeof(MPIDI_CH3_Pkt_cuda_cts_cont_t), 0);
     mv2_MPIDI_CH3I_RDMA_Process.post_send(vc, v, 0);
 
@@ -745,8 +748,8 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
             && sreq->mrail.cuda_transfer_mode == HOST_TO_DEVICE) {
 
         int i = 0, is_finish = 0, is_pipeline = 0;
-        rail = 0;
-        rail_index = vc->mrail.rails[rail].hca_index;
+        int stripe_avg, stripe_size, offset;
+
         sreq->mrail.num_cuda_blocks = 
             ROUNDUP(sreq->mrail.rndv_buf_sz, rdma_cuda_block_size);
 
@@ -756,7 +759,6 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
 
         i = sreq->mrail.num_send_cuda_copy;
         for (; i < sreq->mrail.num_cuda_blocks; i++) {
-
             if(sreq->mrail.num_remote_cuda_pending == 0) {
                 PRINT_DEBUG(DEBUG_CUDA_verbose>1, "done:%d cuda_copy:%d "
                 "num_blk:%d\n", sreq->mrail.num_remote_cuda_done, 
@@ -765,7 +767,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
                 break;
             }
             sreq->mrail.pipeline_nm++;
-            v = get_vbuf();
+
             nbytes = rdma_cuda_block_size;
             if (i == (sreq->mrail.num_cuda_blocks - 1)) {
                 if (sreq->mrail.rndv_buf_sz % rdma_cuda_block_size) {
@@ -774,18 +776,50 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
                 is_finish = 1;
             }
 
-            MRAILI_RDMA_Put(vc, v,
-                    (char *) (sreq->mrail.rndv_buf) +
-                    sreq->mrail.rndv_buf_off + rdma_cuda_block_size * i,
-                    ((dreg_entry *)sreq->mrail.d_entry)->memhandle[rail_index]->lkey,
-                    (char *) (sreq->mrail.
-                        cuda_remote_addr[sreq->mrail.num_remote_cuda_done]), 
-                    sreq->mrail.
-                    cuda_remote_rkey[sreq->mrail.num_remote_cuda_done][rail_index],
-                    nbytes, rail);
+            if (nbytes <= rdma_large_msg_rail_sharing_threshold) {
+                rail = MRAILI_Send_select_rail(vc);
+                rail_index = vc->mrail.rails[rail].hca_index;
 
-            MRAILI_RDMA_Put_finish_cuda(vc, sreq, rail, is_pipeline, is_finish, 
-                    rdma_cuda_block_size*i);
+                v = get_vbuf();
+                v->sreq = sreq;
+
+                MRAILI_RDMA_Put(vc, v,
+                        (char *) (sreq->mrail.rndv_buf) +
+                        sreq->mrail.rndv_buf_off + rdma_cuda_block_size * i,
+                        ((dreg_entry *)sreq->mrail.d_entry)->memhandle[rail_index]->lkey,
+                        (char *) (sreq->mrail.
+                            cuda_remote_addr[sreq->mrail.num_remote_cuda_done]), 
+                        sreq->mrail.
+                        cuda_remote_rkey[sreq->mrail.num_remote_cuda_done][rail_index],
+                        nbytes, rail);
+            } else { 
+                stripe_avg = nbytes / rdma_num_rails;
+
+                for (rail = 0; rail < rdma_num_rails; rail++) {
+                    offset = rail*stripe_avg;
+                    stripe_size = (rail < rdma_num_rails-1) ? stripe_avg : (nbytes - offset);
+
+                    rail_index = vc->mrail.rails[rail].hca_index;
+
+                    v = get_vbuf();
+                    v->sreq = sreq;
+
+                    MRAILI_RDMA_Put(vc, v,
+                        (char *) (sreq->mrail.rndv_buf) +
+                        sreq->mrail.rndv_buf_off + rdma_cuda_block_size * i + offset,
+                        ((dreg_entry *)sreq->mrail.d_entry)->memhandle[rail_index]->lkey,
+                        (char *) (sreq->mrail.
+                            cuda_remote_addr[sreq->mrail.num_remote_cuda_done]) + offset,
+                        sreq->mrail.
+                        cuda_remote_rkey[sreq->mrail.num_remote_cuda_done][rail_index],
+                        stripe_size, rail);
+                }
+            }
+
+            for(rail = 0; rail < rdma_num_rails; rail++) {
+                MRAILI_RDMA_Put_finish_cuda(vc, sreq, rail, is_pipeline, is_finish,
+                        rdma_cuda_block_size*i);
+            }
 
             sreq->mrail.num_remote_cuda_pending--;
             sreq->mrail.num_remote_cuda_done++;
@@ -808,10 +842,32 @@ int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, MPID_Request * rreq,
     int rreq_complete = 0;
     cudaError_t cuda_error = cudaSuccess;
     vbuf *cuda_vbuf = NULL;
+    int i, displacement; 
 
     MV2_CUDA_PROGRESS();
     
     MPIU_Assert (rf_pkt->is_cuda == 1); 
+
+    displacement = rf_pkt->cuda_offset / rdma_cuda_block_size;
+    i=rreq->mrail.num_remote_cuda_done;
+    for (; i<rreq->mrail.num_remote_cuda_inflight; i++) {
+        if (rreq->mrail.cuda_vbuf[i]->displacement == displacement) { 
+            break;
+        } 
+    }
+    rreq->mrail.cuda_vbuf[i]->finish_count++;
+
+    if (i == rreq->mrail.num_remote_cuda_inflight) {
+        /*writes to a new cuda vbuf are inflight on other rails*/
+        rreq->mrail.cuda_vbuf[i]->displacement = displacement; 
+        rreq->mrail.num_remote_cuda_inflight++;
+    }
+
+    if (rreq->mrail.cuda_vbuf[i]->finish_count == rdma_num_rails) { 
+        cuda_vbuf = rreq->mrail.cuda_vbuf[i];
+    } else {
+       goto fn_exit; 
+    }
 
     rreq->mrail.pipeline_nm++;
     nbytes = (rreq->mrail.rndv_buf_sz - rf_pkt->cuda_offset < rdma_cuda_block_size) ? 
@@ -828,11 +884,9 @@ int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, MPID_Request * rreq,
         cuda_event->op_type = RECV;
         cuda_event->is_finish = (rreq->mrail.pipeline_nm == 
                 rreq->mrail.num_cuda_blocks) ? 1 : 0;
-        cuda_event->displacement = rf_pkt->cuda_offset / rdma_cuda_block_size;
+        cuda_event->displacement = displacement;
         cuda_event->vc = vc;
         cuda_event->req = rreq;
-
-        cuda_vbuf = rreq->mrail.cuda_vbuf[rreq->mrail.num_remote_cuda_done];
 
         /* add vbuf to the list of buffer on this event */
         if (cuda_event->cuda_vbuf_head == NULL) {
@@ -873,6 +927,8 @@ int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, MPID_Request * rreq,
                 busy_cuda_event_list_head, busy_cuda_event_list_tail);
         }
 
+        rreq->mrail.completion_counter = 0;
+
         PRINT_DEBUG(DEBUG_CUDA_verbose>1, "RECV cudaMemcpyAsync :%d "
                 "req:%p strm:%p\n", rreq->mrail.num_remote_cuda_done,
                 rreq, cuda_event);
@@ -886,11 +942,9 @@ int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, MPID_Request * rreq,
         cuda_stream->op_type = RECV;
         cuda_stream->is_finish = (rreq->mrail.pipeline_nm == 
                 rreq->mrail.num_cuda_blocks) ? 1 : 0;
-        cuda_stream->displacement = rf_pkt->cuda_offset / rdma_cuda_block_size;
+        cuda_stream->displacement = displacement;
         cuda_stream->vc = vc;
         cuda_stream->req = rreq;
-
-        cuda_vbuf = rreq->mrail.cuda_vbuf[rreq->mrail.num_remote_cuda_done];
 
         /* add vbuf to the list of buffer on this stream */
         if (cuda_stream->cuda_vbuf_head == NULL) {
@@ -929,6 +983,7 @@ int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, MPID_Request * rreq,
                 rreq, cuda_stream);
     }
 
+fn_exit:
     return rreq_complete;
 }
 

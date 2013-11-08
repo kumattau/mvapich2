@@ -15,15 +15,11 @@
  *
  */
 
-#include "mpidi_ch3_impl.h"
 #include "mpidrma.h"
 
 static int enableShortACC=1;
 
 #ifdef USE_MPIU_INSTR
-MPIU_INSTR_DURATION_EXTERN_DECL(wincreate_allgather);
-MPIU_INSTR_DURATION_EXTERN_DECL(winfree_rs);
-MPIU_INSTR_DURATION_EXTERN_DECL(winfree_complete);
 MPIU_INSTR_DURATION_EXTERN_DECL(rmaqueue_alloc);
 MPIU_INSTR_DURATION_EXTERN_DECL(rmaqueue_set);
 extern void MPIDI_CH3_RMA_InitInstr(void);
@@ -55,10 +51,9 @@ extern void MPIDI_CH3_RMA_InitInstr(void);
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_Win_free(MPID_Win **win_ptr)
 {
-    int mpi_errno=MPI_SUCCESS, total_pt_rma_puts_accs;
+    int mpi_errno=MPI_SUCCESS;
     int in_use;
     MPID_Comm *comm_ptr;
-    int errflag = FALSE;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_FREE);
         
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_FREE);
@@ -69,36 +64,8 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
                         /* OSU_MVAPICH */
                         mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
 
-    comm_ptr = (*win_ptr)->comm_ptr;
-    MPIU_INSTR_DURATION_START(winfree_rs);
-    mpi_errno = MPIR_Reduce_scatter_block_impl((*win_ptr)->pt_rma_puts_accs, 
-                                               &total_pt_rma_puts_accs, 1, 
-                                               MPI_INT, MPI_SUM, comm_ptr, &errflag);
-    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-    MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
-    MPIU_INSTR_DURATION_END(winfree_rs);
-
-    if (total_pt_rma_puts_accs != (*win_ptr)->my_pt_rma_puts_accs)
-    {
-	MPID_Progress_state progress_state;
-            
-	/* poke the progress engine until the two are equal */
-	MPIU_INSTR_DURATION_START(winfree_complete);
-	MPID_Progress_start(&progress_state);
-	while (total_pt_rma_puts_accs != (*win_ptr)->my_pt_rma_puts_accs)
-	{
-	    mpi_errno = MPID_Progress_wait(&progress_state);
-	    /* --BEGIN ERROR HANDLING-- */
-	    if (mpi_errno != MPI_SUCCESS)
-	    {
-		MPID_Progress_end(&progress_state);
-		MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**winnoprogress");
-	    }
-	    /* --END ERROR HANDLING-- */
-	}
-	MPID_Progress_end(&progress_state);
-	MPIU_INSTR_DURATION_END(winfree_complete);
-    }
+    mpi_errno = MPIDI_CH3I_Wait_for_pt_ops_finish(*win_ptr);
+    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
 #if defined(_OSU_MVAPICH_)
     /*complete any pending outgoing operations*/
@@ -134,11 +101,13 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
     if (!(*win_ptr)->limic_fallback)
     {
         MPIDI_CH3I_LIMIC_win_free(win_ptr);
+        MPIU_Free((*win_ptr)->use_two_sided_lock);
     }
 #endif /* _SMP_LIMIC_ */
     if (!(*win_ptr)->shm_fallback) 
     {
         MPIDI_CH3I_SHM_win_free(win_ptr);
+        MPIU_Free((*win_ptr)->use_two_sided_lock);
     }
 #endif /* !DAPL_DEFAULT_PROVIDER */
 #endif /* defined(_OSU_MVAPICH_) */
@@ -147,6 +116,7 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
     MPIU_Free((*win_ptr)->rank_mapping);
 #endif /* _OSU_PSM_ */    
     
+    comm_ptr = (*win_ptr)->comm_ptr;
     mpi_errno = MPIR_Comm_free_impl(comm_ptr);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -158,8 +128,10 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
     MPIU_Free((*win_ptr)->pt_rma_puts_accs);
 
     /* Free the attached buffer for windows created with MPI_Win_allocate() */
-    if ((*win_ptr)->create_flavor == MPI_WIN_FLAVOR_ALLOCATE && (*win_ptr)->size > 0) {
-      MPIU_Free((*win_ptr)->base);
+    if ((*win_ptr)->create_flavor == MPI_WIN_FLAVOR_ALLOCATE || (*win_ptr)->create_flavor == MPI_WIN_FLAVOR_SHARED) {
+        if ((*win_ptr)->shm_allocated == FALSE && (*win_ptr)->size > 0) {
+            MPIU_Free((*win_ptr)->base);
+        }
     }
 
     MPIU_Object_release_ref(*win_ptr, &in_use);
@@ -177,37 +149,6 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
 
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_SHM_Win_free
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_SHM_Win_free(MPID_Win **win_ptr)
-{
-    int mpi_errno = MPI_SUCCESS;
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_SHM_WIN_FREE);
-
-    MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_SHM_WIN_FREE);
-
-    /* Free memory allocated by the default shared memory window
-       implementation.  Note that this implementation works only for
-       MPI_COMM_SELF and does not map a shared segment. */
-
-    MPIU_Free((*win_ptr)->base);
-    MPIU_Free((*win_ptr)->shm_base_addrs);
-
-    mpi_errno = MPIDI_Win_free(win_ptr);
-    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-
- fn_exit:
-    MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_SHM_WIN_FREE);
-    return mpi_errno;
-    /* --BEGIN ERROR HANDLING-- */
- fn_fail:
-    goto fn_exit;
-    /* --END ERROR HANDLING-- */
-}
-
-
-#undef FUNCNAME
 #define FUNCNAME MPIDI_Win_shared_query
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -219,7 +160,7 @@ int MPIDI_Win_shared_query(MPID_Win *win_ptr, int target_rank, MPI_Aint *size,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_SHARED_QUERY);
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_SHARED_QUERY);
 
-    *(void**) baseptr = win_ptr->shm_base_addrs[0];
+    *(void**) baseptr = win_ptr->base;
     *size             = win_ptr->size;
     *disp_unit        = win_ptr->disp_unit;
 
@@ -268,32 +209,20 @@ int MPIDI_Put(const void *origin_addr, int origin_count, MPI_Datatype
 	goto fn_exit;
     }
 
-    rank = win_ptr->myrank;
+    rank = win_ptr->comm_ptr->rank;
     
     /* If the put is a local operation, do it here */
     if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED)
     {
-        void *base;
-        int disp_unit;
-
-        if (win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED) {
-            base = win_ptr->shm_base_addrs[target_rank];
-            disp_unit = win_ptr->disp_units[target_rank];
-        }
-        else {
-            base = win_ptr->base;
-            disp_unit = win_ptr->disp_unit;
-        }
-
-        mpi_errno = MPIR_Localcopy(origin_addr, origin_count, origin_datatype,
-                                   (char *) base + disp_unit * target_disp,
-                                   target_count, target_datatype);
-        if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+        mpi_errno = MPIDI_CH3I_Shm_put_op(origin_addr, origin_count, origin_datatype, target_rank,
+                                          target_disp, target_count, target_datatype, win_ptr);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
     else
     {
         MPIDI_RMA_Ops_list_t *ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
         MPIDI_RMA_Op_t *new_ptr = NULL;
+        MPIDI_VC_t *orig_vc, *target_vc;
 
 	/* queue it up */
         MPIU_INSTR_DURATION_START(rmaqueue_alloc);
@@ -316,20 +245,36 @@ int MPIDI_Put(const void *origin_addr, int origin_count, MPI_Datatype
 	new_ptr->target_datatype = target_datatype;
 	MPIU_INSTR_DURATION_END(rmaqueue_set);
 
-	/* if source or target datatypes are derived, increment their
-	   reference counts */ 
-	MPIDI_CH3I_DATATYPE_IS_PREDEFINED(origin_datatype, predefined);
-	if (!predefined)
-	{
-	    MPID_Datatype_get_ptr(origin_datatype, dtp);
-	    MPID_Datatype_add_ref(dtp);
-	}
-	MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, predefined);
-	if (!predefined)
-	{
-	    MPID_Datatype_get_ptr(target_datatype, dtp);
-	    MPID_Datatype_add_ref(dtp);
-	}
+	/* check if target is local and shared memory is allocated on window,
+	  if so, we do not need to increment reference counts on datatype. This is
+	  because this operation will be directly done on shared memory region, instead
+	  of sending and receiving through the progress engine, therefore datatype
+	  will not be referenced by the progress engine */
+
+        /* FIXME: Here we decide whether to perform SHM operations by checking if origin and target are on
+           the same node. However, in ch3:sock, even if origin and target are on the same node, they do
+           not within the same SHM region. Here we filter out ch3:sock by checking shm_allocated flag first,
+           which is only set to TRUE when SHM region is allocated in nemesis.
+           In future we need to figure out a way to check if origin and target are in the same "SHM comm".
+        */
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
+	if (!(win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id)) {
+	    /* if source or target datatypes are derived, increment their
+	       reference counts */
+	    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(origin_datatype, predefined);
+	    if (!predefined)
+	    {
+	        MPID_Datatype_get_ptr(origin_datatype, dtp);
+	        MPID_Datatype_add_ref(dtp);
+	    }
+	    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, predefined);
+	    if (!predefined)
+	    {
+	        MPID_Datatype_get_ptr(target_datatype, dtp);
+	        MPID_Datatype_add_ref(dtp);
+	    }
+        }
     }
 
 #if defined(_OSU_MVAPICH_) && !defined(_SCHEDULE)
@@ -385,32 +330,20 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
 	goto fn_exit;
     }
 
-    rank = win_ptr->myrank;
+    rank = win_ptr->comm_ptr->rank;
     
     /* If the get is a local operation, do it here */
     if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED)
     {
-        void *base;
-        int disp_unit;
-
-        if (win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED) {
-            base = win_ptr->shm_base_addrs[target_rank];
-            disp_unit = win_ptr->disp_units[target_rank];
-        }
-        else {
-            base = win_ptr->base;
-            disp_unit = win_ptr->disp_unit;
-        }
-
-        mpi_errno = MPIR_Localcopy((char *) base + disp_unit * target_disp,
-                                   target_count, target_datatype, origin_addr,
-                                   origin_count, origin_datatype);
-        if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+        mpi_errno = MPIDI_CH3I_Shm_get_op(origin_addr, origin_count, origin_datatype, target_rank,
+                                          target_disp, target_count, target_datatype, win_ptr);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
     else
     {
         MPIDI_RMA_Ops_list_t *ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
         MPIDI_RMA_Op_t *new_ptr = NULL;
+        MPIDI_VC_t *orig_vc, *target_vc;
 
 	/* queue it up */
         MPIU_INSTR_DURATION_START(rmaqueue_alloc);
@@ -430,20 +363,30 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
 	new_ptr->target_datatype = target_datatype;
 	MPIU_INSTR_DURATION_END(rmaqueue_set);
 	
-	/* if source or target datatypes are derived, increment their
-	   reference counts */ 
-	MPIDI_CH3I_DATATYPE_IS_PREDEFINED(origin_datatype, predefined);
-	if (!predefined)
-	{
-	    MPID_Datatype_get_ptr(origin_datatype, dtp);
-	    MPID_Datatype_add_ref(dtp);
-	}
-	MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, predefined);
-	if (!predefined)
-	{
-	    MPID_Datatype_get_ptr(target_datatype, dtp);
-	    MPID_Datatype_add_ref(dtp);
-	}
+	/* check if target is local and shared memory is allocated on window,
+	  if so, we do not need to increment reference counts on datatype. This is
+	  because this operation will be directly done on shared memory region, instead
+	  of sending and receiving through the progress engine, therefore datatype
+	  will not be referenced by the progress engine */
+
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
+	if (!(win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id)) {
+	    /* if source or target datatypes are derived, increment their
+	       reference counts */
+	    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(origin_datatype, predefined);
+	    if (!predefined)
+	    {
+	        MPID_Datatype_get_ptr(origin_datatype, dtp);
+	        MPID_Datatype_add_ref(dtp);
+	    }
+	    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, predefined);
+	    if (!predefined)
+	    {
+	        MPID_Datatype_get_ptr(target_datatype, dtp);
+	        MPID_Datatype_add_ref(dtp);
+	    }
+        }
     }
 
 #if defined(_OSU_MVAPICH_) && !defined(_SCHEDULE)
@@ -478,7 +421,6 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
     int dt_contig ATTRIBUTE((unused)), rank, origin_predefined, target_predefined;
     MPI_Aint dt_true_lb ATTRIBUTE((unused));
     MPID_Datatype *dtp;
-    MPIU_CHKLMEM_DECL(2);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_ACCUMULATE);
     
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_ACCUMULATE);
@@ -501,7 +443,7 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
 	goto fn_exit;
     }
 
-    rank = win_ptr->myrank;
+    rank = win_ptr->comm_ptr->rank;
     
     MPIDI_CH3I_DATATYPE_IS_PREDEFINED(origin_datatype, origin_predefined);
     MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, target_predefined);
@@ -509,159 +451,16 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
     /* Do =! rank first (most likely branch?) */
     if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED)
     {
-        MPI_User_function *uop;
-        void *base;
-        int disp_unit, shm_op = 0;
-
-        if (win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED) {
-            shm_op = 1;
-            base = win_ptr->shm_base_addrs[target_rank];
-            disp_unit = win_ptr->disp_units[target_rank];
-        }
-        else {
-            base = win_ptr->base;
-            disp_unit = win_ptr->disp_unit;
-        }
-	
-#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
-    int l_rank = -1;
-    if (!win_ptr->shm_fallback) {
-        l_rank = win_ptr->shm_g2l_rank[rank]; 
-        mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, l_rank);
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-               "**fail %s", "mutex lock error");
-        }
-    }
-#endif
-	if (op == MPI_REPLACE)
-	{
-            if (shm_op) MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
-            mpi_errno = MPIR_Localcopy(origin_addr, origin_count,
-                                       origin_datatype,
-                                       (char *) base + disp_unit * target_disp,
-                                       target_count, target_datatype);
-            if (shm_op) MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
-            if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
-            if (!win_ptr->shm_fallback) {
-                mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_rank);
-                if (mpi_errno != MPI_SUCCESS) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                            "**fail", "**fail %s", "mutex unlock error");
-                }
-            }
-#endif
-	    goto fn_exit;
-	}
-	
-	MPIU_ERR_CHKANDJUMP1((HANDLE_GET_KIND(op) != HANDLE_KIND_BUILTIN), 
-			     mpi_errno, MPI_ERR_OP, "**opnotpredefined",
-			     "**opnotpredefined %d", op );
-	
-	/* get the function by indexing into the op table */
-	uop = MPIR_OP_HDL_TO_FN(op);
-	
-	if (origin_predefined && target_predefined)
-	{    
-            /* Cast away const'ness for origin_address in order to
-             * avoid changing the prototype for MPI_User_function */
-            if (shm_op) MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
-            (*uop)((void *) origin_addr, (char *) base + disp_unit*target_disp,
-                   &target_count, &target_datatype);
-            if (shm_op) MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
-	}
-	else
-	{
-	    /* derived datatype */
-	    
-	    MPID_Segment *segp;
-	    DLOOP_VECTOR *dloop_vec;
-	    MPI_Aint first, last;
-	    int vec_len, i, type_size, count;
-	    MPI_Datatype type;
-	    MPI_Aint true_lb, true_extent, extent;
-	    void *tmp_buf=NULL, *target_buf;
-            const void *source_buf;
-	    
-	    if (origin_datatype != target_datatype)
-	    {
-		/* first copy the data into a temporary buffer with
-		   the same datatype as the target. Then do the
-		   accumulate operation. */
-		
-		MPIR_Type_get_true_extent_impl(target_datatype, &true_lb, &true_extent);
-		MPID_Datatype_get_extent_macro(target_datatype, extent); 
-		
-		MPIU_CHKLMEM_MALLOC(tmp_buf, void *, 
-			target_count * (MPIR_MAX(extent,true_extent)), 
-			mpi_errno, "temporary buffer");
-		/* adjust for potential negative lower bound in datatype */
-		tmp_buf = (void *)((char*)tmp_buf - true_lb);
-		
-		mpi_errno = MPIR_Localcopy(origin_addr, origin_count,
-					   origin_datatype, tmp_buf,
-					   target_count, target_datatype);  
-		if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-	    }
-
-	    if (target_predefined) { 
-		/* target predefined type, origin derived datatype */
-
-                if (shm_op) MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
-                (*uop)(tmp_buf, (char *) base + disp_unit * target_disp,
-                       &target_count, &target_datatype);
-                if (shm_op) MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
-	    }
-	    else {
-	    
-		segp = MPID_Segment_alloc();
-		MPIU_ERR_CHKANDJUMP1((!segp), mpi_errno, MPI_ERR_OTHER, 
-				    "**nomem","**nomem %s","MPID_Segment_alloc"); 
-		MPID_Segment_init(NULL, target_count, target_datatype, segp, 0);
-		first = 0;
-		last  = SEGMENT_IGNORE_LAST;
-		
-		MPID_Datatype_get_ptr(target_datatype, dtp);
-		vec_len = dtp->max_contig_blocks * target_count + 1; 
-		/* +1 needed because Rob says so */
-		MPIU_CHKLMEM_MALLOC(dloop_vec, DLOOP_VECTOR *, 
-				    vec_len * sizeof(DLOOP_VECTOR), 
-				    mpi_errno, "dloop vector");
-		
-		MPID_Segment_pack_vector(segp, first, &last, dloop_vec, &vec_len);
-		
-		source_buf = (tmp_buf != NULL) ? tmp_buf : origin_addr;
-		target_buf = (char *) base + disp_unit * target_disp;
-		type = dtp->eltype;
-		type_size = MPID_Datatype_get_basic_size(type);
-                if (shm_op) MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
-		for (i=0; i<vec_len; i++)
-		{
-		    count = (dloop_vec[i].DLOOP_VECTOR_LEN)/type_size;
-		    (*uop)((char *)source_buf + MPIU_PtrToAint(dloop_vec[i].DLOOP_VECTOR_BUF),
-			   (char *)target_buf + MPIU_PtrToAint(dloop_vec[i].DLOOP_VECTOR_BUF),
-			   &count, &type);
-		}
-                if (shm_op) MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
-		
-		MPID_Segment_free(segp);
-	    }
-	}
-#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
-    if (!win_ptr->shm_fallback) {
-        mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_rank);
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "mutex unlock error");
-        }
-    }
-#endif
+	mpi_errno = MPIDI_CH3I_Shm_acc_op(origin_addr, origin_count, origin_datatype,
+					  target_rank, target_disp, target_count, target_datatype,
+					  op, win_ptr);
+	if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
     else
     {
         MPIDI_RMA_Ops_list_t *ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
         MPIDI_RMA_Op_t *new_ptr = NULL;
+        MPIDI_VC_t *orig_vc, *target_vc;
 
 	/* queue it up */
         MPIU_INSTR_DURATION_START(rmaqueue_alloc);
@@ -702,22 +501,31 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
 	new_ptr->op = op;
 	MPIU_INSTR_DURATION_END(rmaqueue_set);
 	
-	/* if source or target datatypes are derived, increment their
-	   reference counts */ 
-	if (!origin_predefined)
-	{
-	    MPID_Datatype_get_ptr(origin_datatype, dtp);
-	    MPID_Datatype_add_ref(dtp);
-	}
-	if (!target_predefined)
-	{
-	    MPID_Datatype_get_ptr(target_datatype, dtp);
-	    MPID_Datatype_add_ref(dtp);
-	}
+	/* check if target is local and shared memory is allocated on window,
+	  if so, we do not need to increment reference counts on datatype. This is
+	  because this operation will be directly done on shared memory region, instead
+	  of sending and receiving through the progress engine, therefore datatype
+	  will not be referenced by the progress engine */
+
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
+	if (!(win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id)) {
+	    /* if source or target datatypes are derived, increment their
+	       reference counts */
+	    if (!origin_predefined)
+	    {
+	        MPID_Datatype_get_ptr(origin_datatype, dtp);
+	        MPID_Datatype_add_ref(dtp);
+	    }
+	    if (!target_predefined)
+	    {
+	        MPID_Datatype_get_ptr(target_datatype, dtp);
+	        MPID_Datatype_add_ref(dtp);
+	    }
+        }
     }
 
  fn_exit:
-    MPIU_CHKLMEM_FREEALL();
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_ACCUMULATE);
     return mpi_errno;
 

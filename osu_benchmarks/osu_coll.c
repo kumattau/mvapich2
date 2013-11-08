@@ -427,50 +427,89 @@ free_buffer (void * buffer, enum accel_type type)
 }
 
 int
-init_cuda_context (void)
+init_accel (void)
 {
+#if defined(_ENABLE_OPENACC_) || defined(_ENABLE_CUDA_)
+     char * str;
+     int local_rank, dev_count;
+     int dev_id = 0;
+#endif
 #ifdef _ENABLE_CUDA_
     CUresult curesult = CUDA_SUCCESS;
     CUdevice cuDevice;
-    int local_rank, dev_count;
-    int dev_id = 0;
-    char * str;
-
-    if ((str = getenv("LOCAL_RANK")) != NULL) {
-        cudaGetDeviceCount(&dev_count);
-        local_rank = atoi(str);
-        dev_id = local_rank % dev_count;
-    }
-
-    curesult = cuInit(0);
-    if (curesult != CUDA_SUCCESS) {
-        return 1;
-    }
-
-    curesult = cuDeviceGet(&cuDevice, dev_id);
-    if (curesult != CUDA_SUCCESS) {
-        return 1;
-    }
-
-    curesult = cuCtxCreate(&cuContext, 0, cuDevice);
-    if (curesult != CUDA_SUCCESS) {
-        return 1;
-    }
 #endif
+
+    switch (options.accel) {
+#ifdef _ENABLE_CUDA_
+        case cuda:
+            if ((str = getenv("LOCAL_RANK")) != NULL) {
+                cudaGetDeviceCount(&dev_count);
+                local_rank = atoi(str);
+                dev_id = local_rank % dev_count;
+            }
+        
+            curesult = cuInit(0);
+            if (curesult != CUDA_SUCCESS) {
+                return 1;
+            }
+        
+            curesult = cuDeviceGet(&cuDevice, dev_id);
+            if (curesult != CUDA_SUCCESS) {
+                return 1;
+            }
+        
+            curesult = cuCtxCreate(&cuContext, 0, cuDevice);
+            if (curesult != CUDA_SUCCESS) {
+                return 1;
+            }
+            break;
+#endif   
+#ifdef _ENABLE_OPENACC_
+        case openacc:
+            if ((str = getenv("LOCAL_RANK")) != NULL) {
+                dev_count = acc_get_num_devices(acc_device_not_host);
+                local_rank = atoi(str);
+                dev_id = local_rank % dev_count;
+            }
+        
+            acc_set_device_num (dev_id, acc_device_not_host);
+            break;
+#endif   
+        default:
+            fprintf(stderr, "Invalid device type, should be cuda or openacc\n");
+            return 1;
+    }
+
     return 0;
 }
 
 int
-destroy_cuda_context (void)
+cleanup_accel (void)
 {
 #ifdef _ENABLE_CUDA_
     CUresult curesult = CUDA_SUCCESS;
-    curesult = cuCtxDestroy(cuContext);   
-
-    if (curesult != CUDA_SUCCESS) {
-        return 1;
-    }  
 #endif
+
+    switch (options.accel) {
+#ifdef _ENABLE_CUDA_
+        case cuda:
+            curesult = cuCtxDestroy(cuContext);
+
+            if (curesult != CUDA_SUCCESS) {
+                return 1;
+            }
+            break;
+#endif
+#ifdef _ENABLE_OPENACC_
+        case openacc:
+            acc_shutdown(acc_device_nvidia);
+            break;
+#endif
+        default:
+            fprintf(stderr, "Invalid accel type, should be cuda or openacc\n");
+            return 1;
+    }
+
     return 0;
 }
 

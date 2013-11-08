@@ -144,7 +144,7 @@ int MPIR_Scatter_mcst_MV2(const void *sendbuf,
          * data from the node leader, as bytes, so that the data is ready 
          * for the mcast */ 
         mpi_errno =
-            MPIC_Recv_ft(mcast_scatter_buf, nbytes * comm_size, MPI_BYTE,
+            MPIC_Recv(mcast_scatter_buf, nbytes * comm_size, MPI_BYTE,
                          root, MPIR_SCATTER_TAG, comm_ptr->handle, &status, errflag);
         if (mpi_errno) {
             /* for communication errors, just record the error but continue
@@ -158,7 +158,7 @@ int MPIR_Scatter_mcst_MV2(const void *sendbuf,
     if (rank == root && local_rank != 0) {
         /* The root of the scatter operation is not the node leader. Send
          * data to the node leader */
-        mpi_errno = MPIC_Send_ft(sendbuf, sendcnt * comm_size, sendtype,
+        mpi_errno = MPIC_Send(sendbuf, sendcnt * comm_size, sendtype,
                                  leader_of_root, MPIR_SCATTER_TAG, comm_ptr->handle,
                                  errflag);
         if (mpi_errno) {
@@ -407,7 +407,7 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
                    they don't have to forward data to anyone. Others
                    receive data into a temporary buffer. */
                 if (relative_rank % 2) {
-                    mpi_errno = MPIC_Recv_ft(recvbuf, recvcnt, recvtype,
+                    mpi_errno = MPIC_Recv(recvbuf, recvcnt, recvtype,
                                              src, MPIR_SCATTER_TAG, comm,
                                              &status, errflag);
                     if (mpi_errno) {
@@ -418,7 +418,7 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
                     }
                 } else {
                     mpi_errno =
-                        MPIC_Recv_ft(tmp_buf, tmp_buf_size, MPI_BYTE, src,
+                        MPIC_Recv(tmp_buf, tmp_buf_size, MPI_BYTE, src,
                                      MPIR_SCATTER_TAG, comm, &status, errflag);
                     if (mpi_errno) {
                         /* for communication errors, just record the error but continue */
@@ -451,7 +451,7 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
                 if ((rank == root) && (root == 0)) {
                     send_subtree_cnt = curr_cnt - sendcnt * mask;
                     /* mask is also the size of this process's subtree */
-                    mpi_errno = MPIC_Send_ft(((char *) sendbuf +
+                    mpi_errno = MPIC_Send(((char *) sendbuf +
                                               extent * sendcnt * mask),
                                              send_subtree_cnt,
                                              sendtype, dst,
@@ -460,7 +460,7 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
                     /* non-zero root and others */
                     send_subtree_cnt = curr_cnt - nbytes * mask;
                     /* mask is also the size of this process's subtree */
-                    mpi_errno = MPIC_Send_ft(((char *) tmp_buf + nbytes * mask),
+                    mpi_errno = MPIC_Send(((char *) tmp_buf + nbytes * mask),
                                              send_subtree_cnt,
                                              MPI_BYTE, dst,
                                              MPIR_SCATTER_TAG, comm, errflag);
@@ -596,7 +596,7 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
                 if (src < 0)
                     src += comm_size;
 
-                mpi_errno = MPIC_Recv_ft(tmp_buf, tmp_buf_size, MPI_BYTE, src,
+                mpi_errno = MPIC_Recv(tmp_buf, tmp_buf_size, MPI_BYTE, src,
                                          MPIR_SCATTER_TAG, comm, &status,
                                          errflag);
                 if (mpi_errno) {
@@ -627,7 +627,7 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
 
                 send_subtree_cnt = curr_cnt - nbytes * mask;
                 /* mask is also the size of this process's subtree */
-                mpi_errno = MPIC_Send_ft(((char *) tmp_buf + nbytes * mask),
+                mpi_errno = MPIC_Send(((char *) tmp_buf + nbytes * mask),
                                          send_subtree_cnt, MPI_BYTE, dst,
                                          MPIR_SCATTER_TAG, comm, errflag);
                 if (mpi_errno) {
@@ -723,7 +723,7 @@ int MPIR_Scatter_MV2_Direct(const void *sendbuf,
                 }
             } else {
                 mpi_errno =
-                MPIC_Isend_ft(((char *) sendbuf +
+                MPIC_Isend(((char *) sendbuf +
                            i * sendcnt * sendtype_extent), sendcnt,
                           sendtype, i, MPIR_SCATTER_TAG, comm,
                           &reqarray[reqs++], errflag);
@@ -737,7 +737,7 @@ int MPIR_Scatter_MV2_Direct(const void *sendbuf,
             }
         }
         /* ... then wait for *all* of them to finish: */
-        mpi_errno = MPIC_Waitall_ft(reqs, reqarray, starray, errflag);
+        mpi_errno = MPIC_Waitall(reqs, reqarray, starray, errflag);
         /* --BEGIN ERROR HANDLING-- */
         if (mpi_errno == MPI_ERR_IN_STATUS) {
             for (i = 0; i < reqs; i++) {
@@ -755,7 +755,7 @@ int MPIR_Scatter_MV2_Direct(const void *sendbuf,
         /* --END ERROR HANDLING-- */
     } else if (root != MPI_PROC_NULL) {   /* non-root nodes, and in the intercomm. case, non-root nodes on remote side */
         if (recvcnt) {
-            mpi_errno = MPIC_Recv_ft(recvbuf, recvcnt, recvtype, root,
+            mpi_errno = MPIC_Recv(recvbuf, recvcnt, recvtype, root,
                                      MPIR_SCATTER_TAG, comm, MPI_STATUS_IGNORE,
                                      errflag);
             if (mpi_errno) {
@@ -795,7 +795,7 @@ int MPIR_Scatter_MV2_Direct_Blk(const void *sendbuf,
     int mpi_errno_ret = MPI_SUCCESS;
     MPI_Comm comm;
     MPI_Aint sendtype_extent;
-    int i, reqs;
+    int i;
 
     comm = comm_ptr->handle;
     rank = comm_ptr->rank;
@@ -821,7 +821,6 @@ int MPIR_Scatter_MV2_Direct_Blk(const void *sendbuf,
         MPID_Ensure_Aint_fits_in_pointer(MPI_VOID_PTR_CAST_TO_MPI_AINT sendbuf +
                                          sendtype_extent);
 
-        reqs = 0;
         for (i = 0; i < comm_size; i++) {
             if (sendcnt) {
                 if ((comm_ptr->comm_kind == MPID_INTRACOMM) && (i == rank)) {
@@ -835,7 +834,7 @@ int MPIR_Scatter_MV2_Direct_Blk(const void *sendbuf,
                     }
                 } else {
                     mpi_errno =
-                    MPIC_Send_ft(((char *) sendbuf +
+                    MPIC_Send(((char *) sendbuf +
                                i * sendcnt * sendtype_extent), sendcnt,
                               sendtype, i, MPIR_SCATTER_TAG, comm,
                               errflag);
@@ -850,7 +849,7 @@ int MPIR_Scatter_MV2_Direct_Blk(const void *sendbuf,
         }
     } else if (root != MPI_PROC_NULL) {   /* non-root nodes, and in the intercomm. case, non-root nodes on remote side */
         if (recvcnt) {
-            mpi_errno = MPIC_Recv_ft(recvbuf, recvcnt, recvtype, root,
+            mpi_errno = MPIC_Recv(recvbuf, recvcnt, recvtype, root,
                                      MPIR_SCATTER_TAG, comm, MPI_STATUS_IGNORE,
                                      errflag);
             if (mpi_errno) {
@@ -981,7 +980,7 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
              * data from the node leader */
             leader_scatter_buf = MPIU_Malloc(nbytes * comm_size);
             mpi_errno =
-                MPIC_Recv_ft(leader_scatter_buf, nbytes * comm_size, MPI_BYTE,
+                MPIC_Recv(leader_scatter_buf, nbytes * comm_size, MPI_BYTE,
                              root, MPIR_SCATTER_TAG, comm, &status, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -994,7 +993,7 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
         if (rank == root && local_rank != 0) {
             /* The root of the scatter operation is not the node leader. Send
              * data to the node leader */
-            mpi_errno = MPIC_Send_ft(sendbuf, sendcnt * comm_size, sendtype,
+            mpi_errno = MPIC_Send(sendbuf, sendcnt * comm_size, sendtype,
                                      leader_of_root, MPIR_SCATTER_TAG, comm,
                                      errflag);
             if (mpi_errno) {
@@ -1227,7 +1226,7 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
              * data from the node leader */
             leader_scatter_buf = MPIU_Malloc(nbytes * comm_size);
             mpi_errno =
-                MPIC_Recv_ft(leader_scatter_buf, nbytes * comm_size, MPI_BYTE,
+                MPIC_Recv(leader_scatter_buf, nbytes * comm_size, MPI_BYTE,
                              root, MPIR_SCATTER_TAG, comm, &status, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -1240,7 +1239,7 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
         if (rank == root && local_rank != 0) {
             /* The root of the scatter operation is not the node leader. Send
              * data to the node leader */
-            mpi_errno = MPIC_Send_ft(sendbuf, sendcnt * comm_size, sendtype,
+            mpi_errno = MPIC_Send(sendbuf, sendcnt * comm_size, sendtype,
                                      leader_of_root, MPIR_SCATTER_TAG, comm,
                                      errflag);
             if (mpi_errno) {
@@ -1380,6 +1379,12 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
     int mpi_errno_ret = MPI_SUCCESS;
     int rank, nbytes, comm_size;
     int recvtype_size, sendtype_size;
+    int partial_sub_ok = 0;
+    int conf_index = 0;
+    int local_size = -1;
+    int i;
+    MPI_Comm shmem_comm;
+    MPID_Comm *shmem_commptr=NULL;
     MPIU_THREADPRIV_DECL;
 
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
@@ -1401,30 +1406,57 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
         nbytes = recvcnt * recvtype_size;
     }
 
+    /* check if safe to use partial subscription mode */
+    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    
+        shmem_comm = comm_ptr->ch.shmem_comm;
+        MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+        local_size = shmem_commptr->local_size;
+        i = 0;
+        if (mv2_scatter_table_ppn_conf[0] == -1) {
+            /* Indicating user defined tuning */
+            conf_index = 0;
+            goto conf_check_end;
+        }
+        do {
+            if (local_size == mv2_scatter_table_ppn_conf[i]) {
+                conf_index = i;
+                partial_sub_ok = 1;
+                break;
+            }
+            i++;
+        } while(i < mv2_scatter_num_ppn_conf);
+    }
+    
+  conf_check_end:
+    if (partial_sub_ok != 1) {
+        conf_index = 0;
+    }
+
     /* Search for the corresponding system size inside the tuning table */
-    while ((range < (mv2_size_scatter_tuning_table - 1)) &&
-           (comm_size > mv2_scatter_thresholds_table[range].numproc)) {
+    while ((range < (mv2_size_scatter_tuning_table[conf_index] - 1)) &&
+           (comm_size > mv2_scatter_thresholds_table[conf_index][range].numproc)) {
         range++;
     }
     /* Search for corresponding inter-leader function */
-    while ((range_threshold < (mv2_scatter_thresholds_table[range].size_inter_table - 1))
+    while ((range_threshold < (mv2_scatter_thresholds_table[conf_index][range].size_inter_table - 1))
            && (nbytes >
-           mv2_scatter_thresholds_table[range].inter_leader[range_threshold].max)
-           && (mv2_scatter_thresholds_table[range].inter_leader[range_threshold].max != -1)) {
+           mv2_scatter_thresholds_table[conf_index][range].inter_leader[range_threshold].max)
+           && (mv2_scatter_thresholds_table[conf_index][range].inter_leader[range_threshold].max != -1)) {
            range_threshold++;
     }
 
     /* Search for corresponding intra-node function */
     while ((range_threshold_intra <
-           (mv2_scatter_thresholds_table[range].size_intra_table - 1))
+           (mv2_scatter_thresholds_table[conf_index][range].size_intra_table - 1))
             && (nbytes >
-            mv2_scatter_thresholds_table[range].intra_node[range_threshold_intra].max)
-            && (mv2_scatter_thresholds_table[range].intra_node[range_threshold_intra].max !=
+                mv2_scatter_thresholds_table[conf_index][range].intra_node[range_threshold_intra].max)
+            && (mv2_scatter_thresholds_table[conf_index][range].intra_node[range_threshold_intra].max !=
             -1)) {
             range_threshold_intra++;
     }
 
-    MV2_Scatter_function = mv2_scatter_thresholds_table[range].inter_leader[range_threshold]
+    MV2_Scatter_function = mv2_scatter_thresholds_table[conf_index][range].inter_leader[range_threshold]
                             .MV2_pt_Scatter_function;
 
     if(MV2_Scatter_function == &MPIR_Scatter_mcst_wrap_MV2) { 
@@ -1436,9 +1468,9 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
         } else
 #endif /*#if defined(_MCST_SUPPORT_) */
         {
-            if(mv2_scatter_thresholds_table[range].inter_leader[range_threshold + 1].
+            if(mv2_scatter_thresholds_table[conf_index][range].inter_leader[range_threshold + 1].
                MV2_pt_Scatter_function != NULL) { 
-                  MV2_Scatter_function = mv2_scatter_thresholds_table[range].inter_leader[range_threshold + 1]
+                  MV2_Scatter_function = mv2_scatter_thresholds_table[conf_index][range].inter_leader[range_threshold + 1]
                                                                           .MV2_pt_Scatter_function;
             } else { 
                   /* Fallback! */ 
@@ -1451,7 +1483,7 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
         (MV2_Scatter_function == &MPIR_Scatter_MV2_two_level_Binomial)) { 
          if( comm_ptr->ch.shmem_coll_ok == 1 && 
              comm_ptr->ch.is_global_block == 1 ) {
-             MV2_Scatter_intra_function = mv2_scatter_thresholds_table[range].intra_node[range_threshold_intra]
+             MV2_Scatter_intra_function = mv2_scatter_thresholds_table[conf_index][range].intra_node[range_threshold_intra]
                                 .MV2_pt_Scatter_function;
 
              mpi_errno =
@@ -1653,7 +1685,7 @@ int MPIR_Scatter_inter_MV2(void *sendbuf,
         if (root == MPI_ROOT) {
             /* root sends all data to rank 0 on remote group and returns */
             MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
-            mpi_errno = MPIC_Send_ft(sendbuf, sendcnt * remote_size,
+            mpi_errno = MPIC_Send(sendbuf, sendcnt * remote_size,
                                      sendtype, 0, MPIR_SCATTER_TAG, comm,
                                      errflag);
             if (mpi_errno) {
@@ -1689,7 +1721,7 @@ int MPIR_Scatter_inter_MV2(void *sendbuf,
                 tmp_buf = (void *) ((char *) tmp_buf - true_lb);
 
                 MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
-                mpi_errno = MPIC_Recv_ft(tmp_buf, recvcnt * local_size,
+                mpi_errno = MPIC_Recv(tmp_buf, recvcnt * local_size,
                                          recvtype, root,
                                          MPIR_SCATTER_TAG, comm, &status,
                                          errflag);
@@ -1722,7 +1754,7 @@ int MPIR_Scatter_inter_MV2(void *sendbuf,
             MPID_Datatype_get_extent_macro(sendtype, extent);
             for (i = 0; i < remote_size; i++) {
                 mpi_errno =
-                    MPIC_Send_ft(((char *) sendbuf + sendcnt * i * extent),
+                    MPIC_Send(((char *) sendbuf + sendcnt * i * extent),
                                  sendcnt, sendtype, i, MPIR_SCATTER_TAG, comm,
                                  errflag);
                 if (mpi_errno) {
@@ -1733,7 +1765,7 @@ int MPIR_Scatter_inter_MV2(void *sendbuf,
                 }
             }
         } else {
-            mpi_errno = MPIC_Recv_ft(recvbuf, recvcnt, recvtype, root,
+            mpi_errno = MPIC_Recv(recvbuf, recvcnt, recvtype, root,
                                      MPIR_SCATTER_TAG, comm, &status, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -1835,7 +1867,7 @@ int MPIR_Scatter_MV2(const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     comm_ptr->ch.intra_node_done = 0;
 #endif    
-	if (mpi_errno)
+        if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
 
   fn_exit:

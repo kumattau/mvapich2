@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2012 Inria.  All rights reserved.
+ * Copyright © 2009-2013 Inria.  All rights reserved.
  * Copyright © 2009-2012 Université Bordeaux 1
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -72,13 +72,17 @@ void hwloc_report_os_error(const char *msg, int line)
 
     if (!reported && !hwloc_hide_errors()) {
         fprintf(stderr, "****************************************************************************\n");
-        fprintf(stderr, "* Hwloc has encountered what looks like an error from the operating system.\n");
+        fprintf(stderr, "* hwloc has encountered what looks like an error from the operating system.\n");
         fprintf(stderr, "*\n");
         fprintf(stderr, "* %s\n", msg);
         fprintf(stderr, "* Error occurred in topology.c line %d\n", line);
         fprintf(stderr, "*\n");
         fprintf(stderr, "* Please report this error message to the hwloc user's mailing list,\n");
+#ifdef HWLOC_LINUX_SYS
         fprintf(stderr, "* along with the output from the hwloc-gather-topology.sh script.\n");
+#else
+	fprintf(stderr, "* along with any relevant topology information from your platform.\n");
+#endif
         fprintf(stderr, "****************************************************************************\n");
         reported = 1;
     }
@@ -143,9 +147,10 @@ hwloc_fallback_nbprocessors(struct hwloc_topology *topology) {
   host_info(mach_host_self(), HOST_BASIC_INFO, (integer_t*) &info, &count);
   n = info.avail_cpus;
 #elif defined(HAVE_SYSCTLBYNAME)
-  int64_t n;
-  if (hwloc_get_sysctlbyname("hw.ncpu", &n))
-    n = -1;
+  int64_t nn;
+  if (hwloc_get_sysctlbyname("hw.ncpu", &nn))
+    nn = -1;
+  n = nn;
 #elif defined(HAVE_SYSCTL) && HAVE_DECL_CTL_HW && HAVE_DECL_HW_NCPU
   static int name[2] = {CTL_HW, HW_NPCU};
   if (hwloc_get_sysctl(name, sizeof(name)/sizeof(*name)), &n)
@@ -683,6 +688,7 @@ hwloc___insert_object_by_cpuset(struct hwloc_topology *topology, hwloc_obj_t cur
 	    child->distances_count += obj->distances_count;
 	    child->distances = realloc(child->distances, child->distances_count * sizeof(*child->distances));
 	    memcpy(child->distances + obj->distances_count, obj->distances, obj->distances_count * sizeof(*child->distances));
+	    free(obj->distances);
 	  } else {
 	    child->distances_count = obj->distances_count;
 	    child->distances = obj->distances;
@@ -695,6 +701,7 @@ hwloc___insert_object_by_cpuset(struct hwloc_topology *topology, hwloc_obj_t cur
 	    child->infos_count += obj->infos_count;
 	    child->infos = realloc(child->infos, child->infos_count * sizeof(*child->infos));
 	    memcpy(child->infos + obj->infos_count, obj->infos, obj->infos_count * sizeof(*child->infos));
+	    free(obj->infos);
 	  } else {
 	    child->infos_count = obj->infos_count;
 	    child->infos = obj->infos;
@@ -892,7 +899,7 @@ hwloc_topology_insert_misc_object_by_cpuset(struct hwloc_topology *topology, hwl
 
   if (hwloc_bitmap_iszero(cpuset))
     return NULL;
-  if (!hwloc_bitmap_isincluded(cpuset, hwloc_topology_get_complete_cpuset(topology)))
+  if (!hwloc_bitmap_isincluded(cpuset, hwloc_topology_get_topology_cpuset(topology)))
     return NULL;
 
   obj = hwloc_alloc_setup_object(HWLOC_OBJ_MISC, -1);
@@ -1178,11 +1185,18 @@ add_default_object_sets(hwloc_obj_t obj, int parent_has_sets)
   if (hwloc_obj_type_is_io(obj->type))
     return;
 
-  if (parent_has_sets || obj->cpuset) {
-    /* if the parent has non-NULL sets, or if the object has non-NULL cpusets,
-     * it must have non-NULL nodesets
-     */
+  if (parent_has_sets && obj->type != HWLOC_OBJ_MISC) {
+    /* non-MISC object must have cpuset if parent has one. */
     assert(obj->cpuset);
+  }
+
+  /* other sets must be consistent with main cpuset:
+   * check cpusets and add nodesets if needed.
+   *
+   * MISC may have no sets at all (if added by parent), or usual ones (if added by cpuset),
+   * but that's not easy to detect, so just make sure sets are consistent as usual.
+   */
+  if (obj->cpuset) {
     assert(obj->online_cpuset);
     assert(obj->complete_cpuset);
     assert(obj->allowed_cpuset);
@@ -1193,9 +1207,9 @@ add_default_object_sets(hwloc_obj_t obj, int parent_has_sets)
     if (!obj->allowed_nodeset)
       obj->allowed_nodeset = hwloc_bitmap_alloc_full();
   } else {
-    /* parent has no sets and object has NULL cpusets,
-     * it must have NULL nodesets
-     */
+    assert(!obj->online_cpuset);
+    assert(!obj->complete_cpuset);
+    assert(!obj->allowed_cpuset);
     assert(!obj->nodeset);
     assert(!obj->complete_nodeset);
     assert(!obj->allowed_nodeset);
@@ -1233,6 +1247,9 @@ propagate_nodeset(hwloc_obj_t obj, hwloc_obj_t sys)
   for_each_child_safe(child, obj, temp) {
     /* don't propagate nodesets in I/O objects, keep them NULL */
     if (hwloc_obj_type_is_io(child->type))
+      return;
+    /* don't propagate nodesets in Misc inserted by parent (no nodeset if no cpuset) */
+    if (child->type == HWLOC_OBJ_MISC && !child->cpuset)
       return;
 
     /* Propagate singleton nodesets down */
@@ -1445,7 +1462,7 @@ remove_empty(hwloc_topology_t topology, hwloc_obj_t *pobj)
 
   if (obj->type != HWLOC_OBJ_NODE
       && !obj->first_child /* only remove if all children were removed above, so that we don't remove parents of NUMAnode */
-      && !hwloc_obj_type_is_io(obj->type)
+      && !hwloc_obj_type_is_io(obj->type) && obj->type != HWLOC_OBJ_MISC
       && obj->cpuset /* don't remove if no cpuset at all, there's likely a good reason why it's different from having an empty cpuset */
       && hwloc_bitmap_iszero(obj->cpuset)) {
     /* Remove empty children */
@@ -1528,23 +1545,36 @@ restrict_object_nodeset(hwloc_topology_t topology, hwloc_obj_t *pobj, hwloc_node
 static void
 merge_useless_child(hwloc_topology_t topology, hwloc_obj_t *pparent)
 {
-  hwloc_obj_t parent = *pparent, child, *pchild;
+  hwloc_obj_t parent = *pparent, child, *pchild, ios;
   int replacechild = 0, replaceparent = 0;
 
   for_each_child_safe(child, parent, pchild)
     merge_useless_child(topology, pchild);
 
   child = parent->first_child;
-  if (!child || child->next_sibling)
-    /* There are no or several children, it's useful to keep them.  */
+  if (!child)
+    /* There are no child, nothing to merge. */
     return;
+
+  if (child->next_sibling && !hwloc_obj_type_is_io(child->next_sibling->type))
+    /* There are several non-I/O children */
+    return;
+
+  /* There is one non-I/O child and possible some I/O children.
+   * I/O children shouldn't prevent merging because they can be attached
+   * to anything with the same locality.
+   * Move them to the side during merging, and append them back later.
+   * This is easy because I/O children are always last in the list.
+   */
+  ios = child->next_sibling;
+  child->next_sibling = NULL;
 
   /* Check whether parent and/or child can be replaced */
   if (topology->ignored_types[parent->type] == HWLOC_IGNORE_TYPE_KEEP_STRUCTURE)
     /* Parent can be ignored in favor of the child.  */
     replaceparent = 1;
   if (topology->ignored_types[child->type] == HWLOC_IGNORE_TYPE_KEEP_STRUCTURE)
-    /* Child can be ignored in favor of the parent.  */    
+    /* Child can be ignored in favor of the parent.  */
     replacechild = 1;
 
   /* Decide which one to actually replace */
@@ -1574,6 +1604,14 @@ merge_useless_child(hwloc_topology_t topology, hwloc_obj_t *pparent)
     print_object(topology, 0, child);
     parent->first_child = child->first_child;
     hwloc_free_unlinked_object(child);
+  }
+
+  if (ios) {
+    /* append I/O children to the list of children of the remaining object */
+    pchild = &((*pparent)->first_child);
+    while (*pchild)
+      pchild = &((*pchild)->next_sibling);
+    *pchild = ios;
   }
 }
 
@@ -2169,7 +2207,7 @@ next_cpubackend:
   }
 
   if (!discoveries) {
-    hwloc_debug("%s", "No CPU backend enabled\n");
+    hwloc_debug("%s", "No CPU backend enabled or no discovery succeeded\n");
     errno = EINVAL;
     return -1;
   }

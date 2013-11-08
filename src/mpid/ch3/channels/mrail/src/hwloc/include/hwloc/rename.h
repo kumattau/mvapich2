@@ -137,10 +137,10 @@ extern "C" {
 #define hwloc_topology_export_xml HWLOC_NAME(topology_export_xml)
 #define hwloc_topology_export_xmlbuffer HWLOC_NAME(topology_export_xmlbuffer)
 #define hwloc_free_xmlbuffer HWLOC_NAME(free_xmlbuffer)
-#define hwloc_topology_set_userdata_export_callback HWLOC_NAME(topology_set_userdata_import_callback)
+#define hwloc_topology_set_userdata_export_callback HWLOC_NAME(topology_set_userdata_export_callback)
 #define hwloc_export_obj_userdata HWLOC_NAME(export_obj_userdata)
 #define hwloc_export_obj_userdata_base64 HWLOC_NAME(export_obj_userdata_base64)
-#define hwloc_topology_set_userdata_import_callback HWLOC_NAME(topology_set_userdata_export_callback)
+#define hwloc_topology_set_userdata_import_callback HWLOC_NAME(topology_set_userdata_import_callback)
 
 #define hwloc_topology_insert_misc_object_by_cpuset HWLOC_NAME(topology_insert_misc_object_by_cpuset)
 #define hwloc_topology_insert_misc_object_by_parent HWLOC_NAME(topology_insert_misc_object_by_parent)
@@ -528,12 +528,14 @@ extern "C" {
 #define hwloc_set_binding_hooks HWLOC_NAME(set_binding_hooks)
 
 #define hwloc_set_linuxfs_hooks HWLOC_NAME(set_linuxfs_hooks)
+#define hwloc_set_bgq_hooks HWLOC_NAME(set_bgq_hooks)
 #define hwloc_set_solaris_hooks HWLOC_NAME(set_solaris_hooks)
 #define hwloc_set_aix_hooks HWLOC_NAME(set_aix_hooks)
 #define hwloc_set_osf_hooks HWLOC_NAME(set_osf_hooks)
 #define hwloc_set_windows_hooks HWLOC_NAME(set_windows_hooks)
 #define hwloc_set_darwin_hooks HWLOC_NAME(set_darwin_hooks)
 #define hwloc_set_freebsd_hooks HWLOC_NAME(set_freebsd_hooks)
+#define hwloc_set_netbsd_hooks HWLOC_NAME(set_netbsd_hooks)
 #define hwloc_set_hpux_hooks HWLOC_NAME(set_hpux_hooks)
 
 #define hwloc_add_uname_info HWLOC_NAME(add_uname_info)

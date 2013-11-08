@@ -251,11 +251,23 @@ int MPIR_Ialltoallw_impl(const void *sendbuf, const int sendcounts[], const int 
                          MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;
-    int tag = -1;
     MPID_Request *reqp = NULL;
+    int tag = -1;
     MPID_Sched_t s = MPID_SCHED_NULL;
 
     *request = MPI_REQUEST_NULL;
+
+    MPIU_Assert(comm_ptr->coll_fns != NULL);
+    if (comm_ptr->coll_fns->Ialltoallw_req != NULL) {
+        /* --BEGIN USEREXTENSION-- */
+        mpi_errno = comm_ptr->coll_fns->Ialltoallw_req(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm_ptr, &reqp);
+        if (reqp) {
+            *request = reqp->handle;
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+            goto fn_exit;
+        }
+        /* --END USEREXTENSION-- */
+    }
 
     mpi_errno = MPID_Sched_next_tag(comm_ptr, &tag);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -263,8 +275,8 @@ int MPIR_Ialltoallw_impl(const void *sendbuf, const int sendcounts[], const int 
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     MPIU_Assert(comm_ptr->coll_fns != NULL);
-    MPIU_Assert(comm_ptr->coll_fns->Ialltoallw != NULL);
-    mpi_errno = comm_ptr->coll_fns->Ialltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm_ptr, s);
+    MPIU_Assert(comm_ptr->coll_fns->Ialltoallw_sched != NULL);
+    mpi_errno = comm_ptr->coll_fns->Ialltoallw_sched(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm_ptr, s);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     mpi_errno = MPID_Sched_start(&s, comm_ptr, tag, &reqp);
@@ -352,7 +364,7 @@ int MPI_Ialltoallw(const void *sendbuf, const int sendcounts[], const int sdispl
             MPIR_ERRTEST_ARGNULL(rdispls,"rdispls", mpi_errno);
             MPIR_ERRTEST_ARGNULL(recvtypes,"recvtypes", mpi_errno);
             if (comm_ptr->comm_kind == MPID_INTERCOMM && sendbuf == MPI_IN_PLACE) {
-                MPIU_ERR_SETANDJUMP(mpi_errno, MPIR_ERR_RECOVERABLE, "**sendbuf_inplace");
+                MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**sendbuf_inplace");
             }
             MPIR_ERRTEST_ARGNULL(request,"request", mpi_errno);
             /* TODO more checks may be appropriate (counts, in_place, buffer aliasing, etc) */

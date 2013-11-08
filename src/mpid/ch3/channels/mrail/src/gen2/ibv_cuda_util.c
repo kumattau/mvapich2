@@ -27,29 +27,30 @@ static int cudaipc_init_global = 0;
 static CUcontext mv2_cuda_context = NULL;
 static CUcontext mv2_save_cuda_context = NULL;
 
-void MPIU_IOV_pack_cuda(void *buf, MPID_IOV *iov, int n_iov, int position) 
+void MPIU_IOV_pack_cuda(void *buf, MPID_IOV *iov, int n_iov, 
+                int position, cudaStream_t stream) 
 {
     int i;
     void *ptr;
     ptr = (char *) buf + position;
     for (i = 0; i < n_iov; i++) {
-        MPIU_Memcpy_CUDA(ptr, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN,
-                                    cudaMemcpyDefault);
+        MPIU_Memcpy_CUDA_Async(ptr, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN,
+                                    cudaMemcpyDefault, stream);
         ptr = (char *)ptr + iov[i].MPID_IOV_LEN;
     }
     PRINT_DEBUG(CUDA_DEBUG, "CUDA pack: buf:%p n_iov: %d\n", buf, n_iov);
 }
 
 void MPIU_IOV_unpack_cuda(void *buf, MPID_IOV *iov, int n_iov, 
-                            int position, int *bytes_unpacked)
+                int position, int *bytes_unpacked, cudaStream_t stream)
 {
     int i = 0;
     void *ptr = buf + position;
     int total_len = 0;
 
     for (i = 0; i < n_iov; i++) {
-        MPIU_Memcpy_CUDA(iov[i].MPID_IOV_BUF, ptr, iov[i].MPID_IOV_LEN,
-                                cudaMemcpyDefault);
+        MPIU_Memcpy_CUDA_Async(iov[i].MPID_IOV_BUF, ptr, iov[i].MPID_IOV_LEN,
+                                cudaMemcpyDefault, stream);
         ptr = (char *)ptr + iov[i].MPID_IOV_LEN;
         total_len += iov[i].MPID_IOV_LEN;
     }
@@ -58,32 +59,32 @@ void MPIU_IOV_unpack_cuda(void *buf, MPID_IOV *iov, int n_iov,
     *bytes_unpacked = total_len;
 }
 
-void vector_pack_cudabuf(void *buf, MPID_IOV *iov, int size)
+void vector_pack_cudabuf(void *buf, MPID_IOV *iov, int size, cudaStream_t stream)
 {
     cudaError_t cerr = cudaSuccess;
-    cerr = cudaMemcpy2D(buf,
+    cerr = cudaMemcpy2DAsync(buf,
                 iov[0].MPID_IOV_LEN,
                 iov[0].MPID_IOV_BUF,
                 iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
                 iov[0].MPID_IOV_LEN,
                 size / iov[0].MPID_IOV_LEN,
-                cudaMemcpyDeviceToDevice);
+                cudaMemcpyDeviceToDevice, stream);
     if (cerr != cudaSuccess) {
         PRINT_INFO(1,"Error in cudaMemcpy2D\n");
     }
     PRINT_DEBUG(CUDA_DEBUG, "cuda vector pack with cudaMemcpy2D\n");
 }
 
-void vector_unpack_cudabuf(void *buf, MPID_IOV *iov, int size)
+void vector_unpack_cudabuf(void *buf, MPID_IOV *iov, int size, cudaStream_t stream)
 {
     cudaError_t cerr = cudaSuccess;
-    cerr = cudaMemcpy2D(iov[0].MPID_IOV_BUF,
+    cerr = cudaMemcpy2DAsync(iov[0].MPID_IOV_BUF,
                 iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
                 buf,
                 iov[0].MPID_IOV_LEN,
                 iov[0].MPID_IOV_LEN,
                 size / iov[0].MPID_IOV_LEN,
-                cudaMemcpyDeviceToDevice);
+                cudaMemcpyDeviceToDevice, stream);
     if (cerr != cudaSuccess) {
         PRINT_INFO(1,"Error in cudaMemcpy2D\n");
     }
@@ -92,7 +93,7 @@ void vector_unpack_cudabuf(void *buf, MPID_IOV *iov, int size)
 
 
 #if defined(USE_GPU_KERNEL)
-int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size) 
+int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size, cudaStream_t stream) 
 {
     int i, element_size;
     int struct_sz = sizeof(MPID_Datatype_contents);
@@ -209,7 +210,8 @@ int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size
                     if (element_size == 1 || element_size == 4 || element_size == 8) {
                         pack_subarray(dst, src, array_of_sizes[0], array_of_sizes[1], array_of_sizes[2], 
     			    			array_of_subsizes[0], array_of_subsizes[1], array_of_subsizes[2], 
-    			    			array_of_starts[0], array_of_starts[1], array_of_starts[2], element_size);
+    			    			array_of_starts[0], array_of_starts[1], array_of_starts[2], element_size, 
+                                stream);
                         dst += array_of_subsizes[0] * array_of_subsizes[1] * array_of_subsizes[2] * element_size;
                     } else {
                         return FAILURE_PACKUNPACK_OPT;
@@ -225,7 +227,7 @@ int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size
 
 }
 
-int hindexed_unpack_cudabuf(void *src, MPID_IOV *iov, MPID_Datatype *dtp, int size) 
+int hindexed_unpack_cudabuf(void *src, MPID_IOV *iov, MPID_Datatype *dtp, int size, cudaStream_t stream) 
 {
     int i, element_size;
     int struct_sz = sizeof(MPID_Datatype_contents);
@@ -343,7 +345,8 @@ int hindexed_unpack_cudabuf(void *src, MPID_IOV *iov, MPID_Datatype *dtp, int si
                     if (element_size == 1 || element_size == 4 || element_size == 8) {
                         unpack_subarray(dst, src, array_of_sizes[0], array_of_sizes[1], array_of_sizes[2], 
     	            				array_of_subsizes[0], array_of_subsizes[1], array_of_subsizes[2], 
-    	            				array_of_starts[0], array_of_starts[1], array_of_starts[2], element_size);
+    	            				array_of_starts[0], array_of_starts[1], array_of_starts[2], element_size, 
+                                    stream);
                         src += array_of_subsizes[0] * array_of_subsizes[1] * array_of_subsizes[2] * element_size;
                     } else {
                         return FAILURE_PACKUNPACK_OPT;
@@ -361,12 +364,18 @@ int hindexed_unpack_cudabuf(void *src, MPID_IOV *iov, MPID_Datatype *dtp, int si
 #endif
 
 int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), 
-                    MPID_Request *req, int *complete ATTRIBUTE((unused)))
+                    MPID_Request *req, int *complete ATTRIBUTE((unused)), void* stream)
 {
     MPI_Aint last;
     int iov_n;
     MPID_IOV iov[MPID_IOV_LIMIT];
+    int kernel_pack = 0;
+    cudaStream_t stream_passed = 0;
 
+    if (stream != NULL) { 
+        stream_passed = (cudaStream_t) stream;
+    }
+    
     req->dev.segment_first = 0;
     do {
         last = req->dev.segment_size;
@@ -387,11 +396,13 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
                                           iov[0].MPID_IOV_BUF,
                                           iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
                                           iov[0].MPID_IOV_LEN,
-                                          req->dev.segment_size / iov[0].MPID_IOV_LEN);
+                                          req->dev.segment_size / iov[0].MPID_IOV_LEN, 
+                                          stream_passed);
+                kernel_pack = 1;
             } else
 #endif
             {
-                vector_pack_cudabuf(req->dev.tmpbuf, iov, req->dev.segment_size);
+                vector_pack_cudabuf(req->dev.tmpbuf, iov, req->dev.segment_size, stream_passed);
             }
             last = req->dev.segment_size;
 #if defined(USE_GPU_KERNEL)
@@ -399,34 +410,56 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
                    && rdma_cuda_kernel_dt_opt) {
 
             int return_hindexed_pack = INITIAL_PACKUNPACK_OPT;
-            return_hindexed_pack = hindexed_pack_cudabuf((void *)req->dev.tmpbuf, iov, req->dev.datatype_ptr, req->dev.segment_size);
-       
+            return_hindexed_pack = hindexed_pack_cudabuf((void *) req->dev.tmpbuf, 
+                    iov, req->dev.datatype_ptr, req->dev.segment_size, 
+                    stream_passed);
+             
             if (return_hindexed_pack == SUCCESS_PACKUNPACK_OPT) {
                 last = req->dev.segment_size;
+                kernel_pack = 1;
             } else if (return_hindexed_pack == FAILURE_PACKUNPACK_OPT) {
                 MPIU_IOV_pack_cuda(req->dev.tmpbuf, iov, iov_n,
-                    req->dev.segment_first);
+                    req->dev.segment_first, stream_passed);
             } else {
                 MPIU_IOV_pack_cuda(req->dev.tmpbuf, iov, iov_n,
-                    req->dev.segment_first);
+                    req->dev.segment_first, stream_passed);
             }
 #endif
         } else {
             MPIU_IOV_pack_cuda(req->dev.tmpbuf, iov, iov_n, 
-                    req->dev.segment_first);
+                    req->dev.segment_first, stream_passed);
         }
 
         req->dev.segment_first = last;
         PRINT_INFO(CUDA_DEBUG, "paked :%d start:%lu last:%lu\n", iov_n, req->dev.segment_first, last);
     } while(last != req->dev.segment_size);
+
+    /* This synchronization is needed because non-kernel based packing uses cudamemcpy
+     * on the default stream (0) but subsequent transfers many use non-default non-blocking streams. 
+     * this is true when stream passed in is non-zero (rndv exchange case)*/
+    /* TODO: this has to be revisited when all copies are made to use non-default streams */
+    if (rdma_cuda_event_sync) {
+        /*the synchronization is implicit as we the stream is passed by the higher layer*/
+    } else {
+        /* if stream based synchronization is used, we complete explicitly as we dont know 
+         * which stream following copies will use */    
+        CUDA_CHECK(cudaStreamSynchronize(stream_passed));
+    }
+
     return MPI_SUCCESS;
 }
 
-int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID_Request *req, int *complete)
+int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID_Request *req, int *complete, void *stream)
 {
     MPI_Aint last;
     int iov_n, bytes_copied;
     MPID_IOV iov[MPID_IOV_LIMIT];
+    int kernel_unpack = 0;
+    cudaStream_t stream_passed = 0;
+
+    if (stream != NULL) {
+        stream_passed = (cudaStream_t) stream;
+    }
 
     req->dev.segment_first = 0;
     do {
@@ -449,11 +482,13 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
                                           req->dev.tmpbuf,
                                           iov[0].MPID_IOV_LEN,
                                           iov[0].MPID_IOV_LEN,
-                                          req->dev.segment_size / iov[0].MPID_IOV_LEN);
+                                          req->dev.segment_size / iov[0].MPID_IOV_LEN,
+                                          stream_passed);
+                kernel_unpack = 1;
             } else
 #endif
             {
-                vector_unpack_cudabuf(req->dev.tmpbuf, iov, req->dev.segment_size);
+                vector_unpack_cudabuf(req->dev.tmpbuf, iov, req->dev.segment_size, stream_passed);
             }
             last = bytes_copied = req->dev.segment_size;
 #if defined(USE_GPU_KERNEL)
@@ -461,21 +496,24 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
                    && rdma_cuda_kernel_dt_opt) {
 
             int return_hindexed_unpack = INITIAL_PACKUNPACK_OPT;
-            return_hindexed_unpack = hindexed_unpack_cudabuf(req->dev.tmpbuf, iov, req->dev.datatype_ptr, req->dev.segment_size);
+            return_hindexed_unpack = hindexed_unpack_cudabuf(req->dev.tmpbuf, 
+                iov, req->dev.datatype_ptr, req->dev.segment_size, 
+                stream_passed);
 
             if (return_hindexed_unpack == SUCCESS_PACKUNPACK_OPT) {
                 last = bytes_copied = req->dev.segment_size;
+                kernel_unpack = 1;
             } else if (return_hindexed_unpack == FAILURE_PACKUNPACK_OPT) {
                 MPIU_IOV_unpack_cuda(req->dev.tmpbuf, iov, iov_n,
-                    req->dev.segment_first, &bytes_copied);
+                    req->dev.segment_first, &bytes_copied, stream_passed);
             } else {
                 MPIU_IOV_unpack_cuda(req->dev.tmpbuf, iov, iov_n,
-                    req->dev.segment_first, &bytes_copied);
+                    req->dev.segment_first, &bytes_copied, stream_passed);
             }
 #endif
         } else {
             MPIU_IOV_unpack_cuda(req->dev.tmpbuf, iov, iov_n, 
-                    req->dev.segment_first, &bytes_copied);
+                    req->dev.segment_first, &bytes_copied, stream_passed);
         }
 
         MPIU_Assert(bytes_copied == (last - req->dev.segment_first));
@@ -483,8 +521,12 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
         PRINT_INFO(CUDA_DEBUG, "unpaked :%d start:%lu last:%lu\n", iov_n, req->dev.segment_first, last);
     } while(last != req->dev.segment_size);
 
+    /* Synchronize on the stream to make sure unpack is complete*/
+    cudaStreamSynchronize (stream_passed); 
+
     MPIDI_CH3U_Request_complete(req);
     *complete = TRUE;
+
     return MPI_SUCCESS;
 }
 
@@ -500,6 +542,7 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     int segment_size;
     int sbuf_isdev = 0;
     int sbuf_isdev_check = 0;
+    int kernel_pack = 0;
 
     /* allocate temp device pack buffer */
     if (!is_device_buffer(streambuf)) {
@@ -538,11 +581,13 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
                                           iov[0].MPID_IOV_BUF,
                                           iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
                                           iov[0].MPID_IOV_LEN,
-                                          segment_size / iov[0].MPID_IOV_LEN);
+                                          segment_size / iov[0].MPID_IOV_LEN,
+                                          stream_kernel);
+                kernel_pack = 1;
             } else
 #endif
             {
-                vector_pack_cudabuf(tmpbuf, iov, segment_size);
+                vector_pack_cudabuf(tmpbuf, iov, segment_size, stream_kernel);
             }
             segment_last = *lastp;
 #if defined(USE_GPU_KERNEL)
@@ -550,24 +595,32 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
                    && rdma_cuda_kernel_dt_opt) {
 
             int return_hindexed_pack = INITIAL_PACKUNPACK_OPT;
-            return_hindexed_pack = hindexed_pack_cudabuf(tmpbuf, iov, dt_ptr, segment_size);
+            return_hindexed_pack = hindexed_pack_cudabuf(tmpbuf, iov, 
+                dt_ptr, segment_size, stream_kernel);
 
             if (return_hindexed_pack == SUCCESS_PACKUNPACK_OPT) {
                 segment_last = *lastp;
+                kernel_pack = 1;
             } else if (return_hindexed_pack == FAILURE_PACKUNPACK_OPT) {
-                MPIU_IOV_pack_cuda((char *)tmpbuf, iov, iov_n, buff_off);
+                MPIU_IOV_pack_cuda((char *)tmpbuf, iov, iov_n, 
+                            buff_off, stream_kernel);
             } else {
-                MPIU_IOV_pack_cuda((char *)tmpbuf, iov, iov_n, buff_off);
+                MPIU_IOV_pack_cuda((char *)tmpbuf, iov, iov_n, 
+                            buff_off, stream_kernel);
             }
 #endif
         } else {
-            MPIU_IOV_pack_cuda((char *)tmpbuf, iov, iov_n, buff_off);
+            MPIU_IOV_pack_cuda((char *)tmpbuf, iov, iov_n, 
+                            buff_off, stream_kernel);
         }
 
         buff_off += (segment_last - segment_first);
         segment_first = segment_last;
         
     } while (segment_last != *lastp);
+
+    /* This is just a pack function. synchronize for kernel to complete before the following copyn */
+    CUDA_CHECK(cudaStreamSynchronize(stream_kernel));
 
     /* copy to device pack buffer to host pack buffer */
     if (!device_pack_buf) {
@@ -590,6 +643,7 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     int segment_size;
     int rbuf_isdev = 0;
     int rbuf_isdev_check = 0;
+    int kernel_unpack = 0;
 
     /* allocate temp device unpack buffer */
     if (!is_device_buffer(inbuf)) {
@@ -630,11 +684,13 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
                                           tmpbuf,
                                           iov[0].MPID_IOV_LEN,
                                           iov[0].MPID_IOV_LEN,
-                                          segment_size / iov[0].MPID_IOV_LEN);
+                                          segment_size / iov[0].MPID_IOV_LEN,
+                                          stream_kernel);
+                kernel_unpack = 1;
             } else
 #endif
             {
-                vector_unpack_cudabuf(tmpbuf, iov, segment_size);
+                vector_unpack_cudabuf(tmpbuf, iov, segment_size, stream_kernel);
             }
             segment_last = *lastp;
             bytes_unpacked = segment_last - segment_first;
@@ -643,19 +699,24 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
                    && rdma_cuda_kernel_dt_opt) {
 
             int return_hindexed_unpack = INITIAL_PACKUNPACK_OPT;
-            return_hindexed_unpack = hindexed_unpack_cudabuf(tmpbuf, iov, dt_ptr, segment_size);
+            return_hindexed_unpack = hindexed_unpack_cudabuf(tmpbuf, iov, 
+                dt_ptr, segment_size, stream_kernel);
 
             if (return_hindexed_unpack == SUCCESS_PACKUNPACK_OPT) {
                 segment_last = *lastp;
                 bytes_unpacked = segment_last - segment_first;
+                kernel_unpack = 1;
             } else if (return_hindexed_unpack == FAILURE_PACKUNPACK_OPT) {
-                MPIU_IOV_unpack_cuda(tmpbuf, iov, iov_n, buff_off, &bytes_unpacked);
+                MPIU_IOV_unpack_cuda(tmpbuf, iov, iov_n, buff_off, 
+                    &bytes_unpacked, stream_kernel);
             } else {
-                MPIU_IOV_unpack_cuda(tmpbuf, iov, iov_n, buff_off, &bytes_unpacked);
+                MPIU_IOV_unpack_cuda(tmpbuf, iov, iov_n, buff_off, 
+                    &bytes_unpacked, stream_kernel);
             }
 #endif
         } else {
-                MPIU_IOV_unpack_cuda(tmpbuf, iov, iov_n, buff_off, &bytes_unpacked);
+                MPIU_IOV_unpack_cuda(tmpbuf, iov, iov_n, buff_off, 
+                    &bytes_unpacked, stream_kernel);
         }
 
         MPIU_Assert(bytes_unpacked == (segment_last - segment_first));
@@ -663,6 +724,9 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
         buff_off += bytes_unpacked;
         
     } while (segment_last != *lastp);
+
+    cudaStreamSynchronize (stream_kernel);
+
     if (!device_unpack_buf) {
         MPIU_Free_CUDA(tmpbuf);
     }
@@ -670,7 +734,7 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
 
 int is_device_buffer(const void *buffer) 
 {
-    int memory_type;
+    int memory_type, is_dev = 0;
     cudaError_t cuda_err = cudaSuccess;
     struct cudaPointerAttributes attributes;
     CUresult cu_err = CUDA_SUCCESS;
@@ -679,13 +743,11 @@ int is_device_buffer(const void *buffer)
         return 0;
     }
 
-    if (rdma_enable_cuda && rdma_cuda_dynamic_init 
-        && cuda_preinitialized && !cuda_initialized) {
+    if (rdma_cuda_dynamic_init && (mv2_save_cuda_context == NULL)) {
         cu_err = cuCtxGetCurrent(&mv2_save_cuda_context);
         if (cu_err != CUDA_SUCCESS || mv2_save_cuda_context == NULL) { 
             return 0;
         }
-        cuda_init_dynamic (MPIDI_Process.my_pg);
     }
 
     cu_err = cuPointerGetAttribute(&memory_type, 
@@ -695,13 +757,18 @@ int is_device_buffer(const void *buffer)
         if (rdma_check_cuda_attribute) {
             cuda_err = cudaPointerGetAttributes (&attributes, buffer);
             if (cuda_err == cudaSuccess) {
-                return(attributes.memoryType == cudaMemoryTypeDevice);
+                is_dev = (attributes.memoryType == cudaMemoryTypeDevice) ? 1 : 0;
             }
         }
-        return 0;
     } else {
-        return (memory_type == CU_MEMORYTYPE_DEVICE);
+        is_dev = (memory_type == CU_MEMORYTYPE_DEVICE) ? 1 : 0;
     }
+
+    if (is_dev && rdma_cuda_dynamic_init && !cuda_initialized) { 
+        cuda_init_dynamic (MPIDI_Process.my_pg);
+    }
+
+    return is_dev;
 }
 
 void ibv_cuda_register(void *ptr, size_t size)
@@ -753,6 +820,13 @@ void cuda_get_user_parameters() {
         rdma_cuda_kernel_dt_opt = 0;
     }
 #endif
+
+    if ((value = getenv("MV2_CUDA_KERNEL_VECTOR_TIDBLK_SIZE")) != NULL) {
+        rdma_cuda_thread_blk_size= atoi(value);
+    }
+    if ((value = getenv("MV2_CUDA_KERNEL_VECTOR_YSIZE")) != NULL) {
+        rdma_cuda_thread_ysize= atoi(value);
+    }
 
     if ((value = getenv("MV2_CUDA_NUM_STREAMS")) != NULL) {
         rdma_cuda_stream_count = atoi(value);
@@ -885,6 +959,10 @@ void cuda_get_user_parameters() {
 
     if ((value = getenv("MV2_CUDA_DYNAMIC_INIT")) != NULL) {
         rdma_cuda_dynamic_init = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_NONBLOCKING_STREAMS")) != NULL) {
+        rdma_cuda_nonblocking_streams = atoi(value);
     }
 
     /*TODO: remove this dependency*/
@@ -1070,8 +1148,6 @@ void cuda_preinit (MPIDI_PG_t * pg)
         }
     }
 #endif
-
-    cuda_preinitialized = 1;
 }
 
 void cuda_init_dynamic (MPIDI_PG_t * pg)
@@ -1126,8 +1202,27 @@ void cuda_init_dynamic (MPIDI_PG_t * pg)
 
 void cuda_cleanup()
 {
+    CUcontext active_context = NULL; 
+    int mpi_errno = MPI_SUCCESS, errflag;
 
-    CUresult curesult = CUDA_SUCCESS; 
+    /*check if three is an active context, or else skip cleaup, 
+     *the application might have called destroyed the context before finalize */
+    CU_CHECK(cuCtxGetCurrent(&active_context));
+    if (active_context == NULL) {
+    /*when using CUDA IPC, if some of the processes have context initialized, they use a global synchronization to
+     *to make sure all processes that mapped its memory have unmapped it. Processes where there is no context have to 
+     * participate in the synchronization*/
+    /*TODO: this synchronization can be made local to the node*/
+#if defined(HAVE_CUDA_IPC)
+        if (rdma_cuda_ipc && cudaipc_init_global && cudaipc_stage_buffered) {
+            MPIR_Barrier_impl(MPIR_Process.comm_world, &errflag);
+            if (MPI_SUCCESS != mpi_errno) {
+                ibv_error_abort (GEN_EXIT_ERR, "MPI_Barrier failed in cuda_cleanup \n");
+            }
+        }
+#endif
+        return;
+    }
 
     deallocate_cuda_events();
     deallocate_cuda_rndv_streams();
@@ -1153,10 +1248,7 @@ void cuda_cleanup()
     }
 
     if (mv2_cuda_context != NULL) {
-        curesult = cuCtxDestroy(mv2_cuda_context);
-        if (curesult != CUDA_SUCCESS) {
-            ibv_error_abort (GEN_EXIT_ERR, "cuCtxDestroy returned error in finalize\n");
-        }
+        CU_CHECK(cuCtxDestroy(mv2_cuda_context));
     }
 }
 

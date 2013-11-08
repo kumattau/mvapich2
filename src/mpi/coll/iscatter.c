@@ -358,7 +358,7 @@ int MPIR_Iscatter_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
                 src = rank - mask;
                 if (src < 0) src += comm_size;
 
-                mpi_errno = MPIC_Recv_ft(tmp_buf, tmp_buf_size, MPI_BYTE, src,
+                mpi_errno = MPIC_Recv(tmp_buf, tmp_buf_size, MPI_BYTE, src,
                                          MPIR_SCATTER_TAG, comm, &status, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
@@ -388,7 +388,7 @@ int MPIR_Iscatter_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
 
                 send_subtree_cnt = curr_cnt - nbytes * mask;
                 /* mask is also the size of this process's subtree */
-                mpi_errno = MPIC_Send_ft(((char *)tmp_buf + nbytes*mask),
+                mpi_errno = MPIC_Send(((char *)tmp_buf + nbytes*mask),
                                          send_subtree_cnt, MPI_BYTE, dst,
                                          MPIR_SCATTER_TAG, comm, errflag);
                 if (mpi_errno) {
@@ -503,8 +503,8 @@ int MPIR_Iscatter_inter(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
 
             /* now do the usual scatter on this intracommunicator */
             MPIU_Assert(newcomm_ptr->coll_fns != NULL);
-            MPIU_Assert(newcomm_ptr->coll_fns->Iscatter != NULL);
-            mpi_errno = newcomm_ptr->coll_fns->Iscatter(tmp_buf, recvcount, recvtype,
+            MPIU_Assert(newcomm_ptr->coll_fns->Iscatter_sched != NULL);
+            mpi_errno = newcomm_ptr->coll_fns->Iscatter_sched(tmp_buf, recvcount, recvtype,
                                                         recvbuf, recvcount, recvtype,
                                                         0, newcomm_ptr, s);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -545,20 +545,33 @@ fn_fail:
 int MPIR_Iscatter_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPID_Comm *comm_ptr, MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;
-    int tag = -1;
     MPID_Request *reqp = NULL;
+    int tag = -1;
     MPID_Sched_t s = MPID_SCHED_NULL;
 
     *request = MPI_REQUEST_NULL;
+
+    MPIU_Assert(comm_ptr->coll_fns != NULL);
+    if (comm_ptr->coll_fns->Iscatter_req != NULL) {
+        /* --BEGIN USEREXTENSION-- */
+        mpi_errno = comm_ptr->coll_fns->Iscatter_req(sendbuf, sendcount, sendtype,
+                                                           recvbuf, recvcount, recvtype,
+                                                           root, comm_ptr, &reqp);
+        if (reqp) {
+            *request = reqp->handle;
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+            goto fn_exit;
+        }
+        /* --END USEREXTENSION-- */
+    }
 
     mpi_errno = MPID_Sched_next_tag(comm_ptr, &tag);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     mpi_errno = MPID_Sched_create(&s);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-    MPIU_Assert(comm_ptr->coll_fns != NULL);
-    MPIU_Assert(comm_ptr->coll_fns->Iscatter != NULL);
-    mpi_errno = comm_ptr->coll_fns->Iscatter(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm_ptr, s);
+    MPIU_Assert(comm_ptr->coll_fns->Iscatter_sched != NULL);
+    mpi_errno = comm_ptr->coll_fns->Iscatter_sched(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm_ptr, s);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     mpi_errno = MPID_Sched_start(&s, comm_ptr, tag, &reqp);

@@ -40,6 +40,10 @@ enum {
     ALLTOALL_INPLACE_MV2, 
 };
 
+/* Indicates number of processes per node */
+extern int *mv2_alltoall_table_ppn_conf;
+/* Indicates total number of configurations */
+extern int mv2_alltoall_num_ppn_conf;
 
 typedef struct {
     int min;
@@ -56,8 +60,8 @@ typedef struct {
     mv2_alltoall_tuning_element in_place_algo_table[MV2_MAX_NB_THRESHOLDS];
 } mv2_alltoall_tuning_table;
 
-extern int mv2_size_alltoall_tuning_table;
-extern mv2_alltoall_tuning_table *mv2_alltoall_thresholds_table;
+extern int *mv2_size_alltoall_tuning_table;
+extern mv2_alltoall_tuning_table **mv2_alltoall_thresholds_table;
 extern int mv2_use_old_alltoall;
 
 extern int MPIR_Alltoall_bruck_MV2(

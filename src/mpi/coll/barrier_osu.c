@@ -49,7 +49,7 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
         if (rank < surfeit) {
             /* get the fanin letter from the upper "half" process: */
             dst = N2_prev + rank;
-            mpi_errno = MPIC_Recv_ft(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG,
+            mpi_errno = MPIC_Recv(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG,
                                      comm, MPI_STATUS_IGNORE, errflag);
         }
 
@@ -57,7 +57,7 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
         for (d = 1; d < N2_prev; d <<= 1) {
             dst = (rank ^ d);
             mpi_errno =
-                MPIC_Sendrecv_ft(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG, NULL,
+                MPIC_Sendrecv(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG, NULL,
                                  0, MPI_BYTE, dst, MPIR_BARRIER_TAG, comm,
                                  MPI_STATUS_IGNORE, errflag);
         }
@@ -65,13 +65,13 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
         /* fanout data to nodes above N2_prev... */
         if (rank < surfeit) {
             dst = N2_prev + rank;
-            mpi_errno = MPIC_Send_ft(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG,
+            mpi_errno = MPIC_Send(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG,
                                      comm, errflag);
         }
     } else {
         /* fanin data to power of 2 subset */
         src = rank - N2_prev;
-        mpi_errno = MPIC_Sendrecv_ft(NULL, 0, MPI_BYTE, src, MPIR_BARRIER_TAG,
+        mpi_errno = MPIC_Sendrecv(NULL, 0, MPI_BYTE, src, MPIR_BARRIER_TAG,
                                      NULL, 0, MPI_BYTE, src, MPIR_BARRIER_TAG,
                                      comm, MPI_STATUS_IGNORE, errflag);
     }

@@ -604,7 +604,13 @@ static int cm_get_conn_info(MPIDI_PG_t * pg, int peer)
     MPIU_Snprintf(key, key_max_sz, "ud_info_%08d", peer);
 
     /* Get necessary info from PMI */
-    error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+    do {
+        error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+        if (error != PMI_SUCCESS) {
+            usleep(mv2_cm_wait_time);
+        }
+    } while (error != PMI_SUCCESS);
+
     if (error != PMI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                   "**pmi_kvs_get", "**pmi_kvs_get %d", error);

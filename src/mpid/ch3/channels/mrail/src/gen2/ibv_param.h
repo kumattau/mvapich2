@@ -23,6 +23,7 @@ extern int rdma_num_req_hcas;
 extern int rdma_num_ports;
 extern int rdma_num_qp_per_port;
 extern int rdma_num_rails;
+extern int mv2_cm_wait_time;
 
 extern unsigned long rdma_default_max_cq_size;
 extern int rdma_default_port;
@@ -151,11 +152,13 @@ extern int rdma_cuda_event_count;
 extern int rdma_cuda_event_sync;
 extern int rdma_enable_cuda;
 extern int rdma_cuda_dynamic_init;
+extern int rdma_cuda_thread_blk_size;
+extern int rdma_cuda_thread_ysize;
+extern int rdma_cuda_nonblocking_streams;
 extern int rdma_eager_cudahost_reg;
 extern int rdma_cuda_vector_dt_opt;
 extern int rdma_cuda_kernel_dt_opt;
 extern int cuda_initialized; 
-extern int cuda_preinitialized; 
 #if defined(HAVE_CUDA_IPC)
 extern int rdma_cuda_ipc;
 extern int rdma_cuda_smp_ipc;
@@ -266,6 +269,8 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_NUM_SA_QUERY_RETRIES   (20)
 #define RDMA_DEFAULT_MED_MSG_RAIL_SHARING_THRESHOLD (2048)
 #define RDMA_DEFAULT_LARGE_MSG_RAIL_SHARING_THRESHOLD (16384)
+#define DEF_MV2_CM_WAIT_TIME            (5)
+#define RDMA_DEFAULT_QP_OUS_RD_ATOM     (1)
 
 /* This is a overprovision of resource, do not use in critical structures */
 #define MAX_NUM_SUBRAILS                (MAX_NUM_HCAS*  \

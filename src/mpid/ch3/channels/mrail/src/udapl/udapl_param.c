@@ -118,6 +118,7 @@ unsigned int  rdma_ndreg_entries_max = RDMA_NDREG_ENTRIES_MAX;
 unsigned long rdma_dreg_cache_limit = 0;
 
 mv2_polling_level rdma_polling_level = MV2_POLLING_LEVEL_1;
+int mv2_on_demand_ud_info_exchange = 0;
 
 /* Optimal CPU Binding parameters */
 #ifdef HAVE_LIBHWLOC
