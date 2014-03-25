@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -33,6 +33,8 @@ do {                                                          \
 #else
 #define DEBUG_PRINT(args...)
 #endif
+
+extern int g_atomics_support;
 
 extern int MPIDI_Get_num_nodes();
 int qp_required(MPIDI_VC_t * vc, int my_rank, int dst_rank)
@@ -649,6 +651,8 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                                       "Error getting HCA attributes\n");
         }
 
+        g_atomics_support = (dev_attr.atomic_cap != IBV_ATOMIC_NONE);
+
         /* detecting active ports */
         if (rdma_default_port < 0 || rdma_num_ports > 1) {
             k = 0;
@@ -834,6 +838,8 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                                           "**fail %s",
                                           "Error getting HCA attributes");
             }
+
+            g_atomics_support = (dev_attr.atomic_cap != IBV_ATOMIC_NONE);
 
             /* detecting active ports */
             if (rdma_default_port < 0 || rdma_num_ports > 1) {
@@ -1569,16 +1575,16 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid && !(vc->mrail.state & MRAILI_UD_CONNECTED)) {
 
-        vc->mrail.ud.total_messages = 0;
-        vc->mrail.ud.ack_pending = 0;
+        vc->mrail.rely.total_messages = 0;
+        vc->mrail.rely.ack_pending = 0;
 
         vc->mrail.state &= ~(MRAILI_RC_CONNECTING | MRAILI_RC_CONNECTING);
 
-        MESSAGE_QUEUE_INIT(&vc->mrail.ud.send_window);
-        MESSAGE_QUEUE_INIT(&vc->mrail.ud.ext_window);
-        vc->mrail.ud.cntl_acks = 0;
-        vc->mrail.ud.resend_count = 0;
-        vc->mrail.ud.ext_win_send_count = 0;
+        MESSAGE_QUEUE_INIT(&vc->mrail.rely.send_window);
+        MESSAGE_QUEUE_INIT(&vc->mrail.rely.ext_window);
+        vc->mrail.rely.cntl_acks = 0;
+        vc->mrail.rely.resend_count = 0;
+        vc->mrail.rely.ext_win_send_count = 0;
     } else
 #endif /* _ENABLE_UD_ */
     {
@@ -2129,7 +2135,6 @@ int rdma_init_ud(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     mv2_ud_qp_info_t qp_info;
     char *val;
 
-
     for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
         qp_info.send_cq = qp_info.recv_cq = proc->cq_hndl[hca_index];
         qp_info.sq_psn = rdma_default_psn;
@@ -2143,7 +2148,7 @@ int rdma_init_ud(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             qp_info.srq = create_srq(proc, hca_index);
         }
         qp_info.cap.max_inline_data = rdma_max_inline_size;
-        ud_ctx = mv2_ud_create_ctx(&qp_info);
+        ud_ctx = mv2_ud_create_ctx(&qp_info, hca_index);
         if (!ud_ctx) {
             fprintf(stderr, "Error in create UD qp\n");
             return MPI_ERR_INTERN;
@@ -2169,15 +2174,21 @@ int mv2_ud_get_remote_info(MPIDI_PG_t * pg, int pg_rank, int pg_size)
 {
     int error, mpi_errno = MPI_SUCCESS, i;
     char *key, *val;
+    /* Width of one "lid:qpn:" entry (8 + 1 + 8 + 1 = 18) */
+    int offset    = 18;
+    int hca_index = 0;
+    char *ptr     = NULL;
+    char temp1[512];
+    char temp2[32];
     int key_max_sz, val_max_sz;
-    mv2_ud_exch_info_t my_info, *all_info;
+    mv2_ud_exch_info_t my_info, **all_info;
 
-    all_info =
-        (mv2_ud_exch_info_t *) MPIU_Malloc(pg_size *
+    all_info = (mv2_ud_exch_info_t **) MPIU_Malloc(pg_size *
+                                           sizeof(mv2_ud_exch_info_t*));
+    for (i = 0; i < pg_size; i++) {
+        all_info[i] = (mv2_ud_exch_info_t *) MPIU_Malloc(rdma_num_hcas *
                                            sizeof(mv2_ud_exch_info_t));
-
-    my_info.lid = mv2_MPIDI_CH3I_RDMA_Process.lids[0][0];
-    my_info.qpn = mv2_MPIDI_CH3I_RDMA_Process.ud_rails[0]->qp->qp_num;
+    }
 
     error = PMI_KVS_Get_key_length_max(&key_max_sz);
     if (error != PMI_SUCCESS) {
@@ -2214,9 +2225,23 @@ int mv2_ud_get_remote_info(MPIDI_PG_t * pg, int pg_rank, int pg_size)
     /*Just put lid for default port and ud_qpn is sufficient */
     MPIU_Snprintf(key, key_max_sz, "ud_%08d", pg_rank);
 
-    MPIU_Snprintf(val, val_max_sz, "%08hx:%08x", my_info.lid, my_info.qpn);
-    PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d Put lids: %d ud_qp: %d\n",
-                pg_rank, my_info.lid, my_info.qpn);
+    memset(temp1, 0, sizeof(temp1));
+    memset(temp2, 0, sizeof(temp2));
+
+    for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+        my_info.lid = mv2_MPIDI_CH3I_RDMA_Process.lids[hca_index][0];
+        my_info.qpn = mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_index]->qp->qp_num;
+
+        if (hca_index != 0) {
+            strcat(temp1, ":");
+        }
+        sprintf(temp2, "%08hx:%08x", my_info.lid, my_info.qpn);
+        strcat(temp1, temp2);
+    
+        PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d Put lids: %d ud_qp: %d\n",
+                    pg_rank, my_info.lid, my_info.qpn);
+    }
+    MPIU_Strncpy(val, temp1, val_max_sz);
 
     error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
     if (error != PMI_SUCCESS) {
@@ -2251,9 +2276,12 @@ int mv2_ud_get_remote_info(MPIDI_PG_t * pg, int pg_rank, int pg_size)
                                       error);
         }
 
-        sscanf(val, "%08hx:%08x", &(all_info[i].lid), &(all_info[i].qpn));
-        PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d Get lid:%d ud_qpn:%d\n", i,
-                    all_info[i].lid, all_info[i].qpn);
+        for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+            ptr = (char*) val + (hca_index * offset);
+            sscanf(ptr, "%08hx:%08x", &(all_info[i][hca_index].lid), &(all_info[i][hca_index].qpn));
+            PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d, hca:%d Get lid:%d ud_qpn:%d\n", i, hca_index,
+                        all_info[i][hca_index].lid, all_info[i][hca_index].qpn);
+        }
     }
     mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info = all_info;
     MPIU_Free(key);
@@ -2269,9 +2297,9 @@ int mv2_ud_get_remote_info(MPIDI_PG_t * pg, int pg_rank, int pg_size)
 int MPIDI_CH3I_UD_Generate_addr_handles(MPIDI_PG_t * pg, int pg_rank,
                                         int pg_size)
 {
-    int i;
+    int i = 0;
     MPIDI_VC_t *vc = NULL;
-
+    int hca_index = 0;
 
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
@@ -2279,10 +2307,14 @@ int MPIDI_CH3I_UD_Generate_addr_handles(MPIDI_PG_t * pg, int pg_rank,
             continue;
         }
 
-        mv2_ud_set_vc_info(&vc->mrail.ud,
-                           &mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[i],
-                           mv2_MPIDI_CH3I_RDMA_Process.ptag[0],
-                           rdma_default_port);
+        vc->mrail.ud = MPIU_Malloc(sizeof(mv2_ud_vc_info_t) * rdma_num_hcas);
+
+        for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+            mv2_ud_set_vc_info(&vc->mrail.ud[hca_index],
+                               &mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[i][hca_index],
+                               mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_index],
+                               mv2_MPIDI_CH3I_RDMA_Process.ports[hca_index][0]);
+        }
 
         /* Change vc state to avoid UD CM connection establishment */
         MRAILI_Init_vc(vc);
@@ -2293,9 +2325,10 @@ int MPIDI_CH3I_UD_Generate_addr_handles(MPIDI_PG_t * pg, int pg_rank,
         vc->mrail.state |= MRAILI_UD_CONNECTED;
 
     }
-    PRINT_DEBUG(DEBUG_UD_verbose > 0, "Created UD Address handles \n");
-    return MPI_SUCCESS;
 
+    PRINT_DEBUG(DEBUG_UD_verbose > 0, "Created UD Address handles \n");
+
+    return MPI_SUCCESS;
 }
 
 int mv2_ud_setup_zcopy_rndv(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
@@ -2333,7 +2366,7 @@ int mv2_ud_setup_zcopy_rndv(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         qp_info.cap.max_recv_wr = rdma_ud_zcopy_rq_size;;
         qp_info.srq = NULL;
         qp_info.cap.max_inline_data = 0;
-        zcopy_info->rndv_qp_pool[i].ud_qp = mv2_ud_create_qp(&qp_info);
+        zcopy_info->rndv_qp_pool[i].ud_qp = mv2_ud_create_qp(&qp_info, hca_index);
         if (!zcopy_info->rndv_qp_pool[i].ud_qp) {
             fprintf(stderr, "Error in creating ZCOPY Rndv QP\n");
             return MPI_ERR_INTERN;
@@ -2375,7 +2408,7 @@ int mv2_ud_setup_zcopy_rndv(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         qp_info.cap.max_recv_wr = 1;
         qp_info.srq = NULL;
         qp_info.cap.max_inline_data = 0;
-        ud_ctx = mv2_ud_create_ctx(&qp_info);
+        ud_ctx = mv2_ud_create_ctx(&qp_info, hca_index);
         if (!ud_ctx) {
             fprintf(stderr, "Error in create UD qp\n");
             return MPI_ERR_INTERN;
@@ -2393,6 +2426,7 @@ int mv2_ud_setup_zcopy_rndv(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     PRINT_DEBUG(DEBUG_ZCY_verbose > 2,
                 "ZCOPY Rndv setup done num rndv qps:%d\n",
                 rdma_ud_num_rndv_qps);
+
     return MPI_SUCCESS;
 }
 
@@ -2401,7 +2435,7 @@ void MPIDI_CH3I_UD_Stats(MPIDI_PG_t * pg)
 
     int i;
     mv2_ud_ctx_t *ud_ctx;
-    mv2_ud_vc_info_t *ud_vc;
+    mv2_ud_reliability_info_t *ud_vc;
     MPIDI_VC_t *vc;
 
     int pg_size = MPIDI_PG_Get_size(pg);
@@ -2429,7 +2463,7 @@ void MPIDI_CH3I_UD_Stats(MPIDI_PG_t * pg)
         MPIDI_PG_Get_vc(pg, i, &vc);
         if (rdma_use_smp && (vc->smp.local_rank != -1))
             continue;
-        ud_vc = &vc->mrail.ud;
+        ud_vc = &vc->mrail.rely;
         if (ud_vc->resend_count) {
             PRINT_INFO(DEBUG_UDSTAT_verbose > 1, "\t[-> %d]: resends:%lu "
                        "cntl msg:%lu extwin_msgs:%lu tot_ud_msgs:%llu\n",

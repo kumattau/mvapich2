@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,7 @@
  */
 
 #include "mpidimpl.h"
-#ifdef _OSU_MVAPICH_
+#ifdef CHANNEL_MRAIL
 #include "pmi.h"
 #endif
 
@@ -126,6 +126,7 @@ int MPID_Finalize(void)
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
 #endif 
+
 #ifdef MPID_NEEDS_ICOMM_WORLD
     mpi_errno = MPIR_Comm_release_always(MPIR_Process.icomm_world, 0);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -137,17 +138,17 @@ int MPID_Finalize(void)
     mpi_errno = MPIR_Comm_release_always(MPIR_Process.comm_world, 0);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     /* Let the lower layer flush out. */
     MPIDI_CH3_Flush();
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
     /* Re-enabling the close step because many tests are failing
      * without it, particularly under gforker */
 #if 1
     /* FIXME: The close actions should use the same code as the other
        connection close code */
-#if !defined (_OSU_PSM_)
+#if !defined (CHANNEL_PSM)
     mpi_errno = MPIDI_PG_Close_VCs();
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     /*

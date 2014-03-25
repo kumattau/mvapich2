@@ -4,6 +4,18 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -12,6 +24,9 @@
 #endif
 
 #include "mpid_nem_impl.h"
+#ifdef _OSU_MVAPICH_
+#include "coll_shmem.h"
+#endif /* _OSU_MVAPICH_ */
 
 void *MPIDI_CH3_packet_buffer = NULL;
 int MPIDI_CH3I_my_rank = -1;
@@ -85,6 +100,42 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t *pg_p, int pg_rank)
 	mpi_errno = MPIDI_CH3_VC_Init(&pg_p->vct[i]);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
+
+#ifdef _OSU_MVAPICH_
+    MV2_collectives_arch_init(mv2_get_heterogeneity());
+
+    if (mv2_enable_shmem_collectives) {
+        /* Shared memory for collectives */
+        mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(pg_p,
+                MPID_nem_mem_region.local_rank);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        /* local barrier */
+        mpi_errno = MPID_nem_barrier();
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        /* Memory Mapping shared files for collectives*/
+        mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap(pg_p,
+                MPID_nem_mem_region.local_rank);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        /* local barrier */
+        mpi_errno = MPID_nem_barrier();
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        /* Unlink mapped files so that they get cleaned up when
+         * process exits */
+        MPIDI_CH3I_SHMEM_COLL_Unlink();
+    }
+#endif /* _OSU_MVAPICH_ */
 
  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_INIT);

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -143,6 +143,112 @@ fn_fail:
 
 
 #undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_iStartGetAccRndv
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3_iStartGetAccRndv(MPIDI_VC_t * vc,
+                            MPID_Request * sreq, MPID_Request *rreq, int control_cnt)
+{
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_ISTARTGETACCRNDV);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_ISTARTGETACCRNDV);
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_CH3_Pkt_get_accum_rndv_t *get_accum_rndv =
+            (void *) sreq->dev.iov[0].MPID_IOV_BUF;
+    MPID_Request *rts_sreq;
+    MPID_IOV *iov;
+    MPID_Datatype *result_dtp = NULL;
+    MPI_Aint result_type_size;
+    MPIDI_msg_sz_t data_sz;
+
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
+
+    /* we adjust iov because the rndv process assume the data starts from the first
+     * vector of iov array */
+    if ((iov = MPIU_Malloc(sizeof(MPID_IOV) * (control_cnt))) == NULL)
+    {
+        MPIU_CHKMEM_SETERR(mpi_errno, sizeof(MPID_IOV) * control_cnt, "MPID IOV");
+    }
+    MPIU_Memcpy((void *) iov, (void *) sreq->dev.iov,
+           sizeof(MPID_IOV) * control_cnt);
+    memmove((void *) sreq->dev.iov,
+           (void *) &sreq->dev.iov[control_cnt],
+           sizeof(MPID_IOV) * (sreq->dev.iov_count - control_cnt));
+
+    sreq->dev.iov_count -= control_cnt;
+
+    /*prepare send request*/
+    MPIDI_CH3_Prepare_rndv(vc, sreq);
+    MPIDI_CH3I_MRAIL_REVERT_RPUT(sreq);
+
+    /*prepare receive request for get*/
+    MPID_Datatype_get_ptr(rreq->dev.datatype, result_dtp);
+    MPID_Datatype_get_size_macro(rreq->dev.datatype, result_type_size);
+    data_sz = rreq->dev.user_count*result_type_size;
+    if(result_dtp->is_contig) {
+        rreq->dev.OnDataAvail = 0;
+
+        rreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char*)rreq->dev.user_buf + result_dtp->true_lb);
+        rreq->dev.iov[0].MPID_IOV_LEN = data_sz;
+        rreq->dev.iov_count = 1;
+    } else {
+        rreq->dev.segment_ptr = MPID_Segment_alloc( );
+
+        MPID_Segment_init(rreq->dev.user_buf, rreq->dev.user_count,
+              rreq->dev.datatype, rreq->dev.segment_ptr, 0);
+        rreq->dev.iov_count = MPID_IOV_LIMIT;
+        rreq->dev.segment_first = 0;
+        rreq->dev.segment_size = data_sz;
+
+        /* One the initial load of a send iov req, set the OnFinal action (null
+         *        for point-to-point) */
+        rreq->dev.OnFinal = 0;
+        mpi_errno = MPIDI_CH3U_Request_load_send_iov(rreq, &rreq->dev.iov[0],
+                             &rreq->dev.iov_count);
+    }
+    MPIDI_CH3_Prepare_rndv(vc, rreq);
+    MPIDI_CH3I_MRAIL_REVERT_RPUT(rreq);
+
+#ifdef _ENABLE_UD_
+    if(rdma_enable_hybrid && rreq->mrail.protocol == MV2_RNDV_PROTOCOL_UD_ZCOPY) {
+        rreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
+        MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(rreq);
+    }
+#endif
+
+    /*we send the rndv information of the result buffer*/
+    MPIDI_CH3I_MRAIL_SET_PKT_RNDV(get_accum_rndv, rreq);
+
+    get_accum_rndv->sender_req_id = sreq->handle;
+
+    if ((mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, control_cnt, &rts_sreq)) != MPI_SUCCESS)
+    {
+        MPIU_Object_set_ref(sreq, 0);
+        MPIDI_CH3_Request_destroy(sreq);
+        sreq = NULL;
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    if (rts_sreq != NULL) {
+        MPID_Request_release(rts_sreq);
+    }
+    MPIU_Free(iov);
+
+fn_exit:
+#if defined(CKPT)
+    MPIDI_CH3I_CR_unlock();
+#endif /* defined(CKPT) */
+    DEBUG_PRINT("[send rts]successful complete\n");
+
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_ISTARTGETACCRNDV);
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_iStartRmaRndv
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -172,6 +278,7 @@ int MPIDI_CH3_iStartRmaRndv(MPIDI_VC_t * vc,
                 sreq->dev.iov[control_cnt].MPID_IOV_LEN);
     MPIU_Memcpy((void *) iov, (void *) sreq->dev.iov,
            sizeof(MPID_IOV) * control_cnt);
+
     /* we adjust iov because the rndv process assume the data starts from the first
      * vector of iov array */
     /* We can't use MPIU_Memcpy due to the overlapping check when using the debug flags.*/
@@ -223,6 +330,7 @@ fn_exit:
 fn_fail:
     goto fn_exit;
 }
+
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_iStartGetRndv
@@ -280,7 +388,7 @@ int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t * vc,
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_ISTARTGETRNDV);
     return mpi_errno;
-#ifndef _OSU_MVAPICH_
+#ifndef CHANNEL_MRAIL
 fn_fail:
 #endif
     goto fn_exit;

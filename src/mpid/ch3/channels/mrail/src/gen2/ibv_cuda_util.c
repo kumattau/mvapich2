@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -208,9 +208,9 @@ int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size
                     src = (void *)array_displs[i];
       
                     if (element_size == 1 || element_size == 4 || element_size == 8) {
-                        pack_subarray(dst, src, array_of_sizes[0], array_of_sizes[1], array_of_sizes[2], 
+                        pack_subarray(dst, src, ndims, array_of_sizes[0], array_of_sizes[1], array_of_sizes[2], 
     			    			array_of_subsizes[0], array_of_subsizes[1], array_of_subsizes[2], 
-    			    			array_of_starts[0], array_of_starts[1], array_of_starts[2], element_size, 
+    			    			array_of_starts[0], array_of_starts[1], array_of_starts[2], order, element_size, 
                                 stream);
                         dst += array_of_subsizes[0] * array_of_subsizes[1] * array_of_subsizes[2] * element_size;
                     } else {
@@ -343,9 +343,9 @@ int hindexed_unpack_cudabuf(void *src, MPID_IOV *iov, MPID_Datatype *dtp, int si
                     dst = (void *)array_displs[i];
                     
                     if (element_size == 1 || element_size == 4 || element_size == 8) {
-                        unpack_subarray(dst, src, array_of_sizes[0], array_of_sizes[1], array_of_sizes[2], 
+                        unpack_subarray(dst, src, ndims, array_of_sizes[0], array_of_sizes[1], array_of_sizes[2], 
     	            				array_of_subsizes[0], array_of_subsizes[1], array_of_subsizes[2], 
-    	            				array_of_starts[0], array_of_starts[1], array_of_starts[2], element_size, 
+    	            				array_of_starts[0], array_of_starts[1], array_of_starts[2], order, element_size, 
                                     stream);
                         src += array_of_subsizes[0] * array_of_subsizes[1] * array_of_subsizes[2] * element_size;
                     } else {
@@ -384,8 +384,7 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
         MPIU_Assert(last > 0);
         MPIU_Assert(iov_n > 0 && iov_n <= MPID_IOV_LIMIT);
 
-        MPID_Segment_pack_vector(req->dev.segment_ptr, 
-                req->dev.segment_first, &last, iov, &iov_n);
+        MPID_Segment_pack_vector(req->dev.segment_ptr, req->dev.segment_first, &last, iov, &iov_n);
         if (req->dev.datatype_ptr->contents->combiner == MPI_COMBINER_VECTOR
             && (req->dev.segment_ptr->builtin_loop.loop_params.count == 1)
             && (rdma_cuda_vector_dt_opt || rdma_cuda_kernel_dt_opt))  {
@@ -405,6 +404,50 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
                 vector_pack_cudabuf(req->dev.tmpbuf, iov, req->dev.segment_size, stream_passed);
             }
             last = req->dev.segment_size;
+        } else if (req->dev.datatype_ptr->contents->combiner == MPI_COMBINER_SUBARRAY
+            && (req->dev.segment_ptr->builtin_loop.loop_params.count == 1)
+            && rdma_cuda_kernel_dt_opt)  {
+#if defined(USE_GPU_KERNEL)
+			MPID_Datatype *dtptr = req->dev.datatype_ptr;
+            int struct_size = sizeof(MPID_Datatype_contents);
+            int types_size  = dtptr->contents->nr_types * sizeof(MPI_Datatype);
+            int ints_size   = dtptr->contents->nr_ints  * sizeof(int);
+            int *arr_ints = (int *) ((char *)dtptr->contents + struct_size + types_size);
+			MPI_Aint base_addr;
+			int subarr_dims = arr_ints[1];
+
+            if ( subarr_dims < 4 ){
+			  int subarr_order = arr_ints[2 + 3 * subarr_dims];
+			  int arr_of_bigsizes[3] = {1, 1, 1};
+			  int arr_of_subsizes[3] = {1, 1, 1};
+			  int arr_of_offsets[3]  = {0, 0, 0};
+			  int idx;
+              int elem_sz = dtptr->element_size;
+			  MPI_Address(iov[0].MPID_IOV_BUF, &base_addr);
+
+			  for ( idx = 0; idx < subarr_dims; idx++){
+                  arr_of_bigsizes[idx] = arr_ints[2+idx];
+			      arr_of_subsizes[idx] = arr_ints[2 + 1 * subarr_dims + idx];
+			      arr_of_offsets[idx] = arr_ints[2 + 2 * subarr_dims + idx];
+			  }
+
+              if ( MPI_ORDER_C == subarr_order ){
+                  base_addr -= (arr_of_offsets[0]*arr_of_bigsizes[1]*arr_of_bigsizes[2] + arr_of_offsets[1]*arr_of_bigsizes[2] + arr_of_offsets[2])*elem_sz; 
+	          } else if ( MPI_ORDER_FORTRAN == subarr_order ){
+                  base_addr -= (arr_of_offsets[0] + arr_of_offsets[1]*arr_of_bigsizes[0] + arr_of_offsets[2]*arr_of_bigsizes[0]*arr_of_bigsizes[1])*elem_sz; 
+              }
+
+			  void *src = (void *)base_addr;
+
+              pack_subarray(req->dev.tmpbuf, src, subarr_dims, arr_of_bigsizes[0], arr_of_bigsizes[1], arr_of_bigsizes[2], 
+    	      arr_of_subsizes[0], arr_of_subsizes[1], arr_of_subsizes[2], 
+    	      arr_of_offsets[0], arr_of_offsets[1], arr_of_offsets[2], subarr_order, elem_sz, stream_passed);
+              last = req->dev.segment_size;
+            } else {
+              MPIU_IOV_pack_cuda(req->dev.tmpbuf, iov, iov_n, req->dev.segment_first, stream_passed);
+            }
+#endif
+
 #if defined(USE_GPU_KERNEL)
         } else if (req->dev.datatype_ptr->contents->combiner == MPI_COMBINER_HINDEXED
                    && rdma_cuda_kernel_dt_opt) {
@@ -433,18 +476,8 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
         req->dev.segment_first = last;
         PRINT_INFO(CUDA_DEBUG, "paked :%d start:%lu last:%lu\n", iov_n, req->dev.segment_first, last);
     } while(last != req->dev.segment_size);
-
-    /* This synchronization is needed because non-kernel based packing uses cudamemcpy
-     * on the default stream (0) but subsequent transfers many use non-default non-blocking streams. 
-     * this is true when stream passed in is non-zero (rndv exchange case)*/
-    /* TODO: this has to be revisited when all copies are made to use non-default streams */
-    if (rdma_cuda_event_sync) {
-        /*the synchronization is implicit as we the stream is passed by the higher layer*/
-    } else {
-        /* if stream based synchronization is used, we complete explicitly as we dont know 
-         * which stream following copies will use */    
-        CUDA_CHECK(cudaStreamSynchronize(stream_passed));
-    }
+    /* Synchronize on the stream to make sure pack is complete*/
+    cudaStreamSynchronize (stream_passed); 
 
     return MPI_SUCCESS;
 }
@@ -491,6 +524,51 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
                 vector_unpack_cudabuf(req->dev.tmpbuf, iov, req->dev.segment_size, stream_passed);
             }
             last = bytes_copied = req->dev.segment_size;
+				} else if (req->dev.datatype_ptr->contents->combiner == MPI_COMBINER_SUBARRAY
+            && (req->dev.segment_ptr->builtin_loop.loop_params.count == 1)
+            && rdma_cuda_kernel_dt_opt)  {
+#if defined(USE_GPU_KERNEL)
+			MPID_Datatype *dtptr = req->dev.datatype_ptr;
+            int struct_size = sizeof(MPID_Datatype_contents);
+            int types_size  = dtptr->contents->nr_types * sizeof(MPI_Datatype);
+            int ints_size   = dtptr->contents->nr_ints  * sizeof(int);
+            int *arr_ints = (int *) ((char *)dtptr->contents + struct_size + types_size);
+			MPI_Aint base_addr;
+			int subarr_dims = arr_ints[1];
+
+            if ( subarr_dims < 4 ){
+			  int subarr_order = arr_ints[2 + 3 * subarr_dims];
+			  int arr_of_bigsizes[3] = {1, 1, 1};
+			  int arr_of_subsizes[3] = {1, 1, 1};
+			  int arr_of_offsets[3]  = {0, 0, 0};
+			  int idx;
+              int elem_sz = dtptr->element_size;
+			  MPI_Address(iov[0].MPID_IOV_BUF, &base_addr);
+
+			  for ( idx = 0; idx < subarr_dims; idx++){
+                  arr_of_bigsizes[idx] = arr_ints[2+idx];
+			      arr_of_subsizes[idx] = arr_ints[2 + 1 * subarr_dims + idx];
+			      arr_of_offsets[idx] = arr_ints[2 + 2 * subarr_dims + idx];
+			  }
+
+              if ( MPI_ORDER_C == subarr_order ){
+                  base_addr -= (arr_of_offsets[0]*arr_of_bigsizes[1]*arr_of_bigsizes[2] + arr_of_offsets[1]*arr_of_bigsizes[2] + arr_of_offsets[2])*elem_sz; 
+	          } else if ( MPI_ORDER_FORTRAN == subarr_order ){
+                  base_addr -= (arr_of_offsets[0] + arr_of_offsets[1]*arr_of_bigsizes[0] + arr_of_offsets[2]*arr_of_bigsizes[0]*arr_of_bigsizes[1])*elem_sz; 
+              }
+
+			  void *dst = (void *)base_addr;
+
+              unpack_subarray(dst, req->dev.tmpbuf, subarr_dims, arr_of_bigsizes[0], arr_of_bigsizes[1], arr_of_bigsizes[2], 
+    	      arr_of_subsizes[0], arr_of_subsizes[1], arr_of_subsizes[2], 
+    	      arr_of_offsets[0], arr_of_offsets[1], arr_of_offsets[2], subarr_order, elem_sz, stream_passed);
+              last = req->dev.segment_size;
+              bytes_copied = last - req->dev.segment_first;
+            } else {
+              MPIU_IOV_unpack_cuda(req->dev.tmpbuf, iov, iov_n, req->dev.segment_first, &bytes_copied, stream_passed);
+            }
+#endif
+
 #if defined(USE_GPU_KERNEL)
         } else if (req->dev.datatype_ptr->contents->combiner == MPI_COMBINER_HINDEXED
                    && rdma_cuda_kernel_dt_opt) {
@@ -822,22 +900,31 @@ void cuda_get_user_parameters() {
 #endif
 
     if ((value = getenv("MV2_CUDA_KERNEL_VECTOR_TIDBLK_SIZE")) != NULL) {
-        rdma_cuda_thread_blk_size= atoi(value);
+        rdma_cuda_vec_thread_blksz = atoi(value);
     }
+    
     if ((value = getenv("MV2_CUDA_KERNEL_VECTOR_YSIZE")) != NULL) {
-        rdma_cuda_thread_ysize= atoi(value);
+        rdma_cuda_vec_thread_ysz = atoi(value);
     }
 
-    if ((value = getenv("MV2_CUDA_NUM_STREAMS")) != NULL) {
-        rdma_cuda_stream_count = atoi(value);
+    if ((value = getenv("MV2_CUDA_KERNEL_SUBARR_TIDBLK_SIZE")) != NULL) {
+        rdma_cuda_subarr_thread_blksz = atoi(value);
+    }
+    
+    if ((value = getenv("MV2_CUDA_KERNEL_SUBARR_XDIM")) != NULL) {
+        rdma_cuda_subarr_thread_xdim = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_KERNEL_SUBARR_YDIM")) != NULL) {
+        rdma_cuda_subarr_thread_ydim = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_KERNEL_SUBARR_ZDIM")) != NULL) {
+        rdma_cuda_subarr_thread_zdim = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_NUM_EVENTS")) != NULL) {
         rdma_cuda_event_count = atoi(value);
-    }
-
-    if ((value = getenv("MV2_CUDA_EVENT_SYNC")) != NULL) {
-        rdma_cuda_event_sync = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_INIT_CONTEXT")) != NULL) {
@@ -1226,7 +1313,6 @@ void cuda_cleanup()
 
     deallocate_cuda_events();
     deallocate_cuda_rndv_streams();
-    deallocate_cuda_streams();
 
 #if defined(HAVE_CUDA_IPC)
     if (rdma_cuda_ipc && cudaipc_init_global) {

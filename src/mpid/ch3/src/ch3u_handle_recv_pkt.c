@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -37,14 +37,14 @@
 {								\
     (rreq_)->status.MPI_SOURCE = (pkt_)->match.parts.rank;	\
     (rreq_)->status.MPI_TAG = (pkt_)->match.parts.tag;		\
-    (rreq_)->status.count = (pkt_)->data_sz;			\
+    MPIR_STATUS_SET_COUNT((rreq_)->status, (pkt_)->data_sz);		\
     (rreq_)->dev.sender_req_id = (pkt_)->sender_req_id;		\
     (rreq_)->dev.recv_data_sz = (pkt_)->data_sz;		\
     MPIDI_Request_set_seqnum((rreq_), (pkt_)->seqnum);		\
     MPIDI_Request_set_msg_type((rreq_), (msg_type_));		\
 }
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #undef DEBUG_PRINT
 #if defined(DEBUG)
 #define DEBUG_PRINT(args...)                                      \
@@ -61,9 +61,9 @@ do {                                                              \
 /** We maintain an index table to get the header size ******/
 int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_eager_send_t),        /* 0 */
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     sizeof(MPIDI_CH3_Pkt_eager_send_contig_t),
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 #ifndef MV2_DISABLE_HEADER_CACHING 
     sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req),
@@ -81,6 +81,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_rndv_clr_to_send_t),
     sizeof(MPIDI_CH3_Pkt_put_rndv_t),
     sizeof(MPIDI_CH3_Pkt_accum_rndv_t),
+    sizeof(MPIDI_CH3_Pkt_get_accum_rndv_t),
     sizeof(MPIDI_CH3_Pkt_get_rndv_t),
     sizeof(MPIDI_CH3_Pkt_rndv_req_to_send_t),
     sizeof(MPIDI_CH3_Pkt_packetized_send_start_t),
@@ -134,7 +135,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_close_t),
     -1
 };
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
 #ifdef MPIDI_CH3_CHANNEL_RNDV
 #undef FUNCNAME
@@ -282,7 +283,7 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
 		     "**truncate", "**truncate %d %d %d %d", 
 		     rreq->status.MPI_SOURCE, rreq->status.MPI_TAG, 
 		     rreq->dev.recv_data_sz, userbuf_sz );
-	rreq->status.count = userbuf_sz;
+	MPIR_STATUS_SET_COUNT(rreq->status, userbuf_sz);
 	data_sz = userbuf_sz;
     }
 
@@ -300,26 +301,19 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
             /* copy data out of the receive buffer */
 
 #if defined(_ENABLE_CUDA_)
-            cudaError_t cuda_error = cudaSuccess;
             if (rdma_enable_cuda) {
                 userbuf_isdev = is_device_buffer((void *) rreq->dev.user_buf);
             }
             if (userbuf_isdev) {
-                cuda_error = cudaMemcpy((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
+                MPIU_Memcpy_CUDA((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
                         buf, data_sz,
                         cudaMemcpyDefault);
-                if (cuda_error != cudaSuccess) {
-                    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-                }
             }
             else if (!is_device_buffer(rreq->dev.user_buf)
                     && is_device_buffer(buf)) {
-                cuda_error = cudaMemcpy((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
+                MPIU_Memcpy_CUDA((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
                         buf, data_sz,
                         cudaMemcpyDeviceToHost);
-                if (cuda_error != cudaSuccess) {
-                    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-                }
             }
             else
 #endif
@@ -392,7 +386,7 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
                    mismatch between the datatype and the amount of
                    data received.  Throw away received data. */
                 MPIU_ERR_SET(rreq->status.MPI_ERROR, MPI_ERR_TYPE, "**dtypemismatch");
-                rreq->status.count = (int)rreq->dev.segment_first;
+                MPIR_STATUS_SET_COUNT(rreq->status, rreq->dev.segment_first);
                 *buflen = data_sz;
                 *complete = TRUE;
 		/* FIXME: Set OnDataAvail to 0?  If not, why not? */
@@ -451,7 +445,7 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, char *buf, MPIDI_msg
 
         if (rreq->dev.recv_data_sz <= *buflen)
         {
-            cudaMemcpy((void *) rreq->dev.tmpbuf, (void *) buf,
+            MPIU_Memcpy_CUDA((void *) rreq->dev.tmpbuf, (void *) buf,
                     rreq->dev.recv_data_sz, cudaMemcpyDefault);
             *buflen = rreq->dev.recv_data_sz;
             rreq->dev.recv_pending_count = 1;
@@ -498,7 +492,7 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, char *buf, MPIDI_msg
     }
 
     if (MPIDI_Request_get_msg_type(rreq) == MPIDI_REQUEST_EAGER_MSG)
-        MPIR_T_ADD(RECVQ_STATISTICS, MPIDI_CH3I_unexpected_recvq_buffer_size, rreq->dev.tmpbuf_sz);
+        MPIR_T_PVAR_LEVEL_INC(RECVQ, unexpected_recvq_buffer_size, rreq->dev.tmpbuf_sz);
 
     rreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_UnpackUEBufComplete;
 
@@ -546,7 +540,7 @@ int MPIDI_CH3U_Post_data_receive_found(MPID_Request * rreq)
 		     "**truncate", "**truncate %d %d %d %d", 
 		     rreq->status.MPI_SOURCE, rreq->status.MPI_TAG, 
 		     rreq->dev.recv_data_sz, userbuf_sz );
-	rreq->status.count = userbuf_sz;
+	MPIR_STATUS_SET_COUNT(rreq->status, userbuf_sz);
 	data_sz = userbuf_sz;
     }
 
@@ -662,23 +656,6 @@ int MPIDI_CH3I_Try_acquire_win_lock(MPID_Win *win_ptr, int requested_lock)
          ( (requested_lock == MPI_LOCK_EXCLUSIVE) &&
            (existing_lock == MPID_LOCK_NONE) ) ) {
 
-#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
-        /*try and qcquire SHM lock before setting normal lock, if SHM lock busy 
-         *we need to retry later */
-#if defined (_SMP_LIMIC_)
-        if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
-#else
-        if (!win_ptr->shm_fallback)
-#endif
-        {
-            if(MPIDI_CH3I_SHM_win_lock (win_ptr->my_id, requested_lock, 
-                            win_ptr, 0, BLOCK_OTHERS) == 0) {
-                MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_TRY_ACQUIRE_WIN_LOCK);
-                return 0;
-            } 
-        }
-#endif
-
         /* grant lock.  set new lock type on window */
         win_ptr->current_lock_type = requested_lock;
 
@@ -790,18 +767,18 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
 	MPIDI_CH3_PktHandler_EagerSyncAck;
     pktArray[MPIDI_CH3_PKT_RNDV_REQ_TO_SEND] =
 	MPIDI_CH3_PktHandler_RndvReqToSend;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     pktArray[MPIDI_CH3_PKT_EAGER_SEND_CONTIG] = 
 	MPIDI_CH3_PktHandler_EagerSend_Contig;
     pktArray[MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND] =
 	MPIDI_CH3_PktHandler_RndvReqToSend;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     pktArray[MPIDI_CH3_PKT_RNDV_CLR_TO_SEND] = 
 	MPIDI_CH3_PktHandler_RndvClrToSend;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     pktArray[MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND] = 
 	MPIDI_CH3_PktHandler_RndvClrToSend;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     pktArray[MPIDI_CH3_PKT_RNDV_SEND] = 
 	MPIDI_CH3_PktHandler_RndvSend;
     pktArray[MPIDI_CH3_PKT_CANCEL_SEND_REQ] = 
@@ -823,22 +800,24 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
        We could even do lazy initialization (make this part of win_create) */
     pktArray[MPIDI_CH3_PKT_PUT] = 
 	MPIDI_CH3_PktHandler_Put;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     pktArray[MPIDI_CH3_PKT_PUT_RNDV] = 
 	MPIDI_CH3_PktHandler_Put;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     pktArray[MPIDI_CH3_PKT_ACCUMULATE] = 
 	MPIDI_CH3_PktHandler_Accumulate;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     pktArray[MPIDI_CH3_PKT_ACCUMULATE_RNDV] = 
 	MPIDI_CH3_PktHandler_Accumulate;
-#endif /* defined(_OSU_MVAPICH_) */
+    pktArray[MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV] = 
+    MPIDI_CH3_PktHandler_Accumulate;
+#endif /* defined(CHANNEL_MRAIL) */
     pktArray[MPIDI_CH3_PKT_GET] = 
 	MPIDI_CH3_PktHandler_Get;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     pktArray[MPIDI_CH3_PKT_GET_RNDV] = 
 	MPIDI_CH3_PktHandler_Get;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     pktArray[MPIDI_CH3_PKT_GET_RESP] = 
 	MPIDI_CH3_PktHandler_GetResp;
     pktArray[MPIDI_CH3_PKT_LOCK] =

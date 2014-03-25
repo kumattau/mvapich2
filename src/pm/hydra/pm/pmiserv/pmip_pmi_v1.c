@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
- *  (C) 2008 by Argonne National Laboratory.
+ *  (C) 2010 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
@@ -46,7 +46,7 @@ static HYD_status send_cmd_upstream(const char *start, int fd, int num_args, cha
 
     j = 0;
     tmp[j++] = HYDU_strdup(start);
-    for (i = 0; args[i]; i++) {
+    for (i = 0; i < num_args; i++) {
         tmp[j++] = HYDU_strdup(args[i]);
         if (args[i + 1])
             tmp[j++] = HYDU_strdup(" ");
@@ -409,24 +409,24 @@ static HYD_status fn_get(int fd, char *args[])
             }
         }
 
-        HYD_STRING_STASH_INIT(stash);
-        HYD_STRING_STASH(stash, HYDU_strdup("cmd=get_result rc="), status);
         if (val) {
+            HYD_STRING_STASH_INIT(stash);
+            HYD_STRING_STASH(stash, HYDU_strdup("cmd=get_result rc="), status);
             HYD_STRING_STASH(stash, HYDU_strdup("0 msg=success value="), status);
             HYD_STRING_STASH(stash, HYDU_strdup(val), status);
+            HYD_STRING_STASH(stash, HYDU_strdup("\n"), status);
+
+            HYD_STRING_SPIT(stash, cmd, status);
+
+            status = send_cmd_downstream(fd, cmd);
+            HYDU_ERR_POP(status, "error sending PMI response\n");
+            HYDU_FREE(cmd);
         }
         else {
-            HYD_STRING_STASH(stash, HYDU_strdup("-1 msg=key_"), status);
-            HYD_STRING_STASH(stash, HYDU_strdup(key), status);
-            HYD_STRING_STASH(stash, HYDU_strdup("_not_found value=unknown"), status);
+            /* if we can't find the key locally, ask upstream */
+            status = send_cmd_upstream("cmd=get ", fd, token_count, args);
+            HYDU_ERR_POP(status, "error sending command upstream\n");
         }
-        HYD_STRING_STASH(stash, HYDU_strdup("\n"), status);
-
-        HYD_STRING_SPIT(stash, cmd, status);
-
-        status = send_cmd_downstream(fd, cmd);
-        HYDU_ERR_POP(status, "error sending command downstream\n");
-        HYDU_FREE(cmd);
     }
 
   fn_exit:

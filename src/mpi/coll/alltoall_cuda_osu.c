@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -11,7 +11,6 @@
  */
 
 #include "mpiimpl.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 #include "math.h"
 #include "unistd.h"
@@ -381,4 +380,3 @@ int MPIR_Alltoall_CUDA_intra_MV2(
 #endif /*#ifdef _ENABLE_CUDA_*/
 
 /* end:nested */
-#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */

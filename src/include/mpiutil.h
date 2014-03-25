@@ -3,8 +3,41 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #if !defined(MPIUTIL_H_INCLUDED)
 #define MPIUTIL_H_INCLUDED
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_NEMESIS_POLLS_BEFORE_YIELD
+      category    : NEMESIS
+      type        : int
+      default     : 1000
+      class       : none
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        When MPICH is in a busy waiting loop, it will periodically
+        call a function to yield the processor.  This cvar sets
+        the number of loops before the yield function is called.  A
+        value of 0 disables yielding.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 
 #ifndef HAS_MPID_ABORT_DECL
 /* FIXME: 4th arg is undocumented and bogus */
@@ -43,7 +76,7 @@ const char *MPIU_Strerror(int errnum);
  * MPIU_Busy_wait()
  *
  * Call this in every busy wait loop to periodically yield the processor.  The
- * MPIR_PARAM_NEMESIS_POLLS_BEFORE_YIELD parameter can be used to adjust the number of
+ * MPIR_CVAR_NEMESIS_POLLS_BEFORE_YIELD parameter can be used to adjust the number of
  * times MPIU_Busy_wait is called before the yield function is called.
  */
 #ifdef USE_NOTHING_FOR_YIELD
@@ -54,9 +87,9 @@ const char *MPIU_Strerror(int errnum);
    need to be changed for fine-grained multithreading.  A possible alternative
    is to make it a global thread-local variable. */
 #define MPIU_Busy_wait() do {                                   \
-        if (MPIR_PARAM_NEMESIS_POLLS_BEFORE_YIELD) {                    \
+        if (MPIR_CVAR_NEMESIS_POLLS_BEFORE_YIELD) {                    \
             static int poll_count_ = 0;                         \
-            if (poll_count_ >= MPIR_PARAM_NEMESIS_POLLS_BEFORE_YIELD) { \
+            if (poll_count_ >= MPIR_CVAR_NEMESIS_POLLS_BEFORE_YIELD) { \
                 poll_count_ = 0;                                \
                 MPIU_PW_Sched_yield();                          \
             } else {                                            \
@@ -92,9 +125,9 @@ int MPIR_Assert_fail_fmt(const char *cond, const char *file_name, int line_num, 
 #else
 #   define MPIU_Assert(a_)
 /* Empty decls not allowed in C */
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #   define MPIU_AssertDecl(a_) a_ ATTRIBUTE((unused))
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 #   define MPIU_AssertDeclValue(_a,_b) _a ATTRIBUTE((unused)) = _b
 #endif
 
@@ -197,7 +230,10 @@ int MPIR_Assert_fail_fmt(const char *cond, const char *file_name, int line_num, 
              unsigned short:     USHRT_MAX,  \
              unsigned int:       UINT_MAX,   \
              unsigned long:      ULONG_MAX,  \
-             unsigned long long: ULLONG_MAX)
+             unsigned long long: ULLONG_MAX,\
+             /* _Generic cares about cv-qualifiers */ \
+             volatile signed int:   INT_MAX,          \
+             volatile unsigned int: UINT_MAX)
 #define expr_inttype_min(expr_)             \
     _Generic(expr_,                         \
              signed char:        SCHAR_MIN, \
@@ -209,7 +245,10 @@ int MPIR_Assert_fail_fmt(const char *cond, const char *file_name, int line_num, 
              unsigned short:     0,         \
              unsigned int:       0,         \
              unsigned long:      0,         \
-             unsigned long long: 0)
+             unsigned long long: 0,         \
+             /* _Generic cares about cv-qualifiers */ \
+             volatile signed int:   INT_MIN,          \
+             volatile unsigned int: 0)
 #endif
 
 /* Assigns (src_) to (dst_), checking that (src_) fits in (dst_) without
@@ -219,21 +258,26 @@ int MPIR_Assert_fail_fmt(const char *cond, const char *file_name, int line_num, 
  * promotion/truncation/conversion rules in mind.  A discussion of these issues
  * can be found in Chapter 5 of "Secure Coding in C and C++" by Robert Seacord.
  */
+/* this "check for overflow" macro seems buggy in a crazy way that I can't
+ * figure out. Instead of using the clever 'expr_inttype_max' macro, fall back
+ * to simple "cast and check for obvious overflow" */
+#if 0
 #if defined(expr_inttype_max) && defined(expr_inttype_min)
-#  define MPIU_Assign_trunc(dst_,src_) \
-    do { \
-        MPIU_Assert((src_) <= expr_inttype_max(dst_)); \
-        MPIU_Assert((src_) >= expr_inttype_min(dst_)); \
-        dst_ = (src_); \
-    } while (0)
-#else
-#  define MPIU_Assign_trunc(dst_,src_) \
-    do { \
-        dst_ = (src_); \
-        /* will catch some of the cases if the expr_inttype macros aren't available */ \
-        MPIU_Assert((dst_) == (src_)); \
+#  define MPIU_Assign_trunc(dst_,src_,dst_type_)                                       \
+    do {                                                                               \
+        MPIU_Assert_has_type((dst_), dst_type_);                                       \
+        MPIU_Assert((src_) <= expr_inttype_max(dst_));                                 \
+        MPIU_Assert((src_) >= expr_inttype_min(dst_));                                 \
+        dst_ = (dst_type_)(src_);                                                      \
     } while (0)
 #endif
+#endif
+#define MPIU_Assign_trunc(dst_,src_,dst_type_)                                         \
+    do {                                                                               \
+        /* will catch some of the cases if the expr_inttype macros aren't available */ \
+        MPIU_Assert((src_) == (dst_type_)(src_));                                      \
+        dst_ = (dst_type_)(src_);                                                      \
+    } while (0)
 
 /*
  * Ensure an MPI_Aint value fits into a signed int.

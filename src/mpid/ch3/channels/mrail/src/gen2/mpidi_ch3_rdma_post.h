@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -101,7 +101,6 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     }                                                           \
 }
 
-#ifdef _ENABLE_CUDA_
 #define ADD_PENDING_FLOWLIST(_c, _list) {                   \
     _c->mrail.nextflow = _list;                             \
     _list = _c;                                             \
@@ -112,7 +111,6 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     _list = _c->mrail.nextflow;                             \
     _c->mrail.nextflow = NULL;                              \
 }
-#endif
 /*
  * Attached to each connection is a list of send handles that
  * represent rendezvous sends that have been started and acked but not
@@ -249,15 +247,18 @@ do {                                                            \
 {                                                               \
     int _i;                                                     \
     (_req)->mrail.protocol = (_pkt)->rndv.protocol;             \
-    (_req)->mrail.remote_addr = (_pkt)->rndv.buf_addr;          \
-    for (_i = 0; _i < rdma_num_hcas; _i ++)                     \
-    (_req)->mrail.rkey[_i] = (_pkt)->rndv.rkey[_i];             \
+    if ( (MV2_RNDV_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||       \
+            (MV2_RNDV_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {   \
+        (_req)->mrail.remote_addr = (_pkt)->rndv.buf_addr;          \
+        for (_i = 0; _i < rdma_num_hcas; _i ++)                     \
+        (_req)->mrail.rkey[_i] = (_pkt)->rndv.rkey[_i];             \
+    }                                                               \
 }
 
 /* Return type of the sending interfaces */
 #define MPI_MRAIL_MSG_QUEUED (-1)
 
-int MPIDI_CH3I_MRAILI_Fast_rdma_ok(struct MPIDI_VC * vc, int len);
+int MPIDI_CH3I_MRAILI_Fast_rdma_ok(struct MPIDI_VC * vc, MPIDI_msg_sz_t len);
 
 int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(struct MPIDI_VC * vc,
                                               MPID_IOV *iov,
@@ -292,7 +293,7 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(struct MPIDI_VC** vc_ptr, vbuf** vbuf_ptr);
 
 int MPIDI_CH3I_MRAILI_Waiting_msg(struct MPIDI_VC* vc, vbuf**, int blocking);
 
-int MPIDI_CH3I_MRAILI_Cq_poll(vbuf**, struct MPIDI_VC*, int, int);
+int (*MPIDI_CH3I_MRAILI_Cq_poll) (vbuf**, struct MPIDI_VC*, int, int);
 
 void MRAILI_Send_noop(struct MPIDI_VC* c, int rail);
 

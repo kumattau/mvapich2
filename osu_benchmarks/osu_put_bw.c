@@ -1,7 +1,7 @@
-#define BENCHMARK "OSU One Sided MPI_Put Bandwidth Test"
+#define BENCHMARK "OSU MPI_Put Bandwidth Test"
 /*
- * Copyright (C) 2003-2013 the Network-Based Computing Laboratory
- * (NBCL), The Ohio State University.
+ * Copyright (C) 2003-2014 the Network-Based Computing Laboratory
+ * (NBCL), The Ohio State University.            
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
  *
@@ -13,21 +13,19 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <assert.h>
 #include <string.h>
+#include <assert.h>
 #include <getopt.h>
 
 #define MAX_ALIGNMENT 65536
-#define MAX_MSG_SIZE (1<<22)
+#define MAX_SIZE (1<<22)
 
-/* Note we have a upper limit for buffer size, so be extremely careful
- * if you want to change the loop size or warm up size */
-
-#define LOOP_LARGE  30
-#define WINDOW_SIZE_LARGE  32
 #define SKIP_LARGE  10
+#define LOOP_LARGE  30
+#define WINDOW_SIZE_LARGE 32
+#define LARGE_MESSAGE_SIZE 8192
 
-#define LARGE_MESSAGE_SIZE  8192
+#define MYBUFSIZE ((MAX_SIZE * WINDOW_SIZE_LARGE) + MAX_ALIGNMENT)
 
 #ifdef PACKAGE_VERSION
 #   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
@@ -43,195 +41,579 @@
 #   define FLOAT_PRECISION 2
 #endif
 
+#define MPI_CHECK(stmt)                                          \
+do {                                                             \
+   int mpi_errno = (stmt);                                       \
+   if (MPI_SUCCESS != mpi_errno) {                               \
+       fprintf(stderr, "[%s:%d] MPI call failed with %d \n",     \
+        __FILE__, __LINE__,mpi_errno);                           \
+       exit(EXIT_FAILURE);                                       \
+   }                                                             \
+   assert(MPI_SUCCESS == mpi_errno);                             \
+} while (0)
+
+int     skip = 20;
+int     loop = 100;
+double  t_start = 0.0, t_end = 0.0;
+char    sbuf_original[MYBUFSIZE];
+char    rbuf_original[MYBUFSIZE];
+char    *sbuf=NULL, *rbuf=NULL;
+MPI_Aint rdisp_remote;
+MPI_Aint rdisp_local;
+
+/* Window creation */
+typedef enum {
+    WIN_CREATE=0,
+    WIN_DYNAMIC,
+    WIN_ALLOCATE
+} WINDOW;
+
+/* Synchronization */
+typedef enum {
+    LOCK=0,
+    FLUSH,
+    FLUSH_LOCAL,
+    LOCK_ALL,
+    PSCW,
+    FENCE
+} SYNC;
+
+/*Header printout*/
+char *win_info[20] = {
+    "MPI_Win_create",
+    "MPI_Win_create_dynamic",
+    "MPI_Win_allocate",
+};
+
+char *sync_info[20] = {
+    "MPI_Win_lock/unlock",
+    "MPI_Win_flush",
+    "MPI_Win_flush_local",
+    "MPI_Win_lock_all/unlock_all",
+    "MPI_Win_post/start/complete/wait",
+    "MPI_Win_fence",
+};
+
+enum po_ret_type {
+    po_bad_usage,
+    po_help_message,
+    po_okay,
+};
+
+void print_header (int, WINDOW, SYNC); 
+void print_bw (int, int, double);
+void print_help_message (int);
+int  process_options (int, char **, WINDOW*, SYNC*, int);
+void run_put_with_lock (int, WINDOW);
+void run_put_with_fence (int, WINDOW);
+void run_put_with_lock_all (int, WINDOW);
+void run_put_with_flush (int, WINDOW);
+void run_put_with_flush_local (int, WINDOW);
+void run_put_with_pscw (int, WINDOW);
+void allocate_memory (int, char *, int, WINDOW, MPI_Win *win);
+
 int main (int argc, char *argv[])
 {
-    int         myid, numprocs, i, j;
-    int         size, page_size;
-    char        *s_buf, *r_buf;
-    char        *s_buf1, *r_buf1;
-    double      t_start = 0.0, t_end = 0.0, t = 0.0;
-    int         destrank, no_hints = 0;
-    MPI_Group   comm_group, group;
-    MPI_Win     win;
-    MPI_Info    win_info;
-    int loop = 100;
-    int window_size = 32;
-    int skip = 20;
+    SYNC        sync_type=FLUSH; 
+    int         rank,nprocs;
+    int         page_size;
+    int         po_ret = po_okay;
+    WINDOW      win_type=WIN_ALLOCATE;    
 
-    MPI_Init(&argc, &argv);
-    MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
-    MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-    MPI_Comm_group(MPI_COMM_WORLD, &comm_group);
+    MPI_CHECK(MPI_Init(&argc, &argv));
+    MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &nprocs));
+    MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
 
-    if (numprocs != 2) {
-        if (myid == 0) {
+    if(nprocs != 2) {
+        if(rank == 0) {
             fprintf(stderr, "This test requires exactly two processes\n");
         }
 
-        MPI_Finalize();
+        MPI_CHECK(MPI_Finalize());
 
         return EXIT_FAILURE;
     }
-    
-    while (1) {
-        static struct option long_options[] = 
-            {{"no-hints", no_argument, NULL, 'n'},
-             {0, 0, 0, 0}};
-        int option, index;
 
-        option = getopt_long (argc, argv, "n::",
-                            long_options, &index);
-
-        if (option == -1) {
-            break;
-        }
-
-        switch (option) {
-            case 'n':
-                no_hints = 1;
-                break;
-            default:
-                if (myid == 0) { 
-                    fprintf(stderr, "Invalid Option \n");
-                }
-                MPI_Finalize();
-                return EXIT_FAILURE; 
-        }
+    po_ret = process_options(argc, argv, &win_type, &sync_type, rank);
+    switch (po_ret) {
+        case po_bad_usage:
+            print_help_message(rank);
+            MPI_CHECK(MPI_Finalize());
+            return EXIT_FAILURE;
+        case po_help_message:
+            print_help_message(rank);
+            MPI_CHECK(MPI_Finalize());
+            return EXIT_SUCCESS;
     }
-
+ 
     page_size = getpagesize();
     assert(page_size <= MAX_ALIGNMENT);
+    sbuf =
+        (char *) (((unsigned long) sbuf_original + (page_size - 1)) /
+                page_size * page_size);
+    memset(sbuf, 0, MAX_SIZE);
 
-    MPI_Alloc_mem (MAX_MSG_SIZE*window_size + MAX_ALIGNMENT, 
-            MPI_INFO_NULL, &s_buf1);
-    if (NULL == s_buf1) {
-         fprintf(stderr, "[%d] Buffer Allocation Failed \n", myid);
-         exit(-1);
-    }
-        
-    if (no_hints == 0) {
-        /* Providing MVAPICH2 specific hint to allocate memory 
-         * in shared space. MVAPICH2 optimizes communication          
-         * on windows created in this memory */
-        MPI_Info_create(&win_info);
-        MPI_Info_set(win_info, "alloc_shm", "true");
+    rbuf =
+        (char *) (((unsigned long) rbuf_original + (page_size - 1)) /
+                page_size * page_size);
+    memset(rbuf, 0, MAX_SIZE);
 
-        MPI_Alloc_mem (MAX_MSG_SIZE*window_size + MAX_ALIGNMENT, 
-                win_info, &r_buf1);
-    } else {
-        MPI_Alloc_mem (MAX_MSG_SIZE*window_size + MAX_ALIGNMENT,
-                MPI_INFO_NULL, &r_buf1);
-    }
+    print_header(rank, win_type, sync_type);
 
-    if (NULL == r_buf1) {
-         fprintf(stderr, "[%d] Buffer Allocation Failed \n", myid);
-         exit(-1);
-    }  
-
-    s_buf =
-        (char *) (((unsigned long) s_buf1 + (page_size - 1)) / page_size *
-                  page_size);
-    r_buf =
-        (char *) (((unsigned long) r_buf1 + (page_size - 1)) / page_size *
-                  page_size);
-    assert((s_buf != NULL) && (r_buf != NULL));
-    memset(s_buf, 0, MAX_MSG_SIZE*window_size);
-    memset(r_buf, 1, MAX_MSG_SIZE*window_size);
-
-    if (myid == 0) {
-        fprintf(stdout, HEADER);
-        fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH,
-                "Bandwidth (MB/s)");
-        fflush(stdout);
+    switch (sync_type){
+        case LOCK:
+            run_put_with_lock(rank, win_type);
+            break;
+        case PSCW:
+            run_put_with_pscw(rank, win_type);
+            break;
+        case FENCE: 
+            run_put_with_fence(rank, win_type);
+            break;
+        case LOCK_ALL:
+            run_put_with_lock_all(rank, win_type);
+            break;
+        case FLUSH_LOCAL: 
+            run_put_with_flush_local(rank, win_type);
+            break;
+        default: 
+            run_put_with_flush(rank, win_type);
+            break;
     }
 
-    /* Bandwidth test */
-    for (size = 1; size <= MAX_MSG_SIZE; size *= 2) {
-        if (size > LARGE_MESSAGE_SIZE) {
-            loop = LOOP_LARGE;
-            skip = SKIP_LARGE;
-            window_size = WINDOW_SIZE_LARGE;
-        }
-
-        /* Window creation and warming-up */
-        MPI_Win_create(r_buf, size * window_size, 1, MPI_INFO_NULL,
-                MPI_COMM_WORLD, &win);
-
-        if (myid == 0) {
-            destrank = 1;
-
-            MPI_Group_incl (comm_group, 1, &destrank, &group);
-
-            for (i = 0; i < skip; i++) {
-                MPI_Win_start(group, 0, win);
-                MPI_Put(s_buf + i*size, size, MPI_CHAR, 1, i*size, size, MPI_CHAR,
-                        win);
-                MPI_Win_complete(win);
-            }
-        } else {
-            /*rank 1*/
-            destrank = 0;
-
-            MPI_Group_incl(comm_group, 1, &destrank, &group);
-
-            for (i = 0; i < skip; i++) {
-                MPI_Win_post(group, 0, win);
-                MPI_Win_wait(win);
-            }
-        }
-
-        MPI_Barrier(MPI_COMM_WORLD);
-
-        if (myid == 0) {
-            t_start = MPI_Wtime();
-
-            for (i = 0; i < loop; i++) {
-                MPI_Win_start(group, 0, win);
-
-                for(j = 0; j < window_size; j++) {
-                    MPI_Put(s_buf + j*size, size, MPI_CHAR, 1, j*size, size, MPI_CHAR,
-                            win);
-                }
-
-                MPI_Win_complete(win);
-            }
-
-            t_end = MPI_Wtime();
-            t = t_end - t_start;
-        } else {
-            for (i = 0; i < loop; i++) {
-                MPI_Win_post(group, 0, win);
-                MPI_Win_wait(win);
-            }
-        }
-
-        MPI_Barrier(MPI_COMM_WORLD);
-
-        if (myid == 0) {
-            double tmp = size / 1e6 * loop * window_size;
-
-            fprintf(stdout, "%-*d%*.*f\n", 10, size, FIELD_WIDTH,
-                    FLOAT_PRECISION, tmp / t);
-            fflush(stdout);
-        }
-
-        MPI_Group_free(&group);
-        MPI_Win_free(&win);
-    } 
-    
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    if (no_hints == 0) {
-        MPI_Info_free(&win_info);
-    }
-
-    MPI_Free_mem(s_buf1);
-    MPI_Free_mem(r_buf1);
-
-    MPI_Group_free(&comm_group);
-    MPI_Finalize();
+    MPI_CHECK(MPI_Finalize());
 
     return EXIT_SUCCESS;
 }
 
+void print_help_message (int rank)
+{
+    if (rank) return;
+
+    printf("Usage: ./osu_put_bw -w <win_option>  -s < sync_option> \n");
+    printf("win_option:\n");
+    printf("  create            use MPI_Win_create to create an MPI Window object\n");
+    printf("  allocate          use MPI_Win_allocate to create an MPI Window object\n");
+    printf("  dynamic           use MPI_Win_create_dynamic to create an MPI Window object\n");
+    printf("\n");
+
+    printf("sync_option:\n");
+    printf("  lock              use MPI_Win_lock/unlock synchronizations calls\n");
+    printf("  flush             use MPI_Win_flush synchronization call\n");
+    printf("  flush_local       use MPI_Win_flush_local synchronization call\n");
+    printf("  lock_all          use MPI_Win_lock_all/unlock_all synchronization calls\n");
+    printf("  pscw              use Post/Start/Complete/Wait synchronization calls \n");
+    printf("  fence             use MPI_Win_fence synchronization call\n");
+    printf("\n");
+
+    fflush(stdout);
+}
+
+int process_options(int argc, char *argv[], WINDOW *win, SYNC *sync, int rank)
+{
+    extern char *optarg;
+    extern int  optind;
+    extern int opterr;
+    int c;
+
+    char const * optstring = "+w:s:h";
+
+    if (rank) {
+        opterr = 0;
+    }
+
+    while((c = getopt(argc, argv, optstring)) != -1) {
+        switch (c) {
+            case 'w':
+                if (0 == strcasecmp(optarg, "create")) {
+                    *win = WIN_CREATE;
+                }
+                else if (0 == strcasecmp(optarg, "allocate")) {
+                    *win = WIN_ALLOCATE;
+                }
+                else if (0 == strcasecmp(optarg, "dynamic")) {
+                    *win = WIN_DYNAMIC;
+                }
+                else {
+                    return po_bad_usage;
+                }
+                break;
+            case 's':
+                if (0 == strcasecmp(optarg, "lock")) {
+                    *sync = LOCK;
+                }
+                else if (0 == strcasecmp(optarg, "flush")) {
+                    *sync = FLUSH;
+                }
+                else if (0 == strcasecmp(optarg, "flush_local")) {
+                    *sync = FLUSH_LOCAL;
+                }
+                else if (0 == strcasecmp(optarg, "lock_all")) {
+                    *sync = LOCK_ALL;
+                }
+                else if (0 == strcasecmp(optarg, "pscw")) {
+                    *sync = PSCW;
+                }
+                else if (0 == strcasecmp(optarg, "fence")) {
+                    *sync = FENCE;
+                }
+                else {
+                    return po_bad_usage;
+                }
+                break;
+            case 'h':
+                return po_help_message;
+            default:
+                return po_bad_usage;
+        }
+    }
+    return po_okay;
+}
+
+void allocate_memory(int rank, char *rbuf, int size, WINDOW type, MPI_Win *win)
+{
+    MPI_Status  reqstat;
+
+    switch (type) {
+        case WIN_CREATE:
+            MPI_CHECK(MPI_Win_create(rbuf, WINDOW_SIZE_LARGE*size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, win));
+            break;
+        case WIN_DYNAMIC:
+            MPI_CHECK(MPI_Win_create_dynamic(MPI_INFO_NULL, MPI_COMM_WORLD, win));
+            MPI_CHECK(MPI_Win_attach(*win, (void *)rbuf, WINDOW_SIZE_LARGE*size));
+            MPI_CHECK(MPI_Get_address(rbuf, &rdisp_local));
+            if(rank == 0){
+                MPI_CHECK(MPI_Send(&rdisp_local, 1, MPI_AINT, 1, 1, MPI_COMM_WORLD));
+                MPI_CHECK(MPI_Recv(&rdisp_remote, 1, MPI_AINT, 1, 1, MPI_COMM_WORLD, &reqstat));
+            }
+            else{
+                MPI_CHECK(MPI_Recv(&rdisp_remote, 1, MPI_AINT, 0, 1, MPI_COMM_WORLD, &reqstat));
+                MPI_CHECK(MPI_Send(&rdisp_local, 1, MPI_AINT, 0, 1, MPI_COMM_WORLD));
+            }
+            break;
+        default:
+            MPI_CHECK(MPI_Win_allocate(WINDOW_SIZE_LARGE*size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, rbuf, win));
+            break;
+    }
+}
+
+void print_header (int rank, WINDOW win, SYNC sync)
+{
+    if(rank == 0) {
+        fprintf(stdout, HEADER);
+        fprintf(stdout, "# Window creation: %s\n",
+                win_info[win]);
+        fprintf(stdout, "# Synchronization: %s\n",
+                sync_info[sync]);
+        fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Bandwidth (MB/s)");
+        fflush(stdout);
+    }
+}
+
+void print_bw(int rank, int size, double t)
+{
+    if (rank == 0) {
+        double tmp = size / 1e6 * loop * WINDOW_SIZE_LARGE;
+
+        fprintf(stdout, "%-*d%*.*f\n", 10, size, FIELD_WIDTH,
+                FLOAT_PRECISION, tmp / t);
+        fflush(stdout);
+    }
+}
+
+/*Run PUT with flush local */
+void run_put_with_flush_local (int rank, WINDOW type)
+{
+    double t;
+    int size, i, j;
+    MPI_Aint disp = 0;
+    MPI_Win     win;
+
+    int window_size = WINDOW_SIZE_LARGE;
+    for (size = 1; size <= MAX_SIZE; size = size * 2) {
+        allocate_memory(rank, rbuf, size, type, &win);
+
+        if (type == WIN_DYNAMIC) {
+            disp = rdisp_remote;
+        }
+
+        if(size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
+        }
+        if (rank == 0) {
+            MPI_CHECK(MPI_Win_lock(MPI_LOCK_SHARED, 1, 0, win));
+            for (i = 0; i < skip + loop; i++) {
+                if (i == skip) {
+                    t_start = MPI_Wtime ();
+                }
+                for(j = 0; j < window_size; j++) {
+                    MPI_CHECK(MPI_Put(sbuf+(j*size), size, MPI_CHAR, 1, disp + (j * size), size, MPI_CHAR,
+                            win));
+                }
+                MPI_CHECK(MPI_Win_flush_local(1, win));
+            }
+            t_end = MPI_Wtime();
+            MPI_CHECK(MPI_Win_unlock(1, win));
+            t = t_end - t_start;
+        }
+
+        MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+
+        print_bw(rank, size, t);
+
+        MPI_Win_free(&win);
+    }
+}
+
+/*Run PUT with flush */
+void run_put_with_flush (int rank, WINDOW type)
+{
+    double t;
+    int size, i, j;
+    MPI_Aint disp = 0;
+    MPI_Win     win;
+
+    int window_size = WINDOW_SIZE_LARGE;
+    for (size = 1; size <= MAX_SIZE; size = size * 2) {
+        allocate_memory(rank, rbuf, size, type, &win);
+
+        if (type == WIN_DYNAMIC) {
+            disp = rdisp_remote;
+        }
+
+        if(size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
+        }
+
+        if (rank == 0) {
+            MPI_CHECK(MPI_Win_lock(MPI_LOCK_SHARED, 1, 0, win));
+            for (i = 0; i < skip + loop; i++) {
+                if (i == skip) {
+                    t_start = MPI_Wtime ();
+                }
+                for(j = 0; j < window_size; j++) {
+                    MPI_CHECK(MPI_Put(sbuf+(j*size), size, MPI_CHAR, 1, disp + (j * size), size, MPI_CHAR,
+                            win));
+                }
+                MPI_CHECK(MPI_Win_flush(1, win));
+            }
+            t_end = MPI_Wtime();
+            MPI_CHECK(MPI_Win_unlock(1, win));
+            t = t_end - t_start;
+        }
+
+        MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+
+        print_bw(rank, size, t);
+
+        MPI_Win_free(&win);
+    }
+}
+
+/*Run PUT with Lock_all/unlock_all */
+void run_put_with_lock_all (int rank, WINDOW type)
+{
+    double t;
+    int size, i, j;
+    MPI_Aint disp = 0;
+    MPI_Win     win;
+
+    int window_size = WINDOW_SIZE_LARGE;
+    for (size = 1; size <= MAX_SIZE; size = size * 2) {
+        allocate_memory(rank, rbuf, size, type, &win);
+
+        if (type == WIN_DYNAMIC) {
+            disp = rdisp_remote;
+        }
+
+        if(size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
+        }
+
+        if (rank == 0) {
+            for (i = 0; i < skip + loop; i++) {
+                if (i == skip) {
+                    t_start = MPI_Wtime ();
+                }
+                MPI_CHECK(MPI_Win_lock_all(0, win));
+                for(j = 0; j < window_size; j++) {
+                    MPI_CHECK(MPI_Put(sbuf+(j*size), size, MPI_CHAR, 1, disp +  (j * size), size, MPI_CHAR,
+                            win));
+                }
+                MPI_CHECK(MPI_Win_unlock_all(win));
+            }
+            t_end = MPI_Wtime();
+            t = t_end - t_start;
+        }
+
+        MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+
+        print_bw(rank, size, t);
+
+        MPI_Win_free(&win);
+    }
+}
+
+/*Run PUT with Lock/unlock */
+void run_put_with_lock(int rank, WINDOW type)
+{
+    double t;
+    int size, i, j;
+    MPI_Aint disp = 0;
+    MPI_Win     win;
+
+    int window_size = WINDOW_SIZE_LARGE;
+    for (size = 1; size <= MAX_SIZE; size = size * 2) {
+        allocate_memory(rank, rbuf, size, type, &win);
+
+        if (type == WIN_DYNAMIC) {
+            disp = rdisp_remote;
+        }
+
+        if(size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
+        }
+        if (rank == 0) {
+            for (i = 0; i < skip + loop; i++) {
+                if (i == skip) {
+                    t_start = MPI_Wtime ();
+                }
+                MPI_CHECK(MPI_Win_lock(MPI_LOCK_SHARED, 1, 0, win));
+                for(j = 0; j < window_size; j++) {
+                    MPI_CHECK(MPI_Put(sbuf+(j*size), size, MPI_CHAR, 1, disp + (j * size), size, MPI_CHAR,
+                            win));
+                }
+                MPI_CHECK(MPI_Win_unlock(1, win ));
+            }
+            t_end = MPI_Wtime();
+            t = t_end - t_start;
+        }
+
+        MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+
+        print_bw(rank, size, t);
+
+        MPI_Win_free(&win);
+    }
+}
+
+/*Run PUT with Fence */
+void run_put_with_fence(int rank, WINDOW type)
+{
+    double t; 
+    int size, i, j;
+    MPI_Aint disp = 0;
+    MPI_Win     win;
+
+    int window_size = WINDOW_SIZE_LARGE;
+    for (size = 1; size <= MAX_SIZE; size = size * 2) {
+        allocate_memory(rank, rbuf, size, type, &win);
+
+        if (type == WIN_DYNAMIC) {
+            disp = rdisp_remote;
+        }
+
+        if(size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
+        }
+
+        MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+
+        if(rank == 0) {
+            for (i = 0; i < skip + loop; i++) {
+                if (i == skip) {
+                    t_start = MPI_Wtime ();
+                }
+                MPI_CHECK(MPI_Win_fence(0, win));
+                for(j = 0; j < window_size; j++) {
+                    MPI_CHECK(MPI_Put(sbuf+(j*size), size, MPI_CHAR, 1, disp +  (j * size), size, MPI_CHAR,
+                            win));
+                }
+                MPI_CHECK(MPI_Win_fence(0, win));
+            }
+            t_end = MPI_Wtime ();
+            t = t_end - t_start;
+        } else {
+            for (i = 0; i < skip + loop; i++) {
+                MPI_CHECK(MPI_Win_fence(0, win));
+                MPI_CHECK(MPI_Win_fence(0, win));
+            }
+        }
+
+        MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+
+        print_bw(rank, size, t);
+
+        MPI_Win_free(&win);
+    }
+}
+
+/*Run PUT with Post/Start/Complete/Wait */
+void run_put_with_pscw(int rank, WINDOW type)
+{
+    double t; 
+    int destrank, size, i, j;
+    MPI_Aint disp = 0;
+    MPI_Win     win;
+    MPI_Group       comm_group, group;
+
+    MPI_CHECK(MPI_Comm_group(MPI_COMM_WORLD, &comm_group));
+
+    int window_size = WINDOW_SIZE_LARGE;
+    for (size = 1; size <= MAX_SIZE; size = size * 2) {
+       allocate_memory(rank, rbuf, size, type, &win);
+
+        if (type == WIN_DYNAMIC) {
+            disp = rdisp_remote;
+        }
+
+        if (size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
+        }
+
+        MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+
+        if (rank == 0) {
+
+            destrank = 1;
+            MPI_CHECK(MPI_Group_incl (comm_group, 1, &destrank, &group));
+
+            for (i = 0; i < skip + loop; i++) {
+                MPI_CHECK(MPI_Win_start(group, 0, win));
+                if (i == skip) {
+                    t_start = MPI_Wtime ();
+                }
+                for(j = 0; j < window_size; j++) {
+                    MPI_CHECK(MPI_Put(sbuf + j*size, size, MPI_CHAR, 1, disp + (j*size), size, MPI_CHAR,
+                                win));
+                }
+                MPI_CHECK(MPI_Win_complete(win));
+            }
+            t_end = MPI_Wtime();
+            t = t_end - t_start;
+        } else {
+
+            destrank = 0;
+            MPI_CHECK(MPI_Group_incl(comm_group, 1, &destrank, &group));
+            for (i = 0; i < skip + loop; i++) {
+                MPI_CHECK(MPI_Win_post(group, 0, win));
+                MPI_CHECK(MPI_Win_wait(win));
+            }
+        }
+
+        MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+
+        print_bw(rank, size, t);
+
+        MPI_CHECK(MPI_Group_free(&group));
+        MPI_Win_free(&win);
+    }
+    MPI_CHECK(MPI_Group_free(&comm_group));
+}
 /* vi: set sw=4 sts=4 tw=80: */

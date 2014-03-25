@@ -1,7 +1,7 @@
 /* Basic platform-independent macro definitions for mutexes,
    thread-specific data and parameters for malloc. */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,10 +16,10 @@
 #ifndef _GENERIC_MALLOC_MACHINE_H
 #define _GENERIC_MALLOC_MACHINE_H
 
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 /* #include <atomic.h> */
 #include "atomic.h"
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 
 #ifndef mutex_init /* No threads, provide dummy macros */
 

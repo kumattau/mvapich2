@@ -13,6 +13,8 @@
 
 #ifdef DYNAMIC_TASKING
 
+extern mpidi_dynamic_tasking;
+
 /* Define the name of the kvs key used to provide the port name to the
    children */
 #define MPIDI_PARENT_PORT_KVSKEY "PARENT_ROOT_PORT_NAME"
@@ -99,6 +101,10 @@ static void MPIDI_free_pmi_keyvals(PMI_keyval_t **kv, int size, int *counts)
 .N Errors
 .N MPI_SUCCESS
 @*/
+#undef FUNCNAME
+#define FUNCNAME MPID_Comm_spawn_multiple
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_Comm_spawn_multiple(int count, char *array_of_commands[],
 			     char ** array_of_argv[], const int array_of_maxprocs[],
 			     MPID_Info * array_of_info_ptrs[], int root,
@@ -106,6 +112,12 @@ int MPID_Comm_spawn_multiple(int count, char *array_of_commands[],
 			     int array_of_errcodes[])
 {
     int mpi_errno = MPI_SUCCESS;
+
+    if(mpidi_dynamic_tasking == 0) {
+	fprintf(stderr, "Received spawn request for non-dynamic jobs\n");
+        MPIU_ERR_SETANDSTMT(mpi_errno, MPI_ERR_SPAWN,
+                            return mpi_errno, "**spawn");
+    }
 
     /* We allow an empty implementation of this function to
        simplify building MPICH on systems that have difficulty
@@ -346,7 +358,10 @@ int MPIDI_Comm_spawn_multiple(int count, char **commands,
 static char *parent_port_name = 0;    /* Name of parent port if this
 					 process was spawned (and is root
 					 of comm world) or null */
-
+#undef FUNCNAME
+#define FUNCNAME MPIDI_GetParentPort
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_GetParentPort(char ** parent_port)
 {
     int mpi_errno = MPI_SUCCESS;

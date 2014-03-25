@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -50,6 +50,7 @@ static mv2_hca_types_log_t mv2_hca_types_log[] = {
     {MV2_HCA_MLX_CX_DDR,    "MV2_HCA_MLX_CX_DDR"},
     {MV2_HCA_MLX_CX_QDR,    "MV2_HCA_MLX_CX_QDR"},
     {MV2_HCA_MLX_CX_FDR,    "MV2_HCA_MLX_CX_FDR"},
+    {MV2_HCA_MLX_CX_CONNIB,    "MV2_HCA_MLX_CX_CONNIB"},
     {MV2_HCA_MLX_PCI_X,     "MV2_HCA_MLX_PCI_X"},
 
     /* Qlogic Cards */
@@ -207,7 +208,7 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
             }
         } else 
 #endif
-        { /* mlx4 */ 
+        { /* mlx4, mlx5 */ 
             switch(rate) {
                 case 56:
                     hca_type = MV2_HCA_MLX_CX_FDR;
@@ -229,6 +230,8 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
                     hca_type = MV2_HCA_MLX_CX_SDR;
                     break;
             }
+            if (!strncmp(dev_name, MV2_STR_MLX5, 4) && rate == 56)
+                    hca_type = MV2_HCA_MLX_CX_CONNIB; 
         }
 
     } else if(!strncmp(dev_name, MV2_STR_IPATH, 5)) {

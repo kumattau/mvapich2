@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,5 +22,5 @@
 
 int vbuf_fast_rdma_alloc(MPIDI_VC_t * c, int dir);
 int deregister_memory(struct ibv_mr * mr); 
-struct ibv_mr * register_memory(void * buf, int len, int hca_num);
+struct ibv_mr * register_memory(void * buf, size_t len, int hca_num);
 #endif

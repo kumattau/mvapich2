@@ -117,7 +117,7 @@ extern char *HYD_dbg_prefix;
 #define HYD_POLLHUP (0x0004)
 
 #define HYD_TMPBUF_SIZE (64 * 1024)
-#define HYD_TMP_STRLEN  1024
+#define HYD_TMP_STRLEN  (16 * 1024)
 #define HYD_NUM_TMP_STRINGS 1000
 
 #define HYD_DEFAULT_RETRY_COUNT (10)
@@ -596,7 +596,6 @@ HYD_status HYDU_sock_set_nonblock(int fd);
 HYD_status HYDU_sock_forward_stdio(int in, int out, int *closed);
 HYD_status HYDU_sock_get_iface_ip(char *iface, char **ip);
 HYD_status HYDU_sock_is_local(char *host, int *is_local);
-HYD_status HYDU_sock_remote_access(char *host, int *remote_access);
 HYD_status
 HYDU_sock_create_and_listen_portstr(char *iface, char *hostname, char *port_range,
                                     char **port_str,

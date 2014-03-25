@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -133,6 +133,43 @@ void psm_iput_rndv(int dest, void *buf, int buflen, int tag, int src, MPID_Reque
     _psm_exit_;
 }
 
+/* used for fop, cas, fop response, cas resposne */
+int psm_1sided_atomicpkt(MPIDI_CH3_Pkt_t *pkt, MPID_IOV *iov, int iov_n, int rank,
+                             int srank, MPID_Request **rptr)
+{
+    vbuf *vptr;
+    void *iovp, *off;
+    int mpi_errno = MPI_SUCCESS;
+    int i;
+    uint32_t buflen = 0, len;
+    MPID_Request *req;
+
+    req = psm_create_req();
+    req->kind = MPID_REQUEST_SEND;
+    req->psm_flags |= PSM_1SIDED_PUTREQ;
+    *rptr = req;
+    vptr = psm_get_vbuf();
+    req->vbufptr = vptr;
+
+    for(i = 0; i < iov_n; i++) {
+        buflen = buflen + iov[i].MPID_IOV_LEN;
+    }
+
+    if(buflen <= PSM_VBUFSZ) {
+        off = vptr->buffer;
+       
+        for(i = 0; i < iov_n; i++) {
+            iovp = (void *)iov[i].MPID_IOV_BUF;
+            len = iov[i].MPID_IOV_LEN;
+            memcpy(off, iovp, len);
+            off = off + len;
+        }
+        psm_iput(rank, vptr->buffer, buflen, req, srank);
+        ++psm_tot_eager_puts;
+    } 
+    return mpi_errno;
+}
+
 /* copy iov into a single vbuf, post send to target rank,
    using 1-sided context id */
 
@@ -247,12 +284,163 @@ int psm_1sided_accumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPID_IOV *iov, int iov_n,
             off = off + len;
             buflen = buflen + len;
         }
-        psm_iput(rank, vptr->buffer, buflen, req, pkt->mapped_srank);
+       psm_iput(rank, vptr->buffer, buflen, req, pkt->mapped_srank);
         iovp = (void *)iov[iov_n-1].MPID_IOV_BUF;
         len = iov[iov_n-1].MPID_IOV_LEN;
         psm_iput_rndv(rank, iovp, len, pkt->rndv_tag, pkt->mapped_srank, rptr);
     }
     ++psm_tot_accs;
+    return mpi_errno;
+}
+
+int psm_1sided_getaccumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPID_IOV *iov, int iov_n,
+                       MPID_Request **rptr)
+{
+    vbuf *vptr;
+    void *iovp, *off;
+    int rank, i;
+    int mpi_errno = MPI_SUCCESS;
+    uint32_t buflen = 0, len;
+    MPID_Request *req;
+    uint64_t rtag, rtagsel;
+    psm_error_t psmerr;
+
+    req = psm_create_req();
+    req->kind = MPID_REQUEST_SEND;
+    req->psm_flags |= PSM_1SIDED_PUTREQ;
+    *rptr = req;
+    vptr = psm_get_vbuf();
+    req->vbufptr = vptr;
+    rank = pkt->mapped_trank;
+
+    for(i = 0; i < iov_n; i++) {
+        buflen = buflen + iov[i].MPID_IOV_LEN;
+    }
+
+    /* eager PUT */
+    if(buflen <= PSM_VBUFSZ) {
+        off = vptr->buffer;
+        pkt->rndv_mode = 0;
+       
+        for(i = 0; i < iov_n; i++) {
+            iovp = (void *)iov[i].MPID_IOV_BUF;
+            len = iov[i].MPID_IOV_LEN;
+            memcpy(off, iovp, len);
+            off = (void *)((uintptr_t)off + len);
+        }
+        psm_iput(rank, vptr->buffer, buflen, req, pkt->mapped_srank);
+    } else { /* rndv GET ACCUM */
+        off = vptr->buffer;
+        pkt->rndv_mode = 1;
+        pkt->rndv_tag = psm_get_rndvtag();
+        pkt->rndv_len = iov[iov_n-1].MPID_IOV_LEN;
+
+        /*tag for resp packet*/
+        pkt->resp_rndv_tag = psm_get_rndvtag();
+
+        /* last iov is the packet */
+        buflen = 0;
+        for(i = 0; i < (iov_n-1); i++) {
+            iovp = (void *)iov[i].MPID_IOV_BUF;
+            len = iov[i].MPID_IOV_LEN;
+            memcpy(off, iovp, len);
+            off = off + len;
+            buflen = buflen + len;
+        }
+        psm_iput(rank, vptr->buffer, buflen, req, pkt->mapped_srank);
+
+        iovp = (void *)iov[iov_n-1].MPID_IOV_BUF;
+        len = iov[iov_n-1].MPID_IOV_LEN;
+        psm_iput_rndv(rank, iovp, len, pkt->rndv_tag, pkt->mapped_srank, rptr);
+
+        /*post rndv recieve for response*/
+        MPID_Request *resp_req = NULL, *orig_resp_req = NULL;
+
+        MPID_Request_get_ptr(pkt->request_handle, orig_resp_req);
+        if(!MPIR_DATATYPE_IS_PREDEFINED(orig_resp_req->dev.datatype)) {
+            if(!orig_resp_req->dev.datatype_ptr->is_contig) {
+                 MPI_Aint result_type_size;
+                 MPID_Datatype_get_size_macro(orig_resp_req->dev.datatype, result_type_size);
+
+                 orig_resp_req->dev.real_user_buf = orig_resp_req->dev.user_buf;
+                 orig_resp_req->dev.user_buf = MPIU_Malloc(orig_resp_req->dev.user_count*result_type_size);
+                 orig_resp_req->psm_flags |= PSM_RNDVRECV_GET_PACKED;
+            }
+        }
+
+        resp_req = psm_create_req();
+        resp_req->kind = MPID_REQUEST_RECV;
+        resp_req->psm_flags |= PSM_RNDVRECV_GET_REQ;
+        if(orig_resp_req->psm_flags & PSM_RNDVRECV_GET_PACKED) {
+            resp_req->psm_flags |= PSM_RNDVRECV_GET_PACKED;
+            orig_resp_req->psm_flags &= ~PSM_RNDVRECV_GET_PACKED;
+        }
+        resp_req->savedreq = orig_resp_req;
+
+        rtag = 0;
+        rtagsel = MQ_TAGSEL_ALL;
+        MAKE_PSM_SELECTOR(rtag, MPID_CONTEXT_RNDVPSM, pkt->resp_rndv_tag,
+                  pkt->mapped_trank);
+
+        _psm_enter_;
+        psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, orig_resp_req->dev.user_buf,
+            pkt->rndv_len, resp_req, &(resp_req->mqreq));
+
+        _psm_exit_;
+        if(unlikely(psmerr != PSM_OK)) {
+            printf("ERROR: rndv recv failed\n");
+        }
+    }
+
+    ++psm_tot_accs;
+    return mpi_errno;
+}
+
+#undef FUNCNAME
+#define FUNCNAME psm_1sided_getaccumresppkt
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int psm_1sided_getaccumresppkt(MPIDI_CH3_Pkt_get_accum_resp_t *pkt, MPID_IOV *iov, int iov_n,
+                       MPID_Request **rptr)
+{
+    vbuf *vptr;
+    void *iovp, *off;
+    uint32_t buflen = 0, len;
+    MPID_Request *req = (*rptr);
+    psm_error_t psmerr;
+    int mpi_errno = MPI_SUCCESS, i;
+
+    req->psm_flags |= PSM_GETACCUMRESP_REQ;
+
+    if(!pkt->rndv_mode) {
+        req->psm_flags |= PSM_CONTROL_PKTREQ;
+        vptr = psm_get_vbuf();
+        req->vbufptr = vptr;
+        off = vptr->buffer;
+
+        for(i = 0; i < iov_n; i++) {
+            iovp = (void *)iov[i].MPID_IOV_BUF;
+            len = iov[i].MPID_IOV_LEN;
+            memcpy(off, iovp, len);
+            off = (void *) ((uintptr_t)off + len);
+            buflen = buflen + len;
+        }
+
+        psmerr = psm_iput(pkt->mapped_trank, vptr->buffer, buflen, req,
+                pkt->mapped_srank);
+    } else {
+        iovp = (void *)iov[iov_n-1].MPID_IOV_BUF;
+        len = iov[iov_n-1].MPID_IOV_LEN;
+        assert(len == pkt->rndv_len);
+
+        psmerr = psm_iget_rndvsend(req, pkt->mapped_trank, iovp, len,
+                                   pkt->rndv_tag, pkt->mapped_srank);
+    }
+
+    if(unlikely(psmerr != PSM_OK)) {
+        MPIU_ERR_SET(mpi_errno, MPI_ERR_INTERN, "**fail");
+    }
+
     return mpi_errno;
 }
 
@@ -407,6 +595,7 @@ int psm_1sided_getresppkt(MPIDI_CH3_Pkt_get_resp_t *pkt, MPID_IOV *iov, int iov_
 int psm_1sided_input(MPID_Request *req, int inlen)
 {
     MPIDI_CH3_Pkt_t *pkt;
+    MPID_Request *temp_req;
     vbuf  *vbptr;
     void *ptr;
     MPIDI_msg_sz_t msg = inlen;
@@ -420,8 +609,16 @@ int psm_1sided_input(MPID_Request *req, int inlen)
     __check(GET,            pkt->type);
     __check(GET_RESP,       pkt->type);
     __check(ACCUMULATE,     pkt->type);
+    __check(GET_ACCUM,      pkt->type);
+    __check(GET_ACCUM_RESP, pkt->type);
     __check(ACCUM_IMMED,    pkt->type);
+    __check(FOP,            pkt->type);
+    __check(FOP_RESP,       pkt->type);
+    __check(CAS,            pkt->type);
+    __check(CAS_RESP,       pkt->type);
     __check(LOCK,           pkt->type);
+    __check(UNLOCK,         pkt->type);
+    __check(FLUSH,          pkt->type);
     __check(LOCK_GRANTED,   pkt->type);
     __check(PT_RMA_DONE,    pkt->type);
     goto errpkt;
@@ -518,6 +715,7 @@ int psm_1sided_input(MPID_Request *req, int inlen)
             vc->ch.recv_active = req;
             psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
             nreq = vc->ch.recv_active;
+
             /* now we have a mpid_request with the user_buf set to tmpbuf */
             nreq = psm_1sc_putacc_rndvrecv(req, inlen, &nreq, 
                                     nreq->dev.user_buf, acpkt->rndv_tag,
@@ -526,6 +724,90 @@ int psm_1sided_input(MPID_Request *req, int inlen)
             DBG("rndv_accum request. posted recv %x\n", nreq);
             goto end_2;
         }
+    }
+
+    {
+        _SECTION(GET_ACCUM);
+        MPIDI_CH3_Pkt_accum_t *acpkt = (MPIDI_CH3_Pkt_accum_t *) pkt;
+
+        if(!acpkt->rndv_mode) {
+            GET_VC(vc, acpkt->target_win_handle, acpkt->source_rank);
+            vc->ch.recv_active = req;
+            DBG("get accum packet from %d\n", vc->pg_rank);
+            psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+            goto end;           /* large accumulate */
+        } else {
+            MPID_Request *nreq = NULL;
+            MPID_Win *win_ptr = NULL;
+
+            MPID_Win_get_ptr(acpkt->target_win_handle, win_ptr);
+            win_ptr->outstanding_rma++;
+        
+            GET_VC(vc, acpkt->target_win_handle, acpkt->source_rank);
+            req->psm_flags |= PSM_RNDV_ACCUM_REQ;
+            vc->ch.recv_active = req;
+            psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+
+            nreq = vc->ch.recv_active;
+            nreq = psm_1sc_putacc_rndvrecv(req, inlen, &nreq,
+                                    nreq->dev.user_buf, acpkt->rndv_tag,
+                                    acpkt->mapped_srank, acpkt->rndv_len, vc);
+            nreq->psm_flags |= PSM_RNDVRECV_ACCUM_REQ;
+
+            nreq->resp_rndv_tag = acpkt->resp_rndv_tag;
+
+            DBG("rndv_accum request. posted recv %x\n", nreq);
+            goto end_2; 
+        }
+    }
+
+    {
+        _SECTION(GET_ACCUM_RESP);
+        MPIDI_CH3_Pkt_get_accum_resp_t *acpkt = (MPIDI_CH3_Pkt_get_accum_resp_t *) pkt;
+        MPIU_Assert(acpkt->rndv_mode != 1);
+
+        GET_VC(vc, acpkt->target_win_handle, acpkt->source_rank);
+        vc->ch.recv_active = req;
+        DBG("get accum packet from %d\n", vc->pg_rank);
+        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+
+        goto end;          
+    }
+
+    {
+        _SECTION(FOP);
+        MPIDI_CH3_Pkt_fop_t *foppkt = (MPIDI_CH3_Pkt_fop_t *) pkt;
+        GET_VC(vc, foppkt->target_win_handle, foppkt->source_rank);
+        vc->ch.recv_active = req;
+        DBG("fop packet from %d\n", vc->pg_rank);
+        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        goto end;           
+    }
+
+    {
+        _SECTION(FOP_RESP);
+        temp_req = req;
+        DBG("fop resp packet from %d\n", vc->pg_rank);
+        psm_pkthndl[pkt->type](NULL, pkt, &msg, &temp_req);
+        goto end;           
+    }
+
+    {
+        _SECTION(CAS);
+        MPIDI_CH3_Pkt_cas_t *caspkt = (MPIDI_CH3_Pkt_cas_t *) pkt;
+        GET_VC(vc, caspkt->target_win_handle, caspkt->source_rank);
+        vc->ch.recv_active = req;
+        DBG("cas packet from %d\n", vc->pg_rank);
+        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        goto end;           
+    }
+
+    {
+        _SECTION(CAS_RESP);
+        temp_req = req;
+        DBG("cas resp packet from %d\n", vc->pg_rank);
+        psm_pkthndl[pkt->type](NULL, pkt, &msg, &temp_req);
+        goto end;           
     }
 
     /* handle lock */
@@ -538,6 +820,32 @@ int psm_1sided_input(MPID_Request *req, int inlen)
         DBG("lock request from [%d]\n", vc->pg_rank);
         goto end;
     }
+
+    /* handle unlock */
+    {
+        _SECTION(UNLOCK);
+        MPIDI_CH3_Pkt_unlock_t *unlockpkt = (MPIDI_CH3_Pkt_unlock_t *) pkt;
+        GET_VC(vc, unlockpkt->target_win_handle, unlockpkt->source_rank);
+        vc->ch.recv_active = req;
+        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        DBG("ulock request from [%d]\n", vc->pg_rank);
+        goto end;
+    }
+
+
+    /* handle flush */
+    {
+        _SECTION(FLUSH);
+        MPIDI_CH3_Pkt_flush_t *flushpkt = (MPIDI_CH3_Pkt_flush_t *) pkt;
+        if (flushpkt->target_win_handle != MPI_WIN_NULL) { 
+            GET_VC(vc, flushpkt->target_win_handle, flushpkt->target_rank);
+        }
+        temp_req = req;
+        psm_pkthndl[pkt->type](vc, pkt, &msg, &temp_req);
+        DBG("flush request from [%d]\n", vc->pg_rank);
+        goto end;
+    }
+
 
     /* handle lock granted */
     {
@@ -711,8 +1019,7 @@ static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *putreq, int putlen,
                       source_rank);
 
     /* if we're receiving non-contig addtitional processing needed */
-    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(preq->dev.datatype, predefined)
-    if(!predefined) {
+    if(!MPIR_DATATYPE_IS_PREDEFINED(preq->dev.datatype)) {
         if(!preq->dev.datatype_ptr->is_contig) {
             useraddr = psm_gen_packbuf(req, preq);
             rndv_len = req->pksz;
@@ -802,6 +1109,14 @@ int psm_getresp_complete(MPID_Request *req)
     int complete = TRUE;
     MPIDI_VC_t *vc = (MPIDI_VC_t *) req->pkbuf;
     MPIDI_CH3_ReqHandler_GetSendRespComplete(vc, req, &complete);
+    return MPI_SUCCESS;
+}
+
+int psm_getaccumresp_complete(MPID_Request *req) 
+{
+    int complete = TRUE;
+    MPIDI_VC_t *vc = (MPIDI_VC_t *) req->pkbuf;
+    MPIDI_CH3_ReqHandler_GetAccumRespComplete(vc, req, &complete);
     return MPI_SUCCESS;
 }
 

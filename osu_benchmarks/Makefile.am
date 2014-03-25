@@ -1,5 +1,5 @@
  #
- # Copyright (C) 2002-2013 the Network-Based Computing Laboratory
+ # Copyright (C) 2002-2014 the Network-Based Computing Laboratory
  # (NBCL), The Ohio State University. 
  #
  # Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -28,19 +28,15 @@ pkglibexec_PROGRAMS =		\
     osu_mbw_mr			\
     osu_multi_lat		\
     osu_acc_latency		\
+	osu_get_acc_latency \
+	osu_cas_latency     \
+	osu_fop_latency     \
     osu_get_bw			\
     osu_get_latency		\
     osu_latency_mt		\
     osu_put_bibw		\
     osu_put_bw			\
-    osu_put_latency		\
-    osu_passive_put_latency	\
-    osu_passive_put_bw		\
-    osu_passive_get_latency	\
-    osu_passive_get_bw		\
-    osu_passive_acc_latency	\
-    osu_cas_flush		\
-    osu_fop_flush
+    osu_put_latency		
 
 osu_scatter_SOURCES = osu_scatter.c osu_coll.c osu_coll.h
 osu_scatterv_SOURCES = osu_scatterv.c osu_coll.c osu_coll.h

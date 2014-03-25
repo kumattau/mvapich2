@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,7 @@
  */
 
 #include "mpidimpl.h"
-#ifdef _OSU_MVAPICH_
+#ifdef CHANNEL_MRAIL
 #include "mpid_mrail_rndv.h"
 #endif
 
@@ -45,9 +45,9 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
 #endif
     MPID_Request *sreq =*sreq_p;
     int          mpi_errno = MPI_SUCCESS;
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 	
     MPIU_DBG_MSG_D(CH3_OTHER,VERBOSE,
 		   "sending rndv RTS, data_sz=" MPIDI_MSG_SZ_FMT, data_sz);
@@ -174,7 +174,7 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
 {								\
     (rreq_)->status.MPI_SOURCE = (pkt_)->match.parts.rank;	\
     (rreq_)->status.MPI_TAG = (pkt_)->match.parts.tag;		\
-    (rreq_)->status.count = (pkt_)->data_sz;			\
+    MPIR_STATUS_SET_COUNT((rreq_)->status, (pkt_)->data_sz);		\
     (rreq_)->dev.sender_req_id = (pkt_)->sender_req_id;		\
     (rreq_)->dev.recv_data_sz = (pkt_)->data_sz;		\
     MPIDI_Request_set_seqnum((rreq_), (pkt_)->seqnum);		\
@@ -211,22 +211,22 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPIU_THREAD_CS_EXIT(MSGQUEUE,);
 
     *buflen = sizeof(MPIDI_CH3_Pkt_t);
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     MPIDI_CH3_RNDV_SET_REQ_INFO(rreq, rts_pkt);
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     
     if (found)
     {
 	MPID_Request * cts_req;
 	MPIDI_CH3_Pkt_t upkt;
 	MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt = &upkt.rndv_clr_to_send;
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
         MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 	
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"posted request found");	
 	
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #if defined (_ENABLE_CUDA_) && defined (HAVE_CUDA_IPC)
         /*initialize IPC buffers if not initialized*/
         if (rdma_enable_cuda && 
@@ -289,7 +289,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
             }
             /*else send back CTS with R3 protocol and fallback*/
         }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 	
 	/* FIXME: What if the receive user buffer is not big enough to
 	   hold the data about to be cleared for sending? */
@@ -298,7 +298,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	MPIDI_Pkt_init(cts_pkt, MPIDI_CH3_PKT_RNDV_CLR_TO_SEND);
 	cts_pkt->sender_req_id = rts_pkt->sender_req_id;
 	cts_pkt->receiver_req_id = rreq->handle;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
         MPIDI_VC_FAI_send_seqnum(vc, seqnum);
         MPIDI_Pkt_set_seqnum(cts_pkt, seqnum);
         mpi_errno = MPIDI_CH3U_Post_data_receive_found(rreq);
@@ -348,7 +348,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         {
             MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
         }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
         MPIU_THREAD_CS_ENTER(CH3COMM,vc);
 	mpi_errno = MPIDI_CH3_iStartMsg(vc, cts_pkt, sizeof(*cts_pkt), &cts_req);
         MPIU_THREAD_CS_EXIT(CH3COMM,vc);
@@ -363,7 +363,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     else
     {
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"unexpected request allocated");
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
         /* If the request is a read and is unexpected,
          * we have to buffer the remote information till
          * this request is matched and then processed */
@@ -377,7 +377,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
             MPIU_Memcpy(&rreq->ch.pkt, pkt, sizeof(MPIDI_CH3_Pkt_t));
 #endif
         }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 	/*
 	 * A MPID_Probe() may be waiting for the request we just 
 	 * inserted, so we need to tell the progress engine to exit.
@@ -408,7 +408,7 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt = &pkt->rndv_clr_to_send;
     MPID_Request * sreq;
     int mpi_errno = MPI_SUCCESS;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     MPIDI_msg_sz_t recv_size;
     int i;
 #else
@@ -419,14 +419,14 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPI_Aint dt_true_lb;
     MPIDI_msg_sz_t data_sz;
     MPID_Datatype * dt_ptr;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"received rndv CTS pkt");
     
     MPID_Request_get_ptr(cts_pkt->sender_req_id, sreq);
     MPIU_DBG_PRINTF(("received cts, count=%d\n", sreq->dev.user_count));
     
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     /* if receiver has set protocol to MV2_RNDV_PROTOCOL_CUDAIPC 
      * revert protocol to MV2_RNDV_PROTOCOL_CUDAIPC */
@@ -463,7 +463,7 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|senddata");
     }
     *rreqp = NULL;
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
 
     sreq->dev.OnDataAvail = 0;
     sreq->dev.OnFinal = 0;
@@ -480,10 +480,10 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     {
 	MPID_Request_release(rts_sreq);
     }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
     *buflen = sizeof(MPIDI_CH3_Pkt_t);
-#if !defined(_OSU_MVAPICH_)
+#if !defined(CHANNEL_MRAIL)
     MPIDI_Pkt_init(rs_pkt, MPIDI_CH3_PKT_RNDV_SEND);
     rs_pkt->receiver_req_id = cts_pkt->receiver_req_id;
     
@@ -523,7 +523,7 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|senddata");
     }    
     *rreqp = NULL;
-#endif /* !defined(_OSU_MVAPICH_) */
+#endif /* !defined(CHANNEL_MRAIL) */
  fn_fail:
     return mpi_errno;
 }
@@ -591,29 +591,29 @@ int MPIDI_CH3_PktHandler_RndvSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
 {
     int mpi_errno = MPI_SUCCESS;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     MPIDI_CH3_Pkt_rndv_req_to_send_t * rts_pkt;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     /* A rendezvous request-to-send (RTS) message has arrived.  We need
        to send a CTS message to the remote process. */
 #ifdef MPIDI_CH3_CHANNEL_RNDV
     /* The channel will be performing the rendezvous */
     
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     if (rreq->dev.recv_data_sz == 0) {
 	MPIDI_CH3U_Request_complete(rreq);
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     if (req->dev.recv_data_sz == 0) {
 	MPIDI_CH3U_Request_complete(req);
 	*rreqp = NULL;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     }
     else {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 	mpi_errno = MPIDI_CH3U_Post_data_receive_found(rreq);
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
 	mpi_errno = MPIDI_CH3U_Post_data_receive_found(req);
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,
 				 "**ch3|postrecv",

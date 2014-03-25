@@ -104,7 +104,7 @@ int MPIR_Ialltoallv_intra(const void *sendbuf, const int sendcounts[], const int
         MPID_SCHED_BARRIER(s);
     }
     else {
-        bblock = MPIR_PARAM_ALLTOALL_THROTTLE;
+        bblock = MPIR_CVAR_ALLTOALL_THROTTLE;
         if (bblock == 0)
             bblock = comm_size;
 
@@ -291,7 +291,9 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 /*@
-MPI_Ialltoallv - XXX description here
+MPI_Ialltoallv - Sends data from all to all processes in a nonblocking way;
+   each process may send a different amount of data and provide displacements
+   for the input and output data.
 
 Input Parameters:
 + sendbuf - starting address of the send buffer (choice)

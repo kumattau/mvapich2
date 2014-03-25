@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -37,7 +37,6 @@
 #include <errno.h>
 #include <string.h>
 #include <debug_utils.h>
-#include "mpit.h"
 
 /* vbuf pool info */
 vbuf_pool_t *rdma_vbuf_pools;
@@ -57,18 +56,25 @@ static vbuf *free_vbuf_head = NULL;
  */
 static struct ibv_pd *ptag_save[MAX_NUM_HCAS];
 
-int vbuf_n_allocated = 0;
-long num_free_vbuf = 0;
-long num_vbuf_get = 0;
-long num_vbuf_freed = 0;
+static int vbuf_n_allocated = 0;
+static long num_free_vbuf = 0;
+static long num_vbuf_get = 0;
+static long num_vbuf_freed = 0;
 
 #if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
 static vbuf *ud_free_vbuf_head = NULL;
-int ud_vbuf_n_allocated = 0;
-long ud_num_free_vbuf = 0;
-long ud_num_vbuf_get = 0;
-long ud_num_vbuf_freed = 0;
+static int ud_vbuf_n_allocated = 0;
+static long ud_num_free_vbuf = 0;
+static long ud_num_vbuf_get = 0;
+static long ud_num_vbuf_freed = 0;
 #endif
+
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
 
 static pthread_spinlock_t vbuf_lock;
 
@@ -213,13 +219,13 @@ void deallocate_vbuf_region(void)
 
     while (curr) {
         next = curr->next;
-        free(curr->malloc_start);
+        MPIU_Memalign_Free(curr->malloc_start);
 
         if (rdma_enable_hugepage && curr->shmid >= 0) {
             shmdt(curr->malloc_buf_start);
         } else 
         {
-            free(curr->malloc_buf_start);
+            MPIU_Memalign_Free(curr->malloc_buf_start);
         }
 
         MPIU_Free(curr);
@@ -352,7 +358,7 @@ static int allocate_vbuf_region(int nvbufs)
     if (rdma_enable_hugepage == 0 || result != 0 )  
     {
         reg->shmid = -1;
-        result = posix_memalign(&vbuf_dma_buffer, alignment_dma, nvbufs * rdma_vbuf_total_size);
+        result = MPIU_Memalign(&vbuf_dma_buffer, alignment_dma, nvbufs * rdma_vbuf_total_size);
     }
 
     if ((result!=0) || (NULL == vbuf_dma_buffer))
@@ -360,7 +366,7 @@ static int allocate_vbuf_region(int nvbufs)
        ibv_error_abort(GEN_EXIT_ERR, "unable to malloc vbufs DMA buffer");
     }
     
-    if (posix_memalign(
+    if (MPIU_Memalign(
         (void**) &mem,
         alignment_vbuf,
         nvbufs * sizeof(vbuf)))
@@ -391,8 +397,8 @@ static int allocate_vbuf_region(int nvbufs)
                 }
             }
             /* free allocated buffers */
-            free(vbuf_dma_buffer);
-            free(mem);
+            MPIU_Free(vbuf_dma_buffer);
+            MPIU_Free(mem);
             MPIU_Free(reg);
             fprintf(stderr, "[%s %d] Cannot register vbuf region\n", __FILE__, __LINE__);
             return -1;
@@ -404,6 +410,8 @@ static int allocate_vbuf_region(int nvbufs)
 
     vbuf_n_allocated += nvbufs;
     num_free_vbuf += nvbufs;
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_vbuf_allocated, nvbufs);
+    MPIR_T_PVAR_LEVEL_INC(MV2, mv2_vbuf_available, nvbufs);
     reg->malloc_start = mem;
     reg->malloc_buf_start = vbuf_dma_buffer;
     reg->malloc_end = (void *) ((char *) mem + nvbufs * sizeof(vbuf));
@@ -507,7 +515,7 @@ static int allocate_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool)
         ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc a new struct vbuf_region");
     }
 
-    result = posix_memalign(&vbuf_buffer, alignment_dma, nvbufs * buf_size);
+    result = MPIU_Memalign(&vbuf_buffer, alignment_dma, nvbufs * buf_size);
     if ((result!=0) || (NULL == vbuf_buffer)) {
         ibv_error_abort(GEN_EXIT_ERR, "unable to malloc vbufs DMA buffer");
     }
@@ -517,7 +525,7 @@ static int allocate_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool)
         ibv_cuda_register(vbuf_buffer, nvbufs * buf_size);
     }
 
-    if (posix_memalign((void**) &vbuf_struct, alignment_vbuf, 
+    if (MPIU_Memalign((void**) &vbuf_struct, alignment_vbuf, 
                 nvbufs * sizeof(struct vbuf))) {
         ibv_error_abort(GEN_EXIT_ERR, "Unable to allocate vbuf structs");
     }
@@ -750,7 +758,7 @@ int allocate_vbufs(struct ibv_pd* ptag[], int nvbufs)
     if (rdma_enable_cuda) {
         if (allocate_cuda_vbufs(ptag) !=0 ) {
             ibv_va_error_abort(GEN_EXIT_ERR,
-                    "VBUF CUDA reagion allocation failed. Pool size %d\n",
+                    "VBUF CUDA region allocation failed. Pool size %d\n",
                     vbuf_n_allocated);
         }
     } else 
@@ -758,7 +766,7 @@ int allocate_vbufs(struct ibv_pd* ptag[], int nvbufs)
 
     if(allocate_vbuf_region(nvbufs) != 0) {
         ibv_va_error_abort(GEN_EXIT_ERR,
-            "VBUF reagion allocation failed. Pool size %d\n", 
+            "VBUF region allocation failed. Pool size %d\n", 
                 vbuf_n_allocated);
     }
     
@@ -795,13 +803,14 @@ vbuf* get_vbuf(void)
     {
         if(allocate_vbuf_region(rdma_vbuf_secondary_pool_size) != 0) {
             ibv_va_error_abort(GEN_EXIT_ERR,
-                "VBUF reagion allocation failed. Pool size %d\n", vbuf_n_allocated);
+                "VBUF region allocation failed. Pool size %d\n", vbuf_n_allocated);
         }
     }
 
     v = free_vbuf_head;
     --num_free_vbuf;
     ++num_vbuf_get;
+    MPIR_T_PVAR_LEVEL_DEC(MV2, mv2_vbuf_available, 1);
 
     /* this correctly handles removing from single entry free list */
     free_vbuf_head = free_vbuf_head->desc.next;
@@ -820,6 +829,10 @@ vbuf* get_vbuf(void)
     v->coalesce = 0;
     v->content_size = 0;
     v->eager = 0;
+    
+    /*This is used for RMA put/get*/
+    v->target_rank = -1;
+
     /* Decide which transport need to assign here */
     v->transport = IB_TRANSPORT_RC;
 
@@ -888,6 +901,8 @@ void MRAILI_Release_vbuf(vbuf* v)
         ud_free_vbuf_head = v;
         ++ud_num_free_vbuf;
         ++ud_num_vbuf_freed;
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_ud_vbuf_freed, 1);
+        MPIR_T_PVAR_LEVEL_INC(MV2, mv2_ud_vbuf_available, 1);
     } 
     else 
 #endif /* _ENABLE_UD_ */
@@ -897,6 +912,8 @@ void MRAILI_Release_vbuf(vbuf* v)
         free_vbuf_head = v;
         ++num_free_vbuf;
         ++num_vbuf_freed;
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_vbuf_freed, 1);
+        MPIR_T_PVAR_LEVEL_INC(MV2, mv2_vbuf_available, 1);
     }
 
     if (v->padding != NORMAL_VBUF_FLAG
@@ -963,7 +980,7 @@ rdma_default_ud_mtu);
     if (rdma_enable_hugepage == 0 || result != 0 )  
     {
         reg->shmid = -1;
-        result = posix_memalign(&vbuf_dma_buffer, 
+        result = MPIU_Memalign(&vbuf_dma_buffer, 
             alignment_dma, nvbufs * rdma_default_ud_mtu);
     }
 
@@ -972,7 +989,7 @@ rdma_default_ud_mtu);
         ibv_error_abort(GEN_EXIT_ERR, "unable to malloc vbufs DMA buffer");
     }
     
-    if (posix_memalign(
+    if (MPIU_Memalign(
                 (void**) &mem,
                 alignment_vbuf,
                 nvbufs * sizeof(vbuf)))
@@ -987,6 +1004,8 @@ rdma_default_ud_mtu);
 
     ud_vbuf_n_allocated += nvbufs;
     ud_num_free_vbuf += nvbufs;
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_ud_vbuf_allocated, nvbufs);
+    MPIR_T_PVAR_LEVEL_INC(MV2, mv2_ud_vbuf_available, nvbufs);
     reg->malloc_start = mem;
     reg->malloc_buf_start = vbuf_dma_buffer;
     reg->malloc_end = (void *) ((char *) mem + nvbufs * sizeof(vbuf));
@@ -1070,13 +1089,14 @@ vbuf* get_ud_vbuf(void)
     {
         if(allocate_ud_vbuf_region(rdma_vbuf_secondary_pool_size) != 0) {
             ibv_va_error_abort(GEN_EXIT_ERR,
-                    "UD VBUF reagion allocation failed. Pool size %d\n", vbuf_n_allocated);
+                    "UD VBUF region allocation failed. Pool size %d\n", vbuf_n_allocated);
         }
     }
 
 
     v = ud_free_vbuf_head;
     --ud_num_free_vbuf;
+    MPIR_T_PVAR_LEVEL_DEC(MV2, mv2_ud_vbuf_available, 1);
     ++ud_num_vbuf_get;
 
     /* this correctly handles removing from single entry free list */

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -608,7 +608,7 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
     MPID_IOV iov[MPID_IOV_LIMIT + 1];
     int n_iov;
     int msg_buffered = 0;
-    int nb;
+    int nb = 0;
     int complete = 0;
     int seqnum;
     int finished = 0;
@@ -723,14 +723,12 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
 void MPIDI_CH3I_MRAILI_Process_rndv()
 {
     MPID_Request *sreq;
-#ifdef _ENABLE_CUDA_
     MPIDI_VC_t *pending_flowlist = NULL, *temp_vc = NULL;
     int need_vc_enqueue = 0;
-#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_PROCESS_RNDV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PROCESS_RNDV);
     while (flowlist) {
-
         /* Push on the the first ongoing receive with
          * MPIDI_CH3_Rendezvous_push. If the receive
          * finishes, it will advance the shandle_head
@@ -775,48 +773,44 @@ void MPIDI_CH3I_MRAILI_Process_rndv()
             RENDEZVOUS_DONE(flowlist);
             sreq = flowlist->mrail.sreq_head;
         }
-#ifdef _ENABLE_CUDA_
+
         temp_vc = flowlist;
         need_vc_enqueue = 0;
         if (sreq && 1 != sreq->mrail.nearly_complete) {
             need_vc_enqueue = 1;
         }
-#if (HAVE_CUDA_IPC)
-    if(rdma_enable_cuda) {
-        sreq = flowlist->mrail.cudaipc_sreq_head;
-        while (sreq != NULL) {
-            MPIDI_CH3_CUDAIPC_Rendezvous_recv(flowlist, sreq);
-            if (1 != sreq->mrail.nearly_complete) {
-                if (!need_vc_enqueue) {
-                    need_vc_enqueue = 1;
-                }
-                break;
-            }
-            CUDAIPC_RECV_DONE(flowlist);
+
+#if defined (_ENABLE_CUDA_) && defined (HAVE_CUDA_IPC)
+        if(rdma_enable_cuda) {
             sreq = flowlist->mrail.cudaipc_sreq_head;
+            while (sreq != NULL) {
+                MPIDI_CH3_CUDAIPC_Rendezvous_recv(flowlist, sreq);
+                if (1 != sreq->mrail.nearly_complete) {
+                    if (!need_vc_enqueue) {
+                        need_vc_enqueue = 1;
+                    }
+                    break;
+                }
+                CUDAIPC_RECV_DONE(flowlist);
+                sreq = flowlist->mrail.cudaipc_sreq_head;
+            }
         }
-    }
 #endif 
-#endif
+
         /* now move on to the next connection */
         POP_FLOWLIST();
 
-#ifdef _ENABLE_CUDA_
-        if (rdma_enable_cuda && need_vc_enqueue) {    
+        if (need_vc_enqueue) {    
             ADD_PENDING_FLOWLIST(temp_vc, pending_flowlist);
         }
-#endif
     }
 
-#ifdef _ENABLE_CUDA_
-    if(rdma_enable_cuda) {
-        while(pending_flowlist) {
-            /* push pending vc to the flowlist */
-            REMOVE_PENDING_FLOWLIST(temp_vc, pending_flowlist)
-            PUSH_FLOWLIST(temp_vc);
-        }
+    while(pending_flowlist) {
+        /* push pending vc to the flowlist */
+        REMOVE_PENDING_FLOWLIST(temp_vc, pending_flowlist)
+        PUSH_FLOWLIST(temp_vc);
     }
-#endif
+
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_PROCESS_RNDV);
 }
 
@@ -1232,7 +1226,11 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
     MPIDI_CH3I_CR_req_dequeue(rreq);
 #endif /* defined(CKPT) */
 
-    MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
+    /*if this is a get_accumulate operation (remote_addr is not null), 
+     *rndv info will be cleared in a request handler later*/
+    if (rreq->mrail.remote_addr == NULL) {  
+        MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
+    }
 
     mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, rreq, &complete);
     if (mpi_errno != MPI_SUCCESS)
@@ -1266,7 +1264,7 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
-                            MPIDI_CH3_Pkt_get_resp_t * get_resp_pkt,
+                            MPIDI_CH3_Pkt_t *resp_pkt,
                             MPID_Request * req)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RNDV_PUSH);
@@ -1276,35 +1274,74 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
     MPIDI_CH3I_CR_lock();
 #endif
 
-    if (MV2_RNDV_PROTOCOL_R3 == req->mrail.protocol) {
-        req->mrail.partner_id = get_resp_pkt->request_handle;
-        if (vc->smp.local_nodes < 0) {
-	    MPIDI_VC_revoke_seqnum_send(vc, get_resp_pkt->seqnum);
-        }
-        RENDEZVOUS_IN_PROGRESS(vc, req);
-        req->mrail.nearly_complete = 0;
-        PUSH_FLOWLIST(vc);
-    } else {
-        MPID_IOV iov;
-        MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
-
-        iov.MPID_IOV_BUF = (void*) get_resp_pkt;
-        iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_get_resp_t);
-        get_resp_pkt->protocol = MV2_RNDV_PROTOCOL_RPUT;
-
-        MPIDI_CH3I_MRAIL_SET_REMOTE_RNDV_INFO(&rndv, req);
-        MPIDI_CH3I_MRAILI_Get_rndv_rput(vc, req, &rndv, &iov);
+    if (resp_pkt->type ==  MPIDI_CH3_PKT_GET_RESP) { 
+        MPIDI_CH3_Pkt_get_resp_t *get_resp_pkt = (MPIDI_CH3_Pkt_get_resp_t *) resp_pkt;
 
         if (MV2_RNDV_PROTOCOL_R3 == req->mrail.protocol) {
             req->mrail.partner_id = get_resp_pkt->request_handle;
             if (vc->smp.local_nodes < 0) {
-	        MPIDI_VC_revoke_seqnum_send(vc, get_resp_pkt->seqnum);
+ 	       MPIDI_VC_revoke_seqnum_send(vc, get_resp_pkt->seqnum);
             }
             RENDEZVOUS_IN_PROGRESS(vc, req);
             req->mrail.nearly_complete = 0;
             PUSH_FLOWLIST(vc);
+        } else {
+            MPID_IOV iov;
+            MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
+ 
+            iov.MPID_IOV_BUF = (void*) get_resp_pkt;
+            iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_get_resp_t);
+            get_resp_pkt->protocol = MV2_RNDV_PROTOCOL_RPUT;
+ 
+            MPIDI_CH3I_MRAIL_SET_REMOTE_RNDV_INFO(&rndv, req);
+
+            MPIDI_CH3I_MRAILI_Get_rndv_rput(vc, req, &rndv, &iov);
+ 
+            if (MV2_RNDV_PROTOCOL_R3 == req->mrail.protocol) {
+                req->mrail.partner_id = get_resp_pkt->request_handle;
+                if (vc->smp.local_nodes < 0) {
+ 	                MPIDI_VC_revoke_seqnum_send(vc, get_resp_pkt->seqnum);
+                }
+                RENDEZVOUS_IN_PROGRESS(vc, req);
+                req->mrail.nearly_complete = 0;
+                PUSH_FLOWLIST(vc);
+            }
         }
+    } else {
+        MPIDI_CH3_Pkt_get_accum_resp_t *get_accum_resp_pkt = (MPIDI_CH3_Pkt_get_accum_resp_t *)resp_pkt;
+
+        if (MV2_RNDV_PROTOCOL_R3 == req->mrail.protocol) {
+            req->mrail.partner_id = get_accum_resp_pkt->request_handle;
+            if (vc->smp.local_nodes < 0) {
+                MPIDI_VC_revoke_seqnum_send(vc, get_accum_resp_pkt->seqnum);
+            }
+            RENDEZVOUS_IN_PROGRESS(vc, req);
+            req->mrail.nearly_complete = 0;
+            PUSH_FLOWLIST(vc);
+        } else {
+            MPID_IOV iov;
+            MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
+
+            iov.MPID_IOV_BUF = (void*) get_accum_resp_pkt;
+            iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_get_accum_resp_t);
+            get_accum_resp_pkt->protocol = MV2_RNDV_PROTOCOL_RPUT;
+
+            MPIDI_CH3I_MRAIL_SET_REMOTE_RNDV_INFO(&rndv, req);
+            MPIDI_CH3I_MRAILI_Get_rndv_rput(vc, req, &rndv, &iov);
+
+            if (MV2_RNDV_PROTOCOL_R3 == req->mrail.protocol) {
+                req->mrail.partner_id = get_accum_resp_pkt->request_handle;
+                if (vc->smp.local_nodes < 0) {
+                    MPIDI_VC_revoke_seqnum_send(vc, get_accum_resp_pkt->seqnum);
+                }
+
+                RENDEZVOUS_IN_PROGRESS(vc, req);
+                req->mrail.nearly_complete = 0;
+                PUSH_FLOWLIST(vc);
+            }
+        } 
     }
+
 #ifdef CKPT
     MPIDI_CH3I_CR_unlock();
 #endif

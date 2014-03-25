@@ -29,8 +29,12 @@ mpi_sources +=                       \
     src/mpi/comm/comm_split_type.c   \
     src/mpi/comm/comm_group_failed.c           \
     src/mpi/comm/comm_reenable_anysource.c     \
-    src/mpi/comm/comm_remote_group_failed.c    \
+    src/mpi/comm/comm_remote_group_failed.c
+
+if BUILD_OSU_MVAPICH
+mpi_sources +=                       \
     src/mpi/comm/create_2level_comm.c
+endif
 
 lib_lib@MPILIBNAME@_la_SOURCES += \
     src/mpi/comm/commutil.c

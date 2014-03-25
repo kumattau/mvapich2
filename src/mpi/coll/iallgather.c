@@ -453,13 +453,13 @@ int MPIR_Iallgather_intra(const void *sendbuf, int sendcount, MPI_Datatype sendt
     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
     tot_bytes = (MPI_Aint)recvcount * comm_size * recvtype_size;
 
-    if ((tot_bytes < MPIR_PARAM_ALLGATHER_LONG_MSG_SIZE) && !(comm_size & (comm_size - 1))) {
+    if ((tot_bytes < MPIR_CVAR_ALLGATHER_LONG_MSG_SIZE) && !(comm_size & (comm_size - 1))) {
         /* Short or medium size message and power-of-two no. of processes. Use
          * recursive doubling algorithm */
         mpi_errno = MPIR_Iallgather_rec_dbl(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm_ptr, s);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
-    else if (tot_bytes < MPIR_PARAM_ALLGATHER_SHORT_MSG_SIZE) {
+    else if (tot_bytes < MPIR_CVAR_ALLGATHER_SHORT_MSG_SIZE) {
         /* Short message and non-power-of-two no. of processes. Use
          * Bruck algorithm (see description above). */
         mpi_errno = MPIR_Iallgather_bruck(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm_ptr, s);
@@ -634,7 +634,8 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 /*@
-MPI_Iallgather - XXX description here
+MPI_Iallgather - Gathers data from all tasks and distribute the combined data
+                 to all tasks in a nonblocking way
 
 Input Parameters:
 + sendbuf - starting address of the send buffer (choice)
@@ -654,7 +655,9 @@ Output Parameters:
 
 .N Errors
 @*/
-int MPI_Iallgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, MPI_Comm comm, MPI_Request *request)
+int MPI_Iallgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+                   void *recvbuf, int recvcount, MPI_Datatype recvtype,
+                   MPI_Comm comm, MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;

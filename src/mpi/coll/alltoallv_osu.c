@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,6 @@
  */
 
 #include "mpiimpl.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 
 /* This is the default implementation of alltoallv. The algorithm is:
@@ -179,7 +178,6 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
 }
 
 /* end:nested */
-#endif                          /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Alltoallv_MV2
@@ -192,15 +190,9 @@ int MPIR_Alltoallv_MV2(const void *sendbuf, const int *sendcnts, const int *sdis
 {
     int mpi_errno = MPI_SUCCESS;
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     mpi_errno = MPIR_Alltoallv_intra_MV2(sendbuf, sendcnts, sdispls,
                                          sendtype, recvbuf, recvcnts,
                                          rdispls, recvtype, comm_ptr, errflag);
-#else                           /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
-    mpi_errno = MPIR_Alltoallv_intra(sendbuf, sendcnts, sdispls,
-                                     sendtype, recvbuf, recvcnts,
-                                     rdispls, recvtype, comm_ptr, errflag);
-#endif                          /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
     if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);

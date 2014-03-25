@@ -4,6 +4,18 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #if !defined(MPICH_MPIDI_CH3_PRE_H_INCLUDED)
 #define MPICH_MPIDI_CH3_PRE_H_INCLUDED
 #include "mpid_nem_pre.h"
@@ -14,6 +26,15 @@
     #include <winsock2.h>
     #include <windows.h>
 #endif
+
+#ifdef _OSU_MVAPICH_
+typedef struct MPIDI_CH3I_Process_group_s {
+    int local_process_id;
+    int num_local_processes;
+} MPIDI_CH3I_Process_group_t;
+
+#define MPIDI_CH3_PG_DECL MPIDI_CH3I_Process_group_t ch;
+#endif /* _OSU_MVAPICH_ */
 
 /*#define MPID_USE_SEQUENCE_NUMBERS*/
 /*#define HAVE_CH3_PRE_INIT*/

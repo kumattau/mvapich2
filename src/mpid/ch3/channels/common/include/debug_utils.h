@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -143,6 +143,9 @@ extern int DEBUG_MCST_verbose;
 
 // Verbosity level for SHMEM Collectives
 extern int DEBUG_SHM_verbose;
+
+// Verbosity level for Channel manager
+extern int DEBUG_CHM_verbose;
 
 // Initialize the verbosity level of the above variables
 extern int initialize_debug_variables();

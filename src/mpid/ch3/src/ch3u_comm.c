@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
- *  (C) 2011 by Argonne National Laboratory.
+ *  (C) 2012 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
@@ -205,6 +205,9 @@ int comm_created(MPID_Comm *comm, void *param)
 
     comm->ch.coll_active = TRUE;
     comm->ch.anysource_enabled = TRUE;
+
+    /* Use the VC's eager threshold by default. */
+    comm->ch.eager_max_msg_sz = -1;
 
     COMM_ADD(comm);
 

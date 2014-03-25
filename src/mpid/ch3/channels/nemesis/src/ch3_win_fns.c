@@ -14,9 +14,7 @@
 #define MPIDI_CH3_PAGESIZE_MASK (~(MPIDI_CH3_PAGESIZE-1))
 #define MPIDI_CH3_ROUND_UP_PAGESIZE(x) ((((MPI_Aint)x)+(~MPIDI_CH3_PAGESIZE_MASK)) & MPIDI_CH3_PAGESIZE_MASK)
 
-#ifdef USE_MPIU_INSTR
-MPIU_INSTR_DURATION_EXTERN_DECL(wincreate_allgather);
-#endif
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_wincreate_allgather);
 
 static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *info, MPID_Comm *comm_ptr,
                                        void *base_ptr, MPID_Win **win_ptr);
@@ -28,11 +26,23 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
 int MPIDI_CH3_Win_fns_init(MPIDI_CH3U_Win_fns_t *win_fns)
 {
     int mpi_errno = MPI_SUCCESS;
+    int mutex_err;
+    pthread_mutexattr_t attr;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_WIN_FNS_INIT);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3_WIN_FNS_INIT);
 
-    win_fns->allocate_shm = MPIDI_CH3I_Win_allocate_shm;
+    /* Test for PTHREAD_PROCESS_SHARED support.  Some platforms do not support
+     * this capability even though it is a part of the pthreads core API (e.g.,
+     * FreeBSD does not support this as of version 9.1) */
+    pthread_mutexattr_init(&attr);
+    mutex_err = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+    pthread_mutexattr_destroy(&attr);
+
+    /* Only allocate shared memory windows if we can use
+     * pthread_mutexattr_setpshared correctly. */
+    if (!mutex_err)
+        win_fns->allocate_shm = MPIDI_CH3I_Win_allocate_shm;
 
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_CH3_WIN_FNS_INIT);
 
@@ -73,7 +83,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
         char alloc_shared_nctg_value[MPI_MAX_INFO_VAL+1];
         MPIR_Info_get_impl(info, "alloc_shared_noncontig", MPI_MAX_INFO_VAL,
                            alloc_shared_nctg_value, &alloc_shared_nctg_flag);
-        if ((alloc_shared_nctg_flag == 1)) {
+        if (alloc_shared_nctg_flag == 1) {
             if (!strncmp(alloc_shared_nctg_value, "true", strlen("true")))
                 (*win_ptr)->info_args.alloc_shared_noncontig = 1;
             if (!strncmp(alloc_shared_nctg_value, "false", strlen("false")))
@@ -101,7 +111,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     node_size = node_comm_ptr->local_size;
     node_rank = node_comm_ptr->rank;
 
-    MPIU_INSTR_DURATION_START(wincreate_allgather);
+    MPIR_T_PVAR_TIMER_START(RMA, rma_wincreate_allgather);
     /* allocate memory for the base addresses, disp_units, and
        completion counters of all processes */
     MPIU_CHKPMEM_MALLOC((*win_ptr)->base_addrs, void **,
@@ -139,7 +149,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     mpi_errno = MPIR_Allgather_impl(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
                                     tmp_buf, 3 * sizeof(MPI_Aint), MPI_BYTE,
                                     (*win_ptr)->comm_ptr, &errflag);
-    MPIU_INSTR_DURATION_END(wincreate_allgather);
+    MPIR_T_PVAR_TIMER_END(RMA, rma_wincreate_allgather);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -120,7 +120,7 @@ read_dpm_specfile (int n_spawns)
             return NULL;
         }
 
-        memset(si, 0, sizeof(si));
+        memset(si, 0, sizeof(spawn_info_t));
 
         get_line(fp, buffer, 1);
         si->nprocs = atoi(buffer);

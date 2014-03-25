@@ -24,6 +24,7 @@ noinst_PROGRAMS =           \
     contig-zero-count       \
     contigstruct            \
     cxx-types               \
+    dataalign               \
     darray-pack             \
     darray-cyclic           \
     gaddress                \
@@ -35,12 +36,16 @@ noinst_PROGRAMS =           \
     hindexed_block_contents \
     indexed-misc            \
     large-count             \
+    large_type              \
+    large_type_sendrec      \
     lbub                    \
     localpack               \
     longdouble              \
     lots-of-types           \
     pairtype-pack           \
     pairtype-size-extent    \
+    sendrecvt2              \
+    sendrecvt4              \
     simple-commit           \
     simple-pack             \
     simple-pack-external    \
@@ -73,3 +78,10 @@ noinst_PROGRAMS =           \
     zeroblks                \
     zeroparms
 
+# Some of the tests use a more comprehensive set of datatype tests.
+# These must specify a different LDADD that includes the object file
+# with these additional routines
+LDADDDATA = $(top_builddir)/util/dtypes.$(OBJEXT)
+
+sendrecvt2_LDADD = $(LDADD) $(LDADDDATA)
+sendrecvt4_LDADD = $(LDADD) $(LDADDDATA)

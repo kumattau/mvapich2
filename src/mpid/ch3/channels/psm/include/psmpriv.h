@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -143,11 +143,16 @@ psm_error_t psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m,
 int psm_1sided_input(MPID_Request *req, int inlen);
 int psm_1sided_putpkt(MPIDI_CH3_Pkt_put_t *pkt, MPID_IOV *iov, int iov_n,
                        MPID_Request **rptr);
+int psm_1sided_atomicpkt(MPIDI_CH3_Pkt_t *pkt, MPID_IOV *iov, int iov_n,
+                       int rank, int srank, MPID_Request **rptr);
 int psm_1sided_accumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPID_IOV *iov, int iov_n,
+                       MPID_Request **rptr);
+int psm_1sided_getaccumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPID_IOV *iov, int iov_n,
                        MPID_Request **rptr);
 int psm_1sided_getresppkt(MPIDI_CH3_Pkt_get_resp_t *pkt, MPID_IOV *iov, int iov_n,
                        MPID_Request **rptr);
 int psm_getresp_complete(MPID_Request *req); 
+int psm_getaccumresp_complete(MPID_Request *req); 
 int psm_1sided_getpkt(MPIDI_CH3_Pkt_get_t *pkt, MPID_IOV *iov, int iov_n,
         MPID_Request **rptr);
 int psm_1sc_get_rndvrecv(MPID_Request *savreq, MPIDI_CH3_Pkt_t *pkt, int from_rank);

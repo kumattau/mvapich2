@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -40,10 +40,9 @@
 #include <netinet/in.h>
 #endif
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #include "rdma_impl.h"
 #endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 #include "coll_shmem_internal.h"
 #include "gather_tuning.h"
@@ -55,14 +54,26 @@
 #include "allgather_tuning.h"
 #include "red_scat_tuning.h"
 #include "allgatherv_tuning.h"
+#include "igather_tuning.h"
+#include "ibcast_tuning.h"
+#include "ialltoall_tuning.h"
+#include "ialltoallv_tuning.h"
+#include "iscatter_tuning.h"
+#include "iallreduce_tuning.h"
+#include "ireduce_tuning.h"
+#include "iallgather_tuning.h"
+#include "ired_scat_tuning.h"
+#include "iallgatherv_tuning.h"
+#include "ibarrier_tuning.h"
 #ifdef MRAIL_GEN2_INTERFACE
 #include <cr.h>
 #endif
 #if defined(_ENABLE_CUDA_)
 #include "datatype.h"
 #endif
+#include "debug_utils.h"
 
-#if defined(_OSU_PSM_)
+#if defined(CHANNEL_PSM)
 // TODO : expose debug infra structure to PSM interface
 #define DEBUG_SHM_verbose 1
 #define PRINT_DEBUG( COND, FMT, args... )
@@ -145,6 +156,7 @@ int mv2_gather_direct_system_size_medium = MV2_GATHER_DIRECT_SYSTEM_SIZE_MEDIUM;
 int mv2_use_xor_alltoall = 1;
 int mv2_enable_shmem_bcast = 1;
 int mv2_use_old_bcast = 0;
+int mv2_use_old_allgather = 0;
 int mv2_use_old_alltoall = 0;
 int mv2_alltoall_inplace_old = 0;
 int mv2_use_old_scatter = 0;
@@ -173,37 +185,97 @@ int mv2_mcast_scatter_large_sys_size = 2048;
 int mv2_use_mcast_scatter = 1;
 #endif                          /*  #if defined(_MCST_SUPPORT_) */
 
+/*Index tuning knobs*/
+int mv2_use_indexed_bcast_tuning = 1;
+int mv2_use_indexed_scatter_tuning = 1;
+int mv2_use_indexed_gather_tuning = 1;
+int mv2_use_indexed_reduce_tuning = 1;
+int mv2_use_indexed_allreduce_tuning = 1;
+int mv2_use_indexed_allgather_tuning = 1;
+int mv2_use_indexed_alltoall_tuning = 1;
+
 /* Runtime threshold for gather */
 int mv2_user_gather_switch_point = 0;
+int igather_segment_size = 8192;
+int mv2_enable_igather = 1;
 char *mv2_user_gather_intra = NULL;
+char *mv2_user_igather_intra = NULL;
 char *mv2_user_gather_inter = NULL;
+char *mv2_user_igather_inter = NULL;
 char *mv2_user_gather_intra_multi_lvl = NULL;
 
 /* runtime flag for alltoall tuning  */
 char *mv2_user_alltoall = NULL;
+char *mv2_user_ialltoall_intra = NULL;
+char *mv2_user_ialltoall_inter = NULL;
+int ialltoall_segment_size = 8192;
+int mv2_enable_ialltoall = 1;
+
+/* runtime flag for alltoallv tuning  */
+char *mv2_user_ialltoallv_intra = NULL;
+char *mv2_user_ialltoallv_inter = NULL;
+int ialltoallv_segment_size = 8192;
+int mv2_enable_ialltoallv = 1;
 
 /* Runtime threshold for bcast */
 char *mv2_user_bcast_intra = NULL;
+char *mv2_user_ibcast_intra = NULL;
 char *mv2_user_bcast_inter = NULL;
+char *mv2_user_ibcast_inter = NULL;
+int mv2_enable_ibcast = 1;
 
 /* Runtime threshold for scatter */
 char *mv2_user_scatter_intra = NULL;
 char *mv2_user_scatter_inter = NULL;
+char *mv2_user_iscatter_intra = NULL;
+char *mv2_user_iscatter_inter = NULL;
+int mv2_enable_iscatter = 1;
+int iscatter_segment_size = 8192;
 
 /* Runtime threshold for allreduce */
 char *mv2_user_allreduce_intra = NULL;
 char *mv2_user_allreduce_inter = NULL;
 int mv2_user_allreduce_two_level = 0;
+char *mv2_user_iallreduce_intra = NULL;
+char *mv2_user_iallreduce_inter = NULL;
+int iallreduce_segment_size = 8192;
+int mv2_enable_iallreduce = 1;
 
 /* Runtime threshold for reduce */
 char *mv2_user_reduce_intra = NULL;
 char *mv2_user_reduce_inter = NULL;
+char *mv2_user_ireduce_intra = NULL;
+char *mv2_user_ireduce_inter = NULL;
 int mv2_user_reduce_two_level = 0;
-int mv2_user_allgather_two_level = 0;
+int ireduce_segment_size = 8192;
+int mv2_enable_ireduce = 1;
+
+/* Runtime threshold for reduce */
+char *mv2_user_ireduce_scatter_intra = NULL;
+char *mv2_user_ireduce_scatter_inter = NULL;
+int ireduce_scatter_segment_size = 8192;
+int mv2_enable_ireduce_scatter = 1;
 
 /* Runtime threshold for allgather */
 char *mv2_user_allgather_intra = NULL;
 char *mv2_user_allgather_inter = NULL;
+char *mv2_user_iallgather_intra = NULL;
+char *mv2_user_iallgather_inter = NULL;
+int mv2_user_allgather_two_level = 0;
+int iallgather_segment_size = 8192;
+int mv2_enable_iallgather = 1;
+
+/* Runtime threshold for allgatherv */
+char *mv2_user_iallgatherv_intra = NULL;
+char *mv2_user_iallgatherv_inter = NULL;
+int iallgatherv_segment_size = 8192;
+int mv2_enable_iallgatherv = 1;
+
+/* Runtime threshold for barrier */
+char *mv2_user_ibarrier_intra = NULL;
+char *mv2_user_ibarrier_inter = NULL;
+int ibarrier_segment_size = 8192;
+int mv2_enable_ibarrier = 1;
 
 /* Runtime threshold for red_scat */
 char *mv2_user_red_scat_inter = NULL;
@@ -226,10 +298,13 @@ int mv2_bcast_scatter_ring_overlap_msg_upperbound = 1048576;
 int mv2_bcast_scatter_ring_overlap_cores_lowerbound = 32;
 int mv2_use_pipelined_bcast = 1;
 int bcast_segment_size = 8192;
+int ibcast_segment_size = 8192;
 
 static char *mv2_kvs_name;
 
 int mv2_use_osu_collectives = 1;
+int mv2_use_indexed_tuning = 1;
+int mv2_use_osu_nb_collectives = 1;
 int mv2_use_anl_collectives = 0;
 int mv2_shmem_coll_num_procs = 64;
 int mv2_shmem_coll_num_comm = 20;
@@ -266,12 +341,6 @@ void *smc_store;
 int smc_store_set;
 #endif
 
-#if OSU_MPIT
-unsigned long mv2_num_2level_comm_requests            = 0; 
-unsigned long mv2_num_2level_comm_success             = 0; 
-unsigned long mv2_num_shmem_coll_calls                = 0;
-#endif /* OSU_MPIT */
-
 #ifdef _ENABLE_CUDA_
 static void *mv2_cuda_host_send_buf = NULL;
 static void *mv2_cuda_host_recv_buf = NULL;
@@ -298,22 +367,36 @@ static int mv2_cuda_orig_recvcount = 0;
 static MPI_Datatype mv2_cuda_orig_recvtype;
 #endif
 
+/*
+ * MPIT variables used by collectives
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_2level_comm_requests);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_2level_comm_success);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_shmem_coll_calls);
+
 void MV2_collectives_arch_init(int heterogeneity)
 {
-
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     MV2_Read_env_vars();
     MV2_set_gather_tuning_table(heterogeneity);
+    MV2_set_igather_tuning_table(heterogeneity);
     MV2_set_bcast_tuning_table(heterogeneity);
+    MV2_set_ibcast_tuning_table(heterogeneity);
     MV2_set_alltoall_tuning_table(heterogeneity);
+    MV2_set_ialltoall_tuning_table(heterogeneity);
+    MV2_set_ialltoallv_tuning_table(heterogeneity);
     MV2_set_scatter_tuning_table(heterogeneity);
+    MV2_set_iscatter_tuning_table(heterogeneity);
     MV2_set_allreduce_tuning_table(heterogeneity);
+    MV2_set_iallreduce_tuning_table(heterogeneity);
     MV2_set_reduce_tuning_table(heterogeneity);
+    MV2_set_ireduce_tuning_table(heterogeneity);
     MV2_set_allgather_tuning_table(heterogeneity);
+    MV2_set_iallgather_tuning_table(heterogeneity);
     MV2_set_red_scat_tuning_table(heterogeneity);
+    MV2_set_ireduce_scatter_tuning_table(heterogeneity);
     MV2_set_allgatherv_tuning_table(heterogeneity);
-#endif                          /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
-
+    MV2_set_iallgatherv_tuning_table(heterogeneity);
+    MV2_set_ibarrier_tuning_table(heterogeneity);
 }
 
 /* Change the values set inside the array by the one define by the user */
@@ -387,7 +470,133 @@ static int tuning_runtime_init()
     if (mv2_user_bcast_inter != NULL) {
         MV2_internode_Bcast_is_define(mv2_user_bcast_inter, mv2_user_bcast_intra);
     }
-
+    
+    /* If MV2_INTRA_IBCAST_TUNING is define && MV2_INTER_BCAST_TUNING is not
+       define */
+    if (mv2_user_ibcast_intra != NULL && mv2_user_ibcast_inter == NULL) {
+        MV2_intranode_Ibcast_is_define(mv2_user_ibcast_intra);
+    }
+    
+    /* if MV2_INTER_IBCAST_TUNING is define with/without MV2_INTRA_IBCAST_TUNING */
+    if (mv2_user_ibcast_inter != NULL) {
+        MV2_internode_Ibcast_is_define(mv2_user_ibcast_inter, mv2_user_ibcast_intra);
+    }
+    
+    /* if MV2_INTRA_IGATHER_TUNING is define && MV2_INTER_IGATHER_TUNING is not
+       define */
+    if (mv2_user_igather_intra != NULL && mv2_user_igather_inter == NULL) {
+        MV2_intranode_Igather_is_define(mv2_user_igather_intra);
+    }
+    
+    /* if MV2_INTER_IGATHER_TUNING is define with/without MV2_INTRA_IGATHER_TUNING */
+    if (mv2_user_igather_inter != NULL) {
+        MV2_internode_Igather_is_define(mv2_user_igather_inter, mv2_user_igather_intra);
+    }
+    
+    /* if MV2_INTRA_ISCATTER_TUNING is define && MV2_INTER_ISCATTER_TUNING is not
+       define */
+    if (mv2_user_iscatter_intra != NULL && mv2_user_iscatter_inter == NULL) {
+        MV2_intranode_Iscatter_is_define(mv2_user_iscatter_intra);
+    }
+    
+    /* if MV2_INTER_ISCATTER_TUNING is define with/without MV2_INTRA_ISCATTER_TUNING */
+    if (mv2_user_iscatter_inter != NULL) {
+        MV2_internode_Iscatter_is_define(mv2_user_iscatter_inter, mv2_user_iscatter_intra);
+    }
+    
+    /* if MV2_INTRA_IREDUCE_TUNING is define && MV2_INTER_IREDUCE_TUNING is not
+       define */
+    if (mv2_user_ireduce_intra != NULL && mv2_user_ireduce_inter == NULL) {
+        MV2_intranode_Ireduce_is_define(mv2_user_ireduce_intra);
+    }
+    
+    /* if MV2_INTER_IREDUCE_TUNING is define with/without MV2_INTRA_IREDUCE_TUNING */
+    if (mv2_user_ireduce_inter != NULL) {
+        MV2_internode_Ireduce_is_define(mv2_user_ireduce_inter, mv2_user_ireduce_intra);
+    }
+    
+    /* if MV2_INTRA_IBARRIER_TUNING is define && MV2_INTER_IBARRIER_TUNING is not
+       define */
+    if (mv2_user_ibarrier_intra != NULL && mv2_user_ibarrier_inter == NULL) {
+        MV2_intranode_Ibarrier_is_define(mv2_user_ibarrier_intra);
+    }
+    
+    /* if MV2_INTER_IBARRIER_TUNING is define with/without MV2_INTRA_IBARRIER_TUNING */
+    if (mv2_user_ibarrier_inter != NULL) {
+        MV2_internode_Ibarrier_is_define(mv2_user_ibarrier_inter, mv2_user_ibarrier_intra);
+    }
+    
+    /* if MV2_INTRA_IALLREDUCE_TUNING is define && MV2_INTER_IALLREDUCE_TUNING is not
+       define */
+    if (mv2_user_iallreduce_intra != NULL && mv2_user_iallreduce_inter == NULL) {
+        MV2_intranode_Iallreduce_is_define(mv2_user_iallreduce_intra);
+    }
+    
+    /* if MV2_INTER_IALLREDUCE_TUNING is define with/without MV2_INTRA_IALLREDUCE_TUNING */
+    if (mv2_user_iallreduce_inter != NULL) {
+        MV2_internode_Iallreduce_is_define(mv2_user_iallreduce_inter, mv2_user_iallreduce_intra);
+    }
+    
+    /* if MV2_INTRA_IREDUCE_SCATTER_TUNING is define && MV2_INTER_IREDUCE_SCATTER_TUNING is not
+       define */
+    if (mv2_user_ireduce_scatter_intra != NULL && mv2_user_ireduce_scatter_inter == NULL) {
+        MV2_intranode_Ireduce_scatter_is_define(mv2_user_ireduce_scatter_intra);
+    }
+    
+    /* if MV2_INTER_IREDUCE_SCATTER_TUNING is define with/without MV2_INTRA_IREDUCE_SCATTER_TUNING */
+    if (mv2_user_ireduce_scatter_inter != NULL) {
+        MV2_internode_Ireduce_scatter_is_define(mv2_user_ireduce_scatter_inter,
+						mv2_user_ireduce_scatter_intra);
+    }
+    
+    /* if MV2_INTRA_IALLTOALL_TUNING is define && MV2_INTER_IALLTOALL_TUNING is not
+       define */
+    if (mv2_user_ialltoall_intra != NULL && mv2_user_ialltoall_inter == NULL) {
+        MV2_intranode_Ialltoall_is_define(mv2_user_ialltoall_intra);
+    }
+    
+    /* if MV2_INTER_IALLTOALL_TUNING is define with/without MV2_INTRA_IALLTOALL_TUNING */
+    if (mv2_user_ialltoall_inter != NULL) {
+        MV2_internode_Ialltoall_is_define(mv2_user_ialltoall_inter,
+					  mv2_user_ialltoall_intra);
+    }
+    
+    /* if MV2_INTRA_IALLTOALLV_TUNING is define && MV2_INTER_IALLTOALLV_TUNING is not
+       define */
+    if (mv2_user_ialltoallv_intra != NULL && mv2_user_ialltoallv_inter == NULL) {
+        MV2_intranode_Ialltoallv_is_define(mv2_user_ialltoallv_intra);
+    }
+    
+    /* if MV2_INTER_IALLTOALLV_TUNING is define with/without MV2_INTRA_IALLTOALLV_TUNING */
+    if (mv2_user_ialltoallv_inter != NULL) {
+        MV2_internode_Ialltoallv_is_define(mv2_user_ialltoallv_inter,
+					  mv2_user_ialltoallv_intra);
+    }
+    
+    /* if MV2_INTRA_IALLGATHER_TUNING is define && MV2_INTER_IALLGATHER_TUNING is not
+       define */
+    if (mv2_user_iallgather_intra != NULL && mv2_user_iallgather_inter == NULL) {
+        MV2_intranode_Iallgather_is_define(mv2_user_iallgather_intra);
+    }
+    
+    /* if MV2_INTER_IALLGATHER_TUNING is define with/without MV2_INTRA_IALLGATHER_TUNING */
+    if (mv2_user_iallgather_inter != NULL) {
+        MV2_internode_Iallgather_is_define(mv2_user_iallgather_inter,
+					  mv2_user_iallgather_intra);
+    }
+    
+    /* if MV2_INTRA_IALLGATHERV_TUNING is define && MV2_INTER_IALLGATHERV_TUNING is not
+       define */
+    if (mv2_user_iallgatherv_intra != NULL && mv2_user_iallgatherv_inter == NULL) {
+        MV2_intranode_Iallgatherv_is_define(mv2_user_iallgatherv_intra);
+    }
+    
+    /* if MV2_INTER_IALLGATHERV_TUNING is define with/without MV2_INTRA_IALLGATHERV_TUNING */
+    if (mv2_user_iallgatherv_inter != NULL) {
+        MV2_internode_Iallgatherv_is_define(mv2_user_iallgatherv_inter,
+					  mv2_user_iallgatherv_intra);
+    }
+    
     /* If MV2_INTRA_SCATTER_TUNING is define && MV2_INTER_SCATTER_TUNING is not
        define */
     if (mv2_user_scatter_intra != NULL && mv2_user_scatter_inter == NULL) {
@@ -398,7 +607,7 @@ static int tuning_runtime_init()
     if (mv2_user_scatter_inter != NULL) {
         MV2_internode_Scatter_is_define(mv2_user_scatter_inter, mv2_user_scatter_intra);
     }
-
+    
     /* If MV2_INTRA_ALLREDUCE_TUNING is define && MV2_INTER_ALLREDUCE_TUNING is not define */
     if (mv2_user_allreduce_intra != NULL && mv2_user_allreduce_inter == NULL) {
         MV2_intranode_Allreduce_is_define(mv2_user_allreduce_intra);
@@ -451,14 +660,25 @@ static int tuning_runtime_init()
 void MV2_collectives_arch_finalize()
 {
     MV2_cleanup_gather_tuning_table();
+    MV2_cleanup_igather_tuning_table();
     MV2_cleanup_bcast_tuning_table();
+    MV2_cleanup_ibcast_tuning_table();
     MV2_cleanup_alltoall_tuning_table();
+    MV2_cleanup_ialltoall_tuning_table();
+    MV2_cleanup_ialltoallv_tuning_table();
     MV2_cleanup_scatter_tuning_table();
+    MV2_cleanup_iscatter_tuning_table();
     MV2_cleanup_allreduce_tuning_table();
+    MV2_cleanup_iallreduce_tuning_table();
     MV2_cleanup_reduce_tuning_table();
+    MV2_cleanup_ireduce_tuning_table();
+    MV2_cleanup_ireduce_scatter_tuning_table();
     MV2_cleanup_allgather_tuning_table();
+    MV2_cleanup_iallgather_tuning_table();
     MV2_cleanup_red_scat_tuning_table();
     MV2_cleanup_allgatherv_tuning_table();
+    MV2_cleanup_iallgatherv_tuning_table();
+    MV2_cleanup_ibarrier_tuning_table();
 }
 
 void MPIDI_CH3I_SHMEM_COLL_Cleanup()
@@ -1245,6 +1465,114 @@ void MV2_Read_env_vars(void)
             mv2_use_anl_collectives = 1;
         }
     }
+    
+    if ((value = getenv("MV2_USE_OSU_NB_COLLECTIVES")) != NULL) {
+        if (atoi(value) == 1) {
+            mv2_use_osu_nb_collectives = 1;
+        } else {
+            mv2_use_osu_nb_collectives = 0;
+            mv2_use_anl_collectives = 1;
+        }
+    }
+    
+    if ((value = getenv("MV2_USE_INDEXED_TUNING")) != NULL) {
+        if (atoi(value) == 1) {
+            mv2_use_indexed_tuning = 1;
+        } else {
+            mv2_use_indexed_tuning = 0;
+        }
+    }
+    
+    if ((value = getenv("MV2_USE_INDEXED_BCAST_TUNING")) != NULL) {
+        if (atoi(value) == 1) {
+            mv2_use_indexed_bcast_tuning = 1;
+        } else {
+            mv2_use_indexed_bcast_tuning = 0;
+        }
+    }
+    
+    if ((value = getenv("MV2_USE_INDEXED_SCATTER_TUNING")) != NULL) {
+        if (atoi(value) == 1) {
+            mv2_use_indexed_scatter_tuning = 1;
+        } else {
+            mv2_use_indexed_scatter_tuning = 0;
+        }
+    }
+    
+    if ((value = getenv("MV2_USE_INDEXED_GATHER_TUNING")) != NULL) {
+        if (atoi(value) == 1) {
+            mv2_use_indexed_gather_tuning = 1;
+        } else {
+            mv2_use_indexed_gather_tuning = 0;
+        }
+    }
+    
+    if ((value = getenv("MV2_USE_INDEXED_REDUCE_TUNING")) != NULL) {
+        if (atoi(value) == 1) {
+            mv2_use_indexed_reduce_tuning = 1;
+        } else {
+            mv2_use_indexed_reduce_tuning = 0;
+        }
+    }
+    
+    if ((value = getenv("MV2_USE_INDEXED_ALLREDUCE_TUNING")) != NULL) {
+        if (atoi(value) == 1) {
+            mv2_use_indexed_allreduce_tuning = 1;
+        } else {
+            mv2_use_indexed_allreduce_tuning = 0;
+        }
+    }
+    
+    if ((value = getenv("MV2_USE_INDEXED_ALLGATHER_TUNING")) != NULL) {
+        if (atoi(value) == 1) {
+            mv2_use_indexed_allgather_tuning = 1;
+        } else {
+            mv2_use_indexed_allgather_tuning = 0;
+        }
+    }
+    
+    if ((value = getenv("MV2_USE_INDEXED_ALLTOALL_TUNING")) != NULL) {
+        if (atoi(value) == 1) {
+            mv2_use_indexed_alltoall_tuning = 1;
+        } else {
+            mv2_use_indexed_alltoall_tuning = 0;
+        }
+    }
+    
+    if ((value = getenv("MV2_IBCAST_ENABLE")) != NULL) {
+        mv2_enable_ibcast = atoi(value);
+    }
+    if ((value = getenv("MV2_IGATHER_ENABLE")) != NULL) {
+        mv2_enable_igather = atoi(value);
+    }
+    if ((value = getenv("MV2_ISCATTER_ENABLE")) != NULL) {
+        mv2_enable_iscatter = atoi(value);
+    }
+    if ((value = getenv("MV2_IALLGATHER_ENABLE")) != NULL) {
+        mv2_enable_iallgather = atoi(value);
+    }
+    if ((value = getenv("MV2_IREDUCE_ENABLE")) != NULL) {
+        mv2_enable_ireduce = atoi(value);
+    }
+    if ((value = getenv("MV2_IALLREDUCE_ENABLE")) != NULL) {
+        mv2_enable_iallreduce = atoi(value);
+    }
+    if ((value = getenv("MV2_IREDUCE_SCATTER_ENABLE")) != NULL) {
+        mv2_enable_ireduce_scatter = atoi(value);
+    }
+    if ((value = getenv("MV2_IALLTOALL_ENABLE")) != NULL) {
+        mv2_enable_ialltoall = atoi(value);
+    }
+    if ((value = getenv("MV2_IALLTOALLV_ENABLE")) != NULL) {
+        mv2_enable_ialltoallv = atoi(value);
+    }
+    if ((value = getenv("MV2_IALLGATHERV_ENABLE")) != NULL) {
+        mv2_enable_iallgatherv = atoi(value);
+    }
+    if ((value = getenv("MV2_IBARRIER_ENABLE")) != NULL) {
+        mv2_enable_ibarrier = atoi(value);
+    }
+    
     if ((value = getenv("MV2_USE_SHMEM_COLL")) != NULL) {
         flag = (int) atoi(value);
         if (flag > 0)
@@ -1448,6 +1776,13 @@ void MV2_Read_env_vars(void)
         else
             mv2_use_old_bcast = 0;
     }
+    if ((value = getenv("MV2_USE_OLD_ALLGATHER")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag > 0)
+            mv2_use_old_allgather = 1;
+        else
+            mv2_use_old_allgather = 0;
+    }
     if ((value = getenv("MV2_USE_OLD_SCATTER")) != NULL) {
         flag = (int) atoi(value);
         if (flag > 0)
@@ -1600,8 +1935,24 @@ void MV2_Read_env_vars(void)
         mv2_user_bcast_intra = value;
         mv2_tune_parameter = 1;
     }
+    if ((value = getenv("MV2_INTRA_IBCAST_TUNING")) != NULL) {
+        mv2_user_ibcast_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTRA_IGATHER_TUNING")) != NULL) {
+        mv2_user_igather_intra = value;
+        mv2_tune_parameter = 1;
+    }
     if ((value = getenv("MV2_INTER_BCAST_TUNING")) != NULL) {
         mv2_user_bcast_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_IBCAST_TUNING")) != NULL) {
+        mv2_user_ibcast_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_IGATHER_TUNING")) != NULL) {
+        mv2_user_igather_inter = value;
         mv2_tune_parameter = 1;
     }
     if ((value = getenv("MV2_ALLTOALL_TUNING")) != NULL) {
@@ -1617,6 +1968,15 @@ void MV2_Read_env_vars(void)
         mv2_user_scatter_inter = value;
         mv2_tune_parameter = 1;
     }
+    
+    if ((value = getenv("MV2_INTRA_ISCATTER_TUNING")) != NULL) {
+        mv2_user_iscatter_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_ISCATTER_TUNING")) != NULL) {
+        mv2_user_iscatter_inter = value;
+        mv2_tune_parameter = 1;
+    }
 
     if ((value = getenv("MV2_INTRA_ALLREDUCE_TUNING")) != NULL) {
         mv2_user_allreduce_intra = value;
@@ -1624,6 +1984,15 @@ void MV2_Read_env_vars(void)
     }
     if ((value = getenv("MV2_INTER_ALLREDUCE_TUNING")) != NULL) {
         mv2_user_allreduce_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    
+    if ((value = getenv("MV2_INTRA_IALLREDUCE_TUNING")) != NULL) {
+        mv2_user_iallreduce_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_IALLREDUCE_TUNING")) != NULL) {
+        mv2_user_iallreduce_inter = value;
         mv2_tune_parameter = 1;
     }
 
@@ -1635,8 +2004,73 @@ void MV2_Read_env_vars(void)
         mv2_user_reduce_inter = value;
         mv2_tune_parameter = 1;
     }
+    
+    if ((value = getenv("MV2_INTRA_IREDUCE_TUNING")) != NULL) {
+        mv2_user_ireduce_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    
+    if ((value = getenv("MV2_INTER_IREDUCE_TUNING")) != NULL) {
+        mv2_user_ireduce_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    
+    if ((value = getenv("MV2_INTRA_IREDUCE_SCATTER_TUNING")) != NULL) {
+        mv2_user_ireduce_scatter_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    
+    if ((value = getenv("MV2_INTER_IREDUCE_SCATTER_TUNING")) != NULL) {
+        mv2_user_ireduce_scatter_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    
     if ((value = getenv("MV2_INTER_ALLGATHER_TUNING")) != NULL) {
         mv2_user_allgather_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_IALLGATHER_TUNING")) != NULL) {
+        mv2_user_iallgather_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTRA_IALLGATHER_TUNING")) != NULL) {
+        mv2_user_iallgather_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    
+    if ((value = getenv("MV2_INTRA_IALLTOALL_TUNING")) != NULL) {
+        mv2_user_ialltoall_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_IALLTOALL_TUNING")) != NULL) {
+        mv2_user_ialltoall_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    
+    if ((value = getenv("MV2_INTRA_IALLTOALLV_TUNING")) != NULL) {
+        mv2_user_ialltoallv_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_IALLTOALLV_TUNING")) != NULL) {
+        mv2_user_ialltoallv_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    
+    if ((value = getenv("MV2_INTER_IALLGATHERV_TUNING")) != NULL) {
+        mv2_user_iallgatherv_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTRA_IALLGATHERV_TUNING")) != NULL) {
+        mv2_user_iallgatherv_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    
+    if ((value = getenv("MV2_INTRA_IBARRIER_TUNING")) != NULL) {
+        mv2_user_ibarrier_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_IBARRIER_TUNING")) != NULL) {
+        mv2_user_ibarrier_inter = value;
         mv2_tune_parameter = 1;
     }
 
@@ -1808,17 +2242,17 @@ void MV2_Read_env_vars(void)
         || rdma_enable_mcast  == 1
 #endif /* #if defined(_MCST_SUPPORT_) */ 
       ) { 
-       /* Disable zero-copy bcsat if slot-shmem, or slot-shmem-bcast params
+       /* Disable zero-copy bcast if slot-shmem, or slot-shmem-bcast params
         * are off, or when mcast is on */ 
        mv2_enable_zcpy_bcast = 0; 
     } 
 
     /* Override MPICH2 default env values for Gatherv */
-    MPIR_PARAM_GATHERV_INTER_SSEND_MIN_PROCS = 1024;
+    MPIR_CVAR_GATHERV_INTER_SSEND_MIN_PROCS = 1024;
     if ((value = getenv("MV2_GATHERV_SSEND_MIN_PROCS")) != NULL) {
         flag = (int) atoi(value);
         if (flag > 0)
-            MPIR_PARAM_GATHERV_INTER_SSEND_MIN_PROCS = flag;
+            MPIR_CVAR_GATHERV_INTER_SSEND_MIN_PROCS = flag;
     }
     init_thread_reg();
 }
@@ -1844,7 +2278,7 @@ int cuda_stage_alloc(void **send_buf, int sendsize,
         }
         mv2_cuda_host_sendbuf_size =
             sendsize < rdma_cuda_block_size ? rdma_cuda_block_size : sendsize;
-        result = posix_memalign(&mv2_cuda_host_send_buf, page_size, mv2_cuda_host_sendbuf_size);
+        result = MPIU_Memalign(&mv2_cuda_host_send_buf, page_size, mv2_cuda_host_sendbuf_size);
         if ((result != 0) || (NULL == mv2_cuda_host_send_buf)) {
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                              FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
@@ -1864,7 +2298,7 @@ int cuda_stage_alloc(void **send_buf, int sendsize,
         }
         mv2_cuda_host_recvbuf_size =
             recvsize < rdma_cuda_block_size ? rdma_cuda_block_size : recvsize;
-        result = posix_memalign(&mv2_cuda_host_recv_buf, page_size, mv2_cuda_host_recvbuf_size);
+        result = MPIU_Memalign(&mv2_cuda_host_recv_buf, page_size, mv2_cuda_host_recvbuf_size);
         if ((result != 0) || (NULL == mv2_cuda_host_recv_buf)) {
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                              FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
@@ -2004,7 +2438,7 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
             }
             mv2_cuda_host_sendbuf_size = total_send_size < rdma_cuda_block_size ?
                 rdma_cuda_block_size : total_send_size;
-            result = posix_memalign(&mv2_cuda_host_send_buf, page_size, mv2_cuda_host_sendbuf_size);
+            result = MPIU_Memalign(&mv2_cuda_host_send_buf, page_size, mv2_cuda_host_sendbuf_size);
             if ((result != 0) || (NULL == mv2_cuda_host_send_buf)) {
                 mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                                  FCNAME, __LINE__, MPI_ERR_OTHER,
@@ -2040,7 +2474,7 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
             }
             mv2_cuda_host_recvbuf_size = total_recv_size < rdma_cuda_block_size ?
                 rdma_cuda_block_size : total_recv_size;
-            result = posix_memalign(&mv2_cuda_host_recv_buf, page_size, mv2_cuda_host_recvbuf_size);
+            result = MPIU_Memalign(&mv2_cuda_host_recv_buf, page_size, mv2_cuda_host_recvbuf_size);
             if ((result != 0) || (NULL == mv2_cuda_host_recv_buf)) {
                 mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                                  FCNAME, __LINE__, MPI_ERR_OTHER,
@@ -2732,7 +3166,7 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
     } 
     shmem->write++;
     shmem->read++;
-#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) 
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
     if (shmem->half_full_complete == 0 &&
         IS_SHMEM_WINDOW_HALF_FULL(shmem->write, shmem->tail)) {
         PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window half full: %d \n", shmem->write);
@@ -2790,13 +3224,13 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
         shmem->tail = shmem->read;
         shmem->half_full_complete = 0;
     }
-#else /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
+#else /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
     if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
         PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %d \n", shmem->write);
         mv2_shm_barrier(shmem);
         shmem->tail = shmem->read;
     }
-#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
+#endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 
 fn_exit:
     return mpi_errno;
@@ -2805,7 +3239,7 @@ fn_fail:
 }
 
 
-#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) 
+#ifdef CHANNEL_MRAIL_GEN2
 int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                        int src, int expected_recv_count,
                        int *dst_array, int expected_send_count,
@@ -2888,6 +3322,16 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                     } while( j < rdma_num_hcas);
                     remote_handle_info_children[i].peer_rank = dst_array[i];
                 }
+
+                /* Trac #657: Wait till VC is ready to send */
+                for(i = 0; i < expected_send_count; i++) {
+                    MPIDI_Comm_get_vc(leader_commptr, remote_handle_info_children[i].peer_rank, &vc);
+                    while (VC_NOT_READY(vc)) {
+                        /* Yield CPU and wait for CM thread to complete connection */
+                        MPIU_PW_Sched_yield();
+                    }
+                }
+
                 shmem->bcast_exchange_rdma_keys          = 0;
                 shmem->bcast_knomial_factor              = knomial_degree;
                 shmem->bcast_remote_handle_info_parent   = remote_handle_info_parent;
@@ -2938,7 +3382,11 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                 MPIDI_Comm_get_vc(leader_commptr, remote_handle_info_children[i].peer_rank, &vc);
                 offset= ((uintptr_t ) (shmem->queue[intra_node_root].shm_slots[windex]->buf) -
                           (uintptr_t ) (shmem->buffer));
+#ifdef CHANNEL_NEMESIS_IB
+                rail = MPIDI_nem_ib_send_select_rail(vc);
+#else
                 rail = MRAILI_Send_select_rail(vc);
+#endif
                 hca_num = rail / (rdma_num_rails / rdma_num_hcas);
 
                 local_rdma_addr  =  (uint64_t) (shmem->queue[intra_node_root].shm_slots[windex]->buf);
@@ -3261,6 +3709,13 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                     } while( j < rdma_num_hcas);
                     remote_handle_info_parent->peer_rank = dst;
                     remote_handle_info_parent->recv_id   = pkt.recv_id; 
+
+                    /* Trac #657: Wait till VC is ready to send */
+                    MPIDI_Comm_get_vc(leader_commptr, remote_handle_info_parent->peer_rank, &vc);
+                    while (VC_NOT_READY(vc)) {
+                        /* Yield CPU and wait for CM thread to complete connection */
+                        MPIU_PW_Sched_yield();
+                    }
                } 
  
                if(expected_recv_count > 0) { 
@@ -3400,7 +3855,11 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
             offset = (slot_len*mv2_shm_window_size)*(row_id) 
                              + slot_len*(windex + 1) 
                              + sizeof(shm_slot_cntrl_t); 
+#ifdef CHANNEL_NEMESIS_IB
+            rail = MPIDI_nem_ib_send_select_rail(vc);
+#else
             rail = MRAILI_Send_select_rail(vc);
+#endif
             hca_num = rail / (rdma_num_rails / rdma_num_hcas);
 
             local_rdma_addr  =  (uint64_t) (shmem->queue[intra_node_root].shm_slots[windex]->buf);
@@ -3432,7 +3891,7 @@ fn_fail:
     goto fn_exit;
 
 }
-#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) */ 
+#endif /* CHANNEL_MRAIL_GEN2 */
 
 
 int mv2_reduce_knomial_trace(int root, int mv2_reduce_knomial_factor,
@@ -3576,17 +4035,18 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
 
 
     ptr = shmem->buffer;
-    shmem->queue = (shm_queue_t *) malloc(sizeof (shm_queue_t *) * local_size);
+    shmem->queue = (shm_queue_t *) MPIU_Malloc(sizeof (shm_queue_t *)
+            * local_size);
     for (k = 0; k < local_size; k++) {
         shmem->queue[k].shm_slots = (shm_slot_t **)
-            malloc(mv2_shm_window_size * sizeof (shm_slot_t *));
+            MPIU_Malloc(mv2_shm_window_size * sizeof (shm_slot_t *));
         for (i = 0; i < mv2_shm_window_size; i++) {
             shmem->queue[k].shm_slots[i] = (shm_slot_t *) ptr;
             ptr += slot_len;
         }
     }
 
-#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) 
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
     shmem->bcast_remote_handle_info_parent = NULL; 
     shmem->bcast_remote_handle_info_children = NULL; 
     shmem->bcast_knomial_factor = -1; 
@@ -3611,7 +4071,7 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     for ( k = 0 ; k < rdma_num_hcas; k++ ) {
         shmem->mem_handle[k] = NULL; 
     } 
-#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
+#endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 
     mv2_shm_barrier(shmem);
 
@@ -3638,9 +4098,16 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
 
 void mv2_shm_coll_cleanup(shmem_info_t * shmem)
 {
+    int k;
     PRINT_DEBUG(DEBUG_SHM_verbose > 0, " Cleanup shmem file:%s fd:%d size:%d\n",
                 shmem->file_name, shmem->file_fd, shmem->size);
-#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
+    for (k = 0; k < shmem->local_size; k++) {
+        if (&(shmem->queue[k]) != NULL) {
+	    MPIU_Free(shmem->queue[k].shm_slots);
+        }
+    }
+    if (shmem->queue != NULL) MPIU_Free(shmem->queue);
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
     int mpi_errno = MPI_SUCCESS;
     MPI_Status status;
 
@@ -3678,7 +4145,7 @@ void mv2_shm_coll_cleanup(shmem_info_t * shmem)
     if( shmem->inter_node_reduce_status_array != NULL ) {
         MPIU_Free(shmem->inter_node_reduce_status_array);
     }
-#endif /*#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) */
+#endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
     if (shmem->buffer != NULL) {
         munmap(shmem->buffer, shmem->size);
     }
@@ -3691,5 +4158,3 @@ void mv2_shm_coll_cleanup(shmem_info_t * shmem)
         shmem->file_name = NULL;
     }
 }
-
-#endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */

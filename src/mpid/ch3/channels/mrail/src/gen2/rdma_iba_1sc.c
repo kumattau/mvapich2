@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -91,8 +91,6 @@ do {                                                                        \
 #define SHM_FILENAME_LEN (sizeof(SHM_DIR) + PID_CHAR_LEN + 20)
 
 unsigned short rma_shmid = 100;
-
-MPIDI_Win_pending_lock_t *pending_lock_winlist;
 
 typedef enum {
    SINGLE=0,
@@ -446,7 +444,6 @@ void mv2_rma_deallocate_shm(void *addr, int size)
 #define FCNAME MPIDI_QUOTE(FCNAME)
 void *MPIDI_CH3I_Alloc_mem (size_t size, MPID_Info *info)
 {
-   int mpi_errno = MPI_SUCCESS;
    char value[10] = "";
    int flag = 0;
    void *ptr = NULL;
@@ -455,18 +452,7 @@ void *MPIDI_CH3I_Alloc_mem (size_t size, MPID_Info *info)
        MPIR_Info_get_impl(info, "alloc_shm", 10, value, &flag);
    }
 
-   if(size > 0 && SMP_INIT && (mv2_MPIDI_CH3I_RDMA_Process.has_shm_one_sided || 
-      (flag && !strcmp(value, "true")))) {
-      mpi_errno = mv2_allocate_shm_local(size, &ptr);
-      if(mpi_errno != MPI_SUCCESS) {
-          DEBUG_PRINT("shared memory allocation failed in MPIDI_CH3I_Alloc_mem: \
-                     %d \n", mpi_errno);
-          ptr = MPIU_Malloc(size);
-      }
-   }
-   else {
-      ptr = MPIU_Malloc(size);
-   }
+   ptr = MPIU_Malloc(size);
 
    return ptr;
 }
@@ -491,154 +477,6 @@ void MPIDI_CH3I_Free_mem (void *ptr)
    } else {
       MPIU_Free(ptr);
    }
-}
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_SHM_win_lock_enqueue
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
-void MPIDI_CH3I_SHM_win_lock_enqueue (MPID_Win *win_ptr) 
-{
-    MPIDI_Win_pending_lock_t *new;
-
-    if (*((volatile int *) &win_ptr->shm_lock_queued) == 0) {
-        new = MPIU_Malloc(sizeof(MPIDI_Win_pending_lock_t));
-        new->win_ptr = win_ptr;
-        new->next = pending_lock_winlist;
-        pending_lock_winlist = new;
-        win_ptr->shm_lock_queued = 1;
-    }
-}
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_SHM_win_lock
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
-int MPIDI_CH3I_SHM_win_lock (int dest_rank, int lock_type_requested, 
-                    MPID_Win *win_ptr, int blocking, 
-                    shared_memory_lock_flag_t type)
-{          
-    int mpi_errno = MPI_SUCCESS;
-    int l_dest_rank, lock_acquired = 0;
-    
-    l_dest_rank = win_ptr->shm_g2l_rank[dest_rank];
-
-    /*Wait and acquire shm lock*/ 
-    do {
-        if (lock_type_requested == MPI_LOCK_EXCLUSIVE) {
-            while(*((volatile int *) &win_ptr->shm_lock[l_dest_rank])
-                      != MPID_LOCK_NONE && blocking == 1) {
-                mpi_errno = MPIDI_CH3I_Progress_test();
-                if (mpi_errno != MPI_SUCCESS) { 
-                    ibv_error_abort (GEN_EXIT_ERR, 
-                            "rdma_iba_1sc : Progress test returned error \n");
-                }
-            }
-            mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, l_dest_rank);
-            if (mpi_errno != MPI_SUCCESS) { 
-                ibv_error_abort (GEN_EXIT_ERR, "mutex lock error \n");
-            }
-            if(*((volatile int *) &win_ptr->shm_lock[l_dest_rank])
-                    == MPID_LOCK_NONE) {
-                win_ptr->shm_lock[l_dest_rank] = MPI_LOCK_EXCLUSIVE;
-                lock_acquired = MPI_LOCK_EXCLUSIVE;
-                if (type == ACQUIRE_SHARED_LOCK){
-                    win_ptr->targets[dest_rank].remote_lock_state = MPIDI_CH3_WIN_LOCK_GRANTED;
-                    win_ptr->targets[dest_rank].remote_lock_mode = MPI_LOCK_EXCLUSIVE;
-                }
-            }
-            mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_dest_rank); 
-            if (mpi_errno != MPI_SUCCESS) {
-                ibv_error_abort (GEN_EXIT_ERR, "mutex unlock error \n");
-            }
-        } else if (lock_type_requested == MPI_LOCK_SHARED) {
-            while(*((volatile int *) &win_ptr->shm_lock[l_dest_rank])
-                    == MPI_LOCK_EXCLUSIVE && blocking == 1) {
-                mpi_errno = MPIDI_CH3I_Progress_test();
-                if (mpi_errno != MPI_SUCCESS) {
-                    ibv_error_abort (GEN_EXIT_ERR,
-                            "rdma_iba_1sc : Progress test returned error \n");
-                }
-            }
-            mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, l_dest_rank);
-            if (mpi_errno != MPI_SUCCESS) {
-                ibv_error_abort (GEN_EXIT_ERR, "mutex lock error \n");
-            }
-            if(*((volatile int *) &win_ptr->shm_lock[l_dest_rank])
-                    != MPI_LOCK_EXCLUSIVE) {
-                win_ptr->shm_lock[l_dest_rank] = MPI_LOCK_SHARED;
-                lock_acquired = MPI_LOCK_SHARED;
-                win_ptr->shm_shared_lock_count[l_dest_rank] += 1;
-                if (type == ACQUIRE_SHARED_LOCK){
-                    win_ptr->targets[dest_rank].remote_lock_state = MPIDI_CH3_WIN_LOCK_GRANTED;
-                    win_ptr->targets[dest_rank].remote_lock_mode = MPI_LOCK_SHARED;
-                }
-            }
-            mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_dest_rank); 
-            if (mpi_errno != MPI_SUCCESS) {
-                ibv_error_abort (GEN_EXIT_ERR, "mutex unlock error \n");
-            }
-        }
-    } while (blocking == 1 && lock_acquired == 0);
-
-    return lock_acquired;
-}
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_SHM_win_unlock
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
-void MPIDI_CH3I_SHM_win_unlock (int dest_rank, MPID_Win *win_ptr,
-                    shared_memory_lock_flag_t type)
-{
-    int mpi_errno = MPI_SUCCESS;
-    int l_dest_rank, lock_type;
-
-    l_dest_rank = win_ptr->shm_g2l_rank[dest_rank];
-    lock_type = *((volatile int *) &win_ptr->shm_lock[l_dest_rank]);
-
-    /*Release shmem lock*/
-    if (lock_type == MPI_LOCK_EXCLUSIVE) {
-        mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, l_dest_rank); 
-        if (mpi_errno != MPI_SUCCESS) {
-            ibv_error_abort (GEN_EXIT_ERR, "mutex lock error \n");
-        }
-        win_ptr->shm_lock[l_dest_rank] = MPID_LOCK_NONE;
-        win_ptr->shm_lock_released[l_dest_rank] = 1;
-        win_ptr->targets[dest_rank].remote_lock_state = MPIDI_CH3_WIN_LOCK_NONE;
-        win_ptr->targets[dest_rank].remote_lock_mode = 0;
-        mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_dest_rank);
-        if (mpi_errno != MPI_SUCCESS) {
-            ibv_error_abort (GEN_EXIT_ERR, "mutex unlock error \n");
-        }
-    } else if (lock_type == MPI_LOCK_SHARED) {
-        mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, l_dest_rank);
-        if (mpi_errno != MPI_SUCCESS) {
-            ibv_error_abort (GEN_EXIT_ERR, "mutex lock error \n");
-        }
-        if(type == RELEASE_LOCK) {
-            win_ptr->shm_shared_lock_count[l_dest_rank] -= 1;
-            if(*((volatile long *)
-                        &win_ptr->shm_shared_lock_count[l_dest_rank]) == 0) {
-                win_ptr->shm_lock[l_dest_rank] = MPID_LOCK_NONE;
-                win_ptr->targets[dest_rank].remote_lock_mode = 0;
-                win_ptr->shm_lock_released[l_dest_rank] = 1;
-            } 
-            win_ptr->targets[dest_rank].remote_lock_state = MPIDI_CH3_WIN_LOCK_NONE;
-        } 
-        else {
-            win_ptr->shm_shared_lock_count[l_dest_rank] -= 1;
-            if(*((volatile long *)
-                        &win_ptr->shm_shared_lock_count[l_dest_rank]) == 0) {
-                win_ptr->shm_lock[l_dest_rank] = MPID_LOCK_NONE;
-            }
-        }
-
-        mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_dest_rank);
-        if (mpi_errno != MPI_SUCCESS) {
-            ibv_error_abort (GEN_EXIT_ERR, "mutex unlock error \n");
-        }
-    }
 }
 
 /* For active synchronization, it is a blocking call*/
@@ -694,33 +532,6 @@ MPIDI_CH3I_RDMA_start (MPID_Win* win_ptr, int start_grp_size, int* ranks_in_win_
             }
         }
     }
-}
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_INTRANODE_start
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
-void MPIDI_CH3I_INTRANODE_start (MPID_Win* win_ptr, int start_grp_size, 
-                  int* ranks_in_win_grp) 
-{
-    int i, rank, local_rank;
-
-    for (i = 0; i < start_grp_size; ++i) {
-       rank = ranks_in_win_grp[i];  
-       local_rank = win_ptr->shm_g2l_rank[rank];      
- 
-       if (rank != win_ptr->my_id && local_rank != -1) {
-          /* Casting to volatile. This will prevent the compiler 
-             from optimizing the loop out or from storing the veriable in 
-             registers */
-          while (*((volatile int *) &win_ptr->shm_post_flag_me[local_rank]) == 0) {
-          }
-       }
-     }
-    
-    /*Clearing the post flag counters once we ahve received all the 
-      flags for the current epoch*/
-    MPIU_Memset(win_ptr->shm_post_flag_me, 0, win_ptr->shm_l_ranks*sizeof(int));
 }
 
 /* For active synchronization, if all rma operation has completed, we issue a RDMA
@@ -806,69 +617,13 @@ MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr,
     return mpi_errno;
 }
 
-/* For active synchronization, if all rma operation has completed, set the 
-complete flag on the remote processes. */
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_INTRANODE_complete
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
-void MPIDI_CH3I_INTRANODE_complete(MPID_Win * win_ptr,
-                         int start_grp_size, int *ranks_in_win_grp)
-{
-    int i, my_rank, my_local_rank, rank, local_rank;
-    int *nops_to_proc;
-    MPID_Comm *comm_ptr;
-    MPIDI_RMA_Op_t *curr_ptr;
-
-    comm_ptr = win_ptr->comm_ptr; 
-    my_rank = comm_ptr->rank;
-    my_local_rank = win_ptr->shm_g2l_rank[my_rank];
-
-    nops_to_proc = (int *) MPIU_Calloc(win_ptr->shm_l_ranks, sizeof(int));
-    if (!nops_to_proc) {
-        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc : memory allocation failed");
-    }
-
-    /* Check if there are more communication operations to be issued to 
-       each traget process */
-    MPIU_Memset((void *) nops_to_proc, 0, win_ptr->shm_l_ranks*sizeof(int));
-    curr_ptr = MPIDI_CH3I_RMA_Ops_head(&win_ptr->at_rma_ops_list);
-    while (curr_ptr != NULL) { 
-        local_rank = win_ptr->shm_g2l_rank[curr_ptr->target_rank]; 
-        if (local_rank != -1) { 
-            ++nops_to_proc[local_rank];
-        }
-        curr_ptr = curr_ptr->next;
-    }
-
-    /* If all the operations had been handled using direct RDMA (nops_to_proc[target] == 0) 
-       we can set the complete flag to signal completion. If some operations are pending, the 
-       signalling is taken care of in the send/recv path */
-    for (i = 0; i < start_grp_size; ++i) {
-        rank = ranks_in_win_grp[i];
-        local_rank = win_ptr->shm_g2l_rank[rank];
-
-        if (rank == win_ptr->my_id || local_rank == -1) {
-            continue;
-        }
-
-        if (nops_to_proc[local_rank] == 0)  
-        {
-            *(win_ptr->shm_cmpl_counter_all[local_rank] + my_local_rank) = 1LL;
-        }
-    }
-
-    MPIU_Free(nops_to_proc);
-
-    return;
-}
-
 
 /* Waiting for all the completion signals and unregister buffers*/
 int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
-    if (win_ptr->put_get_list_size != 0) {
+    if (win_ptr->put_get_list_size != 0 || 
+        (win_ptr->enable_fast_path == 1 && win_ptr->rma_issued !=0)) {
             win_ptr->poll_flag = 1;
             while(win_ptr->poll_flag == 1){
                 mpi_errno = MPIDI_CH3I_Progress_test();
@@ -893,12 +648,116 @@ fn_fail:
     return mpi_errno;
 }
 
+/*Directly post RDMA operations */
+inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int origin_count,
+        MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
+        int target_count, MPI_Datatype target_datatype, void *compare_addr,
+        void *result_addr, MPID_Win *win_ptr)
+{
+    int complete = 0, size, target_type_size, origin_type_size;
+    MPIDI_VC_t* vc = NULL;
+    MPID_Comm *comm_ptr;
+    char *local_addr = NULL, *remote_addr = NULL;
+    uint32_t r_key, l_key;
+    vbuf *v;
+    int rail = 0;
+    dreg_entry *tmp_dreg = NULL;
+
+    comm_ptr = win_ptr->comm_ptr;
+
+    MPIDI_Comm_get_vc(comm_ptr, target_rank, &vc);
+
+    if (SMP_INIT && vc->smp.local_nodes != -1) {
+        goto fn_exit;
+    }
+
+    switch (type)
+    {
+        case MPIDI_RMA_PUT:
+            {
+                MPID_Datatype_get_size_macro(origin_datatype, origin_type_size);
+                size = origin_count * origin_type_size;
+                ++win_ptr->rma_issued;
+
+                v = get_vbuf();
+                tmp_dreg = dreg_register(origin_addr, size);
+                l_key = tmp_dreg->memhandle[0]->lkey;
+                local_addr = (char *)origin_addr;
+
+                r_key = win_ptr->win_rkeys[target_rank *
+                    rdma_num_hcas + rail];
+                remote_addr = (char *) win_ptr->base_addrs[target_rank] +
+                    win_ptr->disp_units[target_rank] * target_disp;
+
+                v->vc = (void *) vc;
+
+                ++(win_ptr->put_get_list_size_per_process[target_rank]);
+
+                v->tmp_dreg = tmp_dreg;
+                v->target_rank = target_rank;
+                v->list = (void *) win_ptr;
+
+                if(size<=rdma_max_inline_size){
+                    v->desc.u.sr.send_flags |= IBV_SEND_INLINE;
+                }
+
+                vbuf_init_rma_put(v, local_addr, l_key, remote_addr, r_key, size, rail);
+                ONESIDED_RDMA_POST(vc, NULL, rail);
+
+                complete = 1;
+                break;
+            }
+        case MPIDI_RMA_GET:
+            {
+                MPID_Datatype_get_size_macro(target_datatype, target_type_size);
+                size = target_count * target_type_size;
+
+                ++win_ptr->rma_issued;
+                remote_addr = (char *) win_ptr->base_addrs[target_rank] +
+                    win_ptr->disp_units[target_rank] * target_disp;
+
+                v = get_vbuf();
+                tmp_dreg = dreg_register(origin_addr, size);
+                l_key = tmp_dreg->memhandle[0]->lkey;
+                r_key = win_ptr->win_rkeys[target_rank *
+                    rdma_num_hcas + rail];
+                local_addr = (char *)origin_addr;
+
+                v->vc = (void *) vc;
+
+                ++(win_ptr->put_get_list_size_per_process[target_rank]);
+
+                v->tmp_dreg = tmp_dreg;
+                v->target_rank = target_rank;
+                v->list = (void *) win_ptr;
+
+                if(size<=rdma_max_inline_size){
+                    v->desc.u.sr.send_flags |= IBV_SEND_INLINE;
+                }
+
+                vbuf_init_rma_get(v, local_addr, l_key, remote_addr, r_key, size, rail);
+                ONESIDED_RDMA_POST(vc, NULL, rail);
+
+                complete = 1;
+                break;
+            }
+        default:
+            DEBUG_PRINT("Unknown ONE SIDED OP\n");
+            ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
+            break;
+    }
+
+fn_exit:
+    return complete;
+}
+
 /* Go through RMA op list once, and start as many RMA ops as possible */
 void
-MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
+MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
 {
     intptr_t aligned;
     int has_iwarp = 0;
+    int connectIB = 0;
     MPIDI_RMA_Op_t *curr_ptr = NULL;
     MPIDI_RMA_Op_t *head = NULL;
     MPIDI_RMA_Ops_list_t *ops_list;
@@ -915,6 +774,9 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
     has_iwarp = mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode;
 #endif
 
+    if (mv2_MPIDI_CH3I_RDMA_Process.hca_type == MV2_HCA_MLX_CX_CONNIB)
+         connectIB = 1;
+
     if (SMP_INIT)
     {
         comm_ptr = win_ptr->comm_ptr;
@@ -922,6 +784,32 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
     ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
     head = MPIDI_CH3I_RMA_Ops_head(ops_list);
     curr_ptr = head;
+
+    if (!win_ptr->use_rdma_path) { 
+        /*enable RDMA path when, 
+         * (a) there are at least threshold number of pending ops 
+         * (b) if operation is a get 
+         * (c) if operation is a put lager than threshold*/
+        int num_ops = 0; 
+        while (curr_ptr != NULL) { 
+            curr_ptr = curr_ptr->next;
+            num_ops++; 
+        }    
+
+        curr_ptr = head;
+
+        if (num_ops >= rdma_num_ops_threshold) {
+            win_ptr->use_rdma_path = 1;
+        } else if (curr_ptr != NULL && curr_ptr->type == MPIDI_RMA_GET) {
+            win_ptr->use_rdma_path = 1;
+        } else if (curr_ptr != NULL && curr_ptr->type == MPIDI_RMA_PUT) {
+            MPID_Datatype_get_size_macro(curr_ptr->target_datatype, target_type_size);
+            size = curr_ptr->target_count * target_type_size;
+            if (size > rdma_put_fallback_threshold)
+                win_ptr->use_rdma_path = 1;
+        } else 
+            return;
+    }
 
 #ifdef _SCHEDULE
     while (curr_ptr != NULL || skipped_op != NULL)
@@ -951,9 +839,8 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
         }
      }
 
-     if ((target_rank != -1 || 
-         passive == 0)
-         && win_ptr->post_flag[curr_ptr->target_rank] == 1)
+     if ((win_ptr->is_active && win_ptr->post_flag[curr_ptr->target_rank] == 1) || 
+         (!win_ptr->is_active && win_ptr->using_lock == 0))
      {
          switch (curr_ptr->type)
          {
@@ -975,7 +862,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
                     { 
                       /* Nearest issued rma is not a put. */
 #endif
-                        ++win_ptr->rma_issued;
                         iba_put(curr_ptr, win_ptr, size);
                          MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
 #ifdef _SCHEDULE
@@ -1014,9 +900,8 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
                      * size, so check the data size here 
                      * IB atomic operations require aligned address*/
                     if (origin_type_size == 8 && curr_ptr->origin_datatype != MPI_DOUBLE
-                        && aligned && !has_iwarp)
+                        && aligned && !has_iwarp && !connectIB)
                     {
-                        ++win_ptr->rma_issued;
                         iba_fetch_and_add(curr_ptr, win_ptr, origin_type_size);
                         MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
                     }
@@ -1035,9 +920,8 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
                     /* IB supports compare_and_swap operation for 8 bytes
                      * message size, so check the data size here 
                      * IB atomic operations require aligned address*/
-                    if (origin_type_size == 8 && aligned && !has_iwarp)
+                    if (origin_type_size == 8 && aligned && !has_iwarp && !connectIB)
                     {
-                        ++win_ptr->rma_issued;
                         iba_compare_and_swap(curr_ptr, win_ptr, origin_type_size);
                         MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
                     } 
@@ -1070,7 +954,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
                     if (curr_put != 0 || force_to_progress == 1)
                     {
 #endif
-                        ++win_ptr->rma_issued;
                         iba_get(curr_ptr, win_ptr, size);
                         MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
 #ifdef _SCHEDULE
@@ -1107,220 +990,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank)
         }
     }
 
-}
-
-#if defined(_SMP_LIMIC_)
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_LIMIC_try_rma
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr, int target_rank)
-{
-    int mpi_errno = MPI_SUCCESS;
-    int complete_size;
-    int target_type_size, msg_size;
-    int origin_dt_derived, target_dt_derived, target_l_rank;
-    int offset, initial_offset, initial_len;
-    MPIDI_RMA_Op_t *curr_ptr;
-    MPIDI_RMA_Op_t *head;
-    MPIDI_RMA_Ops_list_t *ops_list;
-    
-    if (target_rank == -1) {
-        /* active target */
-        ops_list = &win_ptr->at_rma_ops_list;
-    } else {
-        ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
-    }
-
-    head = MPIDI_CH3I_RMA_Ops_head(ops_list);
-
-    if (head == NULL) {
-        return mpi_errno;
-    }
-
-    curr_ptr = head;
-
-    while (curr_ptr != NULL) {
-        complete_size = 0;
-        target_l_rank = win_ptr->shm_g2l_rank[curr_ptr->target_rank];
-
-        /*if target is on a remote node*/
-        if(target_l_rank == -1) {
-            curr_ptr = curr_ptr->next;
-            continue;
-        }
-
-        origin_dt_derived = HANDLE_GET_KIND(curr_ptr->origin_datatype) !=
-                  HANDLE_KIND_BUILTIN ? 1 : 0;
-        target_dt_derived = HANDLE_GET_KIND(curr_ptr->target_datatype) !=
-                  HANDLE_KIND_BUILTIN ? 1 : 0;
-
-        if(origin_dt_derived || target_dt_derived) {
-            curr_ptr = curr_ptr->next;
-            continue;
-        }
-
-        MPID_Datatype_get_size_macro(curr_ptr->target_datatype,
-                  target_type_size);
-        msg_size = curr_ptr->target_count * target_type_size;
-
-        initial_offset = win_ptr->peer_lu[curr_ptr->target_rank].offset;
-        initial_len = win_ptr->peer_lu[curr_ptr->target_rank].length;
-        offset = initial_offset + win_ptr->disp_units[curr_ptr->target_rank]
-                        * curr_ptr->target_disp;
-        win_ptr->peer_lu[curr_ptr->target_rank].offset = offset;
-
-        switch (curr_ptr->type) {
-            case MPIDI_RMA_PUT:
-                if (msg_size < limic_put_threshold) {
-                    curr_ptr = curr_ptr->next;
-                    continue;
-                }
-                complete_size = limic_tx_comp(limic_fd, curr_ptr->origin_addr,
-                            msg_size, &(win_ptr->peer_lu[curr_ptr->target_rank]));
-                break;
-            case MPIDI_RMA_GET:
-                if (msg_size < limic_get_threshold) {
-                    curr_ptr = curr_ptr->next;
-                    continue;
-                }
-                complete_size = limic_rx_comp(limic_fd, curr_ptr->origin_addr,
-                            msg_size, &(win_ptr->peer_lu[curr_ptr->target_rank]));
-                break;
-            default:
-                break;
-        }
-
-        win_ptr->peer_lu[curr_ptr->target_rank].offset = initial_offset;
-        win_ptr->peer_lu[curr_ptr->target_rank].length = initial_len;
-
-        if( complete_size == msg_size ){
-            win_ptr->rma_issued++;
-            MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr); 
-        } else {
-            curr_ptr = curr_ptr->next;
-        }
-    }
-
-    return mpi_errno;
-}
-#endif /* _SMP_LIMIC_ */
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_SHM_try_rma
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_SHM_try_rma(MPID_Win * win_ptr, int target_rank)
-{
-    int mpi_errno = MPI_SUCCESS;
-    int target_type_size, msg_size;
-    int origin_dt_derived, target_dt_derived, target_l_rank;
-    void *target_addr;
-    MPIDI_RMA_Op_t *curr_ptr = NULL;
-    MPIDI_RMA_Op_t *head = NULL;
-    MPI_User_function *uop;
-    MPIDI_RMA_Ops_list_t *ops_list;
-    
-    if (target_rank == -1) {
-        /* active target */
-        ops_list = &win_ptr->at_rma_ops_list;
-    } else {
-        ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
-    }
-
-    head = MPIDI_CH3I_RMA_Ops_head(ops_list);
-
-    if (head == NULL) {
-        return mpi_errno;
-    }
-
-    curr_ptr = head;
-
-    while (curr_ptr != NULL) {
-        target_l_rank = win_ptr->shm_g2l_rank[curr_ptr->target_rank]; 
-
-        /*if target is on a remote node*/
-        if(target_l_rank == -1) {
-            curr_ptr = curr_ptr->next;
-            continue;
-        }
-
-        origin_dt_derived = HANDLE_GET_KIND(curr_ptr->origin_datatype) !=
-                  HANDLE_KIND_BUILTIN ? 1 : 0;
-        target_dt_derived = HANDLE_GET_KIND(curr_ptr->target_datatype) !=
-                  HANDLE_KIND_BUILTIN ? 1 : 0;
-
-        if(origin_dt_derived || target_dt_derived) {
-            curr_ptr = curr_ptr->next;
-            continue;
-        }
-
-        MPID_Datatype_get_size_macro(curr_ptr->target_datatype,
-                  target_type_size);
-        msg_size = curr_ptr->target_count * target_type_size;
-        target_addr = (void *) ((size_t) win_ptr->shm_win_buffer_all[target_l_rank] +
-                            win_ptr->disp_units[curr_ptr->target_rank] *
-                            curr_ptr->target_disp);
-
-        switch (curr_ptr->type)
-        {
-            case MPIDI_RMA_PUT:
-                MPIU_Memcpy(target_addr, curr_ptr->origin_addr, msg_size);
-                break;
-            case MPIDI_RMA_GET:
-                MPIU_Memcpy(curr_ptr->origin_addr, target_addr, msg_size);
-                break;
-            case MPIDI_RMA_ACCUMULATE:
-            case MPIDI_RMA_ACC_CONTIG:
-                if (curr_ptr->op == MPI_REPLACE) {
-                    /* similar to Put operation */
-                    mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, target_l_rank);
-                    if (mpi_errno != MPI_SUCCESS) {
-                           MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                "**fail %s", "mutex lock error");
-                    }    
-                    MPIU_Memcpy(target_addr, curr_ptr->origin_addr, msg_size);
-                    mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, target_l_rank);
-                    if (mpi_errno != MPI_SUCCESS) {
-                           MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                "**fail %s", "mutex unlock error");
-                    } 
-                } else if (HANDLE_GET_KIND(curr_ptr->op) 
-                                == HANDLE_KIND_BUILTIN) {
-                    uop = MPIR_Op_table[(curr_ptr->op)%16 - 1];
-                    mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, target_l_rank);
-                    if (mpi_errno != MPI_SUCCESS) {
-                           MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                "**fail %s", "mutex lock error");
-                    } 
-                    (*uop)(curr_ptr->origin_addr, target_addr,
-                        &(curr_ptr->target_count), 
-                        &(curr_ptr->target_datatype));
-                    mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, target_l_rank);
-                    if (mpi_errno != MPI_SUCCESS) {
-                           MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                "**fail %s", "mutex unlock error");
-                    } 
-                } else {
-                    /* --BEGIN ERROR HANDLING-- */
-                    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, 
-                        MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OP, 
-                        "**opnotpredefined", "**opnotpredefined %d", 
-                        curr_ptr->op);
-                    return mpi_errno;
-                }
-                break;
-            default:
-                curr_ptr = curr_ptr->next;
-                continue;
-        }
-
-        win_ptr->rma_issued++;
-        MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
-    }
-
-fn_fail:
-    return mpi_errno;
 }
 
 /* For active synchronization */
@@ -1393,12 +1062,23 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     uintptr_t       *post_flag_ptr_send, *post_flag_ptr_recv;
     int             fallback_trigger = 0;
 
+    if (mv2_MPIDI_CH3I_RDMA_Process.enable_rma_fast_path == 1)
+    {
+        (*win_ptr)->enable_fast_path = 1;
+    }
+
     if (!mv2_MPIDI_CH3I_RDMA_Process.has_one_sided)
     {
         (*win_ptr)->fall_back = 1;
         return;
     }
 
+    if ((*win_ptr)->create_flavor == MPI_WIN_FLAVOR_DYNAMIC)
+    {
+        (*win_ptr)->fall_back = 1;
+        return;
+    }
+    
     /*Allocate structure for window information exchange*/
     win_info_exchange = MPIU_Malloc(comm_size * sizeof(win_info));
     if (!win_info_exchange)
@@ -1711,463 +1391,6 @@ fn_exit:
      
 }
 
-void mv2_rma_init_rank_info (MPID_Win ** win_ptr) 
-{
-    int             i, j, num_local_procs, comm_size;
-    MPIDI_VC_t*     vc;
-    MPID_Comm       *comm_ptr;
-
-    comm_ptr = (*win_ptr)->comm_ptr;
-    comm_size = comm_ptr->local_size;
-    num_local_procs = 0;
-    for(i=0; i<comm_size; i++) {
-        MPIDI_Comm_get_vc(comm_ptr, i, &vc);
-        if((*win_ptr)->my_id == i || vc->smp.local_nodes != -1)
-        {
-           num_local_procs++;
-        }
-    } 
-
-    (*win_ptr)->shm_l_ranks = num_local_procs;
-    (*win_ptr)->shm_l2g_rank = (int *)
-                  MPIU_Malloc(num_local_procs * sizeof(int));
-    if((*win_ptr)->shm_l2g_rank == NULL) {
-        ibv_error_abort (GEN_EXIT_ERR, 
-               "rdma_iba_1sc: error allocating shm_l2g_rank");
-    }
-
-    (*win_ptr)->shm_g2l_rank = (int *)
-                  MPIU_Malloc(comm_size * sizeof(int));
-    if((*win_ptr)->shm_g2l_rank == NULL) {
-        ibv_error_abort (GEN_EXIT_ERR, 
-               "rdma_iba_1sc: error allocating g2l_rank");
-    }
-
-    j=0;
-    for(i=0; i<comm_size; i++) {
-        MPIDI_Comm_get_vc(comm_ptr, i, &vc);
-        if((*win_ptr)->my_id == i || vc->smp.local_nodes != -1) {
-            (*win_ptr)->shm_l2g_rank[j] = i;
-            (*win_ptr)->shm_g2l_rank[i] = j;
-            j++;
-        } else {
-            (*win_ptr)->shm_g2l_rank[i] = -1;
-        }
-    }
-}
-
-int mv2_rma_allocate_counters(MPID_Win ** win_ptr)
-{
-    int             i, mpi_errno=MPI_SUCCESS;
-    int             num_local_procs, l_rank, g_rank;
-    int             cmpl_counter_size, post_flag_size, mutex_size;
-    int             lock_size;
-    long long       *shm_cmpl_counter_buf;
-    int             *shm_post_flag_buf;
-    MPID_Comm       *comm_ptr;
-    pthread_mutexattr_t attr;
-
-    g_rank = (*win_ptr)->my_id;
-    l_rank = (*win_ptr)->shm_g2l_rank[g_rank]; 
-    num_local_procs = (*win_ptr)->shm_l_ranks;
-
-    comm_ptr = (*win_ptr)->comm_ptr;
-
-    (*win_ptr)->shm_fd = -1;
-    (*win_ptr)->shm_control_buf = NULL;
-    (*win_ptr)->shm_post_flag_all = NULL;
-    (*win_ptr)->shm_cmpl_counter_all = NULL;
-    (*win_ptr)->shm_win_mutex = NULL; 
-
-    cmpl_counter_size = sizeof(long long) * num_local_procs * num_local_procs;
-    post_flag_size = sizeof(int) * num_local_procs * num_local_procs;
-    mutex_size = sizeof(pthread_mutex_t) * num_local_procs;
-    /*locks requires 3 counters per process: lock, shared lock counter and 
-      lock released flag*/
-    lock_size = 2 * sizeof(int) * num_local_procs + sizeof(long) 
-                    * num_local_procs;
-    (*win_ptr)->shm_control_bufsize = cmpl_counter_size + post_flag_size 
-                   + mutex_size + lock_size;
-    mpi_errno = mv2_rma_allocate_shm(
-                              (*win_ptr)->shm_control_bufsize,
-                              g_rank,
-                              &((*win_ptr)->shm_fd),
-                              (void **) &((*win_ptr)->shm_control_buf),
-                              comm_ptr);
-    if (mpi_errno != MPI_SUCCESS) {
-        MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
-                   "**fail", "**fail %s","shared memory allocation failed");
-    } 
- 
-    shm_cmpl_counter_buf=(long long*)((*win_ptr)->shm_control_buf); 
-    (*win_ptr)->shm_cmpl_counter_all = (long long **) MPIU_Malloc(sizeof(long long *) *
-                                     num_local_procs);
-    if(!(*win_ptr)->shm_cmpl_counter_all) {
-       ibv_error_abort (GEN_EXIT_ERR, 
-               "rdma_iba_1sc: error allocating shm_cmpl_counter_all");
-    }
-  
-    for(i=0; i<num_local_procs; i++) {
-        (*win_ptr)->shm_cmpl_counter_all[i] = 
-                       shm_cmpl_counter_buf + num_local_procs * i;
-        if(i == l_rank) {
-            (*win_ptr)->shm_cmpl_counter_me = 
-                       shm_cmpl_counter_buf + num_local_procs * i;
-        }
-    }
-    
-    shm_post_flag_buf = (int*)(((uint64_t)(*win_ptr)->shm_control_buf) 
-                       + cmpl_counter_size); 
-    (*win_ptr)->shm_post_flag_all = (int **) MPIU_Malloc(sizeof(int *) *
-                                                  num_local_procs);
-    if(!(*win_ptr)->shm_post_flag_all) {
-       ibv_error_abort (GEN_EXIT_ERR, 
-                      "rdma_iba_1sc: error allocating shm_post_flag_all");
-    }
- 
-    for(i = 0; i<num_local_procs; i++) {
-         (*win_ptr)->shm_post_flag_all[i] = 
-                         shm_post_flag_buf + num_local_procs * i;
-
-         if(i == l_rank) {
-              (*win_ptr)->shm_post_flag_me = 
-                         shm_post_flag_buf + num_local_procs * i;
-         }
-    }
-
-    (*win_ptr)->shm_win_mutex = (pthread_mutex_t *)((uint64_t)(*win_ptr)->shm_control_buf 
-                       + cmpl_counter_size + post_flag_size);
-
-    /*Initialize pthread mutex attribute and initialize pthread mutex*/
-    mpi_errno = pthread_mutexattr_init(&attr);
-    if (mpi_errno != MPI_SUCCESS) {
-        (*win_ptr)->shm_win_mutex = NULL;
-        MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
-                   "**fail", "**fail %s","mutex attr initialization failed");
-    }
-    mpi_errno = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-    if (mpi_errno != MPI_SUCCESS) {
-        (*win_ptr)->shm_win_mutex = NULL;
-        MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
-                   "**fail", "**fail %s","mutex pshared initialization failed");
-    }
-    mpi_errno = pthread_mutex_init(&(*win_ptr)->shm_win_mutex[l_rank], &attr);
-    if (mpi_errno != MPI_SUCCESS) {
-        (*win_ptr)->shm_win_mutex = NULL;
-        MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
-                   "**fail", "**fail %s","mutex initialization failed");
-    }
-    mpi_errno = pthread_mutexattr_destroy(&attr);
-    if (mpi_errno != MPI_SUCCESS) {
-        (*win_ptr)->shm_win_mutex = NULL;
-        MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
-                   "**fail", "**fail %s","mutex attr destroy failed");
-    }
-
-    (*win_ptr)->shm_lock = (int *)((uint64_t)(*win_ptr)->shm_control_buf
-                       + cmpl_counter_size + post_flag_size + mutex_size);
-    (*win_ptr)->shm_shared_lock_count = (long *)((uint64_t)(*win_ptr)->shm_lock  
-                       + sizeof(int) * num_local_procs);
-    (*win_ptr)->shm_lock_released = 
-                       (int *)((uint64_t)(*win_ptr)->shm_shared_lock_count
-                       + sizeof(long) * num_local_procs); 
-
-fn_exit:
-    return mpi_errno;
-}
-
-void mv2_rma_free_counters(MPID_Win ** win_ptr)
-{
-    int l_rank;
-
-    l_rank = (*win_ptr)->shm_g2l_rank[(*win_ptr)->my_id];
-
-    if ((*win_ptr)->shm_win_mutex != NULL) { 
-        pthread_mutex_destroy(&(*win_ptr)->shm_win_mutex[l_rank]);
-    }
-    if ((*win_ptr)->shm_control_buf != NULL) { 
-        mv2_rma_deallocate_shm((*win_ptr)->shm_control_buf, 
-                (*win_ptr)->shm_control_bufsize);
-    }
-    if ((*win_ptr)->shm_fd != -1) {
-        close((*win_ptr)->shm_fd);
-    }
-    if ((*win_ptr)->shm_post_flag_all != NULL) { 
-        MPIU_Free((*win_ptr)->shm_post_flag_all);
-    }
-    if ((*win_ptr)->shm_cmpl_counter_all != NULL) { 
-        MPIU_Free((*win_ptr)->shm_cmpl_counter_all);
-    }
-    MPIU_Free((*win_ptr)->shm_l2g_rank);
-    MPIU_Free((*win_ptr)->shm_g2l_rank);
-} 
-
-#if defined(_SMP_LIMIC_)
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_LIMIC_win_create
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
-void MPIDI_CH3I_LIMIC_win_create(void *base, MPI_Aint size, MPID_Win ** win_ptr)
-{
-    int             mpi_errno=MPI_SUCCESS;
-    int             errflag = FALSE;
-    int             g_rank, comm_size, fallback;
-    MPID_Comm       *comm_ptr;
-    size_t          tx_init_size;
-
-    if(!SMP_INIT || !g_smp_use_limic2 || 
-            !mv2_MPIDI_CH3I_RDMA_Process.has_limic_one_sided) {
-       (*win_ptr)->limic_fallback = 1;
-       return;
-    }
-
-    g_rank = (*win_ptr)->my_id;
-    comm_ptr = (*win_ptr)->comm_ptr;
-    comm_size = comm_ptr->local_size;
-
-    /*initialize helper rank info in the window object*/
-    mv2_rma_init_rank_info (win_ptr);
-
-    /*allocate shared memory buffers for post and complete synchronization*/
-    fallback = 0;
-    mpi_errno = mv2_rma_allocate_counters(win_ptr);
-    if (mpi_errno != MPI_SUCCESS) {
-        DEBUG_PRINT("rma counters allocation failed \n");
-        fallback = 1;
-    }
-
-    mpi_errno = MPIR_Allreduce_impl(MPI_IN_PLACE, &fallback, 1, 
-                   MPI_INT, MPI_SUM, comm_ptr, &errflag);
-    if (mpi_errno != MPI_SUCCESS) {
-        ibv_error_abort (GEN_EXIT_ERR,
-                    "rdma_iba_1sc: error calling allreduce");
-    }
-
-    if (fallback > 0) {
-       (*win_ptr)->limic_fallback = 1;
-       mv2_rma_free_counters(win_ptr); 
-       return;
-    }
-
-    (*win_ptr)->peer_lu = (limic_user *) 
-                  MPIU_Malloc(comm_size * sizeof(limic_user));
-    if((*win_ptr)->peer_lu == NULL) {
-        ibv_error_abort (GEN_EXIT_ERR, 
-                    "rdma_iba_1sc: error allocating peer_lu");
-    }
-    MPIU_Memset((*win_ptr)->peer_lu,0,comm_size * sizeof(limic_user));
-
-    /*map the window memory*/
-    if (base != NULL && size > 0) {
-      tx_init_size = limic_tx_init(limic_fd, base, size,
-                   &((*win_ptr)->peer_lu[g_rank]));
-      if (tx_init_size != size) {
-         ibv_error_abort (GEN_EXIT_ERR, 
-                    "rdma_iba_1sc: error calling limic_tx_init");
-      }
-    }
-
-    mpi_errno = MPIR_Allgather_impl(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
-         (*win_ptr)->peer_lu, sizeof(limic_user), MPI_BYTE,
-         comm_ptr, &errflag);
-    if (mpi_errno != MPI_SUCCESS) {
-        ibv_error_abort (GEN_EXIT_ERR, 
-                    "rdma_iba_1sc: error calling allgather");
-    }
-
-    return;
-}  
-#endif /* _SMP_LIMIC_ */
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_SHM_win_create
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
-void MPIDI_CH3I_SHM_win_create(void *base, MPI_Aint size, MPID_Win ** win_ptr)
-{
-    int                 i, mpi_errno=MPI_SUCCESS;
-    int                 errflag = FALSE;
-    int                 num_local_procs, remote_rank, g_rank, comm_size;
-    int                 found, new_fd;
-    void                *new_buffer = NULL;
-    shm_buffer          *curr_ptr = NULL, *prev_ptr = NULL, *shm_buffer_ptr = NULL;
-    shm_buffer          *remote_buffer = NULL, *new_shm_buffer = NULL;
-    file_info           *file_info_exchange = NULL;
-    MPID_Comm           *comm_ptr;
-
-    (*win_ptr)->shm_fallback = 0;
-    if(!SMP_INIT) {
-       (*win_ptr)->shm_fallback = 1;
-       goto fn_exit;
-    }
-
-    /*initialize helper rank info in the window object*/
-    mv2_rma_init_rank_info (win_ptr);
-
-    num_local_procs = (*win_ptr)->shm_l_ranks;
-    g_rank = (*win_ptr)->my_id; 
-    comm_ptr = (*win_ptr)->comm_ptr;
-    comm_size = comm_ptr->local_size; 
-
-    /*allocating structures to exchange information*/
-    file_info_exchange = (file_info *)
-        MPIU_Malloc(sizeof(file_info) * comm_size);
-    if(NULL == file_info_exchange) {
-        ibv_error_abort (GEN_EXIT_ERR,
-                 "rdma_iba_1sc: error allocating file_info_exchange");
-    }
-    MPIU_Memset(file_info_exchange, 0, sizeof(file_info)*comm_size);
-
-    if (size > 0) {
-       if(NULL != shm_buffer_llist) {
-          /*check if the specified buffer was allocated in shared memory*/
-          curr_ptr = shm_buffer_llist;
-          prev_ptr = shm_buffer_llist;
-          while(curr_ptr) {
-             if((size_t) curr_ptr->ptr > (size_t) base) {
-                   break;
-             }
-             prev_ptr = curr_ptr;
-             curr_ptr = curr_ptr->next;
-          }
-
-          if((size_t) prev_ptr->ptr <= (size_t) base &&
-             (size_t) prev_ptr->ptr + prev_ptr->size >= (size_t) base + size) {
-              shm_buffer_ptr = prev_ptr;
-              MPIU_Memcpy(file_info_exchange[g_rank].filename,
-                         shm_buffer_ptr->filename,
-                         SHM_FILENAME_LEN);
-              file_info_exchange[g_rank].size = shm_buffer_ptr->size;
-              file_info_exchange[g_rank].displacement =
-                   (size_t) base - (size_t) shm_buffer_ptr->ptr;
-              file_info_exchange[g_rank].shm_fallback = 0;
-          }
-          else {
-              file_info_exchange[g_rank].shm_fallback = 1;
-          }
-      }
-      else {
-          file_info_exchange[g_rank].shm_fallback = 1;
-      }
-    } else {
-       file_info_exchange[g_rank].size = 0;
-       file_info_exchange[g_rank].shm_fallback = 1;
-    }
-
-    /*allocate shared memory buffers for post and complete synchronization*/
-    mpi_errno = mv2_rma_allocate_counters(win_ptr);
-    if (mpi_errno != MPI_SUCCESS) {
-        file_info_exchange[g_rank].shm_fallback = 1;
-    }
-
-    /*check if all local nodes are participating using shared memory*/
-    mpi_errno = MPIR_Allgather_impl(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
-         file_info_exchange, sizeof(file_info), MPI_BYTE,
-         comm_ptr, &errflag);
-    if (mpi_errno != MPI_SUCCESS) {
-        ibv_error_abort (GEN_EXIT_ERR,
-                 "rdma_iba_1sc: allgather failed");
-    }
-
-    for(i=0; i<comm_size; i++) {
-       if(file_info_exchange[i].shm_fallback == 1) {
-           (*win_ptr)->shm_fallback = 1;
-           mv2_rma_free_counters(win_ptr);
-           goto fn_exit;
-       }
-    }
-    (*win_ptr)->shm_fallback = 0;
-
-    /*allocating space to store remote addresses under window structure*/
-    (*win_ptr)->shm_win_buffer_all = MPIU_Malloc(sizeof(void *) *
-                 num_local_procs);
-    if(NULL == (*win_ptr)->shm_win_buffer_all) {
-        ibv_error_abort (GEN_EXIT_ERR, 
-                 "rdma_iba_1sc: error allocating shm_win_buffer_all");
-    }
-    (*win_ptr)->shm_buffer_all = MPIU_Malloc(sizeof(void *) *
-                 num_local_procs);
-    if(NULL == (*win_ptr)->shm_buffer_all) {
-        ibv_error_abort (GEN_EXIT_ERR, 
-                 "rdma_iba_1sc: error allocating shm_buffer_all");
-    }
-
-    /*map the remote window memory*/
-    for (i=0; i<num_local_procs; i++) {
-        remote_rank = (*win_ptr)->shm_l2g_rank[i];
-        if (g_rank != remote_rank) {
-          /*check if this had already been mapped*/
-          found=0;
-          if (NULL != shm_buffer_rlist) {
-             remote_buffer = shm_buffer_rlist;
-             while (remote_buffer) {
-                if (strcmp(remote_buffer->filename,
-                    file_info_exchange[remote_rank].filename) == 0) {
-                    found = 1;
-                    break;
-                }
-                remote_buffer = remote_buffer->next;
-             }
-          }
-
-          if(found == 0) {
-              /*open the file*/
-              new_fd = shm_open(file_info_exchange[remote_rank].filename,
-                     O_RDWR, S_IRWXU);
-              if (-1 == new_fd) {
-                 ibv_va_error_abort (GEN_EXIT_ERR, 
-                        "rdma_iba_1sc: error in shm_openshm: %s\n", 
-                        strerror(errno));
-              }
-
-              /*mapping memory to the shared file*/
-              new_buffer = mmap(0, file_info_exchange[remote_rank].size,
-                   PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE | MAP_LOCKED, new_fd, 0);
-              if (MAP_FAILED == new_buffer) {
-                 ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc: error in mmap");
-              }
-
-              /*enqueue the buffer into shm_buffer_rlist*/
-              new_shm_buffer = MPIU_Malloc(sizeof(shm_buffer));
-              if (NULL == new_shm_buffer) {
-                 ibv_error_abort (GEN_EXIT_ERR, 
-                        "rdma_iba_1sc: error allocating new_shm_buffer");
-              }
-              MPIU_Memcpy(new_shm_buffer->filename,
-                          file_info_exchange[remote_rank].filename,
-                          SHM_FILENAME_LEN);
-              new_shm_buffer->ptr = new_buffer;
-              new_shm_buffer->size = size;
-              new_shm_buffer->fd = new_fd;
-              new_shm_buffer->owner = remote_rank;
-              new_shm_buffer->ref_count = 1;
-              new_shm_buffer->next = shm_buffer_rlist;
-              shm_buffer_rlist = new_shm_buffer;
-              /*fill shared buffer info into window structure*/
-              (*win_ptr)->shm_buffer_all[i] = (void *) new_shm_buffer;
-              (*win_ptr)->shm_win_buffer_all[i] = (void *) ((size_t) new_buffer +
-                          file_info_exchange[remote_rank].displacement);
-           } else { 
-                (*win_ptr)->shm_buffer_all[i] = (void *) remote_buffer;
-                (*win_ptr)->shm_win_buffer_all[i] = (void *) ((size_t) remote_buffer->ptr +
-                          file_info_exchange[remote_rank].displacement);
-                remote_buffer->ref_count++;
-           }
-       } else {
-          (*win_ptr)->shm_buffer_all[i] = (void *) shm_buffer_ptr;
-          (*win_ptr)->shm_win_buffer_all[i] = (void *) ((size_t) shm_buffer_ptr->ptr +
-                          file_info_exchange[remote_rank].displacement);
-          shm_buffer_ptr->ref_count++;
-       }
-    }
-
-fn_exit:
-    if (file_info_exchange) {
-       MPIU_Free(file_info_exchange);
-    }
-    return;
-}
-
 void MPIDI_CH3I_RDMA_win_free(MPID_Win** win_ptr)
 {
     if ((*win_ptr)->win_dreg_entry != NULL) {
@@ -2192,39 +1415,6 @@ void MPIDI_CH3I_RDMA_win_free(MPID_Win** win_ptr)
 
     MPIU_Free((void *) (*win_ptr)->completion_counter);
     MPIU_Free((void *) (*win_ptr)->all_completion_counter);
-}
-
-#if defined(_SMP_LIMIC_)
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_LIMIC_win_free
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
-void MPIDI_CH3I_LIMIC_win_free(MPID_Win** win_ptr)
-{
-    /*deallocated post and complete counters*/
-    mv2_rma_free_counters(win_ptr);
-
-    MPIU_Free((*win_ptr)->peer_lu);
-}
-#endif /*defined(_SMP_LIMIC_)*/
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_SHM_win_free
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
-void MPIDI_CH3I_SHM_win_free(MPID_Win ** win_ptr)
-{
-    int                 i;
-
-    /*deallocated post and complete counters*/
-    mv2_rma_free_counters(win_ptr);
-
-    for(i=0; i<(*win_ptr)->shm_l_ranks; i++) {
-       ((shm_buffer *) (*win_ptr)->shm_buffer_all[i])->ref_count--;
-    }
-
-    MPIU_Free((*win_ptr)->shm_win_buffer_all);
-    MPIU_Free((*win_ptr)->shm_buffer_all);
 }
 
 static int Decrease_CC(MPID_Win * win_ptr, int target_rank)
@@ -2303,6 +1493,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
 
               ++(winptr->put_get_list[index].completion);
               ++(winptr->put_get_list_size);
+              ++(winptr->rma_issued);
               ++(winptr->put_get_list_size_per_process[target]);
 
               local_address = (void *)((char*)local_buf[0] 
@@ -2339,6 +1530,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
  
            ++winptr->put_get_list[index].completion;
            ++(winptr->put_get_list_size);
+           ++(winptr->rma_issued);
            ++(winptr->put_get_list_size_per_process[target]);
 
            local_address = (void *)((char*)local_buf[0]
@@ -2370,6 +1562,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
 
               ++(winptr->put_get_list[index].completion);
               ++(winptr->put_get_list_size);
+              ++(winptr->rma_issued);
               ++(winptr->put_get_list_size_per_process[target]);
 
               local_address = (void *)((char*)local_buf[0] 
@@ -2413,6 +1606,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
 
         ++winptr->put_get_list[index].completion;
         ++(winptr->put_get_list_size);
+        ++(winptr->rma_issued);
         ++(winptr->put_get_list_size_per_process[target]);
 
         vbuf_init_rma_put(v, 
@@ -2441,6 +1635,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
 
             ++(winptr->put_get_list[index].completion);
             ++(winptr->put_get_list_size);
+            ++(winptr->rma_issued);
             ++(winptr->put_get_list_size_per_process[target]);
 
             vbuf_init_rma_put(v, 
@@ -2519,6 +1714,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
 
               ++(winptr->put_get_list[index].completion);
               ++(winptr->put_get_list_size);
+              ++(winptr->rma_issued);
               ++(winptr->put_get_list_size_per_process[target]);
 
               local_address = (void *)((char*)local_buf[0] 
@@ -2556,6 +1752,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
  
            ++winptr->put_get_list[index].completion;
            ++(winptr->put_get_list_size);
+           ++(winptr->rma_issued);
            ++(winptr->put_get_list_size_per_process[target]);
 
            local_address = (void *)((char*)local_buf[0]
@@ -2587,6 +1784,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
 
               ++(winptr->put_get_list[index].completion);
               ++(winptr->put_get_list_size);
+              ++(winptr->rma_issued);
               ++(winptr->put_get_list_size_per_process[target]);
 
               local_address = (void *)((char*)local_buf[0] 
@@ -2631,6 +1829,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
 
         winptr->put_get_list[index].completion = 1;
         ++(winptr->put_get_list_size);
+        ++(winptr->rma_issued);
         ++(winptr->put_get_list_size_per_process[target]);
 
         vbuf_init_rma_get(v, local_buf[0], lkeys[rail], remote_buf[0],
@@ -2658,82 +1857,114 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
     int                           size;
     int                           mpi_errno = MPI_SUCCESS;
     void                          *target_addr, *origin_addr;
-    MPIDI_CH3I_RDMA_put_get_list  *list_entry=NULL;
     MPID_Win                      *list_win_ptr;
-    list_entry = (MPIDI_CH3I_RDMA_put_get_list *)v->list;
-    list_win_ptr = list_entry->win_ptr;
+    if ( v->target_rank == -1) {
+        MPIDI_CH3I_RDMA_put_get_list  *list_entry=NULL;
+        list_entry = (MPIDI_CH3I_RDMA_put_get_list *)v->list;
+        list_win_ptr = list_entry->win_ptr;
 
-    switch (list_entry->op_type) {
-    case (SIGNAL_FOR_PUT):
-        {
-            dreg_tmp = list_entry->mem_entry;
-            size = list_entry->data_size;
+        switch (list_entry->op_type) {
+            case (SIGNAL_FOR_PUT):
+                {
+                    dreg_tmp = list_entry->mem_entry;
+                    size = list_entry->data_size;
 
-            if (size > (int)rdma_eagersize_1sc) {
-                --(list_entry->completion);
-                if (list_entry->completion == 0) {
-                    dreg_unregister(dreg_tmp);
+                    if (size > (int)rdma_eagersize_1sc) {
+                        --(list_entry->completion);
+                        if (list_entry->completion == 0) {
+                            dreg_unregister(dreg_tmp);
+                        }
+                    }
+                    --(list_win_ptr->put_get_list_size);
+                    --(list_win_ptr->rma_issued);
+                    --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
+                    break;
                 }
-            }
-            --(list_win_ptr->put_get_list_size);
-            --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
-            break;
-        }
-    case (SIGNAL_FOR_GET):
-        {
-            size = list_entry->data_size;
-            target_addr = list_entry->target_addr;
-            origin_addr = list_entry->origin_addr;
-            dreg_tmp = list_entry->mem_entry;
+            case (SIGNAL_FOR_GET):
+                {
+                    size = list_entry->data_size;
+                    target_addr = list_entry->target_addr;
+                    origin_addr = list_entry->origin_addr;
+                    dreg_tmp = list_entry->mem_entry;
 
-            if (origin_addr == NULL) {
-                MPIU_Assert(size > rdma_eagersize_1sc);
-                --(list_entry->completion);
-                if (list_entry->completion == 0)
-                    dreg_unregister(dreg_tmp);
-            } else {
-                MPIU_Assert(size <= rdma_eagersize_1sc);
-                MPIU_Assert(target_addr != NULL);
-                MPIU_Memcpy(target_addr, origin_addr, size);
-            }
-            --(list_win_ptr->put_get_list_size);
-            --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
-            break;
-        }
-    case (SIGNAL_FOR_COMPARE_AND_SWAP):
-        {
-            target_addr = list_entry->target_addr;
-            origin_addr = list_entry->origin_addr;
-            *((uint64_t *) target_addr) = *((uint64_t *) origin_addr);
-            --(list_entry->completion);
-            --(list_win_ptr->put_get_list_size);
-            --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
-            break;
-        }
-    case (SIGNAL_FOR_FETCH_AND_ADD):
-        {   
-            target_addr = list_entry->target_addr;
-            origin_addr = list_entry->origin_addr;
-            *((uint64_t *) target_addr) = *((uint64_t *) origin_addr);
-            --(list_entry->completion);
-            --(list_win_ptr->put_get_list_size);
-            --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
-            break;
-        }
+                    if (origin_addr == NULL) {
+                        MPIU_Assert(size > rdma_eagersize_1sc); 
+                        --(list_entry->completion);
+                        if (list_entry->completion == 0){
+                            dreg_unregister(dreg_tmp);
+                        }
+                    } else {
+                        MPIU_Assert(size <= rdma_eagersize_1sc);
+                        MPIU_Assert(target_addr != NULL);
+                        MPIU_Memcpy(target_addr, origin_addr, size);
+                    }
+                    --(list_win_ptr->put_get_list_size);
+                    --(list_win_ptr->rma_issued);
+                    --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
+                    break;
+                }
+            case (SIGNAL_FOR_COMPARE_AND_SWAP):
+                {
+                    target_addr = list_entry->target_addr;
+                    origin_addr = list_entry->origin_addr;
+                    *((uint64_t *) target_addr) = *((uint64_t *) origin_addr);
+                    --(list_entry->completion);
+                    --(list_win_ptr->put_get_list_size);
+                    --(list_win_ptr->rma_issued);
+                    --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
+                    break;
+                }
+            case (SIGNAL_FOR_FETCH_AND_ADD):
+                {   
+                    target_addr = list_entry->target_addr;
+                    origin_addr = list_entry->origin_addr;
+                    *((uint64_t *) target_addr) = *((uint64_t *) origin_addr);
+                    --(list_entry->completion);
+                    --(list_win_ptr->put_get_list_size);
+                    --(list_win_ptr->rma_issued);
+                    --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
+                    break;
+                }
 
-    default:
-            MPIU_ERR_SETSIMPLE(mpi_errno, MPI_ERR_OTHER, "**onesidedcomps");
-            break;
+            default:
+                MPIU_ERR_SETSIMPLE(mpi_errno, MPI_ERR_OTHER, "**onesidedcomps");
+                break;
+        }
+        if (list_win_ptr->put_get_list_size == 0) 
+            list_win_ptr->put_get_list_tail = 0;
+
+    } else {
+        list_win_ptr = (MPID_Win *)v->list;
+
+        switch (v->desc.u.sr.opcode) {
+            case (IBV_WR_RDMA_WRITE):
+                {
+                    if (v->tmp_dreg != NULL) {
+                        dreg_unregister((dreg_entry *) v->tmp_dreg);
+                    }
+                    --(list_win_ptr->rma_issued);
+                    --(list_win_ptr->put_get_list_size_per_process[v->target_rank]);
+                    break;
+                }
+            case (IBV_WR_RDMA_READ):
+                {
+                    if ( v->tmp_dreg != NULL) {
+                        dreg_unregister((dreg_entry *) v->tmp_dreg);
+                    }
+                    --(list_win_ptr->rma_issued);
+                    --(list_win_ptr->put_get_list_size_per_process[v->target_rank]);
+                    break;
+                }
+            default:
+                MPIU_ERR_SETSIMPLE(mpi_errno, MPI_ERR_OTHER, "**onesidedcomps");
+                break;
+
+        }
     }
-    
-    if (list_win_ptr->put_get_list_size == 0) 
-        list_win_ptr->put_get_list_tail = 0;
 
-    if (list_win_ptr->put_get_list_size == 0){
-        list_win_ptr->rma_issued = 0;
+    if (list_win_ptr->rma_issued == 0)
         list_win_ptr->poll_flag = 0;
-     }
-#ifndef _OSU_MVAPICH_
+#ifndef CHANNEL_MRAIL
 fn_fail:
 #endif
     return mpi_errno;
@@ -2899,6 +2130,7 @@ int iba_compare_and_swap(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_
     win_ptr->put_get_list[index].target_rank = rma_op->target_rank;
     ++(win_ptr->put_get_list[index].completion);
     ++(win_ptr->put_get_list_size);
+    ++(win_ptr->rma_issued);
     ++(win_ptr->put_get_list_size_per_process[rma_op->target_rank]);
     v->vc = (void *)vc_ptr;
     v->list = (void *)(&(win_ptr->put_get_list[index]));
@@ -2958,6 +2190,7 @@ int iba_fetch_and_add(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr, MPIDI_msg_sz_t 
 
     ++(win_ptr->put_get_list[index].completion);
     ++(win_ptr->put_get_list_size);
+    ++(win_ptr->rma_issued);
     ++(win_ptr->put_get_list_size_per_process[rma_op->target_rank]);
 
     v->vc   = (void *)vc_ptr;

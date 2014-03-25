@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -112,7 +112,7 @@ static inline void MRAILI_Rndv_send_zcopy_finish(MPIDI_VC_t * vc,
 
     vbuf_init_send(v, sizeof(MPIDI_CH3_Pkt_zcopy_finish_t), hca_index);
     /* need to send on same UD qp on which zcopy data transfered */
-    vc->mrail.ud.total_messages++;
+    vc->mrail.rely.total_messages++;
     post_ud_send(vc, v, hca_index, zcopy_info->rndv_ud_qps[hca_index]);
 }
 
@@ -132,7 +132,7 @@ static inline void MRAILI_Rndv_send_zcopy_ack(MPIDI_VC_t * vc,  MPID_Request * r
     
     vbuf_init_send(v, sizeof(MPIDI_CH3_Pkt_zcopy_ack_t), hca_index);
     /* need to send on same UD qp on which zcopy data transfered */
-    vc->mrail.ud.total_messages++;
+    vc->mrail.rely.total_messages++;
     post_ud_send(vc, v, hca_index, NULL);
     
 }
@@ -167,7 +167,7 @@ static inline void mv2_flush_zcopy_rndv_qp(mv2_rndv_qp_t *rqp, int num_to_flush)
     }
 
     /* transiotion to RTS state */
-    if(mv2_ud_qp_transition(rqp->ud_qp)) {
+    if(mv2_ud_qp_transition(rqp->ud_qp, rqp->hca_num)) {
         ibv_error_abort(IBV_RETURN_ERR, "Error in changing RNDV UD QP transition\n");
     }
 }
@@ -340,7 +340,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_zcopy_push(MPIDI_VC_t * vc,
 
         sr[i].opcode   = IBV_WR_SEND_WITH_IMM;
         sr[i].wr.ud.remote_qpn  = sreq->mrail.remote_qpn;
-        sr[i].wr.ud.ah = vc->mrail.ud.ah;
+        sr[i].wr.ud.ah = vc->mrail.ud[hca_index].ah;
     }
 
     while (sreq->mrail.rndv_buf_off < sreq->mrail.rndv_buf_sz) {

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,7 +18,7 @@
 #include "mpiimpl.h"
 
 #ifdef _ENABLE_CUDA_
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 #include "datatype.h"
 #include "coll_shmem.h"
 #include "unistd.h"
@@ -80,7 +80,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
             ibv_cuda_unregister(mv2_cuda_allgather_store_buf);
             free (mv2_cuda_allgather_store_buf);
         } 
-        result = posix_memalign(&mv2_cuda_allgather_store_buf, page_size, max_size);
+        result = MPIU_Memalign(&mv2_cuda_allgather_store_buf, page_size, max_size);
         if ((result!=0) || (NULL == mv2_cuda_allgather_store_buf)) {
             mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                     FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
@@ -111,12 +111,8 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
      * local copy to complete*/
         if (rdma_enable_cuda && cuda_initialized && enable_device_ptr_checks
             && rdma_cuda_nonblocking_streams) {
-                if (rdma_cuda_event_sync) { 
-                    CUDA_CHECK(cudaEventRecord(cuda_nbstream_sync_event, 0));
-                    CUDA_CHECK(cudaStreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 0));
-                } else { /*using streams for pipelining, dont know which stream will be used*/   
-                    CUDA_CHECK(cudaStreamSynchronize(0));
-                }
+                CUDA_CHECK(cudaEventRecord(cuda_nbstream_sync_event, 0));
+                CUDA_CHECK(cudaStreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 0));
         }
         
 
@@ -420,5 +416,5 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
     return (mpi_errno);
 }
 /* end:nested */
-#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
 #endif /*#ifdef(_ENABLE_CUDA_)*/

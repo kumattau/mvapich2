@@ -123,12 +123,17 @@ AC_ARG_ENABLE(long-double,
 AC_ARG_ENABLE(checkerrors,
 	[AC_HELP_STRING([--enable-checkerrors],
 		[Add some tests for checking for errors in user programs])],,
-	[enable_checkerrors=default])
+	[enable_checkerrors=yes])
 
 AC_ARG_ENABLE(perftest,
 	[AC_HELP_STRING([--enable-perftest],
 		[Include tests for basic performance consistency (default)])],,
 	[enable_perftest=yes])
+
+AC_ARG_ENABLE(ft-tests,
+	[AC_HELP_STRING([--enable-ft-tests],
+		[Include tests for fault tolerance (default)])],,
+	[enable_ft_tests=yes])
 
 AC_ARG_ENABLE(checkfaults,
 	[AC_HELP_STRING([--enable-checkfaults],
@@ -171,6 +176,11 @@ AC_ARG_ENABLE(threads,
 	to let MPICH build for the correct thread support without
 	requiring a specific --enable-threads argument.],,
 	[enable_threads=default])
+
+AC_ARG_ENABLE(xfail,
+	[AC_HELP_STRING([--enable-xfail],
+		[Run tests marked for expected failure])],,
+	[enable_xfail=no])
 
 AC_ARG_WITH(mpi,
 	[AC_HELP_STRING([--with-mpi=dir],
@@ -220,13 +230,6 @@ if test "$with_pm" != "no" ; then
 else
     first_pm=""
 fi
-
-# Only run the fault tolerance tests if hydra is the primary PM
-ftdir="#ft"
-if test "$first_pm" = "hydra"; then
-    ftdir="ft"
-fi
-AC_SUBST(ftdir)
 
 AC_ARG_WITH(config-args,
 	[AC_HELP_STRING([--with-config-args=filename],
@@ -306,24 +309,6 @@ elif test "$enable_threads" = default ; then
     fi
 fi
 
-if test "$enable_fast" = "yes" ; then
-    if test "$enable_checkerrors" = "default" ; then
-        enable_checkerrors=no
-    fi
-fi
-# default for MPICH is to check error handling; for other cases it
-# is to only check correct programs.
-if test "$FROM_MPICH" = "yes" ; then
-    if test "$enable_checkerrors" = "default" -a "$MPICH_FAST" != "YES" ; then
-         enable_checkerrors=yes
-    else 
-         enable_checkerrors=no
-    fi
-else
-    if test "$enable_checkerrors" = "default" ; then
-         enable_checkerrors=no
-    fi
-fi
 # errordir is substituted into the testlist file as errors when the
 # tests should check error handling and as a comment (#) otherwise.
 errordir="#"
@@ -338,6 +323,14 @@ if test "$enable_strictmpi" = "yes" -o "$enable_perftest" = "no" ; then
      perfdir="#"
 fi
 AC_SUBST(perfdir)
+
+# The ft tests are not part of the MPI standard and some of the netmods can't handle them
+ftdir="#ft"
+if test "$first_pm" = "hydra" -a  "$enable_strictmpi" = "no" -a "$enable_ft_tests" = "yes" ; then
+    ftdir="ft"
+fi
+AC_SUBST(ftdir)
+
 # 
 # Only run the threads tests if multiple is specified
 if test "$enable_threads" = "multiple" -o "$enable_threads" = "runtime" ; then
@@ -350,6 +343,14 @@ if test "$enable_checkpointing" = "yes" ; then
     ckpointdir="ckpoint"
 fi
 AC_SUBST(ckpointdir)
+
+#
+# Only run xfail tests if enabled
+RUN_XFAIL=false
+if test "$enable_xfail" = "yes" ; then
+    RUN_XFAIL=true
+fi
+AC_SUBST(RUN_XFAIL)
 
 PAC_LOAD_BASE_CACHE
 PAC_VPATH_CHECK()
@@ -436,6 +437,13 @@ AC_ARG_VAR([WRAPPER_FFLAGS],[])
 AC_ARG_VAR([WRAPPER_FCFLAGS],[])
 AC_ARG_VAR([WRAPPER_CXXFLAGS],[])
 
+# Attach program prefix and suffix to executable names
+PAC_GET_EXENAME("mpicc", MPICC_NAME)
+PAC_GET_EXENAME("mpif77", MPIF77_NAME)
+PAC_GET_EXENAME("mpif90", MPIF90_NAME)
+PAC_GET_EXENAME("mpicxx", MPICXX_NAME)
+PAC_GET_EXENAME("mpiexec", MPIEXEC_NAME)
+
 if test "$FROM_MPICH" = "yes" ; then
     # perform configure tests with the normal compilers ($CC/$F77/etc), but use
     # the WRAPPER_xFLAGS computed by MPICH as our flags instead.  Then at the
@@ -455,44 +463,44 @@ if test "$FROM_MPICH" = "yes" ; then
 
 elif test -n "$with_mpi" ; then
     if test -z "$MPICC" ; then
-        CC=$with_mpi/bin/mpicc
+        CC=$with_mpi/bin/$MPICC_NAME
     else
         CC=$MPICC
     fi
     if test -z "$MPIF77" ; then
-        F77=$with_mpi/bin/mpif77
+        F77=$with_mpi/bin/$MPIF77_NAME
     else
         F77=$MPIF77
     fi
     if test -z "$MPIFC" ; then
-        FC=$with_mpi/bin/mpif90
+        FC=$with_mpi/bin/$MPIF90_NAME
     else
         FC=$MPIFC
     fi
     if test -z "$MPICXX" ; then
-        CXX=$with_mpi/bin/mpicxx
+        CXX=$with_mpi/bin/$MPICXX_NAME
     else
         CXX=$MPICXX
     fi
     if test -z "$MPIEXEC" ; then
-        MPIEXEC=$with_mpi/bin/mpiexec
+        MPIEXEC=$with_mpi/bin/$MPIEXEC_NAME
     fi
 else
     # Try to use mpicc etc names
     if test -z "$MPICC" ; then
-        AC_PATH_PROG(MPICC,mpicc mpcc)
+        AC_PATH_PROG(MPICC,$MPICC_NAME mpcc)
     fi
     if test "x$MPICC" != "x" ; then
         CC=$MPICC
     fi 
     if test -z "$MPIF77" ; then
-        AC_PATH_PROG(MPIF77,mpif77 mpf77)
+        AC_PATH_PROG(MPIF77,$MPIF77_NAME mpf77)
     fi
     if test "x$MPIF77" != "x" ; then 
         F77=$MPIF77
     fi
     if test -z "$MPIFC" ; then
-        AC_PATH_PROG(MPIFC,mpif90 mpftn)
+        AC_PATH_PROG(MPIFC,$MPIF90_NAME mpftn)
     fi
     if test "x$MPIFC" != "x" ; then
         FC=$MPIFC
@@ -500,13 +508,13 @@ else
     if test -z "$MPICXX" ; then
         # We left mpiCC off of this list because mpicc and mpiCC are the 
         # same on Mac OSX systems.
-        AC_PATH_PROG(MPICXX,mpicxx mpCC)
+        AC_PATH_PROG(MPICXX,$MPICXX_NAME mpCC)
     fi
     if test "x$MPICXX" != "x" ; then
         CXX=$MPICXX
     fi 
     if test -z "$MPIEXEC" ; then
-        AC_PATH_PROG(MPIEXEC,mpiexec)
+        AC_PATH_PROG(MPIEXEC,$MPIEXEC_NAME)
     fi
 fi
 
@@ -604,6 +612,14 @@ AC_TYPE_UINT64_T
 
 # Check for availability of C99 types
 AC_CHECK_TYPES([_Bool, float _Complex, double _Complex, long double _Complex])
+AC_CHECK_SIZEOF(void *,8)
+# for tests that require large mem
+largetest="#"
+if test $ac_cv_sizeof_void_p -ge 8; then
+    largetest=""
+fi
+AC_SUBST(largetest)
+
 
 # Only run the long double complex tests if that type is available
 if test "x$enable_long_double" = "xyes" && \
@@ -1136,11 +1152,18 @@ if test "$enable_cxx" = yes ; then
 fi
 # Simple tests for which other languages we can handle
 cxxdir="#"
+# The C++ interface added support for the Distgraph routines in MPI-2.2,
+# but not all MPI implementations support that.  nocxxdistgraph allows
+# us to detect that and to skip the test when it is not supported.
+nocxxdistgraph="#"
 AC_SUBST(cxxdir)
 if test "$FROM_MPICH" = yes ; then
     if test "$enable_cxx" = yes ; then
         otherlangs="$otherlangs cxx"
         cxxdir=cxx
+        # MPICH ABI removed support for MPI::Distgraphcomm, so
+	# nocxxdistgraph is left as #, which comments out the test
+	# in cxx/topol/testlist.in
     fi
 elif test "$enable_cxx" = yes ; then
     AC_MSG_CHECKING([that we can build MPI programs with C++])
@@ -1159,8 +1182,29 @@ elif test "$enable_cxx" = yes ; then
     ],[
         AC_MSG_RESULT(no)
     ])
+    # Check for support of the Distgraphcomm, added in MPI 2.2.
+    # Some MPI implementations may support MPI 2.2 or MPI 3.x, but not
+    # support the Distgraphcomm C++ interface
+    AC_MSG_CHECKING([whether MPI C++ includes Distgraphcomm])
+    AC_COMPILE_IFELSE([
+        AC_LANG_PROGRAM([
+#include "mpi.h"
+        ],[
+    MPI::Distgraphcomm dcomm;
+    MPI::Init();
+    MPI::Finalize();
+        ])
+    ],[
+        AC_MSG_RESULT(yes)
+        nocxxdistgraph=""
+    ],[
+        AC_MSG_RESULT(no)
+    ])
+
     AC_LANG_POP([C++])
 fi
+AC_SUBST(nocxxdistgraph)
+
 if test "$enable_cxx" = yes ; then
     AC_CACHE_CHECK([whether <iostream> available],pac_cv_cxx_has_iostream,[
     AC_LANG_PUSH([C++])
@@ -1220,6 +1264,24 @@ if test "$enable_romio" != no ; then
 fi
 AC_SUBST(iodir)
 
+impldir="#"
+#
+# Check for implementation to enable implementation-specific options
+if test $enable_strictmpi != "yes" ; then
+   # Is this MPICH?
+   if test "$FROM_MPICH" = yes ; then
+      impldir="mpich"
+   else
+       AC_CACHE_CHECK([Is the MPI derived from MPICH],
+       pac_cv_ismpich,[
+     AC_COMPILE_IFELSE([AC_LANG_PROGRAM([#include "mpi.h"],[return 1 + MPICH;]),
+       pac_cv_ismpich=yes,pac_cv_ismpich=no])])
+       if test "$pac_cv_ismpich" = "yes" ; then
+           impldir="mpich"
+       fi
+   fi
+fi
+AC_SUBST(impldir)
 #
 # MPI_INTEGER16 is mentioned in only one place in MPI 2.1, and some
 # implementations may have missed it.  Check to see if it is available in 
@@ -1338,11 +1400,11 @@ if test "$FROM_MPICH" = yes ; then
 
     # we did our tests with the base compilers, now point the make system at the
     # installed compiler wrappers for actually building the tests
-    CC=$mpibindir/mpicc
-    F77=$mpibindir/mpif77
-    FC=$mpibindir/mpif90
-    CXX=$mpibindir/mpicxx
-    MPIEXEC=$mpibindir/mpiexec
+    CC=$mpibindir/$MPICC_NAME
+    F77=$mpibindir/$MPIF77_NAME
+    FC=$mpibindir/$MPIF90_NAME
+    CXX=$mpibindir/$MPICXX_NAME
+    MPIEXEC=$mpibindir/$MPIEXEC_NAME
 
     # Zero out the flags, since they are already contained in the compiler
     # wrapper scripts.  Note that this will kill any flags that have been added
@@ -1364,12 +1426,13 @@ if test "$FROM_MPICH" = yes ; then
 else
     # We need either mpiexec or mpirun.  If we don't find them,
     # the user will need to determine how to run a program
-    AC_PATH_PROG(MPIEXEC,mpiexec)
+    AC_PATH_PROG(MPIEXEC,$MPIEXEC_NAME)
 fi
 
 AC_OUTPUT_COMMANDS([chmod a+x maint/testmerge])
 AC_OUTPUT_COMMANDS([chmod a+x runtests checktests])
 AC_OUTPUT_COMMANDS([chmod a+x manual/manyconnect])
+AC_OUTPUT_COMMANDS([chmod a+x impls/hydra/proc_binding.sh])
 dnl Note that this format for AC_OUTPUT can cause problems for autoconf
 dnl run under cygwin
 AC_OUTPUT(maint/testmerge \
@@ -1382,6 +1445,7 @@ AC_OUTPUT(maint/testmerge \
           coll/Makefile \
           comm/Makefile \
           datatype/Makefile \
+          datatype/testlist \
           errhan/Makefile \
           group/Makefile \
           info/Makefile \
@@ -1389,6 +1453,7 @@ AC_OUTPUT(maint/testmerge \
           pt2pt/Makefile \
           mpi_t/Makefile \
           rma/Makefile \
+          rma/testlist \
           spawn/Makefile \
           topo/Makefile \
           io/Makefile \
@@ -1457,7 +1522,9 @@ AC_OUTPUT(maint/testmerge \
           threads/util/Makefile \
           threads/comm/Makefile \
           threads/init/Makefile \
+          threads/mpi_t/Makefile \
           threads/spawn/Makefile \
+          threads/rma/Makefile \
           errors/Makefile \
           errors/attr/Makefile \
           errors/basic/Makefile \
@@ -1475,11 +1542,11 @@ AC_OUTPUT(maint/testmerge \
           errors/cxx/errhan/Makefile \
           errors/cxx/io/Makefile \
           errors/f77/Makefile \
-	  errors/f77/errhan/Makefile \
-          errors/f77/errhan/addsize.h \
-	  errors/f77/errhan/iooffset.h \
+          errors/f77/io/Makefile \
+          errors/f77/io/addsize.h \
+          errors/f77/io/iooffset.h \
           errors/f90/Makefile \
-	  errors/f90/errhan/Makefile \
+	  errors/f90/io/Makefile \
 	  ckpoint/Makefile \
 	  ft/Makefile \
           manual/Makefile \
@@ -1488,10 +1555,20 @@ AC_OUTPUT(maint/testmerge \
           perf/Makefile \
           testlist \
           cxx/testlist \
+	  cxx/topo/testlist \
           f77/testlist \
           f90/testlist \
           threads/testlist \
           errors/testlist \
           errors/cxx/testlist \
+          errors/f77/testlist \
+          errors/f90/testlist \
+          impls/testlist \
+          impls/Makefile \
+	  impls/hydra/Makefile \
+	  impls/hydra/proc_binding.sh \
+          impls/mpich/Makefile \
+          impls/mpich/testlist \
+          impls/mpich/mpi_t/Makefile \
           )
 

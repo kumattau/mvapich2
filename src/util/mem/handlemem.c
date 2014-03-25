@@ -4,6 +4,33 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+categories:
+    - name        : MEMORY
+      description : affects memory allocation and usage, including MPI object handles
+
+cvars:
+    - name        : MPIR_CVAR_ABORT_ON_LEAKED_HANDLES
+      category    : MEMORY
+      type        : boolean
+      default     : false
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        If true, MPI will call MPI_Abort at MPI_Finalize if any MPI object
+        handles have been leaked.  For example, if MPI_Comm_dup is called
+        without calling a corresponding MPI_Comm_free.  For uninteresting
+        reasons, enabling this option may prevent all known object leaks from
+        being reported.  MPICH must have been configure with
+        "--enable-g=handlealloc" or better in order for this functionality to
+        work.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
+
 #include "mpiimpl.h"
 #include <stdio.h>
 
@@ -647,7 +674,7 @@ static int MPIU_CheckHandlesOnFinalize( void *objmem_ptr )
 	MPIU_Free( nIndirect );
     }
 
-    if (leaked_handles && MPIR_PARAM_ABORT_ON_LEAKED_HANDLES) {
+    if (leaked_handles && MPIR_CVAR_ABORT_ON_LEAKED_HANDLES) {
         /* comm_world has been (or should have been) destroyed by this point,
          * pass comm=NULL */
         MPID_Abort(NULL, MPI_ERR_OTHER, 1, "ERROR: leaked handles detected, aborting");

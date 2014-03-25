@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -36,6 +36,7 @@
 extern const char MPIR_Version_string[];
 
 /* Global variables */
+int rdma_num_hcas = 1;
 int           rdma_num_qp_per_port = 1;
 int           rdma_num_rails = 1;
 int           rdma_pin_pool_size = RDMA_PIN_POOL_SIZE;
@@ -94,7 +95,7 @@ int           rdma_iwarp_use_multiple_cq = 1;
 /* Force to use rendezvous if extended sendq size exceeds this value */
 int           rdma_rndv_ext_sendq_size = 5;
 /* Whether coalescing of messages should be attempted */
-int           rdma_use_coalesce = 1;
+int           rdma_use_coalesce = 0;
 
 int           mv2_show_env_info = 0;
 
@@ -376,9 +377,8 @@ int MPID_nem_ib_get_control_params_after_hcainit()
         rdma_use_coalesce = !!atoi(value);
     }
 
-    if (hca_list[0].hca_type == MV2_HCA_MLX_CX_DDR ||
-    		hca_list[0].hca_type == MV2_HCA_MLX_CX_SDR ||
-    		hca_list[0].hca_type == MV2_HCA_MLX_CX_QDR) {
+    if (hca_list[0].hca_type == MV2_HCA_MLX_CX_SDR ||
+        hca_list[0].hca_type == MV2_HCA_MLX_CX_DDR) {
     	rdma_use_coalesce = 0;
     }
 
@@ -1216,4 +1216,16 @@ void mv2_print_env_info()
     fprintf(stderr, "---------------------------------------------------------------------\n");
 }
  
-                                                       
+#undef FUNCNAME
+#define FUNCNAME MV2_get_arch_hca_type
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+mv2_arch_hca_type MV2_get_arch_hca_type()
+{
+    return process_info.arch_hca_type;
+}
+
+int mv2_get_heterogeneity()
+{
+    return process_info.heterogeneity;
+}

@@ -7,6 +7,54 @@
 
 #include "mpiimpl.h"
 
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+categories :
+   - name : COLLECTIVE
+     description : A category for collective communication variables.
+
+cvars:
+   - name      : MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE
+     category  : COLLECTIVE
+     type      : int
+     default   : 256
+     class     : device
+     verbosity : MPI_T_VERBOSITY_USER_BASIC
+     scope     : MPI_T_SCOPE_ALL_EQ
+     description : >-
+       the short message algorithm will be used if the per-destination
+       message size (sendcount*size(sendtype)) is <= this value
+       (See also: MPIR_CVAR_ALLTOALL_MEDIUM_MSG_SIZE)
+
+   - name      : MPIR_CVAR_ALLTOALL_MEDIUM_MSG_SIZE
+     category  : COLLECTIVE
+     type      : int
+     default   : 32768
+     class     : device
+     verbosity : MPI_T_VERBOSITY_USER_BASIC
+     scope     : MPI_T_SCOPE_ALL_EQ
+     description : >-
+       the medium message algorithm will be used if the per-destination
+       message size (sendcount*size(sendtype)) is <= this value and
+       larger than MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE
+       (See also: MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE)
+
+   - name      : MPIR_CVAR_ALLTOALL_THROTTLE
+     category  : COLLECTIVE
+     type      : int
+     default   : 32
+     class     : device
+     verbosity : MPI_T_VERBOSITY_USER_BASIC
+     scope     : MPI_T_SCOPE_ALL_EQ
+     description : >-
+       max no. of irecvs/isends posted at a time in some alltoall
+       algorithms. Setting it to 0 causes all irecvs/isends to be
+       posted at once
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
+
 /* -- Begin Profiling Symbol Block for routine MPI_Alltoall */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Alltoall = PMPI_Alltoall
@@ -91,7 +139,8 @@ int MPIR_Alltoall_intra(
     int mpi_errno=MPI_SUCCESS, src, dst, rank, nbytes;
     int mpi_errno_ret = MPI_SUCCESS;
     MPI_Status status;
-    int sendtype_size, pack_size, block, position, *displs, count;
+    int sendtype_size, block, *displs, count;
+    MPI_Aint pack_size, position;
     MPI_Datatype newtype = MPI_DATATYPE_NULL;
     void *tmp_buf;
     MPI_Comm comm;
@@ -164,7 +213,7 @@ int MPIR_Alltoall_intra(
             }
         }
     }
-    else if ((nbytes <= MPIR_PARAM_ALLTOALL_SHORT_MSG_SIZE) && (comm_size >= 8)) {
+    else if ((nbytes <= MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE) && (comm_size >= 8)) {
 
         /* use the indexing algorithm by Jehoshua Bruck et al,
          * IEEE TPDS, Nov. 97 */ 
@@ -426,7 +475,7 @@ int MPIR_Alltoall_intra(
 
     }
 
-    else if (nbytes <= MPIR_PARAM_ALLTOALL_MEDIUM_MSG_SIZE) {
+    else if (nbytes <= MPIR_CVAR_ALLTOALL_MEDIUM_MSG_SIZE) {
         /* Medium-size message. Use isend/irecv with scattered
            destinations. Use Tony Ladd's modification to post only
            a small number of isends/irecvs at a time. */
@@ -442,7 +491,7 @@ int MPIR_Alltoall_intra(
 	 */
         int ii, ss, bblock;
 
-        bblock = MPIR_PARAM_ALLTOALL_THROTTLE;
+        bblock = MPIR_CVAR_ALLTOALL_THROTTLE;
         if (bblock == 0) bblock = comm_size;
 
         MPIU_CHKLMEM_MALLOC(reqarray, MPI_Request *, 2*bblock*sizeof(MPI_Request), mpi_errno, "reqarray");

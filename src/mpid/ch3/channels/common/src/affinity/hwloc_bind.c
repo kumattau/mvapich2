@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -977,12 +977,12 @@ void map_bunch_core(int num_cpus)
     i = 0;
 
     if ((num_cores = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_CORE)) <= 0) {
-        free(objs);
+        MPIU_Free(objs);
         return;
     }
 
     if ((num_pus = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_PU)) <= 0) {
-        free(objs);
+        MPIU_Free(objs);
         return;
     }
 
@@ -1021,7 +1021,7 @@ void map_bunch_core(int num_cpus)
             objs[i++] = obj;
 
         if (i != num_cpus) {
-            free(objs);
+            MPIU_Free(objs);
             return;
         }
 
@@ -1126,12 +1126,12 @@ void map_bunch_socket(int num_sockets, hwloc_obj_type_t binding_level)
     i = 0;
 
     if ((num_cores = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_CORE)) <= 0) {
-        free(objs);
+        MPIU_Free(objs);
         return;
     }
 
     if ((num_pus = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_PU)) <= 0) {
-        free(objs);
+        MPIU_Free(objs);
         return;
     }
 
@@ -1170,7 +1170,7 @@ void map_bunch_socket(int num_sockets, hwloc_obj_type_t binding_level)
             objs[i++] = obj;
 
         if (i != num_sockets) {
-            free(objs);
+            MPIU_Free(objs);
             return;
         }
 
@@ -1396,9 +1396,9 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t tp)
                     cac_load(tree, pid_cpuset);
                 }
                 while (num_processes--) {
-                    free(namelist[num_processes]);
+                    MPIU_Free(namelist[num_processes]);
                 }
-                free(namelist);
+                MPIU_Free(namelist);
             }
 
             if (policy == POLICY_SCATTER) {

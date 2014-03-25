@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -405,6 +405,7 @@ void MRAILI_Release_vbuf(vbuf* v)
     if (v->padding != NORMAL_VBUF_FLAG
         && v->padding != RPUT_VBUF_FLAG
         && v->padding != RGET_VBUF_FLAG
+        && v->padding != COLL_VBUF_FLAG
         && v->padding != RDMA_ONE_SIDED)
     {
         ibv_error_abort(GEN_EXIT_ERR, "vbuf not correct.\n");

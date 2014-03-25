@@ -226,7 +226,7 @@ fn_fail:
 int MPIR_Ireduce_redscat_gather(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int i, j, comm_size, rank, pof2, is_commutative;
+    int i, j, comm_size, rank, pof2, is_commutative ATTRIBUTE((unused));
     int rem, dst, newrank, newdst, mask, send_idx, recv_idx, last_idx;
     int send_cnt, recv_cnt, newroot, newdst_tree_root, newroot_tree_root;
     void *tmp_buf = NULL;
@@ -545,7 +545,7 @@ int MPIR_Ireduce_intra(const void *sendbuf, void *recvbuf, int count, MPI_Dataty
     while (pof2 <= comm_size) pof2 <<= 1;
     pof2 >>=1;
 
-    if ((count*type_size > MPIR_PARAM_REDUCE_SHORT_MSG_SIZE) &&
+    if ((count*type_size > MPIR_CVAR_REDUCE_SHORT_MSG_SIZE) &&
         (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) &&
         (count >= pof2))
     {
@@ -579,7 +579,7 @@ int MPIR_Ireduce_SMP(const void *sendbuf, void *recvbuf, int count, MPI_Datatype
     MPID_Comm *nrc;
     MPIR_SCHED_CHKPMEM_DECL(1);
 
-    if (!MPIR_PARAM_ENABLE_SMP_COLLECTIVES || !MPIR_PARAM_ENABLE_SMP_REDUCE)
+    if (!MPIR_CVAR_ENABLE_SMP_COLLECTIVES || !MPIR_CVAR_ENABLE_SMP_REDUCE)
         MPID_Abort(comm_ptr, MPI_ERR_OTHER, 1, "SMP collectives are disabled!");
     MPIU_Assert(MPIR_Comm_is_node_aware(comm_ptr));
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
@@ -808,7 +808,8 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 /*@
-MPI_Ireduce - XXX description here
+MPI_Ireduce - Reduces values on all processes to a single value
+              in a nonblocking way
 
 Input Parameters:
 + sendbuf - address of the send buffer (choice)
@@ -828,7 +829,8 @@ Output Parameters:
 
 .N Errors
 @*/
-int MPI_Ireduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, int root, MPI_Comm comm, MPI_Request *request)
+int MPI_Ireduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+                MPI_Op op, int root, MPI_Comm comm, MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;

@@ -1,6 +1,6 @@
 /* Malloc implementation for multiple threads without lock contention. */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -215,13 +215,13 @@
     There are several other #defined constants and macros that you
     probably don't want to touch unless you are extending or adapting malloc.  */
 
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #ifndef NEMESIS_BUILD
 #include "mpichconf.h"
 #endif
 #include "dreg.h"
 #if !defined(DISABLE_PTMALLOC)
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 
 /*
   __STD_C should be nonzero if using ANSI-standard C compiler, a C++
@@ -257,12 +257,12 @@
 #include <sys/types.h>
 #endif
 
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 /* #include <malloc-machine.h> */
 #include <ptmalloc2/sysdeps/pthread/malloc-machine.h>
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #include <unistd.h>
 #include <sys/mman.h>
 
@@ -285,7 +285,7 @@ extern mvapich2_malloc_info_t mvapich2_minfo;
 #define __const const
 #endif /* !defined(__GNUC__) */
 
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 
 #ifdef __cplusplus
 extern "C" {
@@ -337,11 +337,11 @@ extern "C" {
 */
 
 #if MALLOC_DEBUG
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #include "mpiutil.h"
 #define assert(x) MPIU_Assert(x)
 /* #include <assert.h>
- * </_OSU_MVAPICH_>
+ * </CHANNEL_MRAIL>
  */
 #else
 #undef assert
@@ -2344,20 +2344,20 @@ static void malloc_init_state(av) mstate av;
 
 #if __STD_C
 static Void_t*  sYSMALLOc(INTERNAL_SIZE_T, mstate);
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #if !defined(MORECORE_CANNOT_TRIM)
 static int      sYSTRIm(size_t, mstate);
 #endif /* !defined(MORECORE_CANNOT_TRIM) */
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 static void     malloc_consolidate(mstate);
 static Void_t** iALLOc(mstate, size_t, size_t*, int, Void_t**);
 #else
 static Void_t*  sYSMALLOc();
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #if !defined(MORECORE_CANNOT_TRIM)
 static int      sYSTRIm();
 #endif /* !defined(MORECORE_CANNOT_TRIM) */
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 static void     malloc_consolidate();
 static Void_t** iALLOc();
 #endif
@@ -3234,7 +3234,7 @@ static Void_t* sYSMALLOc(nb, av) INTERNAL_SIZE_T nb; mstate av;
   return 0;
 }
 
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #if !defined(MORECORE_CANNOT_TRIM)
 /*
   sYSTRIm is an inverse of sorts to sYSMALLOc.  It gives memory back
@@ -3305,7 +3305,7 @@ static int sYSTRIm(pad, av) size_t pad; mstate av;
   return 0;
 }
 #endif /* !defined(MORECORE_CANNOT_TRIM) */
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 
 #ifdef HAVE_MMAP
 
@@ -3429,9 +3429,9 @@ public_mALLOc(size_t bytes)
   assert(!victim || chunk_is_mmapped(mem2chunk(victim)) ||
 	 ar_ptr == arena_for_chunk(mem2chunk(victim)));
 
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   mvapich2_minfo.is_our_malloc = 1;
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 
   return victim;
 }
@@ -3452,7 +3452,7 @@ public_fREe(Void_t* mem)
     return;
   }
 
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   mvapich2_minfo.is_our_free = 1;
 
 #if defined(DISABLE_TRAP_SBRK)
@@ -3463,7 +3463,7 @@ public_fREe(Void_t* mem)
       mvapich2_minfo.is_inside_free = 0;
   }
 #endif /* defined(DISABLE_TRAP_SBRK) */
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 
   if (mem == 0)                              /* free(0) has no effect */
     return;
@@ -3521,9 +3521,9 @@ public_rEALLOc(Void_t* oldmem, size_t bytes)
     __realloc_hook;
   if (hook != NULL)
     return (*hook)(oldmem, bytes, RETURN_ADDRESS (0));
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   mvapich2_minfo.is_our_realloc = 1;
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 
 #if REALLOC_ZERO_BYTES_FREES
   if (bytes == 0 && oldmem != NULL) { public_fREe(oldmem); return 0; }
@@ -3545,34 +3545,34 @@ public_rEALLOc(Void_t* oldmem, size_t bytes)
 #if HAVE_MREMAP
     newp = mremap_chunk(oldp, nb);
     if(newp)
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
     {
         mvapich2_minfo.is_our_realloc = 1;
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
              return chunk2mem(newp);
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
     }
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 #endif
     /* Note the extra SIZE_SZ overhead. */
     if(oldsize - SIZE_SZ >= nb)
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
     {
         mvapich2_minfo.is_our_realloc = 1;
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
                                 return oldmem; /* do nothing */
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
     }
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
     /* Must alloc, copy, free. */
     newmem = public_mALLOc(bytes);
     if (newmem == 0) return 0; /* propagate failure */
     MALLOC_COPY(newmem, oldmem, oldsize - 2*SIZE_SZ);
     munmap_chunk(oldp);
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
     mvapich2_minfo.is_our_realloc = 1;
     flush_dereg_mrs_external();
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
     return newmem;
   }
 #endif
@@ -3599,10 +3599,10 @@ public_rEALLOc(Void_t* oldmem, size_t bytes)
   (void)mutex_unlock(&ar_ptr->mutex);
   assert(!newp || chunk_is_mmapped(mem2chunk(newp)) ||
 	 ar_ptr == arena_for_chunk(mem2chunk(newp)));
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   mvapich2_minfo.is_our_realloc = 1;
   flush_dereg_mrs_external();
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   return newp;
 }
 #ifdef libc_hidden_def
@@ -3651,10 +3651,10 @@ public_mEMALIGn(size_t alignment, size_t bytes)
   }
   assert(!p || chunk_is_mmapped(mem2chunk(p)) ||
 	 ar_ptr == arena_for_chunk(mem2chunk(p)));
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   mvapich2_minfo.is_our_memalign = 1;
   flush_dereg_mrs_external();
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   return p;
 }
 #ifdef libc_hidden_def
@@ -3674,10 +3674,10 @@ public_vALLOc(size_t bytes)
     return 0;
   p = _int_valloc(ar_ptr, bytes);
   (void)mutex_unlock(&ar_ptr->mutex);
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   mvapich2_minfo.is_our_valloc = 1;
   flush_dereg_mrs_external(); 
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   return p;
 }
 
@@ -3692,10 +3692,10 @@ public_pVALLOc(size_t bytes)
   arena_get(ar_ptr, bytes + 2*mp_.pagesize + MINSIZE);
   p = _int_pvalloc(ar_ptr, bytes);
   (void)mutex_unlock(&ar_ptr->mutex);
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   mvapich2_minfo.is_our_valloc = 1;
   flush_dereg_mrs_external(); 
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   return p;
 }
 
@@ -3732,9 +3732,9 @@ public_cALLOc(size_t n, size_t elem_size)
     return memset(mem, 0, sz);
 #else
     while(sz > 0) ((char*)mem)[--sz] = 0; /* rather inefficient */
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
     mvapich2_minfo.is_our_calloc = 1;
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
     return mem;
 #endif
   }
@@ -3753,10 +3753,10 @@ public_cALLOc(size_t n, size_t elem_size)
 #if MORECORE_CLEARS < 2
   /* Only newly allocated memory is guaranteed to be cleared.  */
   if (av == &main_arena &&
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
       oldtopsize < (INTERNAL_SIZE_T)(mp_.sbrk_base + av->max_system_mem - (char *)oldtop))
 /*      oldtopsize < mp_.sbrk_base + av->max_system_mem - (char *)oldtop)
- * </_OSU_MVAPICH_>
+ * </CHANNEL_MRAIL>
  */
     oldtopsize = (mp_.sbrk_base + av->max_system_mem - (char *)oldtop);
 #endif
@@ -3794,14 +3794,14 @@ public_cALLOc(size_t n, size_t elem_size)
   /* Two optional cases in which clearing not necessary */
 #if HAVE_MMAP
   if (chunk_is_mmapped(p))
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   {
       mvapich2_minfo.is_our_calloc = 1;
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
     return mem;
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   }
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 #endif
 
   csz = chunksize(p);
@@ -3842,9 +3842,9 @@ public_cALLOc(size_t n, size_t elem_size)
     }
   }
 
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   mvapich2_minfo.is_our_calloc = 1;
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   return mem;
 }
 
@@ -3860,9 +3860,9 @@ public_iCALLOc(size_t n, size_t elem_size, Void_t** chunks)
 
   m = _int_icalloc(ar_ptr, n, elem_size, chunks);
   (void)mutex_unlock(&ar_ptr->mutex);
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   mvapich2_minfo.is_our_calloc = 1;
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   return m;
 }
 
@@ -5536,7 +5536,7 @@ int mALLOPt(param_number, value) int param_number; int value;
 */
 
 
-/* _OSU_MVAPICH_: We need to expose our own posix_memalign or the wrong one
+/* CHANNEL_MRAIL: We need to expose our own posix_memalign or the wrong one
  * will be used.
 #ifdef _LIBC
 */
@@ -5544,10 +5544,10 @@ int mALLOPt(param_number, value) int param_number; int value;
 
 /* We need a wrapper function for one of the additions of POSIX.  */
 int
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 posix_memalign (void **memptr, size_t alignment, size_t size)
 /* __posix_memalign (void **memptr, size_t alignment, size_t size)
- * </_OSU_MVAPICH_>
+ * </CHANNEL_MRAIL>
  */
 {
   void *mem;
@@ -5577,9 +5577,9 @@ posix_memalign (void **memptr, size_t alignment, size_t size)
   return ENOMEM;
 }
 
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #if defined(_LIBC)
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 weak_alias (__posix_memalign, posix_memalign)
 
 strong_alias (__libc_calloc, __calloc) weak_alias (__libc_calloc, calloc)
@@ -5599,11 +5599,11 @@ weak_alias (__malloc_usable_size, malloc_usable_size)
 weak_alias (__malloc_trim, malloc_trim)
 weak_alias (__malloc_get_state, malloc_get_state)
 weak_alias (__malloc_set_state, malloc_set_state)
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #endif /* defined(_LIBC) */
 /* #endif */ /* _LIBC */
 #endif /* !defined(DISABLE_PTMALLOC) */
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 
 /* ------------------------------------------------------------
 History:

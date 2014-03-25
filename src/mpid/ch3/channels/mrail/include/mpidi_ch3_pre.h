@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -163,6 +163,15 @@ typedef struct _xrc_pending_conn {
 #define     XF_TERMINATED       0x00002000
 #define     XF_UD_CONNECTED     0x00004000
 #endif
+
+#ifdef _ENABLE_XRC_
+#define VC_NOT_READY(vc) \
+    (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE || \
+    	(USE_XRC && VC_XST_ISUNSET (vc, XF_SEND_IDLE)))
+#else
+#define VC_NOT_READY(vc) (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE)
+#endif
+
 /* SMP Channel is added by OSU-MPI2 */
 typedef enum SMP_pkt_type
 {
@@ -261,7 +270,6 @@ struct MPIDI_CH3I_Request						\
 #define  MPIDI_CH3_REQUEST_INIT_CUDA(_rreq)          \
     (_rreq)->mrail.cuda_transfer_mode = 0;           \
     (_rreq)->mrail.pipeline_nm = 0;                  \
-    (_rreq)->mrail.cuda_stream = NULL;               \
     (_rreq)->mrail.cuda_event = NULL;                \
     (_rreq)->dev.pending_pkt = NULL;                 \
     (_rreq)->dev.cuda_srbuf_entry = NULL;            \
@@ -283,7 +291,9 @@ struct MPIDI_CH3I_Request						\
 #define MPIDI_CH3_REQUEST_INIT_CUDA_IPC(_rreq)
 #endif 
 
-#define MPIDI_CH3_REQUEST_INIT(_rreq)   \
+#define MPIDI_CH3_REQUEST_INIT(_rreq)    \
+    (_rreq)->dev.OnDataAvail = NULL;     \
+    (_rreq)->dev.OnFinal = NULL;         \
     (_rreq)->mrail.rndv_buf_alloc = 0;   \
     (_rreq)->mrail.rndv_buf = NULL;      \
     (_rreq)->mrail.rndv_buf_sz = 0;      \
@@ -309,46 +319,14 @@ extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
 
 typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
 
-#if defined(_OSU_MVAPICH_)
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-#define RMA_LIMIC_DECL                                                           \
-    limic_user *peer_lu;                                                         \
-    int limic_fallback;
-#else
-#define RMA_LIMIC_DECL
-#endif /*_SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
-
-#if !defined(DAPL_DEFAULT_PROVIDER)
-#define RMA_SHM_DECL                                                             \
-    int shm_fallback;                                                            \
-    int shm_fd;                                                                  \
-    void *shm_control_buf;                                                       \
-    int shm_control_bufsize;                                                     \
-    void **shm_buffer_all;                                                       \
-    void **shm_win_buffer_all;                                                   \
-    long long *shm_cmpl_counter_me;                                              \
-    long long **shm_cmpl_counter_all;                                            \
-    int *shm_post_flag_me;                                                       \
-    int **shm_post_flag_all;                                                     \
-    int *shm_lock;                                                               \
-    long *shm_shared_lock_count;                                                 \
-    int *shm_lock_released;                                                      \
-    int shm_lock_queued;                                                         \
-    pthread_mutex_t *shm_win_mutex;                                              \
-    int shm_l_ranks;                                                             \
-    int *shm_l2g_rank;                                                           \
-    int *shm_g2l_rank;
-#else
-#define RMA_SHM_DECL
-#endif
-
+#if defined(CHANNEL_MRAIL)
+                                                                                 
 #define MPIDI_CH3_WIN_DECL                                                       \
     int  fall_back;                                                              \
+    int  enable_fast_path;                                                       \
+    int  use_rdma_path;                                                          \
+    int  is_active;                                                              \
     int  using_lock;                                                             \
-    int  *use_two_sided_lock; /* If RMA Fetch_and_op,                             \
-                                Get_accumulate using shared memory lock for sync \
-                                , set this parameter to 1 disable shared memory  \
-                                lock. Use two sided lock instead.*/              \
     long long cc_for_test;                                                       \
     struct dreg_entry* completion_counter_dreg_entry;                            \
     volatile long long * completion_counter;                                     \
@@ -387,9 +365,7 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
     MPIDI_CH3I_SHM_MUTEX *shm_mutex;    /* shared memory windows -- lock for            \
                                            accumulate/atomic operations */              \
     MPIU_SHMW_Hnd_t shm_mutex_segment_handle; /* handle to interprocess mutex memory    \
-                                                 region */                              \
-    RMA_SHM_DECL                                                                 \
-    RMA_LIMIC_DECL
-#endif /* defined(_OSU_MVAPICH_) */
+                                                 region */                              
+#endif /* defined(CHANNEL_MRAIL) */
 
 #endif /* !defined(MPICH_MPIDI_CH3_PRE_H_INCLUDED) */

@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -72,6 +72,7 @@ process_groups *pglist = NULL;
 int port;
 char *wd;                       /* working directory of current process */
 #define MAX_HOST_LEN 256
+#define DEFAULT_FAST_SSH_THRESHOLD 800
 char mpirun_host[MAX_HOST_LEN + 1]; /* hostname of current process */
 char mpirun_hostip[MAX_HOST_LEN + 1]; /* ip address of current process */
 
@@ -442,7 +443,7 @@ int main(int argc, char *argv[])
     fastssh_threshold = env2int("MV2_FASTSSH_THRESHOLD");
 
     if (!fastssh_threshold)
-        fastssh_threshold = 1 << 8;
+        fastssh_threshold = DEFAULT_FAST_SSH_THRESHOLD;
 
     //Another way to activate hiearachical ssh is having a number of nodes
     //beyond a threshold

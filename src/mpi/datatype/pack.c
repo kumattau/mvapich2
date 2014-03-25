@@ -5,6 +5,18 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #include "mpiimpl.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_Pack */
@@ -31,8 +43,8 @@ int MPIR_Pack_impl(const void *inbuf,
                    int incount,
                    MPI_Datatype datatype,
                    void *outbuf,
-                   int outsize,
-                   int *position)
+                   MPI_Aint outsize,
+                   MPI_Aint *position)
 {
     int mpi_errno = MPI_SUCCESS;
     MPI_Aint first, last;
@@ -60,20 +72,16 @@ int MPIR_Pack_impl(const void *inbuf,
 
 #if defined(_ENABLE_CUDA_)
     int inbuf_isdev = 0;
-    cudaError_t cuda_error = cudaSuccess;
     inbuf_isdev = is_device_buffer(inbuf);
 #endif
 
     if (contig) {
 #if defined(_ENABLE_CUDA_)
         if (rdma_enable_cuda && inbuf_isdev) {
-            cuda_error = cudaMemcpy((void *) ((char *)outbuf + *position),
+            MPIU_Memcpy_CUDA((void *) ((char *)outbuf + *position),
                     (void *) ((char *)inbuf + dt_true_lb),
                     data_sz,
                     cudaMemcpyDeviceToHost);
-            if (cuda_error != cudaSuccess) {
-                MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-            }
         } else
 #endif
         {
@@ -179,6 +187,7 @@ int MPI_Pack(const void *inbuf,
 	     MPI_Comm comm)
 {
     int mpi_errno = MPI_SUCCESS;
+    MPI_Aint position_x;
     MPID_Comm *comm_ptr = NULL;
     
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_PACK);
@@ -268,7 +277,9 @@ int MPI_Pack(const void *inbuf,
 
     /* ... body of routine ... */
 
-    mpi_errno = MPIR_Pack_impl(inbuf, incount, datatype, outbuf, outsize, position);
+    position_x = *position;
+    mpi_errno = MPIR_Pack_impl(inbuf, incount, datatype, outbuf, outsize, &position_x);
+    MPIU_Assign_trunc(*position, position_x, int);
     if (mpi_errno) goto fn_fail;
     
    /* ... end of body of routine ... */

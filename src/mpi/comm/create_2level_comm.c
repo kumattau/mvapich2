@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -11,8 +11,6 @@
  */
 
 #include "mpiimpl.h"
-
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include <mpimem.h>
 #include "mpidimpl.h"
 #include "mpicomm.h"
@@ -23,6 +21,8 @@
 #include "ibv_mcast.h"
 #endif
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_2level_comm_requests);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_2level_comm_success);
 
 #if defined(_SMP_LIMIC_)    
 int mv2_limic_comm_count = 0; 
@@ -513,7 +513,11 @@ int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag)
     MPIDI_VC_t* vc = NULL;
     for (; i < size ; ++i){
        MPIDI_Comm_get_vc(comm_ptr, i, &vc);
+#if CHANNEL_NEMESIS_IB
+       if (my_rank == i || vc->ch.is_local){
+#else
        if (my_rank == i || vc->smp.local_rank >= 0){
+#endif
            shmem_group[grp_index++] = i;
        }   
     }  
@@ -631,10 +635,8 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     if (size <= 1) {
         return mpi_errno;
     }
-    #if OSU_MPIT
-        mv2_num_2level_comm_requests++;
-    #endif
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_2level_comm_requests, 1);
     MPID_Comm_get_ptr( comm, comm_ptr );
 
     /* Find out if ranks are block ordered locally */
@@ -668,7 +670,11 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     MPIDI_VC_t* vc = NULL;
     for (; i < size ; ++i){
        MPIDI_Comm_get_vc(comm_ptr, i, &vc);
+#ifdef CHANNEL_NEMESIS_IB
+       if (my_rank == i || vc->ch.is_local){
+#else
        if (my_rank == i || vc->smp.local_rank >= 0){
+#endif
            shmem_group[grp_index] = i;
            if (my_rank == i){
                local_rank = grp_index;
@@ -713,9 +719,8 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
         }
         goto fn_exit;
     }
-    #if OSU_MPIT
-        mv2_num_2level_comm_success++;
-    #endif
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_2level_comm_success, 1);
 
     /* Creating leader group */
     int leader = 0;
@@ -997,6 +1002,8 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
             mv2_ud_destroy_ctx(mcast_ctx->ud_ctx);
             MPIU_Free(mcast_ctx);
         }
+	
+	if (comm_ptr->ch.is_mcast_ok == 0) mv2_enable_zcpy_bcast = 1;
     }
 
 #endif
@@ -1101,6 +1108,3 @@ int enable_split_comm(pthread_t my_id)
 
     return 1;
 }
-
-
-#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */

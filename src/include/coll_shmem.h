@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,6 +22,7 @@
 #ifndef _COLL_SHMEM_
 #define _COLL_SHMEM_
 #include <pthread.h>
+#include <math.h>
 #include "mpidimpl.h"
 
 #if defined(_SMP_LIMIC_)
@@ -121,7 +122,7 @@ void MV2_Read_env_vars(void);
 #define MEDIUM                  1
 #define LARGE                   2
 
-#define MV2_MAX_NB_THRESHOLDS  20
+#define MV2_MAX_NB_THRESHOLDS  32
 
 #define MV2_PARA_PACKET_SIZE    5
 
@@ -166,6 +167,24 @@ void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
 int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag);
 
 extern int mv2_tune_parameter;
+extern int mv2_use_indexed_bcast_tuning;
+extern int mv2_use_indexed_scatter_tuning;
+extern int mv2_use_indexed_gather_tuning;
+extern int mv2_use_indexed_reduce_tuning;
+extern int mv2_use_indexed_allreduce_tuning;
+extern int mv2_use_indexed_allgather_tuning;
+extern int mv2_use_indexed_alltoall_tuning;
+extern int mv2_enable_ibcast;
+extern int mv2_enable_ibarrier;
+extern int mv2_enable_iscatter;
+extern int mv2_enable_igather;
+extern int mv2_enable_iallgather;
+extern int mv2_enable_iallgatherv;
+extern int mv2_enable_ialltoall;
+extern int mv2_enable_ialltoallv;
+extern int mv2_enable_ireduce;
+extern int mv2_enable_ireduce_scatter;
+extern int mv2_enable_iallreduce;
 
 /* Use for collective tuning based on arch detection*/
 void MV2_collectives_arch_init(int heterogeneity);
@@ -315,6 +334,8 @@ void MPIDI_CH3I_SHMEM_Bcast_Complete(int ,int , int);
 int init_thread_reg(void);
 
 extern int mv2_use_osu_collectives;
+extern int mv2_use_indexed_tuning;
+extern int mv2_use_osu_nb_collectives;
 extern int mv2_use_anl_collectives;
 
 /* Comm functions*/
@@ -367,14 +388,15 @@ extern int mv2_use_mcast_pipeline_shm;
 
 int IS_SHMEM_WINDOW_REDUCE_HALF_FULL(int start, int end); 
 
-#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
+#define MAX_NUM_HCAS                    (4)
 typedef struct shm_coll_pkt{
      int  peer_rank;
      int  recv_id;
      uint32_t key[MAX_NUM_HCAS]; 
      uint64_t addr[MAX_NUM_HCAS]; 
 } shm_coll_pkt; 
-#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) */ 
+#endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 
 typedef struct shm_slot_t {
     volatile uint32_t psn __attribute__((aligned(MV2_SHM_ALIGN)));
@@ -404,7 +426,7 @@ typedef struct shm_info_t {
     int tail;
     shm_queue_t *queue;
     MPI_Comm comm; 
-#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
     int buffer_registered; 
     /* zcpy bcast */
     int bcast_exchange_rdma_keys; 
@@ -427,7 +449,7 @@ typedef struct shm_info_t {
     MPI_Request   end_request; 
     int half_full_complete; 
     struct ibv_mr *mem_handle[MAX_NUM_HCAS]; /* mem hndl for entire region */
-#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
+#endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 } shmem_info_t;
 
 shmem_info_t * mv2_shm_coll_init(int id, int local_rank, int local_size, 
@@ -441,7 +463,7 @@ void mv2_shm_tree_reduce(shmem_info_t * shmem, char *in_buf, int len,
                     int count, int root, MPI_User_function * uop, MPI_Datatype datatype, 
                     int is_cxx_uop); 
 
-#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
 int mv2_shm_coll_reg_buffer(void *buffer, int size, struct ibv_mr *mem_handle[], 
                            int *buffer_registered); 
 int mv2_shm_coll_dereg_buffer(struct ibv_mr *mem_handle[]);
@@ -462,6 +484,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                          int expected_send_count, int dst,
                          int knomial_degree,
                          MPID_Comm * comm_ptr, int *errflag);
-#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
+#endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_shmem_coll_calls);
 #endif  /* _COLL_SHMEM_ */

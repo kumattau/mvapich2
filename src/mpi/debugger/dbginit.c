@@ -11,6 +11,33 @@
 #include <unistd.h>
 #endif
 
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_PROCTABLE_SIZE
+      category    : DEBUGGER
+      type        : int
+      default     : 64
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Size of the "MPIR" debugger interface proctable (process table).
+
+    - name        : MPIR_CVAR_PROCTABLE_PRINT
+      category    : DEBUGGER
+      type        : boolean
+      default     : false
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        If true, dump the proctable entries at MPIR_WaitForDebugger-time.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
+
 /* There are two versions of the debugger startup:
    1. The debugger starts mpiexec - then mpiexec provides the MPIR_proctable
       information
@@ -87,11 +114,8 @@ void *MPIR_Breakpoint(void);
    library that the debugger can load in order to access information about
    the parallel program, such as message queues */
 #ifdef HAVE_DEBUGGER_SUPPORT
-#undef MPICH_INFODLL_LOC
 #ifdef MPICH_INFODLL_LOC
 char MPIR_dll_name[] = MPICH_INFODLL_LOC;
-#else
-char MPIR_dll_name[] = "libtvmpich2.so";
 #endif
 #endif
 
@@ -173,7 +197,7 @@ void MPIR_WaitForDebugger( void )
        to access this. */
     /* Also, to avoid scaling problems, we only populate the first 64
        entries (default) */
-    maxsize = MPIR_PARAM_PROCTABLE_SIZE;
+    maxsize = MPIR_CVAR_PROCTABLE_SIZE;
     if (maxsize > size) maxsize = size;
 
     if (rank == 0) {
@@ -206,16 +230,14 @@ void MPIR_WaitForDebugger( void )
 	}
 
 	MPIR_proctable_size               = size;
-#if 0
 	/* Debugging hook */
-	if (MPIR_PARAM_PROCTABLE_PRINT) {
+	if (MPIR_CVAR_PROCTABLE_PRINT) {
 	    for (i=0; i<maxsize; i++) {
 		printf( "PT[%d].pid = %d, .host_name = %s\n", 
 			i, MPIR_proctable[i].pid, MPIR_proctable[i].host_name );
 	    }
 	    fflush( stdout );
 	}
-#endif
 	MPIR_Add_finalize( MPIR_FreeProctable, MPIR_proctable, 0 );
     }
     else {
@@ -299,8 +321,6 @@ void MPIR_DebuggerSetAborting( const char *msg )
  * (more specifically, requests created with MPI_Isend, MPI_Issend, or 
  * MPI_Irsend).
  *
- * FIXME: We need to add MPI_Ibsend and the persistent send requests to
- * the known send requests.
  * FIXME: We should exploit this to allow Finalize to report on 
  * send requests that were never completed.
  */

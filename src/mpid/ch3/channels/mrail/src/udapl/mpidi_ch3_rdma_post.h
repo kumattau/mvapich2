@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -98,6 +98,17 @@ struct MPIDI_CH3I_RDMA_put_get_list_t
     }                                                               \
 }
 
+#define ADD_PENDING_FLOWLIST(_c, _list) {                   \
+    _c->mrail.nextflow = _list;                             \
+    _list = _c;                                             \
+}                                                           \
+
+#define REMOVE_PENDING_FLOWLIST(_c, _list) {                \
+    _c = _list;                                             \
+    _list = _c->mrail.nextflow;                             \
+    _c->mrail.nextflow = NULL;                              \
+}
+
 /*
  * Attached to each connection is a list of send handles that
  * represent rendezvous sends that have been started and acked but not
@@ -167,7 +178,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t
 /* Return type of the sending interfaces */
 #define MPI_MRAIL_MSG_QUEUED (-1)
 
-int MPIDI_CH3I_MRAILI_Fast_rdma_ok (struct MPIDI_VC * vc, int len);
+int MPIDI_CH3I_MRAILI_Fast_rdma_ok (struct MPIDI_VC * vc, MPIDI_msg_sz_t len);
 
 int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete (struct MPIDI_VC * vc,
                                                MPID_IOV * iov,

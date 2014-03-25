@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -191,6 +191,13 @@ typedef struct vbuf
   
     /* used to keep one sided put get list */
     void * list;
+
+    /* used for rma fast path */
+    void * tmp_dreg;
+
+    /* target_rank for rma fast path */
+
+    int32_t target_rank;
 
     /* NULL shandle means not send or not complete. Non-null
      * means pointer to send handle that is now complete. Used

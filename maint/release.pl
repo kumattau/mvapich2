@@ -89,7 +89,8 @@ sub check_autotools_version
 
     $curr_ver = `$tool --version | head -1 | cut -f4 -d' ' | xargs echo -n`;
     if ("$curr_ver" ne "$req_ver") {
-	print("\tWARNING: $tool version mismatch ($req_ver) required\n\n");
+	print("\tERROR: $tool version mismatch ($req_ver) required\n\n");
+	exit;
     }
 }
 
@@ -171,7 +172,7 @@ print("\n");
 ## breakage. So make sure the ABI string in the release tarball is
 ## updated when you do that.
 check_autotools_version("autoconf", "2.69");
-check_autotools_version("automake", "1.12.4");
+check_autotools_version("automake", "1.14");
 check_autotools_version("libtool", "2.4.2");
 print("\n");
 
@@ -298,9 +299,7 @@ run_cmd("cp -a man ${expdir}");
 run_cmd("cp -a www ${expdir}");
 run_cmd("cp -a doc/userguide/user.pdf ${expdir}/doc/userguide");
 run_cmd("cp -a doc/installguide/install.pdf ${expdir}/doc/installguide");
-run_cmd("cp -a doc/smpd/smpd_pmi.pdf ${expdir}/doc/smpd");
 run_cmd("cp -a doc/logging/logging.pdf ${expdir}/doc/logging");
-run_cmd("cp -a doc/windev/windev.pdf ${expdir}/doc/windev");
 print("done\n");
 
 print("===> Creating ROMIO docs... ");

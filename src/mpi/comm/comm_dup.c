@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -19,9 +19,9 @@
 
 #include "mpiimpl.h"
 #include "mpicomm.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 #include "coll_shmem.h"
-#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
 
 
 /* -- Begin Profiling Symbol Block for routine MPI_Comm_dup */

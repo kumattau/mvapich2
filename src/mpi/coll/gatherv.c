@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,26 @@
  */
 
 #include "mpiimpl.h"
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_GATHERV_INTER_SSEND_MIN_PROCS
+      category    : COLLECTIVE
+      type        : int
+      default     : 32
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Use Ssend (synchronous send) for intercommunicator MPI_Gatherv if the
+        "group B" size is >= this value.  Specifying "-1" always avoids using
+        Ssend.  For backwards compatibility, specifying "0" uses the default
+        value.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 
 /* -- Begin Profiling Symbol Block for routine MPI_Gatherv */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -152,11 +172,11 @@ int MPIR_Gatherv (
                irrelevant here. */
             comm_size = comm_ptr->local_size;
 
-            min_procs = MPIR_PARAM_GATHERV_INTER_SSEND_MIN_PROCS;
+            min_procs = MPIR_CVAR_GATHERV_INTER_SSEND_MIN_PROCS;
             if (min_procs == -1)
                 min_procs = comm_size + 1; /* Disable ssend */
             else if (min_procs == 0) /* backwards compatibility, use default value */
-                MPIR_PARAM_GET_DEFAULT_INT(GATHERV_INTER_SSEND_MIN_PROCS,&min_procs);
+                MPIR_CVAR_GET_DEFAULT_INT(MPIR_CVAR_GATHERV_INTER_SSEND_MIN_PROCS,&min_procs);
 
             if (comm_size >= min_procs) {
                 mpi_errno = MPIC_Ssend(sendbuf, sendcount, sendtype, root,

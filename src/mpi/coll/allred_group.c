@@ -29,7 +29,7 @@ int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
                                MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr,
                                MPID_Group *group_ptr, int tag, int *errflag)
 {
-    int type_size;
+    MPI_Aint type_size;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     /* newrank is a rank in group_ptr */
@@ -141,7 +141,7 @@ int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
        using recursive doubling in that case.) */
 
     if (newrank != -1) {
-        if ((count*type_size <= MPIR_PARAM_ALLREDUCE_SHORT_MSG_SIZE) ||
+        if ((count*type_size <= MPIR_CVAR_ALLREDUCE_SHORT_MSG_SIZE) ||
             (HANDLE_GET_KIND(op) != HANDLE_KIND_BUILTIN) ||
             (count < pof2))
         {

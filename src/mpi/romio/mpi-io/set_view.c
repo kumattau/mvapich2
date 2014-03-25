@@ -37,9 +37,10 @@ Input Parameters:
 .N fortran
 @*/
 int MPI_File_set_view(MPI_File fh, MPI_Offset disp, MPI_Datatype etype,
-		      MPI_Datatype filetype, const char *datarep, MPI_Info info)
+		      MPI_Datatype filetype, ROMIO_CONST char *datarep, MPI_Info info)
 {
-    int filetype_size, etype_size, error_code;
+    int error_code;
+    MPI_Count filetype_size, etype_size;
     static char myname[] = "MPI_FILE_SET_VIEW";
     ADIO_Offset shared_fp, byte_off;
     ADIO_File adio_fh;
@@ -109,8 +110,8 @@ int MPI_File_set_view(MPI_File fh, MPI_Offset disp, MPI_Datatype etype,
     MPIO_CHECK_INFO_ALL(info, error_code, adio_fh->comm);
     /* --END ERROR HANDLING-- */
 
-    MPI_Type_size(filetype, &filetype_size);
-    MPI_Type_size(etype, &etype_size);
+    MPI_Type_size_x(filetype, &filetype_size);
+    MPI_Type_size_x(etype, &etype_size);
 
     /* --BEGIN ERROR HANDLING-- */
     if (etype_size != 0 && filetype_size % etype_size != 0)

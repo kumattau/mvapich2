@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -19,10 +19,13 @@
 #include "mpidimpl.h"
 #include "mpiinfo.h"
 #include "mpidrma.h"
-
-#ifdef USE_MPIU_INSTR
-MPIU_INSTR_DURATION_EXTERN_DECL(wincreate_allgather);
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+#include "mpiu_os_wrappers_pre.h"
+#include "mpiu_shm_wrappers.h"
+#include "coll_shmem.h"
 #endif
+
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_wincreate_allgather);
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_Win_fns_init
@@ -68,7 +71,7 @@ int MPIDI_CH3U_Win_create_gather( void *base, MPI_Aint size, int disp_unit,
     /* RMA handlers should be set before calling this function */
     mpi_errno = (*win_ptr)->RMAFns.Win_set_info(*win_ptr, info);
 
-    MPIU_INSTR_DURATION_START(wincreate_allgather);
+    MPIR_T_PVAR_TIMER_START(RMA, rma_wincreate_allgather);
     /* allocate memory for the base addresses, disp_units, and
        completion counters of all processes */
     MPIU_CHKPMEM_MALLOC((*win_ptr)->base_addrs, void **,
@@ -106,7 +109,7 @@ int MPIDI_CH3U_Win_create_gather( void *base, MPI_Aint size, int disp_unit,
     mpi_errno = MPIR_Allgather_impl(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
                                     tmp_buf, 4, MPI_AINT,
                                     (*win_ptr)->comm_ptr, &errflag);
-    MPIU_INSTR_DURATION_END(wincreate_allgather);
+    MPIR_T_PVAR_TIMER_END(RMA, rma_wincreate_allgather);
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
     MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
@@ -118,15 +121,15 @@ int MPIDI_CH3U_Win_create_gather( void *base, MPI_Aint size, int disp_unit,
         (*win_ptr)->disp_units[i] = (int) tmp_buf[k++];
         (*win_ptr)->all_win_handles[i] = (MPI_Win) tmp_buf[k++];
     }
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     /* tell everyone, what is my COMM_WORLD rank */
     (*win_ptr)->rank_mapping[rank] = MPIDI_Process.my_pg_rank;
     MPIR_Allgather_impl(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
            (*win_ptr)->rank_mapping, sizeof(uint32_t), MPI_BYTE,
           comm_ptr, &errflag);
-#endif /* _OSU_PSM_ */
+#endif /* CHANNEL_PSM */
         
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     (*win_ptr)->my_id = rank;
     (*win_ptr)->comm_size = comm_size;
     /* -- OSU-MPI2 uses extended CH3 interface */
@@ -139,33 +142,10 @@ int MPIDI_CH3U_Win_create_gather( void *base, MPI_Aint size, int disp_unit,
 	(*win_ptr)->fall_back = 0;
 	MPIDI_CH3I_RDMA_win_create(base, size, comm_size, 
                    rank, win_ptr, comm_ptr);
-#if !defined (DAPL_DEFAULT_PROVIDER)
-        (*win_ptr)->shm_fallback = 0;
-        MPIDI_CH3I_SHM_win_create(base, size, win_ptr);
-        if ((*win_ptr)->shm_fallback) { 
-#if defined (_SMP_LIMIC_)
-            (*win_ptr)->limic_fallback = 0;
-            MPIDI_CH3I_LIMIC_win_create(base, size, win_ptr);
-#endif /* _SMP_LIMIC_ */
-        }
-
-    if (!(*win_ptr)->shm_fallback
-#if defined(_SMP_LIMIC_)
-     || !(*win_ptr)->limic_fallback 
-#endif
-    ){
-        (*win_ptr)->use_two_sided_lock = MPIU_Malloc((*win_ptr)->shm_l_ranks * sizeof(int));
-        for (i=0; i<(*win_ptr)->shm_l_ranks; i++) ((*win_ptr)->use_two_sided_lock[i] = 0);
     }
+#endif /* defined(CHANNEL_MRAIL) */
 
-	/* A barrier syncrhonization to esnure every one has completed 
-	 * SHM/LIMIC iniitialization/fallback */
-        MPIR_Barrier_impl((*win_ptr)->comm_ptr, &errflag);
-#endif /* DAPL_DEFAULT_PROVIDER */
-    }
-#endif /* defined(_OSU_MVAPICH_) */
-
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     /* call psm to pre-post receive buffers for Puts */
     psm_prepost_1sc();
     MPIR_Barrier_impl((*win_ptr)->comm_ptr, &errflag);
@@ -290,8 +270,10 @@ int MPIDI_CH3U_Win_allocate(MPI_Aint size, int disp_unit, MPID_Info *info,
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_WIN_ALLOCATE);
 
-#if defined(_OSU_MVAPICH_)
-    if ((*win_ptr)->info_args.alloc_shm == TRUE && SMP_INIT) {
+#if defined(CHANNEL_MRAIL)
+    if ((*win_ptr)->info_args.alloc_shm == TRUE && SMP_INIT && mv2_enable_shmem_collectives) {
+#elif defined(CHANNEL_PSM)
+    if ((*win_ptr)->info_args.alloc_shm == TRUE && mv2_enable_shmem_collectives) {
 #else
     if ((*win_ptr)->info_args.alloc_shm == TRUE) {
 #endif

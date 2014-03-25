@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -41,7 +41,7 @@ char *MPIDI_DBG_parent_str = "?";
 
 int MPIDI_Use_pmi2_api = 0;
 
-#ifdef _OSU_MVAPICH_
+#ifdef CHANNEL_MRAIL
 #include <mv2_config.h>
 #include <error_handling.h>
 
@@ -55,7 +55,7 @@ pthread_mutex_t MVAPICH2_sync_ckpt_lock;
 pthread_cond_t MVAPICH2_sync_ckpt_cond;
 int MVAPICH2_Sync_Checkpoint();
 #endif /* CKPT */
-#endif /* _OSU_MVAPICH_ */
+#endif /* CHANNEL_MRAIL */
 
 
 static int init_pg( int *argc_p, char ***argv_p,
@@ -67,7 +67,7 @@ static int set_eager_threshold(MPID_Comm *comm_ptr, MPID_Info *info, void *state
 
 MPIDI_Process_t MPIDI_Process = { NULL };
 MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool = NULL;
-#ifdef _OSU_MVAPICH_
+#ifdef CHANNEL_MRAIL
 #if defined(_ENABLE_CUDA_)
 MPIDI_CH3U_CUDA_SRBuf_element_t * MPIDI_CH3U_CUDA_SRBuf_pool = NULL;
 MPIDI_CH3U_COLL_SRBuf_element_t * MPIDI_CH3U_COLL_SRBuf_pool = NULL;
@@ -117,11 +117,11 @@ static int set_eager_threshold(MPID_Comm *comm_ptr, MPID_Info *info, void *state
     goto fn_exit;
 }
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 
 char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
     [MPIDI_CH3_PKT_EAGER_SEND] = "MPIDI_CH3_PKT_EAGER_SEND",
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     [MPIDI_CH3_PKT_EAGER_SEND_CONTIG] = "MPIDI_CH3_PKT_EAGER_SEND_CONTIG",
 #ifndef MV2_DISABLE_HEADER_CACHING
     [MPIDI_CH3_PKT_FAST_EAGER_SEND] = "MPIDI_CH3_PKT_FAST_EAGER_SEND",
@@ -141,6 +141,7 @@ char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
     [MPIDI_CH3_PKT_CUDA_CTS_CONTI] = "MPIDI_CH3_PKT_CUDA_CTS_CONTI",
     [MPIDI_CH3_PKT_PUT_RNDV] = "MPIDI_CH3_PKT_PUT_RNDV",
     [MPIDI_CH3_PKT_ACCUMULATE_RNDV] = "MPIDI_CH3_PKT_ACCUMULATE_RNDV",
+    [MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV] = "MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV",
     [MPIDI_CH3_PKT_GET_RNDV] = "MPIDI_CH3_PKT_GET_RNDV",
     [MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND] =
         "MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND",
@@ -157,7 +158,7 @@ char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
     [MPIDI_CH3_PKT_CM_REACTIVATION_DONE] = "MPIDI_CH3_PKT_CM_REACTIVATION_DONE",
     [MPIDI_CH3_PKT_CR_REMOTE_UPDATE] = "MPIDI_CH3_PKT_CR_REMOTE_UPDATE",
 #endif /* defined(CKPT) */
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 #if defined(USE_EAGER_SHORT)
     [MPIDI_CH3_PKT_EAGERSHORT_SEND] = "MPIDI_CH3_PKT_EAGERSHORT_SEND",
 #endif /* defined(USE_EAGER_SHORT) */
@@ -198,7 +199,7 @@ char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
 #endif
 
 
-#ifdef _OSU_MVAPICH_
+#ifdef CHANNEL_MRAIL
 void init_debug1() {
     // Set coresize limit
     char *value = NULL;
@@ -256,10 +257,10 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     int pg_size;
     MPID_Comm * comm;
     int p;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     char *value;
     int blocking_val;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
     MPIDI_STATE_DECL(MPID_STATE_MPID_INIT);
 
@@ -275,14 +276,14 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
     /* FIXME: This is a good place to check for environment variables
        and command line options that may control the device */
-#ifdef _OSU_MVAPICH_
+#ifdef CHANNEL_MRAIL
     if(read_configuration_files(&MPIDI_Process.mv2_config_crc)) {
         fprintf(stderr, "Error processing configuration file\n");
         exit(EXIT_FAILURE);
     }
     
     init_debug1();
-#endif /* _OSU_MVAPICH_ */
+#endif /* CHANNEL_MRAIL */
     MPIDI_Use_pmi2_api = FALSE;
 #ifdef USE_PMI2_API
     MPIDI_Use_pmi2_api = TRUE;
@@ -310,6 +311,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
      * if necessary.
      */
     MPIR_Process.attrs.tag_ub = MPIDI_TAG_UB; /* see also mpidpre.h:NOTE-T1 */
+    MPIR_Process.attrs.io = MPI_ANY_SOURCE;
 
     /*
      * Perform channel-independent PMI initialization
@@ -320,13 +322,13 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
 
-#ifdef _OSU_MVAPICH_
+#ifdef CHANNEL_MRAIL
     init_debug2( pg_rank );
 
     if(has_parent) {
         putenv("MV2_SUPPORT_DPM=1");
     }
-#endif /* _OSU_MVAPICH_ */
+#endif /* CHANNEL_MRAIL */
 
     /* FIXME: Why are pg_size and pg_rank handled differently? */
     pg_size = MPIDI_PG_Get_size(pg);
@@ -509,7 +511,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	   control of thread level is available */
 	*provided = (MPICH_THREAD_LEVEL < requested) ? 
 	    MPICH_THREAD_LEVEL : requested;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
         /* If user has enabled blocking mode progress,
          * then we cannot support MPI_THREAD_MULTIPLE */
         if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
@@ -555,17 +557,17 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
             mv2_show_cpu_affinity(pg);
         }
 #endif /* HAVE_LIBHWLOC */
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
     }
-#if defined(_OSU_MVAPICH_) && defined(CKPT)
+#if defined(CHANNEL_MRAIL) && defined(CKPT)
     MPIDI_Process.use_sync_ckpt = 1;
     /*Initialize conditional variable*/
     pthread_mutex_init(&MVAPICH2_sync_ckpt_lock, NULL);
     pthread_cond_init(&MVAPICH2_sync_ckpt_cond, NULL);
-#endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
+#endif /* defined(CHANNEL_MRAIL) && defined(CKPT) */
 
-#if defined(_OSU_MVAPICH_) && defined(_ENABLE_CUDA_)
+#if defined(CHANNEL_MRAIL) && defined(_ENABLE_CUDA_)
     if (rdma_enable_cuda) {
         if (rdma_cuda_dynamic_init) { 
             cuda_preinit(pg);
@@ -573,9 +575,9 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
             cuda_init(pg);
         }
     }
-#endif /* defined(_OSU_MVAPICH_) && defined(_ENABLE_CUDA_) */
+#endif /* defined(CHANNEL_MRAIL) && defined(_ENABLE_CUDA_) */
 
-#if defined(_OSU_MVAPICH_) && defined(CKPT) && defined(ENABLE_SCR)
+#if defined(CHANNEL_MRAIL) && defined(CKPT) && defined(ENABLE_SCR)
     /* Initialize the Scalable Checkpoint/Restart library */
     SCR_Init();
 #endif
@@ -856,7 +858,7 @@ static int pg_destroy(MPIDI_PG_t * pg)
     return MPI_SUCCESS;
 }
 
-#if defined(_OSU_MVAPICH_) && defined(CKPT)
+#if defined(CHANNEL_MRAIL) && defined(CKPT)
 /*Synchronous checkpoint interface*/
 int MVAPICH2_Sync_Checkpoint()
 {
@@ -887,4 +889,4 @@ int MVAPICH2_Sync_Checkpoint()
     pthread_mutex_unlock(&MVAPICH2_sync_ckpt_lock);
     return 0;
 }
-#endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
+#endif /* defined(CHANNEL_MRAIL) && defined(CKPT) */

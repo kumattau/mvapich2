@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,9 +20,9 @@
 #include "mpiimpl.h"
 #include "mpicomm.h"
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 #include "coll_shmem.h"
-#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
 
 /* -- Begin Profiling Symbol Block for routine MPI_Comm_create */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -249,8 +249,8 @@ int MPIR_Comm_create_intra(MPID_Comm *comm_ptr, MPID_Group *group_ptr,
        member of the group */
     /* In the multi-threaded case, MPIR_Get_contextid assumes that the
        calling routine already holds the single criticial section */
-    /* TODO should be converted to use MPIR_Get_contextid_sparse instead */
-    mpi_errno = MPIR_Get_contextid( comm_ptr, &new_context_id );
+    mpi_errno = MPIR_Get_contextid_sparse( comm_ptr, &new_context_id,
+                                           group_ptr->rank == MPI_UNDEFINED );
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     MPIU_Assert(new_context_id != 0);
 
@@ -294,7 +294,6 @@ int MPIR_Comm_create_intra(MPID_Comm *comm_ptr, MPID_Group *group_ptr,
     }
     else {
         /* This process is not in the group */
-        MPIR_Free_contextid( new_context_id );
         new_context_id = 0;
     }
 
@@ -310,8 +309,9 @@ fn_fail:
         MPIR_Comm_release(*newcomm_ptr, 0/*isDisconnect*/);
         new_context_id = 0; /* MPIR_Comm_release frees the new ctx id */
     }
-    if (new_context_id != 0)
+    if (new_context_id != 0 && group_ptr->rank != MPI_UNDEFINED) {
         MPIR_Free_contextid(new_context_id);
+    }
     /* --END ERROR HANDLING-- */
     goto fn_exit;
 }
@@ -532,9 +532,9 @@ Output Parameters:
 .seealso: MPI_Comm_free
 @*/
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 int split_comm = 1;
-#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
 
 int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 {

@@ -3,6 +3,44 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-2.0rc1 (03/24/2014)
+
+* Features and Enhancements (since 2.0b):
+    - Based on MPICH-3.1
+    - Enhanced direct RDMA based designs for MPI_Put and MPI_Get operations in
+      OFA-IB-CH3 channel
+    - Optimized communication when using MPI_Win_allocate for OFA-IB-CH3
+      channel
+    - MPI-3 RMA support for CH3-PSM channel
+    - Multi-rail support for UD-Hybrid channel
+    - Optimized and tuned blocking and non-blocking collectives for OFA-IB-CH3,
+      OFA-IB-Nemesis, and CH3-PSM channels
+    - Improved hierarchical job startup performance
+    - Optimized sub-array data-type processing for GPU-to-GPU communication
+    - Tuning for Mellanox Connect-IB adapters 
+    - Updated hwloc to version 1.8
+    - Added options to specify CUDA library paths
+    - Deprecation of uDAPL-CH3 channel
+
+* Bug-Fixes (since 2.0b):
+    - Fix issues related to MPI-3 RMA locks
+    - Fix an issue related to MPI-3 dynamic window
+    - Fix issues related to MPI_Win_allocate backed by shared memory
+    - Fix issues related to large message transfers for OFA-IB-CH3 and
+      OFA-IB-Nemesis channels
+    - Fix warning in job launch, when using DPM 
+    - Fix an issue related to MPI atomic operations on HCAs without atomics
+      support
+    - Fixed an issue related to selection of compiler. (We prefer the GNU, 
+      Intel, PGI, and Ekopath compilers in that order).
+        - Thanks to Uday R Bondhugula from IISc for the report
+    - Fix an issue in message coalescing
+    - Prevent printing out inter-node runtime parameters for pure intra-node
+      runs
+        - Thanks to Jerome Vienne from TACC for the report
+    - Fix an issue related to ordering of messages for GPU-to-GPU transfers
+    - Fix a few memory leaks and warnings
+
 MVAPICH2-2.0b (11/08/2013)
 
 * Features and Enhancements (since 2.0a):

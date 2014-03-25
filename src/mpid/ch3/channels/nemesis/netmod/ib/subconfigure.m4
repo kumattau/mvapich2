@@ -1,10 +1,11 @@
 [#] start of __file__
-dnl MPICH2_SUBCFG_AFTER=src/mpid/ch3/channels/nemesis
+dnl MPICH_SUBCFG_AFTER=src/mpid/ch3/channels/nemesis
 
 AC_DEFUN([PAC_SUBCFG_PREREQ_]PAC_SUBCFG_AUTO_SUFFIX,[
     AM_COND_IF([BUILD_CH3_NEMESIS],[
         for net in $nemesis_networks ; do
-            AS_CASE([$net],[ib],[build_nemesis_netmod_ib=yes])
+            AS_CASE([$net],[ib],[build_nemesis_netmod_ib=yes
+                                 build_osu_mvapich=yes])
         done
     ])
     AM_CONDITIONAL([BUILD_NEMESIS_NETMOD_IB],[test "X$build_nemesis_netmod_ib" = "Xyes"])
@@ -52,6 +53,9 @@ AC_SEARCH_LIBS([dlsym],
                [dl],
                [],
                [AC_MSG_ERROR([dlsym not available])])
+
+AC_DEFINE([_OSU_MVAPICH_], [1], [Define to enable MVAPICH2 customizations])
+AC_DEFINE([CHANNEL_NEMESIS_IB], [1], [Define if using the nemesis ib netmod])
 
 ])dnl end AM_COND_IF(BUILD_NEMESIS_NETMOD_IB,...)
 ])dnl end _BODY

@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -142,6 +142,9 @@ static entry_t entry_free_list;
 }
 
 #endif
+
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_reg_cache_hits);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_reg_cache_misses);
 
 static inline int dreg_remove (dreg_entry *r);
 
@@ -748,7 +751,7 @@ void flush_dereg_mrs_external()
 #endif
 
 /* will return a NULL pointer if registration fails */
-dreg_entry *dreg_register(void *buf, int len)
+dreg_entry *dreg_register(void *buf, size_t len)
 {
     struct dreg_entry *d;
     int rc;
@@ -762,10 +765,11 @@ dreg_entry *dreg_register(void *buf, int len)
     if (d != NULL) {
         dreg_stat_cache_hit++;
         dreg_incr_refcount(d);
-
-
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_reg_cache_hits, 1);
     } else {
         dreg_stat_cache_miss++;
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_reg_cache_misses, 1);
+
         while ((d = dreg_new_entry(buf, len)) == NULL) {
             /* either was not able to obtain a dreg_entry data strucrure
              * or was not able to register memory.  In either case,
@@ -809,7 +813,7 @@ void dreg_unregister(dreg_entry * d)
 }
 
 
-dreg_entry *dreg_find(void *buf, int len)
+dreg_entry *dreg_find(void *buf, size_t len)
 {
     unsigned long begin = ((unsigned long)buf) >> DREG_PAGEBITS;
     unsigned long end = ((unsigned long)(((char*)buf) + len - 1)) >> DREG_PAGEBITS;
@@ -951,7 +955,7 @@ int dreg_evict()
  * found that the memory isn't registered. Register it 
  * and put it in the hash table 
  */
-dreg_entry *dreg_new_entry(void *buf, int len)
+dreg_entry *dreg_new_entry(void *buf, size_t len)
 {
 
     int i;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,7 @@
 #include <ib_errors.h>
 #include <ib_process.h>
 
-struct ibv_mr * register_memory(void * buf, int len, int hca_num)
+struct ibv_mr * register_memory(void * buf, size_t len, int hca_num)
 {
     struct ibv_mr * mr = ibv_reg_mr(hca_list[hca_num].ptag, buf, len,
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |

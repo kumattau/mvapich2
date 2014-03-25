@@ -12,3 +12,7 @@ lib_lib@MPILIBNAME@_la_SOURCES += \
     src/util/mem/argstr.c     \
     src/util/mem/strerror.c
 
+if BUILD_OSU_MVAPICH
+lib_lib@MPILIBNAME@_la_SOURCES += src/util/mem/mpit.c
+lib_lib@MPILIBNAME@_la_SOURCES += src/util/mem/realfree.c
+endif

@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -80,8 +80,8 @@ MPID_Request * MPID_Request_create(void)
 	req->status.MPI_SOURCE	   = MPI_UNDEFINED;
 	req->status.MPI_TAG	   = MPI_UNDEFINED;
 	req->status.MPI_ERROR	   = MPI_SUCCESS;
-	req->status.count	   = 0;
-	req->status.cancelled	   = FALSE;
+        MPIR_STATUS_SET_COUNT(req->status, 0);
+        MPIR_STATUS_SET_CANCEL_BIT(req->status, FALSE);
 	req->comm		   = NULL;
         req->greq_fns              = NULL;
 	req->dev.datatype_ptr	   = NULL;
@@ -154,7 +154,7 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
     }
 #endif
 
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     PSMSG(fprintf(stderr, "req release time\n"));
     if(req->psm_flags & PSM_NON_CONTIG_REQ) {
         psm_do_ncrecv_complete(req);
@@ -433,8 +433,8 @@ int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq)
 				   rreq->dev.segment_first,
 				   &last, &rreq->dev.iov[0], &rreq->dev.iov_count);
 	MPIU_DBG_MSG_FMT(CH3_CHANNEL,VERBOSE,(MPIU_DBG_FDEST,
-   "post-upv: first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT ", iov_n=%d, iov_offset=%d",
-			  rreq->dev.segment_first, last, rreq->dev.iov_count, rreq->dev.iov_offset));
+   "post-upv: first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT ", iov_n=%d, iov_offset=%lld",
+			  rreq->dev.segment_first, last, rreq->dev.iov_count, (long long)rreq->dev.iov_offset));
 	MPIU_Assert(rreq->dev.iov_count >= 0 && rreq->dev.iov_count <= 
 		    MPID_IOV_LIMIT);
 
@@ -448,7 +448,7 @@ int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq)
 	    rreq->status.MPI_ERROR = MPIR_Err_create_code(MPI_SUCCESS, 
 		       MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_TYPE,
 		       "**dtypemismatch", 0);
-	    rreq->status.count = (int)rreq->dev.segment_first;
+            MPIR_STATUS_SET_COUNT(rreq->status, rreq->dev.segment_first);
 	    rreq->dev.segment_size = rreq->dev.segment_first;
 	    mpi_errno = MPIDI_CH3U_Request_load_recv_iov(rreq);
 	    goto fn_exit;
@@ -604,7 +604,7 @@ int MPIDI_CH3U_Request_unpack_srbuf(MPID_Request * rreq)
 	/* If no data can be unpacked, then we have a datatype processing 
 	   problem.  Adjust the segment info so that the remaining
 	   data is received and thrown away. */
-	rreq->status.count = (int)rreq->dev.segment_first;
+	MPIR_STATUS_SET_COUNT(rreq->status, rreq->dev.segment_first);
 	rreq->dev.segment_size = rreq->dev.segment_first;
 	rreq->dev.segment_first += tmpbuf_last;
 	rreq->status.MPI_ERROR = MPIR_Err_create_code(MPI_SUCCESS, 
@@ -622,7 +622,7 @@ int MPIDI_CH3U_Request_unpack_srbuf(MPID_Request * rreq)
 	       Note: the segment_first field is set to segment_last so that if
 	       this is a truncated message, extra data will be read
 	       off the pipe. */
-	    rreq->status.count = (int)last;
+	    MPIR_STATUS_SET_COUNT(rreq->status, last);
 	    rreq->dev.segment_size = last;
 	    rreq->dev.segment_first = tmpbuf_last;
 	    rreq->status.MPI_ERROR = MPIR_Err_create_code(MPI_SUCCESS, 
@@ -686,7 +686,7 @@ int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq)
 	      ", buf_sz=" MPIDI_MSG_SZ_FMT, 
                 rreq->dev.recv_data_sz, userbuf_sz));
 	unpack_sz = userbuf_sz;
-	rreq->status.count = (int)userbuf_sz;
+	MPIR_STATUS_SET_COUNT(rreq->status, userbuf_sz);
 	rreq->status.MPI_ERROR = MPIR_Err_create_code(MPI_SUCCESS, 
 		 MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_TRUNCATE,
 		 "**truncate", "**truncate %d %d", 
@@ -704,14 +704,10 @@ int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq)
 	       (unless configured with --enable-fast) */
         MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
 #ifdef _ENABLE_CUDA_
-        cudaError_t cuda_error = cudaSuccess;
         if (rdma_enable_cuda && (rreq->mrail.cuda_transfer_mode != NONE
 	    || is_device_buffer((void *)rreq->dev.tmpbuf))) {
-            cuda_error = cudaMemcpy((char *)rreq->dev.user_buf + dt_true_lb,
+            MPIU_Memcpy_CUDA((char *)rreq->dev.user_buf + dt_true_lb,
                     rreq->dev.tmpbuf, unpack_sz, cudaMemcpyDefault);
-            if (cuda_error != cudaSuccess) {
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-            }
         } else
 #endif
         {
@@ -742,7 +738,7 @@ int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq)
 		/* received data was not entirely consumed by unpack() 
 		   because too few bytes remained to fill the next basic
 		   datatype */
-		rreq->status.count = (int)last;
+		MPIR_STATUS_SET_COUNT(rreq->status, last);
 		rreq->status.MPI_ERROR = MPIR_Err_create_code(MPI_SUCCESS, 
                          MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_TYPE,
 			 "**dtypemismatch", 0);
@@ -764,14 +760,15 @@ void MPID_Request_set_completed( MPID_Request *req )
     MPID_REQUEST_SET_COMPLETED(req);
 }
 
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
 void psm_do_ncrecv_complete(MPID_Request *req)
 {
     /* pkbuf is UB for packing, we should stop after unpacking byte count
        received: status.count */
 
     psm_do_unpack(req->dev.user_count, req->dev.datatype, req->comm, 
-                  req->pkbuf, req->pksz, req->dev.user_buf, req->status.count);
+                  req->pkbuf, req->pksz, req->dev.user_buf, 
+                  MPIR_STATUS_GET_COUNT(req->status));
     MPIU_Free(req->pkbuf);
     req->pkbuf = NULL; 
 }

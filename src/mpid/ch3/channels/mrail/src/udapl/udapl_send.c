@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -454,7 +454,7 @@ MPIDI_CH3I_MRAILI_Fast_rdma_send_complete (MPIDI_VC_t * vc,
 #define FUNCNAME MPIDI_CH3I_MRAILI_Fast_rdma_ok
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_MRAILI_Fast_rdma_ok (MPIDI_VC_t * vc, int len)
+int MPIDI_CH3I_MRAILI_Fast_rdma_ok (MPIDI_VC_t * vc, MPIDI_msg_sz_t len)
 {
     if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path == 0) {
         return 0;
@@ -887,6 +887,7 @@ int MRAILI_Process_send (void *vbuf_addr)
       case MPIDI_CH3_PKT_GET:
       case MPIDI_CH3_PKT_GET_RNDV:
       case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
+      case MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV:
       case MPIDI_CH3_PKT_LOCK:
       case MPIDI_CH3_PKT_LOCK_GRANTED:
       case MPIDI_CH3_PKT_UNLOCK:

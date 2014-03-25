@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -12,8 +12,6 @@
 
 #include <regex.h>
 #include "allgatherv_tuning.h"
-
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "mv2_arch_hca_detect.h"
 
 enum {
@@ -27,7 +25,8 @@ mv2_allgatherv_tuning_table *mv2_allgatherv_thresholds_table = NULL;
 
 int MV2_set_allgatherv_tuning_table(int heterogeneity)
 {
-#if defined(_OSU_MVAPICH_) && !defined(_OSU_PSM_)
+#ifndef CHANNEL_PSM
+#ifdef CHANNEL_MRAIL_GEN2
     if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
         MV2_ARCH_INTEL_XEON_X5650_12, MV2_HCA_MLX_CX_QDR) && !heterogeneity){
         mv2_size_allgatherv_tuning_table = 6;
@@ -202,8 +201,183 @@ int MV2_set_allgatherv_tuning_table(int heterogeneity)
         MPIU_Memcpy(mv2_allgatherv_thresholds_table, mv2_tmp_allgatherv_thresholds_table,
                   mv2_size_allgatherv_tuning_table * sizeof (mv2_allgatherv_tuning_table));
     } else
+#elif defined (CHANNEL_NEMESIS_IB)
+    if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+        MV2_ARCH_INTEL_XEON_X5650_12, MV2_HCA_MLX_CX_QDR) && !heterogeneity){
+        mv2_size_allgatherv_tuning_table = 6;
+        mv2_allgatherv_thresholds_table = MPIU_Malloc(mv2_size_allgatherv_tuning_table *
+                                                  sizeof (mv2_allgatherv_tuning_table));
+        mv2_allgatherv_tuning_table mv2_tmp_allgatherv_thresholds_table[] = {
+            {
+                12,
+                2,
+                {
+                    {0, 512, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {512, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                24,
+                2,
+                {
+                    {0, 512, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {512, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                48,
+                2,
+                {
+                    {0, 256, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {256, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                96,
+                2,
+                {
+                    {0, 256, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {256, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                192,
+                2,
+                {
+                    {0, 256, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {256, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                384,
+                2,
+                {
+                    {0, 256, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {256, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+        }; 
+        MPIU_Memcpy(mv2_allgatherv_thresholds_table, mv2_tmp_allgatherv_thresholds_table,
+                  mv2_size_allgatherv_tuning_table * sizeof (mv2_allgatherv_tuning_table));
+    } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+        MV2_ARCH_INTEL_XEON_E5_2680_16, MV2_HCA_MLX_CX_FDR) && !heterogeneity){
+        mv2_size_allgatherv_tuning_table = 6;
+        mv2_allgatherv_thresholds_table = MPIU_Malloc(mv2_size_allgatherv_tuning_table *
+                                                  sizeof (mv2_allgatherv_tuning_table));
+        mv2_allgatherv_tuning_table mv2_tmp_allgatherv_thresholds_table[] = {
+            {
+                16,
+                2,
+                {
+                    {0, 512, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {512, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                32,
+                2,
+                {
+                    {0, 512, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {512, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                64,
+                2,
+                {
+                    {0, 256, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {256, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                128,
+                2,
+                {
+                    {0, 256, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {256, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                256,
+                2,
+                {
+                    {0, 256, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {256, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                512,
+                2,
+                {
+                    {0, 256, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {256, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
 
-#endif /* (_OSU_MVAPICH_) && !defined(_OSU_PSM_) */
+        }; 
+        MPIU_Memcpy(mv2_allgatherv_thresholds_table, mv2_tmp_allgatherv_thresholds_table,
+                  mv2_size_allgatherv_tuning_table * sizeof (mv2_allgatherv_tuning_table));
+    } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+        MV2_ARCH_AMD_OPTERON_6136_32, MV2_HCA_MLX_CX_QDR) && !heterogeneity){
+        mv2_size_allgatherv_tuning_table = 6;
+        mv2_allgatherv_thresholds_table = MPIU_Malloc(mv2_size_allgatherv_tuning_table *
+                                                  sizeof (mv2_allgatherv_tuning_table));
+        mv2_allgatherv_tuning_table mv2_tmp_allgatherv_thresholds_table[] = {
+        /*Trestles*/
+            {
+                32,
+                2,
+                {
+                    {0, 512, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {512, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                64,
+                2,
+                {
+                    {0, 256, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {256, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                128,
+                2,
+                {
+                    {0, 128, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {128, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                256,
+                2,
+                {
+                    {0, 128, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {128, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                512,
+                2,
+                {
+                    {0, 128, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {128, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+            {
+                1024,
+                2,
+                {
+                    {0, 256, &MPIR_Allgatherv_Rec_Doubling_MV2},
+                    {256, -1, &MPIR_Allgatherv_Ring_MV2},
+                },
+            },
+        }; 
+        MPIU_Memcpy(mv2_allgatherv_thresholds_table, mv2_tmp_allgatherv_thresholds_table,
+                  mv2_size_allgatherv_tuning_table * sizeof (mv2_allgatherv_tuning_table));
+    } else
+#endif
+#endif /* !CHANNEL_PSM */
     {
         mv2_size_allgatherv_tuning_table = 7;
         mv2_allgatherv_thresholds_table = MPIU_Malloc(mv2_size_allgatherv_tuning_table *
@@ -394,5 +568,3 @@ int MV2_internode_Allgatherv_is_define(char *mv2_user_allgatherv_inter)
                 (mv2_allgatherv_tuning_table));
     return 0;
 }
-
-#endif                          /* if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */

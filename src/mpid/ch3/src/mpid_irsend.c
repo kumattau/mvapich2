@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -42,7 +42,7 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 #endif    
     int mpi_errno = MPI_SUCCESS;    
 
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     /* implement rsend as a regular send. this switch should happen 
        before any of the macro's are invoked below */
     return (MPID_Isend(buf, count, datatype, rank, tag, comm,
@@ -119,11 +119,11 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 	goto fn_exit;
     }
     
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     /* OSU-MPI2 use rndv protocol for ready send */
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= vc->eager_max_msg_sz 
         && ! vc->force_rndv) {
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
 	if (vc->ready_eager_max_msg_sz < 0 || data_sz + sizeof(MPIDI_CH3_Pkt_ready_send_t) <= vc->ready_eager_max_msg_sz) {
 #endif
        if (dt_contig) {
@@ -150,7 +150,7 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
  	/* Do rendezvous.  This will be sent as a regular send not as
            a ready send, so the receiver won't know to send an error
            if the receive has not been posted */
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 	MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
 	MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_RSEND);
 	mpi_errno = MPIDI_CH3_RndvSend( &sreq, buf, count, datatype, dt_contig,

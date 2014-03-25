@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,7 @@
  */
 
 #include "mpidimpl.h"
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #include "dreg.h"
 #endif
 
@@ -46,7 +46,7 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	goto fn_exit;
     }
 
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     /* PSM can't do send cancel, this code is just for completion */
     sreq->psm_flags |= PSM_SEND_CANCEL;
     mpi_errno = psm_do_cancel(sreq);
@@ -92,7 +92,7 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	    MPIU_Object_set_ref(rreq, 0);
 	    MPIDI_CH3_Request_destroy(rreq);
 	    
-	    sreq->status.cancelled = TRUE;
+	    MPIR_STATUS_SET_CANCEL_BIT(sreq->status, TRUE);
 	    /* no other thread should be waiting on sreq, so it is safe to 
 	       reset ref_count and cc */
             MPID_cc_set(&sreq->cc, 0);
@@ -101,7 +101,7 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	}
 	else
 	{
-	    sreq->status.cancelled = FALSE; 
+	    MPIR_STATUS_SET_CANCEL_BIT(sreq->status, FALSE);
 	    MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                "send-to-self cancellation failed, sreq=0x%08x, rreq=0x%08x",
 						sreq->handle, rreq->handle));
@@ -127,10 +127,10 @@ int MPID_Cancel_send(MPID_Request * sreq)
                MPIDI_CH3U_Handle_recv_pkt()).  
 	       MPID_Request_fetch_and_clear_rts_sreq() is used to gurantee 
 	       that atomicity. */
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 	    /* OSU-MPI2 finishes rndv request with extra step */
 	    MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(sreq);
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 	    MPIDI_Request_fetch_and_clear_rts_sreq(sreq, &rts_sreq);
 	    if (rts_sreq != NULL) 
 	    {
@@ -151,7 +151,7 @@ int MPID_Cancel_send(MPID_Request * sreq)
 		
 		if (cancelled)
 		{
-		    sreq->status.cancelled = TRUE;
+		    MPIR_STATUS_SET_CANCEL_BIT(sreq->status, TRUE);
 		    /* no other thread should be waiting on sreq, so it is 
 		       safe to reset ref_count and cc */
                     MPID_cc_set(&sreq->cc, 0);
@@ -166,7 +166,7 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	    cancelled = FALSE;
 	    if (cancelled)
 	    {
-		sreq->status.cancelled = TRUE;
+		MPIR_STATUS_SET_CANCEL_BIT(sreq->status, TRUE);
 		/* no other thread should be waiting on sreq, so it is safe to 
 		   reset ref_count and cc */
                 MPID_cc_set(&sreq->cc, 0);
@@ -185,9 +185,9 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	MPIDI_CH3_Pkt_t upkt;
 	MPIDI_CH3_Pkt_cancel_send_req_t * const csr_pkt = &upkt.cancel_send_req;
 	MPID_Request * csr_sreq;
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
 	MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 	
 	MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
               "sending cancel request to %d for 0x%08x", 
@@ -211,10 +211,10 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	csr_pkt->match.parts.context_id = sreq->dev.match.parts.context_id;
 	csr_pkt->sender_req_id = sreq->handle;
 	
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
         MPIDI_VC_FAI_send_seqnum(vc, seqnum);
         MPIDI_Pkt_set_seqnum(csr_pkt, seqnum);
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 	
 	MPIU_THREAD_CS_ENTER(CH3COMM,vc);
 	mpi_errno = MPIDI_CH3_iStartMsg(vc, csr_pkt, sizeof(*csr_pkt), &csr_sreq);
@@ -256,9 +256,9 @@ int MPIDI_CH3_PktHandler_CancelSendReq( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPIDI_CH3_Pkt_cancel_send_resp_t * resp_pkt = &upkt.cancel_send_resp;
     MPID_Request * resp_sreq;
     int mpi_errno = MPI_SUCCESS;
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
     
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
       "received cancel send req pkt, sreq=0x%08x, rank=%d, tag=%d, context=%d",
@@ -277,9 +277,9 @@ int MPIDI_CH3_PktHandler_CancelSendReq( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	{
 	    MPIU_Free(rreq->dev.tmpbuf);
 	}
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 	MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 	MPID_Request_release(rreq);
 	ack = TRUE;
     }
@@ -292,10 +292,10 @@ int MPIDI_CH3_PktHandler_CancelSendReq( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPIDI_Pkt_init(resp_pkt, MPIDI_CH3_PKT_CANCEL_SEND_RESP);
     resp_pkt->sender_req_id = req_pkt->sender_req_id;
     resp_pkt->ack = ack;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(resp_pkt, seqnum);
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     /* FIXME: This is called within the packet handler */
     /* MPIU_THREAD_CS_ENTER(CH3COMM,vc); */
     mpi_errno = MPIDI_CH3_iStartMsg(vc, resp_pkt, sizeof(*resp_pkt), &resp_sreq);
@@ -332,7 +332,7 @@ int MPIDI_CH3_PktHandler_CancelSendResp( MPIDI_VC_t *vc ATTRIBUTE((unused)),
     
     if (resp_pkt->ack)
     {
-	sreq->status.cancelled = TRUE;
+	MPIR_STATUS_SET_CANCEL_BIT(sreq->status, TRUE);
 	
 	if (MPIDI_Request_get_msg_type(sreq) == MPIDI_REQUEST_RNDV_MSG ||
 	    MPIDI_Request_get_type(sreq) == MPIDI_REQUEST_TYPE_SSEND)
@@ -348,7 +348,7 @@ int MPIDI_CH3_PktHandler_CancelSendResp( MPIDI_VC_t *vc ATTRIBUTE((unused)),
     }
     else
     {
-	sreq->status.cancelled = FALSE; 
+	MPIR_STATUS_SET_CANCEL_BIT(sreq->status, FALSE);
 	MPIU_DBG_MSG(CH3_OTHER,TYPICAL,"unable to cancel message");
     }
     

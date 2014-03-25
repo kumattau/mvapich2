@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,15 +21,14 @@
 
 
 MPIU_THREADSAFE_INIT_DECL(initRMAoptions);
-#ifdef USE_MPIU_INSTR
-MPIU_INSTR_DURATION_DECL(wincreate_allgather);
-MPIU_INSTR_DURATION_DECL(winfree_rs);
-MPIU_INSTR_DURATION_DECL(winfree_complete);
-MPIU_INSTR_DURATION_DECL(rmaqueue_alloc);
-MPIU_INSTR_DURATION_DECL(rmaqueue_set);
-extern void MPIDI_CH3_RMA_InitInstr(void);
-#endif
 
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_wincreate_allgather);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_winfree_rs);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_winfree_complete);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_rmaqueue_alloc);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_rmaqueue_set);
+
+extern void MPIDI_CH3_RMA_Init_Pvars(void);
 
 static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model,
                     MPID_Comm *comm_ptr, MPID_Win **win_ptr);
@@ -121,12 +120,15 @@ int MPID_Win_allocate(MPI_Aint size, int disp_unit, MPID_Info *info,
     mpi_errno = win_init(size, disp_unit, MPI_WIN_FLAVOR_ALLOCATE, MPI_WIN_UNIFIED, comm_ptr, win_ptr);
     if (mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
 
+    /* FOR ALLOCATE, alloc_shm info is default to set to TRUE */
+    (*win_ptr)->info_args.alloc_shm = TRUE;
+
     if (info != NULL) {
         int alloc_shm_flag = 0;
         char shm_alloc_value[MPI_MAX_INFO_VAL+1];
         MPIR_Info_get_impl(info, "alloc_shm", MPI_MAX_INFO_VAL, shm_alloc_value, &alloc_shm_flag);
-        if ((alloc_shm_flag == 1) && (!strncmp(shm_alloc_value, "true", sizeof("true"))))
-            (*win_ptr)->info_args.alloc_shm = TRUE;
+        if ((alloc_shm_flag == 1) && (!strncmp(shm_alloc_value, "false", sizeof("false"))))
+            (*win_ptr)->info_args.alloc_shm = FALSE;
     }
 
     mpi_errno = MPIDI_CH3U_Win_fns.allocate(size, disp_unit, info, comm_ptr, baseptr, win_ptr);
@@ -264,15 +266,8 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model,
 
     if(initRMAoptions) {
         MPIU_THREADSAFE_INIT_BLOCK_BEGIN(initRMAoptions);
-#ifdef USE_MPIU_INSTR
-        /* Define all instrumentation handles used in the CH3 RMA here*/
-        MPIU_INSTR_DURATION_INIT(wincreate_allgather,0,"WIN_CREATE:Allgather");
-        MPIU_INSTR_DURATION_INIT(winfree_rs,0,"WIN_FREE:ReduceScatterBlock");
-        MPIU_INSTR_DURATION_INIT(winfree_complete,0,"WIN_FREE:Complete");
-        MPIU_INSTR_DURATION_INIT(rmaqueue_alloc,0,"Allocate RMA Queue element");
-        MPIU_INSTR_DURATION_INIT(rmaqueue_set,0,"Set fields in RMA Queue element");
-        MPIDI_CH3_RMA_InitInstr();
-#endif
+
+        MPIDI_CH3_RMA_Init_Pvars();
 
         MPIU_THREADSAFE_INIT_CLEAR(initRMAoptions);
         MPIU_THREADSAFE_INIT_BLOCK_END(initRMAoptions);
@@ -332,18 +327,13 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model,
     (*win_ptr)->info_args.same_size           = 0;
     (*win_ptr)->info_args.alloc_shared_noncontig = 0;
     (*win_ptr)->info_args.alloc_shm = FALSE;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     (*win_ptr)->fall_back           = 1;
     (*win_ptr)->outstanding_rma     = 0;
-#if !defined (DAPL_DEFAULT_PROVIDER)
-    (*win_ptr)->shm_lock_queued     = 0;
-    (*win_ptr)->shm_fallback        = 1;
-#if defined (_SMP_LIMIC_) 
-    (*win_ptr)->limic_fallback      = 1;
-#endif /* _SMP_LIMIC */
-#endif /* !defined (DAPL_DEFAULT_PROVIDER) */
-#endif /* defined(_OSU_MVAPICH_) */
-#if defined (_OSU_PSM_)
+    (*win_ptr)->use_rdma_path       = 0;
+#endif /* defined(CHANNEL_MRAIL) */
+#if defined (CHANNEL_PSM)
+    (*win_ptr)->outstanding_rma     = 0;
     (*win_ptr)->rank_mapping        = MPIU_Malloc(comm_ptr->local_size * sizeof(uint32_t));
     if((*win_ptr)->rank_mapping == NULL) {
         MPIU_ERR_SET(mpi_errno, MPI_ERR_NO_MEM, "**nomem");

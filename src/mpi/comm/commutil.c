@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
- /* Copyright (c) 2001-2013, The Ohio State University. All rights
+ /* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,9 +23,9 @@
 #include "mpl_utlist.h"
 #include "mpiu_uthash.h"
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 #include "coll_shmem.h"
-#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
+#endif /* #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */ 
 
 
 /* This is the utility file for comm that contains the basic comm items
@@ -33,6 +33,27 @@
 #ifndef MPID_COMM_PREALLOC
 #define MPID_COMM_PREALLOC 8
 #endif
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_CTXID_EAGER_SIZE
+      category    : THREADS
+      type        : int
+      default     : 2
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        The MPIR_CVAR_CTXID_EAGER_SIZE environment variable allows you to
+        specify how many words in the context ID mask will be set aside
+        for the eager allocation protocol.  If the application is running
+        out of context IDs, reducing this value may help.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
+
 
 /* Preallocated comm objects */
 /* initialized in initthread.c */
@@ -127,7 +148,7 @@ int MPIR_Comm_init(MPID_Comm *comm_p)
     comm_p->node_roots_comm = NULL;
     comm_p->intranode_table = NULL;
     comm_p->internode_table = NULL;
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#ifdef _OSU_MVAPICH_
     comm_p->ch.shmem_coll_count = 0; 
     comm_p->ch.allgather_coll_count = 0; 
     comm_p->ch.shmem_coll_ok = 0;
@@ -153,8 +174,7 @@ int MPIR_Comm_init(MPID_Comm *comm_p)
     comm_p->ch.intra_sock_comm=MPI_COMM_NULL;
     comm_p->ch.intra_sock_leader_comm=MPI_COMM_NULL;
 #endif /*defined(_SMP_LIMIC) */
-
-#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* _OSU_MVAPICH_ */
 
     /* abstractions bleed a bit here... :( */
     comm_p->next_sched_tag = MPIR_FIRST_NBC_TAG;
@@ -249,14 +269,14 @@ int MPIR_Setup_intercomm_localcomm( MPID_Comm *intercomm_ptr )
     /* FIXME  : No local functions for the topology routines */
 
     intercomm_ptr->local_comm = localcomm_ptr;
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#ifdef _OSU_MVAPICH_
     localcomm_ptr->ch.shmem_coll_ok = 0;
     localcomm_ptr->ch.is_global_block  = 0;
     localcomm_ptr->ch.allgather_comm_ok = 0;
     localcomm_ptr->ch.shmem_comm = MPI_COMM_NULL;
     localcomm_ptr->ch.leader_comm = MPI_COMM_NULL;
     localcomm_ptr->ch.allgather_comm = MPI_COMM_NULL;
-#endif
+#endif /* _OSU_MVAPICH_ */
 
 
     /* sets up the SMP-aware sub-communicators and tables */
@@ -743,9 +763,14 @@ static void MPIR_Init_contextid(void)
     for (i=1; i<MPIR_MAX_CONTEXT_MASK; i++) {
 	context_mask[i] = 0xFFFFFFFF;
     }
-    /* the first three values are already used (comm_world, comm_self,
-       and the internal-only copy of comm_world) */
-    context_mask[0] = 0xFFFFFFF8; 
+    /* The first two values are already used (comm_world, comm_self).
+       The third value is also used for the internal-only copy of
+       comm_world, if needed by mpid. */
+#ifdef MPID_NEEDS_ICOMM_WORLD
+    context_mask[0] = 0xFFFFFFF8;
+#else
+    context_mask[0] = 0xFFFFFFFC;
+#endif
     initialize_context_mask = 0;
 
 #ifdef MPICH_DEBUG_HANDLEALLOC
@@ -1030,8 +1055,8 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
         if (eager_nelem < 0) {
             /* Ensure that at least one word of deadlock-free context IDs is
                always set aside for the base protocol */
-            MPIU_Assert( MPIR_PARAM_CTXID_EAGER_SIZE >= 0 && MPIR_PARAM_CTXID_EAGER_SIZE < MPIR_MAX_CONTEXT_MASK-1 );
-            eager_nelem = MPIR_PARAM_CTXID_EAGER_SIZE;
+            MPIU_Assert( MPIR_CVAR_CTXID_EAGER_SIZE >= 0 && MPIR_CVAR_CTXID_EAGER_SIZE < MPIR_MAX_CONTEXT_MASK-1 );
+            eager_nelem = MPIR_CVAR_CTXID_EAGER_SIZE;
         }
 
         if (ignore_id) {
@@ -1184,6 +1209,8 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
             /* --BEGIN ERROR HANDLING-- */
             int nfree = 0;
             int ntotal = 0;
+            int minfree;
+
             if (own_mask) {
                 MPIU_THREAD_CS_ENTER(CONTEXTID,);
                 mask_in_use = 0;
@@ -1195,9 +1222,29 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
             }
 
             MPIR_ContextMaskStats(&nfree, &ntotal);
-            MPIU_ERR_SETANDJUMP3(mpi_errno, MPI_ERR_OTHER,
-                                 "**toomanycommfrag", "**toomanycommfrag %d %d %d",
-                                 nfree, ntotal, ignore_id);
+            if (ignore_id)
+                minfree = INT_MAX;
+            else
+                minfree = nfree;
+
+            if (group_ptr != NULL) {
+                int coll_tag = tag | MPIR_Process.tagged_coll_mask; /* Shift tag into the tagged coll space */
+                mpi_errno = MPIR_Allreduce_group(MPI_IN_PLACE, &minfree, 1, MPI_INT, MPI_MIN,
+                                                 comm_ptr, group_ptr, coll_tag, &errflag);
+            } else {
+                mpi_errno = MPIR_Allreduce_impl(MPI_IN_PLACE, &minfree, 1, MPI_INT,
+                                                 MPI_MIN, comm_ptr, &errflag);
+            }
+
+            if (minfree > 0) {
+                MPIU_ERR_SETANDJUMP3(mpi_errno, MPI_ERR_OTHER,
+                                     "**toomanycommfrag", "**toomanycommfrag %d %d %d",
+                                     nfree, ntotal, ignore_id);
+            } else {
+                MPIU_ERR_SETANDJUMP3(mpi_errno, MPI_ERR_OTHER,
+                                     "**toomanycomm", "**toomanycomm %d %d %d",
+                                     nfree, ntotal, ignore_id);
+            }
             /* --END ERROR HANDLING-- */
         }
 
@@ -1277,8 +1324,6 @@ static int gcn_sch(MPID_Comm *comm_ptr, MPIR_Context_id_t *ctx0, MPIR_Context_id
     MPIU_CHKPMEM_DECL(1);
 
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
-
-    MPIU_ERR_CHKANDJUMP(MPIU_ISTHREADED, mpi_errno, MPI_ERR_INTERN, "**notsuppmultithread");
 
     /* first do as much local setup as we can */
     if (initialize_context_mask) {
@@ -1868,7 +1913,7 @@ int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr, int isDisconnect)
             MPIR_Group_release(comm_ptr->remote_group);
 
         /* free the intra/inter-node communicators, if they exist */
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
         if( comm_ptr->ch.shmem_coll_ok == 1) { 
              free_2level_comm(comm_ptr); 
         } 

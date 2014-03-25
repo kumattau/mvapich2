@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -97,8 +97,8 @@ int psm_do_cancel(MPID_Request *req)
         } else {
             psmerr = psm_mq_test(&(req->mqreq), &status);
             if (psmerr == PSM_OK) {
-                req->status.cancelled = TRUE;
-                req->status.count = 0;
+                MPIR_STATUS_SET_CANCEL_BIT(req->status, TRUE);
+                MPIR_STATUS_SET_COUNT(req->status, 0);
             } else {
                 MPIU_ERR_POP(mpi_errno);
             }
@@ -136,6 +136,13 @@ int psm_process_completion(MPID_Request *req, psm_mq_status_t gblstatus)
     /* request is a GET-Response */
     if(req->psm_flags & PSM_GETRESP_REQ) {
         mpi_errno = psm_getresp_complete(req);
+        if(mpi_errno)   MPIU_ERR_POP(mpi_errno);
+        goto fn_exit;
+    }
+
+    /* request is a GET-Accum-response */
+    if(req->psm_flags & PSM_GETACCUMRESP_REQ) {
+        mpi_errno = psm_getaccumresp_complete(req);
         if(mpi_errno)   MPIU_ERR_POP(mpi_errno);
         goto fn_exit;
     }
@@ -344,7 +351,7 @@ void psm_update_mpistatus(MPI_Status *stat, psm_mq_status_t psmst)
             break;
     }           
     stat->MPI_SOURCE = psmst.msg_tag & SRC_RANK_MASK;
-    stat->count = psmst.nbytes;
+    MPIR_STATUS_SET_COUNT(*stat, psmst.nbytes);
 }
 
 /* if PSM_DEBUG is enabled, we will dump some counters */

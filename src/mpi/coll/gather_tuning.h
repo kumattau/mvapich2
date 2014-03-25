@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -14,13 +14,13 @@
 #define _GATHER_TUNING_
 
 #include "coll_shmem.h"
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #ifndef DAPL_DEFAULT_PROVIDER
 #include "ibv_param.h"
 #else
 #include "udapl_param.h"
 #endif
-#endif /* #if defined(_OSU_MVAPICH_) */
+#endif /* #if defined(CHANNEL_MRAIL) */
 #define MV2_DEFAULT_SHMEM_BCAST_LEADERS    4096
 #define MV2_GATHER_DIRECT_SYSTEM_SIZE_SMALL      384
 #define MV2_GATHER_DIRECT_SYSTEM_SIZE_MEDIUM     1024
@@ -79,6 +79,32 @@ extern int mv2_use_two_level_gather;
 extern int mv2_gather_direct_system_size_small;
 extern int mv2_gather_direct_system_size_medium;
 extern int mv2_use_direct_gather;
+
+/*Entries related to indexed tuning table*/
+
+typedef struct {
+  int msg_sz;
+    int (*MV2_pt_Gather_function)(const void *sendbuf, int sendcnt,
+                                  MPI_Datatype sendtype, void *recvbuf, int recvcnt,
+                                  MPI_Datatype recvtype, int root, MPID_Comm * comm_ptr,
+                                  int *errflag);
+} mv2_gather_indexed_tuning_element;
+
+typedef struct {
+    int numproc;
+    int size_inter_table;
+    mv2_gather_indexed_tuning_element inter_leader[MV2_MAX_NB_THRESHOLDS];
+    int size_intra_table;
+    mv2_gather_indexed_tuning_element intra_node[MV2_MAX_NB_THRESHOLDS];
+} mv2_gather_indexed_tuning_table;
+
+/* Indicates number of processes per node */
+extern int *mv2_gather_indexed_table_ppn_conf;
+/* Indicates total number of configurations */
+extern int mv2_gather_indexed_num_ppn_conf;
+extern int *mv2_size_gather_indexed_tuning_table;
+extern mv2_gather_indexed_tuning_table **mv2_gather_indexed_thresholds_table;
+
 extern int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf, int sendcnt,
                                       MPI_Datatype sendtype, void *recvbuf, int recvcnt,
                                       MPI_Datatype recvtype, int root, MPID_Comm * comm_ptr,

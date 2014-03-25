@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -141,7 +141,7 @@ int MPIR_Alltoallv_intra(const void *sendbuf, const int *sendcounts, const int *
         }
     }
     else {
-        bblock = MPIR_PARAM_ALLTOALL_THROTTLE;
+        bblock = MPIR_CVAR_ALLTOALL_THROTTLE;
         if (bblock == 0) bblock = comm_size;
 
         MPID_Datatype_get_extent_macro(sendtype, send_extent);

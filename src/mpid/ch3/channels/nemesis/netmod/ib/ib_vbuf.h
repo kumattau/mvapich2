@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -40,6 +40,7 @@
 #define RPUT_VBUF_FLAG (333)
 #define RGET_VBUF_FLAG (444)
 #define RDMA_ONE_SIDED (555)
+#define COLL_VBUF_FLAG (666)
 #define VBUF_FLAG_TYPE uint64_t
 
 #define FREE_FLAG (0)

@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *
- *  (C) 2010 by Argonne National Laboratory.
+ *  (C) 2009 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
@@ -94,7 +94,8 @@ static int MPIR_Reduce_scatter_block_noncomm (
     /* Copy our send data to tmp_buf0.  We do this one block at a time and
        permute the blocks as we go according to the mirror permutation. */
     for (i = 0; i < comm_size; ++i) {
-        mpi_errno = MPIR_Localcopy((char *)(sendbuf == MPI_IN_PLACE ? recvbuf : sendbuf) + (i * true_extent * block_size), block_size, datatype,
+        mpi_errno = MPIR_Localcopy((char *)(sendbuf == MPI_IN_PLACE ? (const void *)recvbuf : sendbuf) + (i * true_extent * block_size),
+                                   block_size, datatype,
                                    (char *)tmp_buf0 + (MPIU_Mirror_permutation(i, log2_comm_size) * true_extent * block_size), block_size, datatype);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
@@ -299,7 +300,7 @@ int MPIR_Reduce_scatter_block_intra (
      * a user-passed in buffer */
     MPID_Ensure_Aint_fits_in_pointer(total_count * MPIR_MAX(true_extent, extent));
 
-    if ((is_commutative) && (nbytes < MPIR_PARAM_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
+    if ((is_commutative) && (nbytes < MPIR_CVAR_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
         /* commutative and short. use recursive halving algorithm */
 
         /* allocate temp. buffer to receive incoming data */
@@ -509,7 +510,7 @@ int MPIR_Reduce_scatter_block_intra (
         }
     }
     
-    if (is_commutative && (nbytes >= MPIR_PARAM_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
+    if (is_commutative && (nbytes >= MPIR_CVAR_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
 
         /* commutative and long message, or noncommutative and long message.
            use (p-1) pairwise exchanges */ 

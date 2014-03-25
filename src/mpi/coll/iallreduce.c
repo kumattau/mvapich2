@@ -467,7 +467,7 @@ int MPIR_Iallreduce_intra(const void *sendbuf, void *recvbuf, int count, MPI_Dat
        datatypes to do the reduce-scatter is tricky, therefore
        using recursive doubling in that case.) */
 
-    if ((count*type_size <= MPIR_PARAM_ALLREDUCE_SHORT_MSG_SIZE) ||
+    if ((count*type_size <= MPIR_CVAR_ALLREDUCE_SHORT_MSG_SIZE) ||
         (HANDLE_GET_KIND(op) != HANDLE_KIND_BUILTIN) ||
         (count < pof2))
     {
@@ -571,7 +571,7 @@ int MPIR_Iallreduce_SMP(const void *sendbuf, void *recvbuf, int count, MPI_Datat
     MPID_Comm *nc;
     MPID_Comm *nrc;
 
-    if (!MPIR_PARAM_ENABLE_SMP_COLLECTIVES || !MPIR_PARAM_ENABLE_SMP_ALLREDUCE)
+    if (!MPIR_CVAR_ENABLE_SMP_COLLECTIVES || !MPIR_CVAR_ENABLE_SMP_ALLREDUCE)
         MPID_Abort(comm_ptr, MPI_ERR_OTHER, 1, "SMP collectives are disabled!");
     MPIU_Assert(MPIR_Comm_is_node_aware(comm_ptr));
 
@@ -691,7 +691,8 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 /*@
-MPI_Iallreduce - XXX description here
+MPI_Iallreduce - Combines values from all processes and distributes the result
+                 back to all processes in a nonblocking way
 
 Input Parameters:
 + sendbuf - starting address of the send buffer (choice)
@@ -710,7 +711,9 @@ Output Parameters:
 
 .N Errors
 @*/
-int MPI_Iallreduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm, MPI_Request *request)
+int MPI_Iallreduce(const void *sendbuf, void *recvbuf, int count,
+                   MPI_Datatype datatype, MPI_Op op, MPI_Comm comm,
+                   MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;

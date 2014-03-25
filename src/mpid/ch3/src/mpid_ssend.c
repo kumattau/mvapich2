@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,7 +38,7 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif    
-#if !defined(_OSU_MVAPICH_)
+#if !defined(CHANNEL_MRAIL)
     int eager_threshold = -1;
 #endif
     int mpi_errno = MPI_SUCCESS;
@@ -52,7 +52,7 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
-#if defined(_OSU_PSM_)
+#if defined(CHANNEL_PSM)
     goto skip_self_send;     /* PSM internally, will optimize self-send */
 #endif
 	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, 
@@ -75,7 +75,7 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 #	endif
 	goto fn_exit;
     }
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
 skip_self_send:
 #endif        
     if (rank == MPI_PROC_NULL)
@@ -101,14 +101,14 @@ skip_self_send:
 
     if (data_sz == 0)
     {
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     goto psm_ssend;
 #endif
 	mpi_errno = MPIDI_CH3_EagerSyncZero( &sreq, rank, tag, comm, 
 					     context_offset );
 	goto fn_exit;
     }
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
 psm_ssend:
     sreq->psm_flags |= PSM_SYNC_SEND;
     if(dt_contig) {
@@ -123,16 +123,16 @@ psm_ssend:
                         rank, tag, comm, context_offset);
     }
     goto fn_exit;
-#endif /* _OSU_PSM_ */
+#endif /* CHANNEL_PSM */
     
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_sync_send_t) <= vc->eager_max_msg_sz
         && ! vc->force_rndv)
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_GET_EAGER_THRESHOLD(&eager_threshold, comm, vc);
 
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_sync_send_t) <= eager_threshold)
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     {
 	mpi_errno = MPIDI_CH3_EagerSyncNoncontigSend( &sreq, buf, count,
                                                       datatype, data_sz, 

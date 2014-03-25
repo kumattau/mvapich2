@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -60,48 +60,18 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *vc ATTRIBUTE((unused))
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Win *win_ptr;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
     win_ptr->outstanding_rma --;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
 	MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
-
-#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
-    if (sreq->dev.flags & MPIDI_CH3_PKT_FLAG_RMA_UNLOCK) {
-	/* Last RMA operation (get) from source. If active target RMA,
-	   decrement window counter. If passive target RMA, 
-	   release lock on window and grant next lock in the 
-	   lock queue if there is any; no need to send rma done 
-	   packet since the last operation is a get. */
-	
-
-#if defined (_SMP_LIMIC_)
-    if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback) 
-            && vc->smp.local_nodes != -1)
-#else
-    if (!win_ptr->shm_fallback && vc->smp.local_nodes != -1)
-#endif
-    {
-        int rank, l_rank;   
-        rank = win_ptr->my_id;
-        l_rank = win_ptr->shm_g2l_rank[rank];
-        if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
-            MPIDI_CH3I_SHM_win_unlock(rank, win_ptr, REMOVE_BLOCK);
-            goto fn_done;
-        }
-    }
-    }
-#endif
 
     MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
 
     mpi_errno = MPIDI_CH3_Finish_rma_op_target(NULL, win_ptr, FALSE, sreq->dev.flags, MPI_WIN_NULL);
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
-#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
-fn_done:
-#endif
     /* mark data transfer as complete and decrement CC */
     MPIDI_CH3U_Request_complete(sreq);
     *complete = TRUE;

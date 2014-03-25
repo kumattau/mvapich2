@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -382,7 +382,7 @@ int MPIDI_Comm_connect(const char *port_name, MPID_Info *info, int root,
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_POP_LABEL(mpi_errno, no_port);
 	}
-#if defined (_OSU_MVAPICH_)
+#if defined (CHANNEL_MRAIL)
     new_vc->tmp_dpmvc = 1;
 #endif
 
@@ -987,7 +987,7 @@ int MPIDI_Comm_accept(const char *port_name, MPID_Info *info, int root,
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_POP(mpi_errno);
 	}
-#if defined (_OSU_MVAPICH_)
+#if defined (CHANNEL_MRAIL)
     new_vc->tmp_dpmvc = 1;
 #endif
 

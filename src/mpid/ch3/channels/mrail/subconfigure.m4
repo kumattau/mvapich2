@@ -3,7 +3,8 @@ dnl
 dnl _PREREQ handles the former role of mpich2prereq, setup_device, etc
 AC_DEFUN([PAC_SUBCFG_PREREQ_]PAC_SUBCFG_AUTO_SUFFIX, [
     AS_IF([test "X$device_name" = "Xch3" -a "X$channel_name" = "Xmrail"],
-          [build_mrail=yes],
+          [build_mrail=yes
+           build_osu_mvapich=yes],
           [build_mrail=no])
     AM_CONDITIONAL([BUILD_MRAIL], [test $build_mrail = yes])
     AM_COND_IF([BUILD_MRAIL], [
@@ -15,8 +16,35 @@ dnl
 dnl _BODY handles the former role of configure in the subsystem
 AC_DEFUN([PAC_SUBCFG_BODY_]PAC_SUBCFG_AUTO_SUFFIX,[
 AM_COND_IF([BUILD_MRAIL], [
+dnl
+dnl user options
+dnl
+AC_ARG_WITH([rdma],
+    [AS_HELP_STRING([--with-rdma], [specify the RDMA type])],
+    [],
+    [with_rdma=gen2])
 
+AC_ARG_WITH([ib-include],
+    [AS_HELP_STRING([--with-ib-include=@<:@Infiniband include path@:>@],
+                       [Specify path to Infiniband header files])
+    ],
+    [AS_CASE([$with_ib_include],
+        [yes|no], [AC_MSG_FAILURE([--with-ib-include must be passed a path])],
+        [CPPFLAGS="$CPPFLAGS -I$with_ib_include"])
+    ])
 
+AC_ARG_WITH([ib-libpath],
+    [AS_HELP_STRING([--with-ib-libpath=@<:@Infiniband library path@:>@],
+                       [Specify path to Infiniband library files])
+    ],
+    [AS_CASE([$with_ib_libpath],
+        [yes|no], [AC_MSG_FAILURE([--with-ib-libpath must be passed a path])],
+        [LDFLAGS="$LDFLAGS -L$with_ib_libpath"])
+    ])
+
+dnl
+dnl check build environment
+dnl
 AC_CHECK_HEADERS(                       \
     errno.h                             \
     stdlib.h                            \
@@ -108,11 +136,6 @@ AS_IF([test x$with_cma != xno],
             [Define to enable intra-node communication via CMA])
          AC_CHECK_FUNCS([process_vm_readv])
         ])
-
-AC_DEFINE(_OSU_MVAPICH_,1,[Define to enable MVAPICH2 customizations.])
-AC_DEFINE(MPIDI_CH3_CHANNEL_RNDV,1,[Define to enable channel rendezvous (Required by MVAPICH2).])
-AC_DEFINE(MPID_USE_SEQUENCE_NUMBERS,1,[Define to enable use of sequence numbers (Required by MVAPICH2).])
-AC_DEFINE(_OSU_COLLECTIVES_,1,[Define to enable the use of MVAPICH2 implmentation of collectives])
 
 if test "x$with_limic2" != "xno"; then
     limic2_path_set="$with_limic2_include$with_limic2_libpath"
@@ -256,8 +279,6 @@ AC_ARG_WITH(io-bus,
 [--with-io-bus=type - Specify the i/o bus type.],,with_io_bus=PCI_EX) 
 AC_ARG_WITH(pmi,
 [--with-pmi=name - Specify the PMI interface.],,)
-AC_ARG_WITH(rdma,
-[--with-rdma - Specify the RDMA type.],,with_rdma=default)
 AC_ARG_ENABLE(rdma-cm,
 [--enable-rdma-cm - Enable support for RDMA CM.],,enable_rdma_cm=default)
 AC_ARG_ENABLE(registration-cache,
@@ -270,6 +291,17 @@ AC_ARG_ENABLE([xrc],
               [],
               [enable_xrc=check])
 
+AC_ARG_WITH([libcuda],
+        [AS_HELP_STRING([--with-libcuda=@<:@libcuda directory path@:>@],
+            [Specify path of directory containing libcuda])
+        ],
+        [LDFLAGS="-L$with_libcuda $LDFLAGS"])
+
+AC_ARG_WITH([libcudart],
+        [AS_HELP_STRING([--with-libcudart=@<:@libcudart directory path@:>@],
+            [Specify path of directory containing libcudart])
+        ],
+        [LDFLAGS="-L$with_libcudart $LDFLAGS"])
 
 AC_ARG_ENABLE([cuda],
         [AS_HELP_STRING([--enable-cuda],
@@ -435,20 +467,12 @@ if test -n "`echo $build_os | grep linux`"; then
         AC_MSG_WARN([The build CPU type may not be supported.])
     fi
 
-    if test "$with_rdma" = "udapl"; then
-        AC_DEFINE(_IB_GEN2_, 1, [Define to utilize GEN2 settings for UDAPL.])
-    fi
-
     if test "$enable_registration_cache" = "default"; then
         enable_registration_cache=yes
     fi
 elif test -n "`echo $build_os | grep solaris`"; then
     if test "$build_cpu" != "i386"; then
         AC_MSG_ERROR([The build CPU type is not supported.])
-    fi
-
-    if test "$with_rdma" = "gen2"; then
-        AC_MSG_ERROR([The gen2 RDMA type is not supported on Solaris.])
     fi
 
     AC_DEFINE(SOLARIS, 1, [Define to specify the build OS type.])
@@ -580,7 +604,7 @@ if test "$with_rdma" = "gen2"; then
 
     AC_ARG_WITH([cuda],
         [AS_HELP_STRING([--with-cuda=@<:@CUDA installation path@:>@],
-                        [Enable use of MVAPICH2-GPU design])
+                        [Specify path to CUDA installation])
         ],
         [case $with_cuda in
              yes|no) ;;
@@ -646,97 +670,7 @@ if test "$with_rdma" = "gen2"; then
         ])
 
 elif test "$with_rdma" = "udapl"; then
-    AC_MSG_CHECKING([for the DAPL includes path])
-
-    if test -n "$with_dapl_include"; then
-        AC_MSG_RESULT($with_dapl_include)
-	CPPFLAGS="-I${with_dapl_include} $CPPFLAGS"
-    else
-        AC_MSG_RESULT([default])
-    fi
-
-    AC_MSG_CHECKING([for the DAPL library path])
-
-    if test "$with_dapl_libpath" != "default" -a -n "$with_dapl_libpath"; then
-        FFLAGS="-L${with_dapl_libpath} $FFLAGS"
-        LDFLAGS="-L${with_dapl_libpath} $LDFLAGS"
-    fi
-
-    if test -n "$with_dapl_libpath"; then
-        AC_MSG_RESULT($with_dapl_libpath)
-    else
-        AC_MSG_RESULT([default])
-    fi
-
-    AC_MSG_CHECKING([for the dapl version])
-    AC_MSG_RESULT($with_dapl_version)
-
-    dapl_version_major=`echo $with_dapl_version | sed "s/\..*//g"`
-
-    if test "$dapl_version_major" = "1"; then
-        AC_SEARCH_LIBS(dat_lmr_create, dat,,[AC_MSG_ERROR(['libdat not found. Did you specify --with-dapl-libpath=?'])],)
-        AC_CHECK_HEADER([dat/udat.h],,[AC_MSG_ERROR(['dat/udat.h not found. Did you specify --with-dapl-include=?'])])
-        dat_header="<dat/udat.h>"
-    elif test "$dapl_version_major" = "2"; then
-        AC_SEARCH_LIBS(dat_lmr_create, dat2,,[AC_MSG_ERROR(['libdat2 not found. Didy you specify --with-dapl-libpath=?'])],)
-        AC_CHECK_HEADER([dat2/udat.h],,[AC_MSG_ERROR(['dat2/udat.h not found. Did you specify --with-dapl-include=?'])])
-        dat_header="<dat2/udat.h>"
-    else
-        AC_MSG_ERROR([Unsupported dapl version provided.])
-    fi
-
-    AC_DEFINE_UNQUOTED(DAT_HEADER, ${dat_header}, [Define to specify the dat header file to include.])
-    AC_MSG_CHECKING([for the default dapl provider])
-
-    if test "$with_dapl_provider" = "default"; then
-        if test -n "`echo $build_os | grep solaris`"; then
-            with_dapl_provider=ibd0
-        else
-            case $dapl_version_major in
-                1)
-                    with_dapl_provider=OpenIB-cma
-                    ;;
-                2)
-                    with_dapl_provider=ofa-v2-ib0
-                    ;;
-            esac
-        fi
-    fi
-
-    AC_DEFINE_UNQUOTED(DAPL_DEFAULT_PROVIDER,"${with_dapl_provider}",[Define to provide a default dapl provider (required).])
-    AC_MSG_RESULT($with_dapl_provider)
-
-    AC_MSG_CHECKING([for the cluster size])
-
-    if test "$with_cluster_size" = "small"; then
-        AC_DEFINE(_SMALL_CLUSTER, 1, [Define to specify the size of the cluster.])
-    elif test "$with_cluster_size" = "medium"; then
-        AC_DEFINE(_MEDIUM_CLUSTER, 1, [Define to specify the size of the cluster.])
-    elif test "$with_cluster_size" = "large"; then 
-        AC_DEFINE(_LARGE_CLUSTER, 1, [Define to specify the size of the cluster.])
-    else
-        AC_MSG_ERROR([Invalid input for cluster size.]) 
-    fi
-
-    AC_MSG_RESULT($with_cluster_size)
-
-    AC_MSG_CHECKING([for the link speed])
-
-    AC_MSG_CHECKING([for the i/o bus type])
-
-    if test "$with_io_bus" = "PCI_EX"; then
-        AC_DEFINE(_PCI_EX_, 1, [Define to specify the i/o bus type.])
-    elif test "$with_io_bus" = "PCI_X"; then
-        AC_DEFINE(_PCI_X_, 1, [Define to specify the i/o bus type.])
-    else
-        AC_MSG_ERROR([Invalid input for i/o bus type.])
-    fi
-
-    AC_MSG_RESULT($with_io_bus)
-
-    if test -n "`echo $build_os | grep solaris`"; then
-        AC_SEARCH_LIBS(sched_yield, rt,,[AC_MSG_ERROR([librt not found.])],)
-    fi
+    :
 else
     AC_MSG_ERROR([The specified RDMA type is not supported.])
 fi
@@ -797,11 +731,35 @@ if test "$found_sysv_shm_funcs" = yes ; then
    AC_CHECK_FUNCS(strtoll, , AC_MSG_ERROR([cannot find strtoll function needed by sysv shared memory implementation]))
 fi
 
+dnl
+dnl Definitions based on user selections
+dnl
+AC_DEFINE([_OSU_MVAPICH_], [1], [Define to enable MVAPICH2 customizations])
+AC_DEFINE([CHANNEL_MRAIL], [1], [Define if using the mrail channel])
+AC_DEFINE([MPIDI_CH3_CHANNEL_RNDV], [1],
+        [Define to enable channel rendezvous (Required by MVAPICH2)])
+AC_DEFINE([MPID_USE_SEQUENCE_NUMBERS], [1],
+        [Define to enable use of sequence numbers (Required by MVAPICH2)])
+AC_DEFINE([_OSU_COLLECTIVES_], [1],
+        [Define to enable the use of MVAPICH2 implmentation of collectives])
+
+AS_CASE([$with_rdma],
+    [gen2], [
+    AC_DEFINE([CHANNEL_MRAIL_GEN2], [1],
+        [Define if using the gen2 subchannel])
+    ],
+    [udapl], [AC_MSG_ERROR([This subchannel has been deprecated, please see ]
+        [our userguide to determine the supported channels.])
+    ],
+    [AC_MSG_ERROR([Invalid RDMA type detected])])
+
 ## below is code that formerly lived in configure.ac
 ])dnl end AM_COND_IF(BUILD_MRAIL,...)
 
     dnl automake conditionals should not appear in conditional blocks as this
     dnl can cause confusion in the makefiles
+    AM_CONDITIONAL([BUILD_MRAIL_GEN2], [test X$with_rdma = Xgen2])
+    AM_CONDITIONAL([BUILD_MRAIL_UDAPL], [false])
     AM_CONDITIONAL([BUILD_MRAIL_OPENACC],
             [test X$ac_cv_header_openacc_h = Xyes -a X$build_mrail_cuda = Xyes])
     AM_CONDITIONAL([BUILD_MRAIL_CUDA], [test X$build_mrail_cuda = Xyes])

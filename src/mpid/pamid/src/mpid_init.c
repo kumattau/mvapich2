@@ -114,7 +114,9 @@ MPIDI_Process_t  MPIDI_Process = {
   .mp_statistics         = 0,
   .mp_printenv           = 0,
 #endif
-
+#ifdef QUEUE_BINARY_SEARCH_SUPPORT
+  .queue_binary_search_support_on = 0,
+#endif
   .rma_pending           = 1000,
   .shmem_pt2pt           = 1,
   .smp_detect            = MPIDI_SMP_DETECT_DEFAULT,
@@ -126,7 +128,7 @@ MPIDI_Process_t  MPIDI_Process = {
     .num_requests        = 1,
   },
 
-  .mpir_nbc              = 0,
+  .mpir_nbc              = 1,
   .numTasks              = 0,
 };
 
@@ -149,6 +151,10 @@ static struct
   struct protocol_t WinCtrl;
   struct protocol_t WinAccum;
   struct protocol_t RVZ_zerobyte;
+  struct protocol_t WinGetAccum;
+  struct protocol_t WinGetAccumAck;
+  struct protocol_t WinAtomic;
+  struct protocol_t WinAtomicAck;
 #ifdef DYNAMIC_TASKING
   struct protocol_t Dyntask;
   struct protocol_t Dyntask_disconnect;
@@ -249,6 +255,48 @@ static struct
       .use_rdma        = PAMI_HINT_DISABLE,
     },
     .immediate_min     = sizeof(MPIDI_MsgEnvelope),
+  },
+  .WinGetAccum = {
+    .func = MPIDI_WinGetAccumCB,
+    .dispatch = MPIDI_Protocols_WinGetAccum,
+    .options = {
+      .consistency    = PAMI_HINT_ENABLE,
+      .long_header     = PAMI_HINT_DISABLE,
+      .recv_immediate  = PAMI_HINT_DISABLE,
+    },
+    .immediate_min     = sizeof(MPIDI_Win_GetAccMsgInfo),
+  },
+  .WinGetAccumAck = {
+    .func = MPIDI_WinGetAccumAckCB,
+    .dispatch = MPIDI_Protocols_WinGetAccumAck,
+    .options = {
+      .consistency    = PAMI_HINT_ENABLE,
+      .long_header     = PAMI_HINT_DISABLE,
+      .recv_immediate  = PAMI_HINT_DISABLE,
+    },
+    .immediate_min     = sizeof(MPIDI_Win_GetAccMsgInfo),
+  },
+  .WinAtomic = {
+    .func = MPIDI_WinAtomicCB,
+    .dispatch = MPIDI_Protocols_WinAtomic,
+    .options = {
+      .consistency     = USE_PAMI_CONSISTENCY,
+      .long_header     = PAMI_HINT_DISABLE,
+      .recv_immediate  = PAMI_HINT_ENABLE,
+      .use_rdma        = PAMI_HINT_DISABLE,
+    },
+    .immediate_min     = sizeof(MPIDI_AtomicHeader_t),
+  },
+  .WinAtomicAck = {
+    .func = MPIDI_WinAtomicAckCB,
+    .dispatch = MPIDI_Protocols_WinAtomicAck,
+    .options = {
+      .consistency     = USE_PAMI_CONSISTENCY,
+      .long_header     = PAMI_HINT_DISABLE,
+      .recv_immediate  = PAMI_HINT_ENABLE,
+      .use_rdma        = PAMI_HINT_DISABLE,
+    },
+    .immediate_min     = sizeof(MPIDI_AtomicHeader_t),
   },
 #ifdef DYNAMIC_TASKING
   .Dyntask = {
@@ -552,6 +600,10 @@ void MPIDI_Init_collsel_extension()
   }
   else
     MPIDI_Process.optimized.auto_select_colls = MPID_AUTO_SELECT_COLLS_NONE;
+
+  //If collective selection will be disabled, check on fca, if both not required, disable pami alltogether
+  if(MPIDI_Process.optimized.auto_select_colls == MPID_AUTO_SELECT_COLLS_NONE && MPIDI_Process.optimized.collectives != MPID_COLL_FCA)
+    MPIDI_Process.optimized.collectives = MPID_COLL_OFF;
 }
 
 void MPIDI_Collsel_table_generate()
@@ -796,6 +848,11 @@ MPIDI_PAMI_dispath_init()
   MPIDI_PAMI_dispath_set(MPIDI_Protocols_WinCtrl,   &proto_list.WinCtrl,   NULL);
   MPIDI_PAMI_dispath_set(MPIDI_Protocols_WinAccum,  &proto_list.WinAccum,  NULL);
   MPIDI_PAMI_dispath_set(MPIDI_Protocols_RVZ_zerobyte, &proto_list.RVZ_zerobyte, NULL);
+  MPIDI_PAMI_dispath_set(MPIDI_Protocols_WinGetAccum, &proto_list.WinGetAccum, NULL);
+  MPIDI_PAMI_dispath_set(MPIDI_Protocols_WinGetAccumAck, &proto_list.WinGetAccumAck, NULL);
+  MPIDI_PAMI_dispath_set(MPIDI_Protocols_WinAtomic, &proto_list.WinAtomic,   NULL);
+  MPIDI_PAMI_dispath_set(MPIDI_Protocols_WinAtomicAck, &proto_list.WinAtomicAck,   NULL);
+
 #ifdef DYNAMIC_TASKING
   MPIDI_PAMI_dispath_set(MPIDI_Protocols_Dyntask,   &proto_list.Dyntask,  NULL);
   MPIDI_PAMI_dispath_set(MPIDI_Protocols_Dyntask_disconnect,   &proto_list.Dyntask_disconnect,  NULL);
@@ -903,6 +960,9 @@ MPIDI_PAMI_init(int* rank, int* size, int* threading)
              "  mp_printenv  : %u\n"
              "  mp_interrupts: %u\n"
 #endif
+#ifdef QUEUE_BINARY_SEARCH_SUPPORT
+             "  queue_binary_search_support_on : %u\n"
+#endif
              "  optimized.collectives : %u\n"
              "  optimized.select_colls: %u\n"
              "  optimized.subcomms    : %u\n"
@@ -936,6 +996,9 @@ MPIDI_PAMI_init(int* rank, int* size, int* threading)
              MPIDI_Process.mp_statistics,
              MPIDI_Process.mp_printenv,
              (MPIDI_Process.async_progress.mode != ASYNC_PROGRESS_MODE_DISABLED),
+#endif
+#ifdef QUEUE_BINARY_SEARCH_SUPPORT
+             MPIDI_Process.queue_binary_search_support_on,
 #endif
              MPIDI_Process.optimized.collectives,
              MPIDI_Process.optimized.select_colls,

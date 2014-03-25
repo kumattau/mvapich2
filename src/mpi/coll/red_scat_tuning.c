@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -12,8 +12,6 @@
 
 #include <regex.h>
 #include "red_scat_tuning.h"
-
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "mv2_arch_hca_detect.h"
 
 enum {
@@ -27,7 +25,7 @@ mv2_red_scat_tuning_table *mv2_red_scat_thresholds_table = NULL;
 
 int MV2_set_red_scat_tuning_table(int heterogeneity)
 {
-#if defined(_OSU_MVAPICH_) && !defined(_OSU_PSM_)
+#ifndef CHANNEL_PSM
     if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
         MV2_ARCH_INTEL_XEON_X5650_12, MV2_HCA_MLX_CX_QDR) && !heterogeneity){
         mv2_size_red_scat_tuning_table = 6;
@@ -206,7 +204,7 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
     } else
 
 
-#endif /* (_OSU_MVAPICH_) && !defined(_OSU_PSM_) */
+#endif /* !CHANNEL_PSM */
     {
         mv2_size_red_scat_tuning_table = 7;
         mv2_red_scat_thresholds_table = MPIU_Malloc(mv2_size_red_scat_tuning_table *
@@ -401,5 +399,3 @@ int MV2_internode_Red_scat_is_define(char *mv2_user_red_scat_inter)
                 (mv2_red_scat_tuning_table));
     return 0;
 }
-
-#endif                          /* if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */

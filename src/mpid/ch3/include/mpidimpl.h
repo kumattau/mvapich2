@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -27,11 +27,11 @@
 
 #include "mpichconf.h"
 
-#if !defined(_OSU_MVAPICH_)
+#if !defined(CHANNEL_MRAIL)
 #if defined(HAVE_ASSERT_H)
 #include <assert.h>
 #endif
-#endif /* !defined(_OSU_MVAPICH_) */
+#endif /* !defined(CHANNEL_MRAIL) */
 
 #include "mpiimpl.h"
 
@@ -152,20 +152,20 @@ typedef struct MPIDI_Process
 {
     MPIDI_PG_t * my_pg;
     int my_pg_rank;
-    /* <_OSU_MVAPICH_> */
+    /* <CHANNEL_MRAIL> */
     unsigned long mv2_config_crc;
-    /* </_OSU_MVAPICH_> */
-#if defined(_OSU_MVAPICH_) && defined(CKPT)
+    /* </CHANNEL_MRAIL> */
+#if defined(CHANNEL_MRAIL) && defined(CKPT)
     int use_sync_ckpt;
-#endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
+#endif /* defined(CHANNEL_MRAIL) && defined(CKPT) */
 }
 MPIDI_Process_t;
 
-#if defined(_OSU_MVAPICH_) && defined(CKPT)
+#if defined(CHANNEL_MRAIL) && defined(CKPT)
 extern pthread_mutex_t MVAPICH2_sync_ckpt_lock;
 extern pthread_cond_t  MVAPICH2_sync_ckpt_cond;
 void MPIDI_CH3I_CR_Sync_ckpt_request();
-#endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
+#endif /* defined(CHANNEL_MRAIL) && defined(CKPT) */
 
 extern MPIDI_Process_t MPIDI_Process;
 
@@ -321,6 +321,12 @@ extern MPIDI_Process_t MPIDI_Process;
 #define MPIDI_CH3_REQUEST_INIT(a_)
 #endif
 
+#ifdef HAVE_DEBUGGER_SUPPORT
+#define MPIDI_Request_clear_dbg(sreq_) ((sreq_)->dbg_next = NULL)
+#else
+#define MPIDI_Request_clear_dbg(sreq_)
+#endif
+
 /* FIXME: Why does a send request need the match information?
    Is that for debugging information?  In case the initial envelope
    cannot be sent? Ditto for the dev.user_buf, count, and datatype 
@@ -355,7 +361,7 @@ extern MPIDI_Process_t MPIDI_Process;
     (sreq_)->partner_request   = NULL;                          \
     MPIR_Comm_add_ref(comm);					\
     (sreq_)->status.MPI_ERROR	   = MPI_SUCCESS;               \
-    (sreq_)->status.cancelled	   = FALSE;		        \
+    MPIR_STATUS_SET_CANCEL_BIT((sreq_)->status, FALSE);	        \
     (sreq_)->dev.state = 0;                                     \
     (sreq_)->dev.cancel_pending = FALSE;                        \
     (sreq_)->dev.match.parts.rank = rank;			\
@@ -370,7 +376,8 @@ extern MPIDI_Process_t MPIDI_Process;
     (sreq_)->dev.OnFinal	   = NULL;                      \
     (sreq_)->dev.iov_count	   = 0;                         \
     (sreq_)->dev.iov_offset	   = 0;                         \
-    MPIDI_CH3_REQUEST_INIT(sreq_);                          \
+    MPIDI_Request_clear_dbg(sreq_);                             \
+    MPIDI_CH3_REQUEST_INIT(sreq_);                              \
 }
 
 /* This is the receive request version of MPIDI_Request_create_sreq */
@@ -393,7 +400,7 @@ extern MPIDI_Process_t MPIDI_Process;
     MPID_cc_set(&(rreq_)->cc, 1);                               \
     (rreq_)->cc_ptr		   = &(rreq_)->cc;              \
     (rreq_)->status.MPI_ERROR	   = MPI_SUCCESS;               \
-    (rreq_)->status.cancelled	   = FALSE;                     \
+    MPIR_STATUS_SET_CANCEL_BIT((rreq_)->status, FALSE);	        \
     (rreq_)->partner_request   = NULL;                          \
     (rreq_)->dev.state = 0;                                     \
     (rreq_)->dev.cancel_pending = FALSE;                        \
@@ -524,7 +531,7 @@ extern MPIDI_Process_t MPIDI_Process;
    alreay within a critical section when needed.  If/when we move to
    a finer-grain model, we'll need to examine whether this requires
    a separate lock. */
-#if defined(MPID_USE_SEQUENCE_NUMBERS) || defined(_OSU_MVAPICH_)
+#if defined(MPID_USE_SEQUENCE_NUMBERS) || defined(CHANNEL_MRAIL)
 #   define MPIDI_Request_set_seqnum(req_, seqnum_)	\
     {							\
     	(req_)->dev.seqnum = (seqnum_);			\
@@ -541,21 +548,21 @@ extern MPIDI_Process_t MPIDI_Process;
     {						\
     	(vc_)->seqnum_send = 0;			\
     }
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #define MPIDI_VC_revoke_seqnum_send(vc_, seqnum_)    \
 {                                                    \
     MPIU_Assert((((seqnum_) + 1)%(UINT16_MAX+1)) == (vc_)->seqnum_send); \
     (vc_)->seqnum_send--;                            \
 }
-#endif /* if defined(_OSU_MVAPICH_) */
+#endif /* if defined(CHANNEL_MRAIL) */
 #else
 #   define MPIDI_Request_set_seqnum(req_, seqnum_)
 #   define MPIDI_VC_FAI_send_seqnum(vc_, seqnum_out_)
 #   define MPIDI_Pkt_set_seqnum(pkt_, seqnum_)
 #   define MPIDI_VC_Init_seqnum_send(vc_)
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #define MPIDI_VC_revoke_seqnum_send(vc_, seqnum_)
-#endif /* if defined(_OSU_MVAPICH_) */
+#endif /* if defined(CHANNEL_MRAIL) */
 #endif
 
 
@@ -579,7 +586,7 @@ void MPIDI_DBG_PrintVCState(MPIDI_VC_t *vc);
 #define MPIDI_DBG_PrintVCState(vc)
 #endif
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 /* 
 FIXME: avoid OSU version of MPIDI_Comm_get_vc_set_active.
 Fix issues in SMP VC close arise with MPICH version of macro 
@@ -589,7 +596,7 @@ Fix issues in SMP VC close arise with MPICH version of macro
 {                                                           \
     *(vcp_) = (comm_)->vcr[(rank_)];                        \
 }
-#else /* if defined(_OSU_MVAPICH_) */
+#else /* if defined(CHANNEL_MRAIL) */
 
 #define MPIDI_Comm_get_vc_set_active(comm_, rank_, vcp_) do {           \
         *(vcp_) = (comm_)->vcr[(rank_)];                                \
@@ -599,7 +606,7 @@ Fix issues in SMP VC close arise with MPICH version of macro
             MPIDI_CHANGE_VC_STATE((*(vcp_)), ACTIVE);                   \
         }                                                               \
     } while(0)
-#endif /* if defined(_OSU_MVAPICH_) */
+#endif /* if defined(CHANNEL_MRAIL) */
 
 /*----------------
   END COMM SECTION
@@ -614,7 +621,7 @@ Fix issues in SMP VC close arise with MPICH version of macro
     {						\
 	(pkt_)->type = (type_);			\
     }
-#elif  defined(_OSU_MVAPICH_)
+#elif  defined(CHANNEL_MRAIL)
 #   define MPIDI_Pkt_init(pkt_, type_)				\
     {								\
 	memset((void *) (pkt_), 0xfc, sizeof(*pkt_));	\
@@ -816,9 +823,9 @@ typedef struct MPIDI_VC
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     /* Sequence number of the next packet to be sent */
     MPID_Seqnum_t seqnum_send;
-#if defined(_OSU_MVAPICH_) && !defined(MPIDI_CH3_MSGS_UNORDERED)
+#if defined(CHANNEL_MRAIL) && !defined(MPIDI_CH3_MSGS_UNORDERED)
     MPID_Seqnum_t seqnum_recv;
-#endif /* defined(_OSU_MVAPICH_) && !defined(MPIDI_CH3_MSGS_UNORDERED) */
+#endif /* defined(CHANNEL_MRAIL) && !defined(MPIDI_CH3_MSGS_UNORDERED) */
 #endif
     
 #if defined(MPIDI_CH3_MSGS_UNORDERED)
@@ -831,9 +838,9 @@ typedef struct MPIDI_VC
     MPIDI_CH3_Pkt_send_container_t * msg_reorder_queue;
 #endif
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint32_t rma_issued;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
     /* rendezvous function pointers.  Called to send a rendevous
        message or when one is matched */
@@ -848,7 +855,7 @@ typedef struct MPIDI_VC
     /* eager message threshold for ready sends.  -1 means there's no limit */
     int ready_eager_max_msg_sz;
  
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     int force_rndv;
     unsigned char tmp_dpmvc;
     unsigned char free_vc;
@@ -856,7 +863,7 @@ typedef struct MPIDI_VC
     int pending_close_ops;
 
 #endif
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     int force_eager;
 #endif
     
@@ -901,7 +908,7 @@ int MPIDI_VC_Init( MPIDI_VC_t *, MPIDI_PG_t *, int );
     	(vc_)->seqnum_recv = 0;			\
     	(vc_)->msg_reorder_queue = NULL;	\
     }
-#elif defined(_OSU_MVAPICH_)
+#elif defined(CHANNEL_MRAIL)
 #   define MPIDI_VC_Init_seqnum_recv(vc_);  \
     {                                       \
         (vc_)->seqnum_recv = 0;             \
@@ -1388,14 +1395,6 @@ int MPIDI_CH3I_Send_pt_rma_done_pkt(MPIDI_VC_t * vc, MPID_Win *win_ptr, int sour
 int MPIDI_CH3_Start_rma_op_target(MPID_Win *win_ptr, MPIDI_CH3_Pkt_flags_t flags);
 int MPIDI_CH3_Finish_rma_op_target(MPIDI_VC_t *vc, MPID_Win *win_ptr, int is_rma_update,
                                    MPIDI_CH3_Pkt_flags_t flags, MPI_Win source_win_handle);
-
-#define MPIDI_CH3I_DATATYPE_IS_PREDEFINED(type, predefined) \
-    if ((HANDLE_GET_KIND(type) == HANDLE_KIND_BUILTIN) || \
-        (type == MPI_FLOAT_INT) || (type == MPI_DOUBLE_INT) || \
-        (type == MPI_LONG_INT) || (type == MPI_SHORT_INT) || \
-	(type == MPI_LONG_DOUBLE_INT)) \
-        predefined = 1; \
-    else predefined = 0;
 
 int MPIDI_CH3I_Progress_finalize(void);
 
@@ -1885,9 +1884,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t *pg_ptr, int pg_rank );
 @*/
 int MPIDI_CH3_Finalize(void);
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 int MPIDI_CH3_Flush(void);
-#endif /* if defined(_OSU_MVAPICH_) */
+#endif /* if defined(CHANNEL_MRAIL) */
 
 /*@
   MPIDI_CH3_VC_Init - Perform channel-specific initialization of a VC
@@ -1914,7 +1913,7 @@ int MPIDI_CH3_PG_Destroy( struct MPIDI_PG *pg );
 @*/
 int MPIDI_CH3_VC_Destroy( struct MPIDI_VC *vc );
 
-/*@ MPIDI_CH3_InitComplete - Perform any channel-specific initialization 
+/*@ MPIDI_CH3_InitCompleted - Perform any channel-specific initialization
   actions after MPID_Init but before MPI_Init (or MPI_Initthread) returns
   @*/
 int MPIDI_CH3_InitCompleted( void );
@@ -1922,7 +1921,7 @@ int MPIDI_CH3_InitCompleted( void );
 #ifdef MPIDI_CH3_HASIMPL_HEADER
 #include "mpidi_ch3_mpid.h"
 #endif
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
 #include "psmpriv.h"
 #include "psm_vbuf.h"
 #endif
@@ -1933,7 +1932,7 @@ int MPIDI_CH3_InitCompleted( void );
 int MPIDI_GetTagFromPort( const char *, int * );
 
 /* Here are the packet handlers */
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
                                           MPIDI_msg_sz_t pkt_sz,
                                           MPID_Request ** sreq_ptr);
@@ -2146,7 +2145,7 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *, MPID_Request *,
             *(eager_threshold_p) = (vc)->eager_max_msg_sz;          \
     } while (0)
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #if defined(_ENABLE_CUDA_)
 #if defined(HAVE_CUDA_IPC)
 void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank);
@@ -2196,8 +2195,12 @@ int MPIDI_CH3_iStartRmaRndv(MPIDI_VC_t * vc,
 int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_get_rndv_t *,
                             MPID_Request *,
                             MPID_IOV *, int);
+int MPIDI_CH3_iStartGetAccRndv(MPIDI_VC_t *vc,
+                            MPID_Request *,
+                            MPID_Request *,
+                            int);
 int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
-                            MPIDI_CH3_Pkt_get_resp_t * get_resp_pkt,
+                            MPIDI_CH3_Pkt_t * get_resp_pkt,
                             MPID_Request * req);
 int MPIDI_CH3_Get_rndv_recv(MPIDI_VC_t * vc, MPID_Request * req);
 
@@ -2217,9 +2220,9 @@ void mv2_show_cpu_affinity(MPIDI_PG_t *pg);
         _vc->rma_issued = 0;                       \
     }                                              \
 }
-#endif /* if defined(_OSU_MVAPICH_) */
+#endif /* if defined(CHANNEL_MRAIL) */
 
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
 //    #define PSM_CH3_DBG
     #ifdef PSM_CH3_DBG
         #define PSMSG(_stmt_) _stmt_;   \

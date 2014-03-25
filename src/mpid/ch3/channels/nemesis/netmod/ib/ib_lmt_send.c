@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -28,6 +28,8 @@
         (_len) += (_iov)[_i].MPID_IOV_LEN;                      \
     }                                                           \
 }
+
+MPIDI_VC_t *flowlist;
 
 static inline void MPIDI_nem_ib_POST_SR(vbuf *_v, MPID_nem_ib_connection_t *_c,
 int _rail, char *err_string)
@@ -187,7 +189,7 @@ void vbuf_init_rndv_rput(
     uint32_t lkey,
     void* remote_addr,
     uint32_t rkey,
-    int len,
+    MPIDI_msg_sz_t len,
     int rail)
 {
     MPIDI_STATE_DECL(MPID_STATE_IB_VBUF_INIT_RPUT);
@@ -219,7 +221,8 @@ void vbuf_init_rndv_rput(
 int MPIDI_nem_ib_rput(struct MPIDI_VC *vc, struct MPID_Request *sreq)
 {
   vbuf *v;  
-  int nbytes, rail = 0, hca_num = 0;
+  MPIDI_msg_sz_t nbytes;
+  int rail = 0, hca_num = 0;
   int mpi_errno = MPI_SUCCESS;
   int cq_overflow = 0;
   int complete = 0;
@@ -230,7 +233,9 @@ int MPIDI_nem_ib_rput(struct MPIDI_VC *vc, struct MPID_Request *sreq)
   MPIDI_STATE_DECL(MPID_STATE_MPIDI_NEM_IB_RPUT);
   MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_NEM_IB_RPUT);
 
-  if (REQ_FIELD(sreq, rndv_buf_alloc) == 1) {
+  /*if rndv_buf_off is not zero, the data would have already been copied*/
+  if (REQ_FIELD(sreq, rndv_buf_alloc) == 1 && 
+      REQ_FIELD(sreq, rndv_buf_off) == 0) {
 
       buf = (uintptr_t) REQ_FIELD(sreq, rndv_buf);
       do {
@@ -242,13 +247,21 @@ int MPIDI_nem_ib_rput(struct MPIDI_VC *vc, struct MPID_Request *sreq)
          }
 
          if (sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV) {
-             MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
              complete = 0;
+             sreq->dev.iov_count = MPID_IOV_LIMIT;
+             mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq,
+                          sreq->dev.iov,
+                          &sreq->dev.iov_count);
+             if (mpi_errno != MPI_SUCCESS) {
+                 mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL,
+                            FCNAME, __LINE__, MPI_ERR_OTHER,
+                            "**ch3|loadsendiov", 0);
+                  goto fn_exit;
+             }
          } else {
              complete = 1;
          }
-
-      }while(!complete);
+      } while(!complete);
   }
 
   while (REQ_FIELD(sreq, rndv_buf_off) <
@@ -284,9 +297,15 @@ int MPIDI_nem_ib_rput(struct MPIDI_VC *vc, struct MPID_Request *sreq)
       if (!VC_FIELD(vc, connection)->rails[rail].send_wqes_avail ||
               cq_overflow)
       {
+            REQ_FIELD(sreq, rndv_buf_off) += nbytes;
             MRAILI_Ext_sendq_enqueue(vc, rail, v);
             MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_NEM_IB_RPUT);
-            return MPI_MRAIL_MSG_QUEUED;
+            if (REQ_FIELD(sreq, rndv_buf_off) <
+                REQ_FIELD(sreq, rndv_buf_sz)) { 
+                return MPI_MRAIL_MSG_QUEUED;
+            } else {
+                return mpi_errno; 
+            }
       }
       else
       {
@@ -298,7 +317,8 @@ int MPIDI_nem_ib_rput(struct MPIDI_VC *vc, struct MPID_Request *sreq)
       REQ_FIELD(sreq, rndv_buf_off) += nbytes;
 
    }
-   
+
+fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_NEM_IB_RPUT);
     return mpi_errno;
 }
@@ -432,8 +452,16 @@ int MPID_nem_lmt_ib_start_send(struct MPIDI_VC *vc, struct MPID_Request *sreq,
              /*multirail is not handled yet*/
              REQ_FIELD(sreq, remote_addr) = cookie->buf_addr;
              REQ_FIELD(sreq, rkey[0]) = cookie->rkey[0];
-             MPIDI_nem_ib_rput(vc, sreq);
-             MPID_nem_lmt_send_DONE(vc, sreq);
+             mpi_errno = MPIDI_nem_ib_rput(vc, sreq);
+             if (mpi_errno == MPI_SUCCESS) {  
+                 MPID_nem_lmt_send_DONE(vc, sreq);
+             } else if (mpi_errno == MPI_MRAIL_MSG_QUEUED) {
+                 RENDEZVOUS_IN_PROGRESS(vc, sreq); 
+                 PUSH_FLOWLIST(vc); 
+                 mpi_errno = MPI_SUCCESS;
+             } else {  
+                goto fn_fail;
+             }
              break;
        case MV2_LMT_PROTOCOL_R3:
             MPIDI_nem_ib_r3_send(vc, sreq);  
@@ -456,15 +484,56 @@ int MPID_nem_lmt_ib_start_send(struct MPIDI_VC *vc, struct MPID_Request *sreq,
             goto fn_fail;
    }
 
-   /*RENDEZVOUS_IN_PROGRESS(vc, req);   
-   req->mrail.nearly_complete = 0;
-   PUSH_FLOWLIST(vc);*/
-   /*from MPIDI_CH3I_MRAILI_Process_rndv function*/
-
  fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_NEM_LMT_IB_START_SEND);
     return mpi_errno;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPID_nem_lmt_ib_process_rndv
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+void MPID_nem_lmt_ib_process_rndv()
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPID_Request *sreq = NULL;
+    MPIDI_VC_t *pending_flowlist = NULL, *temp_vc = NULL;
+    int need_vc_enqueue = 0;
 
+    MPIDI_STATE_DECL(MPID_NEM_LMT_IB_PROCESS_RNDV);
+    MPIDI_FUNC_ENTER(MPID_NEM_LMT_IB_PROCESS_RNDV);
+    while (flowlist) {
+        need_vc_enqueue = 0;
+        sreq = (MPID_Request *)(VC_FIELD(flowlist,connection)->sreq_head);
+        while (sreq != NULL) {
+            MPIU_Assert (MV2_LMT_PROTOCOL_RPUT == REQ_FIELD(sreq, protocol));
+            mpi_errno = MPIDI_nem_ib_rput(flowlist, sreq);
+            if (mpi_errno == MPI_SUCCESS) {
+                MPID_nem_lmt_send_DONE(flowlist, sreq);
+                RENDEZVOUS_DONE(flowlist);
+                sreq = (MPID_Request *)(VC_FIELD(flowlist,connection)->sreq_head);
+            } else {
+                MPIU_Assert(mpi_errno == MPI_MRAIL_MSG_QUEUED);
+                temp_vc = flowlist;
+                need_vc_enqueue = 1; 
+                break;
+            }
+        }
 
+        POP_FLOWLIST();
+
+        /*try progresssing next connection*/
+        if (need_vc_enqueue) { 
+            ADD_PENDING_FLOWLIST(temp_vc, pending_flowlist);
+        }
+    }
+
+    while(pending_flowlist) {
+        /* push pending vc to the flowlist */
+        REMOVE_PENDING_FLOWLIST(temp_vc, pending_flowlist)
+        PUSH_FLOWLIST(temp_vc);
+    }
+
+fn_fail:
+    MPIDI_FUNC_EXIT(MPID_NEM_LMT_IB_PROCESS_RNDV);
+}

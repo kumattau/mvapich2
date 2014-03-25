@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -387,7 +387,7 @@ int MPIDI_nem_ib_fill_start_buffer(vbuf * v,
 /**
  * Select a rail using a scheduling policy.
  */
-static int MPIDI_nem_ib_send_select_rail(MPIDI_VC_t *vc) {
+int MPIDI_nem_ib_send_select_rail(MPIDI_VC_t *vc) {
 	static int i = 0;
 	if ( sm_scheduling == ROUND_ROBIN) {
 		i = (i+1) % rdma_num_rails;
@@ -1218,6 +1218,11 @@ int MRAILI_Process_send(void *vbuf_addr)
         MRAILI_Ext_sendq_send(orig_vc, v->rail);
     }
 
+    if(v->padding == COLL_VBUF_FLAG) {
+        MRAILI_Release_vbuf(v);
+        goto fn_exit;
+    }
+
     /* RPUT codes */
     
     if (v->padding == RPUT_VBUF_FLAG) {
@@ -1974,3 +1979,95 @@ fn_fail:
 
 
 #endif
+
+int mv2_shm_coll_reg_buffer(void *buffer, int size, struct ibv_mr *mem_handle[],
+                           int *buffer_registered)
+{
+   int i=0;
+   int mpi_errno = MPI_SUCCESS;
+
+    for ( i = 0 ; i < rdma_num_hcas; i ++ ) {
+        mem_handle[i]  = (struct ibv_mr *) register_memory(buffer, size, i);
+
+        if (!mem_handle[i]) {
+            /* de-register already registered with other hcas*/
+            for (i = i-1; i >=0 ; --i)
+            {
+                if (mem_handle[i] != NULL) {
+                    deregister_memory(mem_handle[i]);
+                }
+            }
+            *buffer_registered = 0;
+        }
+    }
+    *buffer_registered = 1;
+
+    return mpi_errno;
+}
+
+int mv2_shm_coll_dereg_buffer(struct ibv_mr *mem_handle[])
+{
+   int i=0, mpi_errno = MPI_SUCCESS;
+   for ( i = 0 ; i < rdma_num_hcas; i ++ ) {
+       if (mem_handle[i] != NULL) {
+           if (deregister_memory(mem_handle[i])) {
+               ibv_error_abort(IBV_RETURN_ERR,
+                                        "deregistration failed\n");
+           }
+       }
+   }
+   return mpi_errno;
+}
+
+int mv2_shm_coll_post_send(vbuf *v, int rail, MPIDI_VC_t * vc)
+{
+   char no_cq_overflow = 1;
+   int mpi_errno = MPI_SUCCESS;
+
+   v->rail = rail;
+
+    int hca_num = rail / (rdma_num_rails / ib_hca_num_hcas);
+    if ((NULL != hca_list[hca_num].send_cq_hndl) &&
+        (process_info.global_used_send_cq >= rdma_default_max_cq_size)) {
+        /* We are monitoring CQ's and there is CQ overflow */
+        no_cq_overflow = 0;
+    }
+
+    if (!VC_FIELD(vc, connection)->rails[rail].send_wqes_avail || !no_cq_overflow) {
+        DEBUG_PRINT("[send: rdma_send] Warning! no send wqe or send cq available\n");
+        MRAILI_Ext_sendq_enqueue(vc, rail, v);
+        return MPI_MRAIL_MSG_QUEUED;
+    } else {
+        --VC_FIELD(vc, connection)->rails[rail].send_wqes_avail;
+
+        MPIDI_nem_ib_POST_SR(v, VC_FIELD(vc, connection), rail, "ibv_post_sr (post_fast_rdma)");
+        DEBUG_PRINT("[send:post rdma] desc posted\n");
+    }
+
+    return mpi_errno;
+}
+
+void mv2_shm_coll_prepare_post_send(uint64_t local_rdma_addr, uint64_t remote_rdma_addr,
+                      uint32_t local_rdma_key, uint32_t remote_rdma_key,
+                      int len, int rail, MPIDI_VC_t * vc)
+{
+    vbuf *v=NULL;
+    v = get_vbuf();
+    v->desc.u.sr.next = NULL;
+    v->desc.u.sr.opcode = IBV_WR_RDMA_WRITE;
+    v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    (v)->desc.u.sr.wr.rdma.remote_addr = (uintptr_t) (remote_rdma_addr);
+    (v)->desc.u.sr.wr.rdma.rkey = (remote_rdma_key);
+    v->desc.u.sr.wr_id = (uintptr_t) v;
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+    (v)->desc.sg_entry.length = len;
+
+    (v)->desc.sg_entry.lkey = (local_rdma_key);
+    (v)->desc.sg_entry.addr =  (uintptr_t) (local_rdma_addr);
+    (v)->padding = COLL_VBUF_FLAG;
+    (v)->vc   = vc;
+    mv2_shm_coll_post_send(v, rail, vc);
+
+    return;
+}

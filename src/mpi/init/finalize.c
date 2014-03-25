@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,9 +21,32 @@
 #include "mpiimpl.h"
 #include "mpi_init.h"
 
-#if (defined(_OSU_MVAPICH_)||defined(_OSU_PSM_))
+#if (defined(CHANNEL_MRAIL)||defined(CHANNEL_PSM))
 #include "coll_shmem.h"
 #endif
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+categories:
+    - name        : DEVELOPER
+      description : useful for developers working on MPICH itself
+
+cvars:
+    - name        : MPIR_CVAR_MEMDUMP
+      category    : DEVELOPER
+      type        : boolean
+      default     : true
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_MPIDEV_DETAIL
+      scope       : MPI_T_SCOPE_LOCAL
+      description : >-
+        If true, list any memory that was allocated by MPICH and that
+        remains allocated when MPI_Finalize completes.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
+
 /* -- Begin Profiling Symbol Block for routine MPI_Finalize */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Finalize = PMPI_Finalize
@@ -229,7 +252,7 @@ int MPI_Finalize( void )
     MPIR_DebuggerSetAborting( (char *)0 );
 #endif
 
-#if (defined(_OSU_MVAPICH_)||defined(_OSU_PSM_))
+#ifdef _OSU_MVAPICH_
     /* Check to see if shmem_collectives were enabled. If yes, the
     specific entries need to be freed. */
     MPID_Comm *comm_ptr = NULL;
@@ -239,7 +262,7 @@ int MPI_Finalize( void )
     if (mpi_errno) { 
              MPIU_ERR_POP(mpi_errno); 
     }
-#if !defined(DAPL_DEFAULT_PROVIDER) && !defined(_OSU_PSM_)
+#if defined(CHANNEL_MRAIL_GEN2)
     char *value = NULL;
     if ((value = getenv("MV2_SHOW_RUNLOG_INFO")) != NULL) {
         mv2_show_runlog_level = atoi(value);
@@ -247,16 +270,16 @@ int MPI_Finalize( void )
             mv2_show_runlog_info(mv2_show_runlog_level);
         }
     }
-#endif
-#ifndef _OSU_PSM_ 
+#endif /* defined(CHANNEL_MRAIL_GEN2) */
+#ifndef CHANNEL_PSM
     if( MPIR_Process.comm_world->ch.shmem_coll_ok == 1) {
         mpi_errno = free_2level_comm(MPIR_Process.comm_world);
         if (mpi_errno) { 
              MPIU_ERR_POP(mpi_errno); 
         }
     }
-#endif
-#endif
+#endif /* !CHANNEL_PSM */
+#endif /* _OSU_MVAPICH_ */
 
     mpi_errno = MPID_Finalize();
     if (mpi_errno) {
@@ -270,20 +293,16 @@ int MPI_Finalize( void )
        completing the finalize */
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
+    /* Users did not call MPI_T_init_thread(), so we free memories allocated to
+     * MPIR_T during MPI_Init here. Otherwise, free them in MPI_T_finalize() */
+    if (!MPIR_T_is_initialized())
+        MPIR_T_env_finalize();
+
     /* FIXME: Many of these debugging items could/should be callbacks, 
        added to the finalize callback list */
     /* FIXME: the memory tracing code block should be a finalize callback */
     /* If memory debugging is enabled, check the memory here, after all
        finalize callbacks */
-
-    /* FIXME The init/finalize paths in general need a big overhaul in order
-     * to account for the new MPI_T_ code. */
-    if (!MPIR_T_is_initialized()) {
-        MPIR_T_finalize_pvars();
-
-        mpi_errno = MPIR_Param_finalize();
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-    }
 
     MPIU_THREAD_CS_EXIT(ALLFUNC,);
     MPIR_Process.initialized = MPICH_POST_FINALIZED;
@@ -297,7 +316,7 @@ int MPI_Finalize( void )
        go to separate files or to be sorted by rank (note that
        the rank is at the head of the line) */
     {
-	if (MPIR_PARAM_MEMDUMP) {
+	if (MPIR_CVAR_MEMDUMP) {
 	    /* The second argument is the min id to print; memory allocated 
 	       after MPI_Init is given an id of one.  This allows us to
 	       ignore, if desired, memory leaks in the MPID_Init call */

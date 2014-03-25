@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -55,7 +55,7 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 
 /* psm internally has a self-send mode no
    special handling needed here. */
-#if !defined (_OSU_PSM_)
+#if !defined (CHANNEL_PSM)
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
 	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, 
@@ -76,7 +76,7 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 	if (mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
 	goto fn_exit;
     }
-#endif /*_OSU_PSM_*/
+#endif /*CHANNEL_PSM*/
 
 
     if (rank == MPI_PROC_NULL)
@@ -100,7 +100,7 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 
     if (data_sz == 0)
     {
-#if defined (_OSU_PSM_)  /* zero length send, let PSM handle it */
+#if defined (CHANNEL_PSM)  /* zero length send, let PSM handle it */
         goto eager_send;
 #endif
 	MPIDI_CH3_Pkt_t upkt;
@@ -202,20 +202,20 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
     }
     else
 #endif
-#if defined(_OSU_PSM_)
+#if defined(CHANNEL_PSM)
     if(vc->force_eager)
         goto eager_send;
 #endif
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <=	 vc->eager_max_msg_sz 
             && ! vc->force_rndv)
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= eager_threshold)
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     {
 
-#if defined(_OSU_PSM_)
+#if defined(CHANNEL_PSM)
 eager_send:
 #endif
 	if (dt_contig)

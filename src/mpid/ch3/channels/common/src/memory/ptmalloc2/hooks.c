@@ -1,3 +1,15 @@
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 /* Malloc implementation for multiple threads without lock contention. */
 
 /* $Id: hooks.c,v 1.12 2004/11/05 14:42:32 wg Exp $ */
@@ -81,7 +93,7 @@ static int disallow_malloc_check;
 void
 __malloc_check_init()
 {
-/* _OSU_MVAPICH_ */
+/* CHANNEL_MRAIL */
     char *s;
     int disable_malloc_check = 1;
     s = getenv("MV2_ENABLE_MALLOC_CHECK");
@@ -91,7 +103,7 @@ __malloc_check_init()
     if (disable_malloc_check) {
         return;
     }
-/* _OSU_MVAPICH_ */
+/* CHANNEL_MRAIL */
 
   if (disallow_malloc_check) {
     disallow_malloc_check = 0;

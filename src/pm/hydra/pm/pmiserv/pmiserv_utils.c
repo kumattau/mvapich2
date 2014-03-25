@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
- *  (C) 2008 by Argonne National Laboratory.
+ *  (C) 2009 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
@@ -48,7 +48,7 @@ HYD_status HYD_pmcd_pmi_fill_in_proxy_args(struct HYD_string_stash *proxy_stash,
 
     HYD_STRING_STASH_INIT(stash);
     HYD_STRING_STASH(stash, HYDU_strdup(HYD_server_info.base_path), status);
-    HYD_STRING_STASH(stash, HYDU_strdup("hydra_pmi_proxy"), status);
+    HYD_STRING_STASH(stash, HYDU_strdup(HYDRA_PMI_PROXY), status);
     HYD_STRING_SPIT(stash, str, status);
 
     HYD_STRING_STASH(*proxy_stash, str, status);
@@ -201,7 +201,6 @@ static HYD_status pmi_process_mapping(struct HYD_pg *pg, char **process_mapping_
         blocklist_tail = blocklist_head;
     }
 
-  create_mapping_key:
     /* Create the mapping out of the blocks */
     HYD_STRING_STASH_INIT(stash);
     HYD_STRING_STASH(stash, HYDU_strdup("("), status);

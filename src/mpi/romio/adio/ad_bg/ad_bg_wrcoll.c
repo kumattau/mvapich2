@@ -18,7 +18,6 @@
 #include "ad_bg_pset.h"
 #include "ad_bg_aggrs.h"
 
-#include "mpitypedefs.h"
 
 #ifdef AGGREGATION_PROFILE
 #include "mpe.h"
@@ -402,9 +401,9 @@ void ADIOI_BG_WriteStridedColl(ADIO_File fd, const void *buf, int count,
 
 #ifdef HAVE_STATUS_SET_BYTES
     if (status) {
-      int bufsize, size;
+      MPI_Count bufsize, size;
       /* Don't set status if it isn't needed */
-      MPI_Type_size(datatype, &size);
+      MPI_Type_size_x(datatype, &size);
       bufsize = size * count;
       MPIR_Status_set_bytes(status, datatype, bufsize);
     }

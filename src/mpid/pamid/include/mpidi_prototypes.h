@@ -203,6 +203,44 @@ MPIDI_WinControlCB(pami_context_t    context,
                    size_t            sndlen,
                    pami_endpoint_t   sender,
                    pami_recv_t     * recv);
+void
+MPIDI_WinAtomicCB(pami_context_t    context,
+                  void            * cookie,
+                  const void      * _control,
+                  size_t            size,
+                  const void      * sndbuf,
+                  size_t            sndlen,
+                  pami_endpoint_t   sender,
+                  pami_recv_t     * recv);
+void
+MPIDI_WinAtomicAckCB(pami_context_t    context,
+                     void            * cookie,
+                     const void      * _control,
+                     size_t            size,
+                     const void      * sndbuf,
+                     size_t            sndlen,
+                     pami_endpoint_t   sender,
+                     pami_recv_t     * recv);
+
+
+void
+MPIDI_WinGetAccumCB(pami_context_t    context,
+		    void            * cookie,
+		    const void      * _control,
+		    size_t            size,
+		    const void      * sndbuf,
+		    size_t            sndlen,
+		    pami_endpoint_t   sender,
+		    pami_recv_t     * recv);
+void
+MPIDI_WinGetAccumAckCB(pami_context_t    context,
+		       void            * cookie,
+		       const void      * _control,
+		       size_t            size,
+		       const void      * sndbuf,
+		       size_t            sndlen,
+		       pami_endpoint_t   sender,
+		       pami_recv_t     * recv);
 
 /** \brief Helper function to complete a rendevous transfer */
 pami_result_t MPIDI_RendezvousTransfer(pami_context_t context, void* rreq);

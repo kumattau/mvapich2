@@ -683,7 +683,7 @@ int MPIR_Ireduce_scatter_block_noncomm(const void *sendbuf, void *recvbuf, int r
     /* Copy our send data to tmp_buf0.  We do this one block at a time and
        permute the blocks as we go according to the mirror permutation. */
     for (i = 0; i < comm_size; ++i) {
-        mpi_errno = MPID_Sched_copy(((char *)(sendbuf == MPI_IN_PLACE ? recvbuf : sendbuf) + (i * true_extent * block_size)),
+        mpi_errno = MPID_Sched_copy(((char *)(sendbuf == MPI_IN_PLACE ? (const void *)recvbuf : sendbuf) + (i * true_extent * block_size)),
                                     block_size, datatype,
                                     ((char *)tmp_buf0 + (MPIU_Mirror_permutation(i, log2_comm_size) * true_extent * block_size)),
                                      block_size, datatype, s);
@@ -781,11 +781,11 @@ int MPIR_Ireduce_scatter_block_intra(const void *sendbuf, void *recvbuf, int rec
     nbytes = total_count * type_size;
 
     /* select an appropriate algorithm based on commutivity and message size */
-    if (is_commutative && (nbytes < MPIR_PARAM_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
+    if (is_commutative && (nbytes < MPIR_CVAR_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
         mpi_errno = MPIR_Ireduce_scatter_block_rec_hlv(sendbuf, recvbuf, recvcount, datatype, op, comm_ptr, s);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
-    else if (is_commutative && (nbytes >= MPIR_PARAM_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
+    else if (is_commutative && (nbytes >= MPIR_CVAR_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
         mpi_errno = MPIR_Ireduce_scatter_block_pairwise(sendbuf, recvbuf, recvcount, datatype, op, comm_ptr, s);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
@@ -958,7 +958,8 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 /*@
-MPI_Ireduce_scatter_block - XXX description here
+MPI_Ireduce_scatter_block - Combines values and scatters the results in
+                            a nonblocking way
 
 Input Parameters:
 + sendbuf - starting address of the send buffer (choice)
@@ -977,7 +978,10 @@ Output Parameters:
 
 .N Errors
 @*/
-int MPI_Ireduce_scatter_block(const void *sendbuf, void *recvbuf, int recvcount, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm, MPI_Request *request)
+int MPI_Ireduce_scatter_block(const void *sendbuf, void *recvbuf,
+                              int recvcount,
+                              MPI_Datatype datatype, MPI_Op op, MPI_Comm comm,
+                              MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;

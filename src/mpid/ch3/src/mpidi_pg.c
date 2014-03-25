@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -333,7 +333,7 @@ int MPIDI_PG_Destroy(MPIDI_PG_t * pg)
             }
 
 	    MPIDI_PG_Destroy_fn(pg);
-#if defined (_OSU_MVAPICH_)
+#if defined (CHANNEL_MRAIL)
         for(i = 0; i < pg->size; i++) {
             MPIDI_CH3I_Cleanup_after_connection(&pg->vct[i]);
         }

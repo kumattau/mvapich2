@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -46,6 +46,10 @@ static int vbuf_n_allocated = 0;
 static long num_free_vbuf = 0;
 static long num_vbuf_get = 0;
 static long num_vbuf_freed = 0;
+
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
 
 void
 dump_vbuf_region (vbuf_region * r)
@@ -136,6 +140,8 @@ allocate_vbuf_region (int nvbufs)
 
     vbuf_n_allocated += nvbufs;
     num_free_vbuf += nvbufs;
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_vbuf_allocated, nvbufs);
+    MPIR_T_PVAR_LEVEL_INC(MV2, mv2_vbuf_available, nvbufs);
     reg->malloc_start = mem;
     reg->malloc_end = (void *) ((char *) mem + nvbufs * sizeof (vbuf) +
                                 alignment - 1);
@@ -234,6 +240,7 @@ get_vbuf ()
 
     v = free_vbuf_head;
     num_free_vbuf--;
+    MPIR_T_PVAR_LEVEL_DEC(MV2, mv2_vbuf_available, 1);
     num_vbuf_get++;
 
     /* this correctly handles removing from single entry free list */
@@ -282,6 +289,8 @@ MRAILI_Release_vbuf (vbuf * v)
     v->vc = NULL;
     num_free_vbuf++;
     num_vbuf_freed++;
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_vbuf_freed, 1);
+    MPIR_T_PVAR_LEVEL_INC(MV2, mv2_vbuf_available, 1);
 }
 
 void

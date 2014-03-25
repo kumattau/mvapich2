@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -872,6 +872,12 @@ int MPIDI_CH3I_RDMA_finalize(void)
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
 
+#ifdef _ENABLE_UD_
+        if (vc->mrail.ud) {
+            MPIU_Free(vc->mrail.ud);
+        }
+#endif /* _ENABLE_UD_ */
+
         if (!qp_required(vc, pg_rank, i)) {
             continue;
         }
@@ -1692,7 +1698,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     MPIU_Free(arch_hca_type_all);
     MPIU_Free(gid_all);
 
-    DEBUG_PRINT("Done MPIDI_CH3I_CM_Init()\n");
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "Done MPIDI_CH3I_CM_Init() \n");
 
     MPIDI_FUNC_EXIT(MPID_STATE_CH3I_CM_INIT);
     return mpi_errno;
@@ -1768,6 +1774,11 @@ int MPIDI_CH3I_CM_Finalize(void)
 
         MPIDI_PG_Get_vc(pg, i, &vc);
 
+#ifdef _ENABLE_UD_
+        if (vc->mrail.ud) {
+            MPIU_Free(vc->mrail.ud);
+        }
+#endif /* _ENABLE_UD_ */
 #ifndef MV2_DISABLE_HEADER_CACHING
         MPIU_Free(vc->mrail.rfp.cached_incoming);
         MPIU_Free(vc->mrail.rfp.cached_outgoing);
@@ -1862,6 +1873,9 @@ int MPIDI_CH3I_CM_Finalize(void)
     if (rdma_enable_hybrid) {
         for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
             mv2_ud_destroy_ctx(mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_index]);
+        }
+        for (i = 0; i < pg_size; ++i) {
+            MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[i]);
         }
         MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info);
 

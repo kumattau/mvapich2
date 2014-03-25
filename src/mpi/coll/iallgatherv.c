@@ -36,7 +36,7 @@ int MPIR_Iallgatherv_rec_dbl(const void *sendbuf, int sendcount, MPI_Datatype se
     int mask, dst, total_count, position, offset, my_tree_root, dst_tree_root;
     MPI_Aint recvtype_extent, recvtype_true_extent, recvtype_true_lb;
     void *tmp_buf = NULL;
-    int is_homogeneous;
+    int is_homogeneous ATTRIBUTE((unused));
     MPIR_SCHED_CHKPMEM_DECL(1);
 
     comm_size = comm_ptr->local_size;
@@ -453,8 +453,8 @@ int MPIR_Iallgatherv_ring(const void *sendbuf, int sendcount, MPI_Datatype sendt
     for (i = 1; i < comm_size; i++)
         if (min > recvcounts[i])
             min = recvcounts[i];
-    if (min * recvtype_extent < MPIR_PARAM_ALLGATHERV_PIPELINE_MSG_SIZE)
-        min = MPIR_PARAM_ALLGATHERV_PIPELINE_MSG_SIZE / recvtype_extent;
+    if (min * recvtype_extent < MPIR_CVAR_ALLGATHERV_PIPELINE_MSG_SIZE)
+        min = MPIR_CVAR_ALLGATHERV_PIPELINE_MSG_SIZE / recvtype_extent;
     /* Handle the case where the datatype extent is larger than
      * the pipeline size. */
     if (!min)
@@ -566,7 +566,7 @@ int MPIR_Iallgatherv_intra(const void *sendbuf, int sendcount, MPI_Datatype send
     if (total_count == 0)
         goto fn_exit;
 
-    if ((total_count*recvtype_size < MPIR_PARAM_ALLGATHER_LONG_MSG_SIZE) &&
+    if ((total_count*recvtype_size < MPIR_CVAR_ALLGATHER_LONG_MSG_SIZE) &&
         !(comm_size & (comm_size - 1)))
     {
         /* Short or medium size message and power-of-two no. of processes. Use
@@ -574,7 +574,7 @@ int MPIR_Iallgatherv_intra(const void *sendbuf, int sendcount, MPI_Datatype send
         mpi_errno = MPIR_Iallgatherv_rec_dbl(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm_ptr, s);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
-    else if (total_count*recvtype_size < MPIR_PARAM_ALLGATHER_SHORT_MSG_SIZE) {
+    else if (total_count*recvtype_size < MPIR_CVAR_ALLGATHER_SHORT_MSG_SIZE) {
         /* Short message and non-power-of-two no. of processes. Use
          * Bruck algorithm (see description above). */
         mpi_errno = MPIR_Iallgatherv_bruck(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm_ptr, s);
@@ -736,7 +736,8 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 /*@
-MPI_Iallgatherv - XXX description here
+MPI_Iallgatherv - Gathers data from all tasks and deliver the combined data
+                  to all tasks in a nonblocking way
 
 Input Parameters:
 + sendbuf - starting address of the send buffer (choice)

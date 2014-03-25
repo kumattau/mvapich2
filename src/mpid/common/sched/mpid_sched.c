@@ -1,9 +1,9 @@
 /* -*- Mode: c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
- *  (C) 2010 by Argonne National Laboratory.
+ *  (C) 2011 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -65,7 +65,7 @@ struct MPIDU_Sched_state {
 /* holds on to all incomplete schedules on which progress should be made */
 struct MPIDU_Sched_state all_schedules = {NULL};
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 static int sched_in_continue = 0;
 #endif
 
@@ -137,7 +137,7 @@ fn_fail:
 /* initiates the schedule entry "e" in the NBC described by "s", where
  * "e" is at "idx" in "s".  This means posting nonblocking sends/recvs,
  * performing reductions, calling callbacks, etc. */
-static int MPIDU_Sched_start_entry(struct MPIDU_Sched *s, int idx, struct MPIDU_Sched_entry *e)
+static int MPIDU_Sched_start_entry(struct MPIDU_Sched *s, size_t idx, struct MPIDU_Sched_entry *e)
 {
     int mpi_errno = MPI_SUCCESS;
     int context_offset;
@@ -252,7 +252,7 @@ fn_fail:
 static int MPIDU_Sched_continue(struct MPIDU_Sched *s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int i;
+    size_t i;
 
     for (i = s->idx; i < s->num_entries; ++i) {
         struct MPIDU_Sched_entry *e = &s->entries[i];
@@ -695,12 +695,12 @@ int MPID_Sched_copy(const void *inbuf,  int incount,  MPI_Datatype intype,
     /* some sanity checking up front */
 #if defined(HAVE_ERROR_CHECKING) && !defined(NDEBUG)
     {
-        int intype_size, outtype_size;
+        MPI_Aint intype_size, outtype_size;
         MPID_Datatype_get_size_macro(intype, intype_size);
         MPID_Datatype_get_size_macro(outtype, outtype_size);
         if (incount * intype_size > outcount * outtype_size) {
-            MPIU_Error_printf("truncation: intype=%#x, intype_size=%d, incount=%d, outtype=%#x, outtype_size=%d outcount=%d\n",
-                              intype, intype_size, incount, outtype, outtype_size, outcount);
+            MPIU_Error_printf("truncation: intype=%#x, intype_size=%lld, incount=%d, outtype=%#x, outtype_size=%lld outcount=%d\n",
+                              intype, (long long)intype_size, incount, outtype, (long long)outtype_size, outcount);
         }
     }
 #endif
@@ -802,7 +802,7 @@ fn_fail:
 static int MPIDU_Sched_progress_state(struct MPIDU_Sched_state *state, int *made_progress)
 {
     int mpi_errno = MPI_SUCCESS;
-    int i;
+    size_t i;
     struct MPIDU_Sched *s;
     struct MPIDU_Sched *tmp;
 
@@ -864,12 +864,12 @@ static int MPIDU_Sched_progress_state(struct MPIDU_Sched_state *state, int *made
                 if (e->is_barrier) {
                     dprintf(stderr, "completed barrier in entry %d\n", i);
                     /* post/perform the next round of operations */
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
                     sched_in_continue = 1;
 #endif
                     mpi_errno = MPIDU_Sched_continue(s);
                     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
                     sched_in_continue = 0;
 #endif
                 }
@@ -911,7 +911,7 @@ fn_fail:
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDU_Sched_progress(int *made_progress)
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     /* check if we are already in Sched_progress.
     ** MPID_Isend from MPIDU_Sched_progress can trigger MPIDU_Sched_progress again
     ** (MPIDU_Sched_progress -> MPID_Isend -> MPID_Progress_test -> MPIDU_Sched_progress)

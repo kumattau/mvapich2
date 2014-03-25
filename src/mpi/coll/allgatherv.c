@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,24 @@
  */
 
 #include "mpiimpl.h"
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_ALLGATHERV_PIPELINE_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 32768
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        The smallest message size that will be used for the pipelined, large-message,
+        ring algorithm in the MPI_Allgatherv implementation.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 
 /* -- Begin Profiling Symbol Block for routine MPI_Allgatherv */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -123,7 +141,7 @@ int MPIR_Allgatherv_intra (
     MPID_Datatype_get_extent_macro( recvtype, recvtype_extent );
     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
 
-    if ((total_count*recvtype_size < MPIR_PARAM_ALLGATHER_LONG_MSG_SIZE) &&
+    if ((total_count*recvtype_size < MPIR_CVAR_ALLGATHER_LONG_MSG_SIZE) &&
         !(comm_size & (comm_size - 1))) {
         /* Short or medium size message and power-of-two no. of processes. Use
          * recursive doubling algorithm */   
@@ -521,7 +539,7 @@ int MPIR_Allgatherv_intra (
 
     }
 
-    else if (total_count*recvtype_size < MPIR_PARAM_ALLGATHER_SHORT_MSG_SIZE) {
+    else if (total_count*recvtype_size < MPIR_CVAR_ALLGATHER_SHORT_MSG_SIZE) {
         /* Short message and non-power-of-two no. of processes. Use
          * Bruck algorithm (see description above). */
  
@@ -655,8 +673,8 @@ int MPIR_Allgatherv_intra (
 	for (i = 1; i < comm_size; i++)
 	    if (min > recvcounts[i])
                 min = recvcounts[i];
-	if (min * recvtype_extent < MPIR_PARAM_ALLGATHERV_PIPELINE_MSG_SIZE)
-	    min = MPIR_PARAM_ALLGATHERV_PIPELINE_MSG_SIZE / recvtype_extent;
+	if (min * recvtype_extent < MPIR_CVAR_ALLGATHERV_PIPELINE_MSG_SIZE)
+	    min = MPIR_CVAR_ALLGATHERV_PIPELINE_MSG_SIZE / recvtype_extent;
         /* Handle the case where the datatype extent is larger than
          * the pipeline size. */
         if (!min)

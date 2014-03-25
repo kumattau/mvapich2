@@ -180,9 +180,7 @@ MPIU_Thread_CS_yield_lockname_recursive_impl_(enum MPIU_Nest_mutexes kind,
                                               const char *lockname,
                                               MPID_Thread_mutex_t *mutex)
 {
-    /* <_OSU_MVAPICH_> */
-    MPIU_AssertDecl(int depth);
-    /* </_OSU_MVAPICH_> */
+    int depth ATTRIBUTE((unused));
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
     depth = MPIU_THREADPRIV_FIELD(lock_depth)[kind];

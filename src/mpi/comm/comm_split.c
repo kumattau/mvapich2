@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,9 +20,30 @@
 #include "mpiimpl.h"
 #include "mpicomm.h"
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 #include "coll_shmem.h"
-#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+categories:
+    - name        : COMMUNICATOR
+      description : cvars that control communicator construction and operation
+
+cvars:
+    - name        : MPIR_CVAR_COMM_SPLIT_USE_QSORT
+      category    : COMMUNICATOR
+      type        : boolean
+      default     : true
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Use qsort(3) in the implementation of MPI_Comm_split instead of bubble sort.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 
 /* -- Begin Profiling Symbol Block for routine MPI_Comm_split */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -83,7 +104,7 @@ static void MPIU_Sort_inttable( sorttype *keytable, int size )
 
 #if defined(HAVE_QSORT)
     /* temporary switch for profiling performance differences */
-    if (MPIR_PARAM_COMM_SPLIT_USE_QSORT)
+    if (MPIR_CVAR_COMM_SPLIT_USE_QSORT)
     {
         /* qsort isn't a stable sort, so we have to enforce stability by keeping
          * track of the original indices */

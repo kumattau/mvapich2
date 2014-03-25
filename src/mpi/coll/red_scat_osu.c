@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,7 +18,6 @@
 
 #include "mpiimpl.h"
 #include <unistd.h>
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 #include "red_scat_tuning.h"
 #include <unistd.h>
@@ -1299,7 +1298,6 @@ static int MPIR_Reduce_scatter_non_comm_MV2(const void *sendbuf,
   fn_fail:
 	goto fn_exit;
 }
-#endif							/* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 /* MPIR_Reduce_Scatter performs an reduce_scatter using point-to-point
    messages.  This is intended to be used by device-specific
@@ -1315,7 +1313,6 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
 							MPID_Comm * comm_ptr, int *errflag)
 {
 	int mpi_errno = MPI_SUCCESS;
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 	int mpi_errno_ret = MPI_SUCCESS;
 	int i = 0, comm_size = comm_ptr->local_size, total_count = 0, type_size =
 		0, nbytes = 0;
@@ -1357,7 +1354,6 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
 	nbytes = total_count * type_size;
 
 #ifdef _ENABLE_CUDA_
-    cudaError_t  cuerr = cudaSuccess;
     int recv_mem_type = 0, send_mem_type = 0, stride = 0;
     char *recv_host_buf = NULL;
     char *send_host_buf = NULL;
@@ -1377,13 +1373,10 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
     }
     if (rdma_enable_cuda && send_mem_type) {
         send_host_buf = (char*) MPIU_Malloc(stride);
-        cuerr = cudaMemcpy((void *)send_host_buf, 
+        MPIU_Memcpy_CUDA((void *)send_host_buf, 
                             (void *)sendbuf, 
                             stride, 
                             cudaMemcpyDeviceToHost);
-        if (cudaSuccess != cuerr) {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-        }
         sendbuf = send_host_buf;
     }
 
@@ -1426,25 +1419,14 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
 	if (mpi_errno) { 
 		MPIU_ERR_POP(mpi_errno);
     } 
-#else							/* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)   */
-	mpi_errno = MPIR_Reduce_scatter(sendbuf, recvbuf,
-									recvcnts, datatype, op, comm_ptr, errflag);
-	if (mpi_errno) { 
-		MPIU_ERR_POP(mpi_errno);
-    } 
-#endif							/* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)   */
 
 #ifdef _ENABLE_CUDA_
-    cuerr = cudaSuccess;
     if (rdma_enable_cuda && recv_mem_type) {
         recvbuf = temp_recvbuf;
-        cuerr = cudaMemcpy((void *)recvbuf, 
-                            (void *)recv_host_buf, 
+        MPIU_Memcpy_CUDA((void *)recvbuf, 
+                           (void *)recv_host_buf, 
                             recvcnts[rank]*type_size, 
                             cudaMemcpyHostToDevice);
-        if (cudaSuccess != cuerr) {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-        }
     }
     if (rdma_enable_cuda && recv_mem_type) {
         if (recv_host_buf) {
@@ -1460,7 +1442,6 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
     }
 #endif
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
   fn_exit:
 	MPIU_CHKLMEM_FREEALL();
 
@@ -1474,12 +1455,7 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
 		mpi_errno = mpi_errno_ret;
 	else if (*errflag)
 		MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
-	return mpi_errno;
-#else							/* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)   */
-  fn_exit:
     return mpi_errno;
-#endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)   */
   fn_fail:
 	goto fn_exit;
-
 }

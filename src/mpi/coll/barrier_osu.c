@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,7 +18,6 @@
  */
 
 #include "mpiimpl.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 #ifdef MRAIL_GEN2_INTERFACE
 #include <cr.h>
@@ -90,6 +89,7 @@ static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
     int local_rank = -1, local_size = 0;
     int total_size, shmem_comm_rank;
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_shmem_coll_calls, 1);
     shmem_comm = comm_ptr->ch.shmem_comm;
     leader_comm = comm_ptr->ch.leader_comm;
 
@@ -102,9 +102,6 @@ static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
     shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
     leader_comm = comm_ptr->ch.leader_comm;
     MPID_Comm_get_ptr(leader_comm, leader_commptr);
-    #if OSU_MPIT
-        mv2_num_shmem_coll_calls++;
-    #endif
 
     if (local_size > 1) {
         MPIDI_CH3I_SHMEM_COLL_Barrier_gather(local_size, local_rank,
@@ -191,7 +188,6 @@ int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, int *errflag)
 
     return mpi_errno;
 }
-#endif                          /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Barrier_MV2
@@ -200,11 +196,7 @@ int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, int *errflag)
 int MPIR_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     mpi_errno = MPIR_Barrier_intra_MV2(comm_ptr, errflag);
-#else
-    mpi_errno = MPIR_Barrier_intra(comm_ptr, errflag);
-#endif                          /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
 

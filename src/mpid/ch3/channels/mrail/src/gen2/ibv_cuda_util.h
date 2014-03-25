@@ -1,5 +1,5 @@
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -30,20 +30,6 @@ typedef enum cuda_async_op {
     SMP_SEND,
     SMP_RECV,
 } cuda_async_op_t;
-
-typedef struct cuda_stream {
-    cudaStream_t stream;
-    cuda_async_op_t op_type;
-    uint8_t flags;
-    uint8_t is_finish;
-    uint8_t is_query_done;
-    uint32_t size;
-    uint32_t displacement;
-    void *vc;
-    void *req;
-    struct vbuf *cuda_vbuf_head, *cuda_vbuf_tail;
-    struct cuda_stream *next, *prev;
-} cuda_stream_t;
 
 /* cuda stream pool flags */
 #define CUDA_STREAM_FREE_POOL 0x01
@@ -80,19 +66,9 @@ extern cuda_event_t *free_cuda_event_list_head;
 extern cuda_event_t *busy_cuda_event_list_head;
 extern cuda_event_t *busy_cuda_event_list_tail;
 
-void allocate_cuda_streams();   /* allocate stream pool */
-void deallocate_cuda_streams(); /* deallocate stream pool */
-int allocate_cuda_stream(cuda_stream_t **); /*allocate single stream */
-void deallocate_cuda_stream(cuda_stream_t **); /* deallocate single stream */
-void progress_cuda_streams();
-cuda_stream_t *get_cuda_stream(int add_to_polling);
 void allocate_cuda_rndv_streams();
 void deallocate_cuda_rndv_streams();
 
-extern void *cuda_stream_region;
-extern cuda_stream_t *free_cuda_stream_list_head;
-extern cuda_stream_t *busy_cuda_stream_list_head;
-extern cuda_stream_t *busy_cuda_stream_list_tail;
 extern cudaStream_t stream_d2h, stream_h2d, stream_kernel;
 extern cudaEvent_t cuda_nbstream_sync_event;
 
@@ -112,7 +88,6 @@ do {                                            \
 do {                                            \
     if (rdma_enable_cuda) {                     \
         progress_cuda_events();                 \
-        progress_cuda_streams();                \
     }                                           \
 } while(0)
 
@@ -293,8 +268,8 @@ extern int cudaipc_sync_limit;
 #endif
 #endif
 #if defined(USE_GPU_KERNEL)
-void pack_subarray( void *dst, void *src, int nx, int ny, int nz, int sub_nx, int sub_ny, int sub_nz, int h_x, int h_y, int h_z, int el_size, cudaStream_t stream);
-void unpack_subarray( void *dst, void *src, int nx, int ny, int nz, int sub_nx, int sub_ny, int sub_nz, int h_x, int h_y, int h_z, int el_size, cudaStream_t stream);
+void pack_subarray( void *dst, void *src, int dim, int nx, int ny, int nz, int sub_nx, int sub_ny, int sub_nz, int h_x, int h_y, int h_z, int sub_order, int el_size, cudaStream_t stream);
+void unpack_subarray( void *dst, void *src, int dim, int nx, int ny, int nz, int sub_nx, int sub_ny, int sub_nz, int h_x, int h_y, int h_z, int sub_order, int el_size, cudaStream_t stream);
 void pack_unpack_vector_kernel( void *dst, int dpitch, void *src, int spitch, int width, int height, cudaStream_t stream);
 #endif
 #endif /* _IBV_CUDA_UTIL_H_ */

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -136,7 +136,6 @@ struct dreg_entry;
 #ifdef _ENABLE_CUDA_
 #define MPIDI_CH3I_MRAILI_CUDA_REQ_DECL \
         cuda_transfer_mode_t  cuda_transfer_mode;   \
-        cuda_stream_t *cuda_stream;                 \
         cuda_event_t *cuda_event;                   \
         vbuf *cuda_vbuf[MAX_CUDA_RNDV_BLOCKS];      \
         void *cuda_remote_addr[MAX_CUDA_RNDV_BLOCKS]; \
@@ -160,8 +159,8 @@ struct dreg_entry;
         MPI_Request partner_id;         \
         uint8_t rndv_buf_alloc;         \
         void * rndv_buf;    \
-        int rndv_buf_sz;    \
-        int rndv_buf_off;   \
+        MPIDI_msg_sz_t rndv_buf_sz;    \
+        MPIDI_msg_sz_t rndv_buf_off;   \
         MRAILI_Protocol_t protocol;     \
         struct dreg_entry *d_entry;     \
         void     *remote_addr;          \
@@ -305,6 +304,7 @@ typedef struct MPIDI_CH3I_MRAILI_SR_VC
 #include "mv2_ud.h"
     
 #define MPIDI_CH3I_MRAILI_UD_VC  mv2_ud_vc_info_t
+#define MPIDI_CH3I_MRAILI_UD_REL mv2_ud_reliability_info_t
 
 #endif /* _ENABLE_UD_ */
 
@@ -371,7 +371,8 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
     MPIDI_CH3I_MRAILI_RDMAPATH_VC 	rfp;
     MPIDI_CH3I_MRAILI_SR_VC 		srp;
 #ifdef _ENABLE_UD_ 
-    MPIDI_CH3I_MRAILI_UD_VC         ud;
+    MPIDI_CH3I_MRAILI_UD_VC         *ud;
+    MPIDI_CH3I_MRAILI_UD_REL        rely;
 #endif /* _ENABLE_UD_ */
 
     MRAILI_Channel_manager  cmanager;

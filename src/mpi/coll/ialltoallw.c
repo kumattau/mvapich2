@@ -124,7 +124,7 @@ int MPIR_Ialltoallw_intra(const void *sendbuf, const int sendcounts[], const int
         }
     }
     else {
-        bblock = MPIR_PARAM_ALLTOALL_THROTTLE;
+        bblock = MPIR_CVAR_ALLTOALL_THROTTLE;
         if (bblock == 0) bblock = comm_size;
 
         /* post only bblock isends/irecvs at a time as suggested by Tony Ladd */
@@ -297,7 +297,8 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 /*@
-MPI_Ialltoallw - XXX description here
+MPI_Ialltoallw - Nonblocking generalized all-to-all communication allowing
+   different datatypes, counts, and displacements for each partner
 
 Input Parameters:
 + sendbuf - starting address of the send buffer (choice)

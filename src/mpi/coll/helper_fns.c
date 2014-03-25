@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,32 @@
 
 #include "mpiimpl.h"
 #include "datatype.h"
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+categories:
+    - name        : FAULT_TOLERANCE
+      description : cvars that control fault tolerance behavior
+
+cvars:
+    - name        : MPIR_CVAR_ENABLE_COLL_FT_RET
+      category    : FAULT_TOLERANCE
+      type        : boolean
+      default     : true
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        DEPRECATED! Will be removed in MPICH-3.2
+        Collectives called on a communicator with a failed process
+        should not hang, however the result of the operation may be
+        invalid even though the function returns MPI_SUCCESS.  This
+        option enables an experimental feature that will return an error
+        if the result of the collective is invalid.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 
 #define COPY_BUFFER_SZ 16384
 
@@ -67,40 +93,55 @@ int MPIR_Localcopy(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_LOCALCOPY);
 
-    MPIR_Datatype_iscontig(sendtype, &sendtype_iscontig);
-    MPIR_Datatype_iscontig(recvtype, &recvtype_iscontig);
-
     MPID_Datatype_get_size_macro(sendtype, sendsize);
     MPID_Datatype_get_size_macro(recvtype, recvsize);
+
     sdata_sz = sendsize * sendcount;
     rdata_sz = recvsize * recvcount;
 
+    /* if there is no data to copy, bail out */
     if (!sdata_sz || !rdata_sz)
         goto fn_exit;
-    
-    if (sdata_sz > rdata_sz)
-    {
+
+#if defined(HAVE_ERROR_CHECKING)
+    if (sdata_sz > rdata_sz) {
         MPIU_ERR_SET2(mpi_errno, MPI_ERR_TRUNCATE, "**truncate", "**truncate %d %d", sdata_sz, rdata_sz);
         copy_sz = rdata_sz;
     }
     else
-    {
+#endif /* HAVE_ERROR_CHECKING */
         copy_sz = sdata_sz;
-    }
-
-    MPIR_Type_get_true_extent_impl(sendtype, &sendtype_true_lb, &true_extent);
-    MPIR_Type_get_true_extent_impl(recvtype, &recvtype_true_lb, &true_extent);
 
 #if defined(_ENABLE_CUDA_)
     int sbuf_isdev = 0, rbuf_isdev = 0;
     MPID_Datatype *sdt_ptr, *rdt_ptr;
     MPID_Datatype_get_ptr(sendtype, sdt_ptr);
     MPID_Datatype_get_ptr(recvtype, rdt_ptr);
-    if (enable_device_ptr_checks) { 
-        sbuf_isdev = is_device_buffer(sendbuf); 
-        rbuf_isdev = is_device_buffer(recvbuf); 
+    if (rdma_enable_cuda && enable_device_ptr_checks) {
+        sbuf_isdev = is_device_buffer(sendbuf);
+        rbuf_isdev = is_device_buffer(recvbuf);
     }
 #endif
+
+    /* Builtin types is the common case; optimize for it */
+    if ((HANDLE_GET_KIND(sendtype) == HANDLE_KIND_BUILTIN) &&
+        HANDLE_GET_KIND(recvtype) == HANDLE_KIND_BUILTIN) {
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda && (sbuf_isdev || rbuf_isdev)) {
+            MPIU_Memcpy_CUDA((void *) recvbuf, (void *) sendbuf,
+                    copy_sz, cudaMemcpyDefault);
+            goto fn_exit;
+        }
+#endif
+        MPIU_Memcpy(recvbuf, sendbuf, copy_sz);
+        goto fn_exit;
+    }
+
+    MPIR_Datatype_iscontig(sendtype, &sendtype_iscontig);
+    MPIR_Datatype_iscontig(recvtype, &recvtype_iscontig);
+
+    MPIR_Type_get_true_extent_impl(sendtype, &sendtype_true_lb, &true_extent);
+    MPIR_Type_get_true_extent_impl(recvtype, &recvtype_true_lb, &true_extent);
 
     if (sendtype_iscontig && recvtype_iscontig)
     {
@@ -323,7 +364,7 @@ int MPIC_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int t
     MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
                          "**countneg", "**countneg %d", count);
 
-    if (*errflag && MPIR_PARAM_ENABLE_COLL_FT_RET)
+    if (*errflag && MPIR_CVAR_ENABLE_COLL_FT_RET)
         MPIR_TAG_SET_ERROR_BIT(tag);
 
     MPID_Comm_get_ptr(comm, comm_ptr);
@@ -391,7 +432,7 @@ int MPIC_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
         MPID_Request_release(request_ptr);
     }
 
-    if (!MPIR_PARAM_ENABLE_COLL_FT_RET) goto fn_exit;
+    if (!MPIR_CVAR_ENABLE_COLL_FT_RET) goto fn_exit;
 
     if (source != MPI_PROC_NULL) {
         if (MPIR_TAG_CHECK_ERROR_BIT(status->MPI_TAG)) {
@@ -437,7 +478,7 @@ int MPIC_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
     context_id = (comm_ptr->comm_kind == MPID_INTRACOMM) ?
         MPID_CONTEXT_INTRA_COLL : MPID_CONTEXT_INTER_COLL;
 
-    if (*errflag && MPIR_PARAM_ENABLE_COLL_FT_RET)
+    if (*errflag && MPIR_CVAR_ENABLE_COLL_FT_RET)
         MPIR_TAG_SET_ERROR_BIT(tag);
 
     mpi_errno = MPID_Ssend(buf, count, datatype, dest, tag, comm_ptr,
@@ -488,7 +529,7 @@ int MPIC_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     context_id = (comm_ptr->comm_kind == MPID_INTRACOMM) ?
         MPID_CONTEXT_INTRA_COLL : MPID_CONTEXT_INTER_COLL;
 
-    if (MPIR_PARAM_ENABLE_COLL_FT_RET) {
+    if (MPIR_CVAR_ENABLE_COLL_FT_RET) {
         if (status == MPI_STATUS_IGNORE) status = &mystatus;
         if (*errflag) MPIR_TAG_SET_ERROR_BIT(sendtag);
     }
@@ -511,7 +552,7 @@ int MPIC_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     MPID_Request_release(send_req_ptr);
     MPID_Request_release(recv_req_ptr);
 
-    if (!MPIR_PARAM_ENABLE_COLL_FT_RET) goto fn_exit;
+    if (!MPIR_CVAR_ENABLE_COLL_FT_RET) goto fn_exit;
 
     if (source != MPI_PROC_NULL) {
         if (MPIR_TAG_CHECK_ERROR_BIT(status->MPI_TAG)) {
@@ -549,8 +590,8 @@ int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
     MPID_Request *sreq;
     MPID_Request *rreq;
     void *tmpbuf = NULL;
-    int tmpbuf_size = 0;
-    int tmpbuf_count = 0;
+    MPI_Aint tmpbuf_size = 0;
+    MPI_Aint tmpbuf_count = 0;
     MPID_Comm *comm_ptr;
     MPIU_CHKLMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPIC_SENDRECV_REPLACE_FT);
@@ -566,7 +607,7 @@ int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
     MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
                          "**countneg", "**countneg %d", count);
 
-    if (MPIR_PARAM_ENABLE_COLL_FT_RET) {
+    if (MPIR_CVAR_ENABLE_COLL_FT_RET) {
         if (status == MPI_STATUS_IGNORE) status = &mystatus;
         if (*errflag) MPIR_TAG_SET_ERROR_BIT(sendtag);
     }
@@ -627,7 +668,7 @@ int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
     MPID_Request_release(sreq);
     MPID_Request_release(rreq);
 
-    if (!MPIR_PARAM_ENABLE_COLL_FT_RET) goto fn_exit;
+    if (!MPIR_CVAR_ENABLE_COLL_FT_RET) goto fn_exit;
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     
     if (source != MPI_PROC_NULL) {
@@ -668,7 +709,7 @@ int MPIC_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
     MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
                          "**countneg", "**countneg %d", count);
 
-    if (*errflag && MPIR_PARAM_ENABLE_COLL_FT_RET)
+    if (*errflag && MPIR_CVAR_ENABLE_COLL_FT_RET)
         MPIR_TAG_SET_ERROR_BIT(tag);
 
     MPID_Comm_get_ptr(comm, comm_ptr);
@@ -749,7 +790,7 @@ int MPIC_Waitall(int numreq, MPI_Request requests[], MPI_Status statuses[], int 
     mpi_errno = MPIR_Waitall_impl(numreq, requests, statuses);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-    if (*errflag || !MPIR_PARAM_ENABLE_COLL_FT_RET)
+    if (*errflag || !MPIR_CVAR_ENABLE_COLL_FT_RET)
         goto fn_exit;
 
     for (i = 0; i < numreq; ++i) {

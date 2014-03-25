@@ -1,7 +1,7 @@
 
 /* Malloc implementation for multiple threads without lock contention. */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -651,27 +651,27 @@ heap_trim(heap, pad) heap_info *heap; size_t pad;
   if(extra < (long)pagesz)
     return 0;
 
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
   /* Do NOT try to trim the heap any further */
   return 0;
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   /* Try to shrink. */
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 /*
   if(grow_heap(heap, -extra) != 0)
     return 0;
   ar_ptr->system_mem -= extra;
   arena_mem -= extra;
 */
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   /* Success. Adjust top accordingly. */
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 /*  set_head(top_chunk, (top_size - extra) | PREV_INUSE); */
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   /*check_chunk(ar_ptr, top_chunk);*/
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 /*  return 1; */
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 }
 
 static mstate
@@ -730,16 +730,16 @@ arena_get2(a_tsd, size) mstate a_tsd; size_t size;
   /* Add the new arena to the global list.  */
   (void)mutex_lock(&list_lock);
   a->next = main_arena.next;
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #if defined(__INTEL_COMPILER) && defined(_IA64_)
 #include <ia64intrin.h>
   __memory_barrier ();
 #else /* defined(__INTEL_COMPILER) && defined(_IA64_) */
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   atomic_write_barrier ();
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #endif /* defined(__INTEL_COMPILER) && defined(_IA64_) */
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   main_arena.next = a;
   (void)mutex_unlock(&list_lock);
 

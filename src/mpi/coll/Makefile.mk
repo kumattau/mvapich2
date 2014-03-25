@@ -4,7 +4,7 @@
 ## (C) 2011 by Argonne National Laboratory.
 ##     See COPYRIGHT in top-level directory.
 ##
-## Copyright (c) 2001-2013, The Ohio State University. All rights
+## Copyright (c) 2001-2014, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -25,13 +25,8 @@ mpi_sources +=                     \
     src/mpi/coll/op_free.c         \
     src/mpi/coll/bcast.c           \
     src/mpi/coll/alltoall.c        \
-    src/mpi/coll/alltoall_tuning.c  \
     src/mpi/coll/alltoallv.c       \
     src/mpi/coll/reduce.c          \
-    src/mpi/coll/reduce_tuning.c   \
-    src/mpi/coll/allgather_tuning.c\
-    src/mpi/coll/red_scat_tuning.c \
-    src/mpi/coll/allgatherv_tuning.c\
     src/mpi/coll/scatter.c         \
     src/mpi/coll/gather.c          \
     src/mpi/coll/scatterv.c        \
@@ -61,25 +56,56 @@ mpi_sources +=                     \
     src/mpi/coll/ireduce.c         \
     src/mpi/coll/iscan.c           \
     src/mpi/coll/iscatter.c        \
-    src/mpi/coll/iscatterv.c       \
+    src/mpi/coll/iscatterv.c
+
+if BUILD_OSU_MVAPICH
+mpi_sources +=                     \
+    src/mpi/coll/iallgather_osu.c  \
+    src/mpi/coll/iallreduce_osu.c  \
+    src/mpi/coll/ibarrier_osu.c    \
+    src/mpi/coll/iallgatherv_osu.c \
+    src/mpi/coll/ialltoall_osu.c   \
+    src/mpi/coll/ialltoallv_osu.c  \
+    src/mpi/coll/ibcast_osu.c      \
+    src/mpi/coll/igather_osu.c     \
+    src/mpi/coll/ired_scat_osu.c   \
+    src/mpi/coll/ireduce_osu.c     \
+    src/mpi/coll/iscatter_osu.c    \
     src/mpi/coll/allgather_osu.c   \
     src/mpi/coll/allgatherv_osu.c  \
     src/mpi/coll/allreduce_osu.c   \
-    src/mpi/coll/allreduce_tuning.c\
     src/mpi/coll/alltoall_osu.c    \
     src/mpi/coll/alltoallv_osu.c   \
     src/mpi/coll/barrier_osu.c     \
     src/mpi/coll/bcast_osu.c       \
-    src/mpi/coll/bcast_tuning.c    \
     src/mpi/coll/gather_osu.c      \
-    src/mpi/coll/gather_tuning.c   \
-    src/mpi/coll/scatter_tuning.c  \
     src/mpi/coll/reduce_osu.c      \
     src/mpi/coll/scatter_osu.c     \
     src/mpi/coll/red_scat_osu.c    \
     src/mpi/coll/ch3_shmem_coll.c  \
     src/mpi/coll/alltoall_cuda_osu.c \
-    src/mpi/coll/allgather_cuda_osu.c
+    src/mpi/coll/allgather_cuda_osu.c\
+    src/mpi/coll/reduce_tuning.c   \
+    src/mpi/coll/allgather_tuning.c\
+    src/mpi/coll/iallgather_tuning.c\
+    src/mpi/coll/iallreduce_tuning.c\
+    src/mpi/coll/ibarrier_tuning.c \
+    src/mpi/coll/iallgatherv_tuning.c\
+    src/mpi/coll/red_scat_tuning.c \
+    src/mpi/coll/allgatherv_tuning.c\
+    src/mpi/coll/alltoall_tuning.c  \
+    src/mpi/coll/allreduce_tuning.c\
+    src/mpi/coll/ireduce_tuning.c  \
+    src/mpi/coll/ired_scat_tuning.c\
+    src/mpi/coll/ialltoall_tuning.c\
+    src/mpi/coll/ialltoallv_tuning.c\
+    src/mpi/coll/bcast_tuning.c    \
+    src/mpi/coll/ibcast_tuning.c   \
+    src/mpi/coll/gather_tuning.c   \
+    src/mpi/coll/igather_tuning.c  \
+    src/mpi/coll/scatter_tuning.c  \
+    src/mpi/coll/iscatter_tuning.c
+endif
 
 lib_lib@MPILIBNAME@_la_SOURCES += \
     src/mpi/coll/allred_group.c   \

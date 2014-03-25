@@ -37,6 +37,9 @@ MPIDI_WinAccumCB(pami_context_t    context,
   MPID_assert(msginfo_size == sizeof(MPIDI_Win_MsgInfo));
   MPID_assert(_msginfo != NULL);
   const MPIDI_Win_MsgInfo * msginfo = (const MPIDI_Win_MsgInfo*)_msginfo;
+  const MPIDI_Win_request * req = (const MPIDI_Win_request*)(msginfo->req);
+  char *tmpbuf;
+  int mpi_errno, rc;
 
   int null=0;
   pami_type_t         pami_type;
@@ -51,6 +54,8 @@ MPIDI_WinAccumCB(pami_context_t    context,
   TRACE_ERR("                PAMI:    type=%p  op=%p\n", pami_type, pami_op);
 #endif
 
+  MPID_assert(recv != NULL);
+  *recv = zero_recv_parms;
   recv->cookie      = NULL;
   recv->local_fn    = NULL;
   recv->addr        = msginfo->addr;
@@ -68,20 +73,14 @@ MPIDI_Accumulate(pami_context_t   context,
   MPIDI_Win_request *req = (MPIDI_Win_request*)_req;
   pami_result_t rc;
   void *map;
+  pami_send_t params;
 
-  pami_send_t params = {
-    .send = {
-      .header = {
-        .iov_len = sizeof(MPIDI_Win_MsgInfo),
-      },
-      .dispatch = MPIDI_Protocols_WinAccum,
-      .dest     = req->dest,
-    },
-    .events = {
-      .cookie    = req,
-      .remote_fn = MPIDI_Win_DoneCB,
-    },
-  };
+  params = zero_send_parms;
+  params.send.header.iov_len = sizeof(MPIDI_Win_MsgInfo);
+  params.send.dispatch = MPIDI_Protocols_WinAccum;
+  params.send.dest = req->dest;
+  params.events.cookie = req;
+  params.events.remote_fn = MPIDI_Win_DoneCB;
 
   struct MPIDI_Win_sync* sync = &req->win->mpid.sync;
   TRACE_ERR("Start       index=%u/%d  l-addr=%p  r-base=%p  r-offset=%zu (sync->started=%u  sync->complete=%u)\n",
@@ -96,7 +95,7 @@ MPIDI_Accumulate(pami_context_t   context,
     ++sync->started;
 
 
-    params.send.header.iov_base = &req->accum_headers[req->state.index];
+    params.send.header.iov_base = &(((MPIDI_Win_MsgInfo *)req->accum_headers)[req->state.index]);
     params.send.data.iov_len    = req->target.dt.map[req->state.index].DLOOP_VECTOR_LEN;
     params.send.data.iov_base   = req->buffer + req->state.local_offset;
 
@@ -107,12 +106,10 @@ MPIDI_Accumulate(pami_context_t   context,
     TRACE_ERR("  Sub     index=%u  bytes=%zu  l-offset=%zu  r-addr=%p  l-buf=%p  *(int*)buf=0x%08x  *(double*)buf=%g\n",
               req->state.index, params.send.data.iov_len, req->state.local_offset, req->accum_headers[req->state.index].addr, buf, *ibuf, *dbuf);
 #endif
-
     /** sync->total will be updated with every RMA and the complete
 	will not change till that RMA has completed. In the meanwhile
 	the rest of the RMAs will have memory leaks */
       if (req->target.dt.num_contig - req->state.index == 1) {
-      //if (sync->total - sync->complete == 1) {
           map=NULL;
           if (req->target.dt.map != &req->target.dt.__map) {
               map=(void *) req->target.dt.map;
@@ -162,7 +159,7 @@ MPIDI_Accumulate(pami_context_t   context,
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 int
-MPID_Accumulate(void         *origin_addr,
+MPID_Accumulate(const void   *origin_addr,
                 int           origin_count,
                 MPI_Datatype  origin_datatype,
                 int           target_rank,
@@ -175,7 +172,13 @@ MPID_Accumulate(void         *origin_addr,
   int mpi_errno = MPI_SUCCESS;
   MPIDI_Win_request *req = MPIU_Calloc0(1, MPIDI_Win_request);
   req->win          = win;
-  req->type         = MPIDI_WIN_REQUEST_ACCUMULATE;
+  if(win->mpid.request_based != 1)
+    req->type         = MPIDI_WIN_REQUEST_ACCUMULATE;
+  else {
+    req->type         = MPIDI_WIN_REQUEST_RACCUMULATE;
+    req->req_handle   = win->mpid.rreq;
+    req->req_handle->mpid.win_req = req;
+  }
 
   if(win->mpid.sync.origin_epoch_type == win->mpid.sync.target_epoch_type &&
      win->mpid.sync.origin_epoch_type == MPID_EPOTYPE_REFENCE){
@@ -190,6 +193,13 @@ MPID_Accumulate(void         *origin_addr,
   }
 
   req->offset = target_disp * win->mpid.info[target_rank].disp_unit;
+#ifdef __BGQ__
+  /* PAMI limitation as it doesnt permit VA of 0 to be passed into
+   * memregion create, so we must pass base_va of heap computed from
+   * an SPI call instead. So the target offset must be adjusted */
+  if (req->win->create_flavor == MPI_WIN_FLAVOR_DYNAMIC)
+    req->offset -= (size_t)req->win->mpid.info[target_rank].base_addr;
+#endif
 
   if (origin_datatype == MPI_DOUBLE_INT)
     {
@@ -242,7 +252,10 @@ MPID_Accumulate(void         *origin_addr,
   if ( (req->origin.dt.size == 0) ||
        (target_rank == MPI_PROC_NULL))
     {
-      MPIU_Free(req);
+      if(req->req_handle)
+        MPID_cc_set(req->req_handle->cc_ptr, 0);
+      else
+        MPIU_Free(req);
       return MPI_SUCCESS;
     }
 
@@ -252,14 +265,14 @@ MPID_Accumulate(void         *origin_addr,
   if (req->origin.dt.contig)
     {
       req->buffer_free = 0;
-      req->buffer      = origin_addr + req->origin.dt.true_lb;
+      req->buffer      = (void *) ((uintptr_t) origin_addr + req->origin.dt.true_lb);
     }
   else
     {
       req->buffer_free = 1;
       req->buffer      = MPIU_Malloc(req->origin.dt.size);
       MPID_assert(req->buffer != NULL);
-
+      MPID_Datatype_add_ref(req->origin.dt.pointer);
       int mpi_errno = 0;
       mpi_errno = MPIR_Localcopy(origin_addr,
                                  origin_count,

@@ -5,18 +5,111 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #include "mpiimpl.h"
 #include "collutil.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-#include "coll_shmem.h"
-#endif
+#ifdef _OSU_MVAPICH_
+#   include "coll_shmem.h"
+#endif /* _OSU_MVAPICH_ */
 
-#if defined (_OSU_MVAPICH_) && OSU_MPIT
-unsigned long long mpit_bcast_smp = 0;
-unsigned long long mpit_bcast_binomial = 0;
-unsigned long long mpit_bcast_scatter_doubling_allgather = 0;
-unsigned long long mpit_bcast_scatter_ring_allgather = 0;
-#endif /* (_OSU_MVAPICH_) && OSU_MPIT */
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_BCAST_MIN_PROCS
+      category    : COLLECTIVE
+      type        : int
+      default     : 8
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Let's define short messages as messages with size < MPIR_CVAR_BCAST_SHORT_MSG_SIZE,
+        and medium messages as messages with size >= MPIR_CVAR_BCAST_SHORT_MSG_SIZE but
+        < MPIR_CVAR_BCAST_LONG_MSG_SIZE, and long messages as messages with size >=
+        MPIR_CVAR_BCAST_LONG_MSG_SIZE. The broadcast algorithms selection procedure is
+        as follows. For short messages or when the number of processes is <
+        MPIR_CVAR_BCAST_MIN_PROCS, we do broadcast using the binomial tree algorithm.
+        Otherwise, for medium messages and with a power-of-two number of processes, we do
+        broadcast based on a scatter followed by a recursive doubling allgather algorithm.
+        Otherwise, for long messages or with non power-of-two number of processes, we do
+        broadcast based on a scatter followed by a ring allgather algorithm.
+        (See also: MPIR_CVAR_BCAST_SHORT_MSG_SIZE, MPIR_CVAR_BCAST_LONG_MSG_SIZE)
+
+    - name        : MPIR_CVAR_BCAST_SHORT_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 12288
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Let's define short messages as messages with size < MPIR_CVAR_BCAST_SHORT_MSG_SIZE,
+        and medium messages as messages with size >= MPIR_CVAR_BCAST_SHORT_MSG_SIZE but
+        < MPIR_CVAR_BCAST_LONG_MSG_SIZE, and long messages as messages with size >=
+        MPIR_CVAR_BCAST_LONG_MSG_SIZE. The broadcast algorithms selection procedure is
+        as follows. For short messages or when the number of processes is <
+        MPIR_CVAR_BCAST_MIN_PROCS, we do broadcast using the binomial tree algorithm.
+        Otherwise, for medium messages and with a power-of-two number of processes, we do
+        broadcast based on a scatter followed by a recursive doubling allgather algorithm.
+        Otherwise, for long messages or with non power-of-two number of processes, we do
+        broadcast based on a scatter followed by a ring allgather algorithm.
+        (See also: MPIR_CVAR_BCAST_MIN_PROCS, MPIR_CVAR_BCAST_LONG_MSG_SIZE)
+
+    - name        : MPIR_CVAR_BCAST_LONG_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 524288
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Let's define short messages as messages with size < MPIR_CVAR_BCAST_SHORT_MSG_SIZE,
+        and medium messages as messages with size >= MPIR_CVAR_BCAST_SHORT_MSG_SIZE but
+        < MPIR_CVAR_BCAST_LONG_MSG_SIZE, and long messages as messages with size >=
+        MPIR_CVAR_BCAST_LONG_MSG_SIZE. The broadcast algorithms selection procedure is
+        as follows. For short messages or when the number of processes is <
+        MPIR_CVAR_BCAST_MIN_PROCS, we do broadcast using the binomial tree algorithm.
+        Otherwise, for medium messages and with a power-of-two number of processes, we do
+        broadcast based on a scatter followed by a recursive doubling allgather algorithm.
+        Otherwise, for long messages or with non power-of-two number of processes, we do
+        broadcast based on a scatter followed by a ring allgather algorithm.
+        (See also: MPIR_CVAR_BCAST_MIN_PROCS, MPIR_CVAR_BCAST_SHORT_MSG_SIZE)
+
+    - name        : MPIR_CVAR_ENABLE_SMP_BCAST
+      category    : COLLECTIVE
+      type        : boolean
+      default     : true
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : Enable SMP aware broadcast (See also: MPIR_CVAR_MAX_SMP_BCAST_MSG_SIZE)
+
+    - name        : MPIR_CVAR_MAX_SMP_BCAST_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 0
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Maximum message size for which SMP-aware broadcast is used.  A
+        value of '0' uses SMP-aware broadcast for all message sizes.
+        (See also: MPIR_CVAR_ENABLE_SMP_BCAST)
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 
 /* -- Begin Profiling Symbol Block for routine MPI_Bcast */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -55,8 +148,9 @@ static int MPIR_Bcast_binomial(
     int nbytes=0;
     int recvd_size;
     MPI_Status status;
-    int type_size, is_contig, is_homogeneous;
-    int position;
+    int is_contig, is_homogeneous;
+    MPI_Aint type_size;
+    MPI_Aint position;
     void *tmp_buf=NULL;
     MPI_Comm comm;
     MPID_Datatype *dtp;
@@ -409,10 +503,12 @@ static int MPIR_Bcast_scatter_doubling_allgather(
     int relative_rank, mask;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int scatter_size, nbytes=0, curr_size, recv_size = 0;
-    int type_size, j, k, i, tmp_mask, is_contig, is_homogeneous;
+    int scatter_size, curr_size, recv_size = 0;
+    int j, k, i, tmp_mask, is_contig, is_homogeneous;
+    MPI_Aint type_size, nbytes = 0;
     int relative_dst, dst_tree_root, my_tree_root, send_offset;
-    int recv_offset, tree_root, nprocs_completed, offset, position;
+    int recv_offset, tree_root, nprocs_completed, offset;
+    MPI_Aint position;
     MPIU_CHKLMEM_DECL(1);
     MPI_Comm comm;
     MPID_Datatype *dtp;
@@ -715,9 +811,9 @@ static int MPIR_Bcast_scatter_ring_allgather(
     int rank, comm_size;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int scatter_size, nbytes;
-    int type_size, j, i, is_contig, is_homogeneous;
-    int position;
+    int scatter_size;
+    int j, i, is_contig, is_homogeneous;
+    MPI_Aint nbytes, type_size, position;
     int left, right, jnext;
     int curr_size = 0;
     void *tmp_buf;
@@ -922,12 +1018,12 @@ static int MPIR_SMP_Bcast(
 {
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int type_size, is_homogeneous;
-    int nbytes=0;
+    int is_homogeneous;
+    MPI_Aint type_size, nbytes=0;
     MPI_Status status;
     int recvd_size;
 
-    if (!MPIR_PARAM_ENABLE_SMP_COLLECTIVES || !MPIR_PARAM_ENABLE_SMP_BCAST)
+    if (!MPIR_CVAR_ENABLE_SMP_COLLECTIVES || !MPIR_CVAR_ENABLE_SMP_BCAST)
         MPIU_Assert(0);
     MPIU_Assert(MPIR_Comm_is_node_aware(comm_ptr));
 
@@ -955,7 +1051,7 @@ static int MPIR_SMP_Bcast(
     if (nbytes == 0)
         goto fn_exit; /* nothing to do */
 
-    if ((nbytes < MPIR_PARAM_BCAST_SHORT_MSG_SIZE) || (comm_ptr->local_size < MPIR_PARAM_BCAST_MIN_PROCS))
+    if ((nbytes < MPIR_CVAR_BCAST_SHORT_MSG_SIZE) || (comm_ptr->local_size < MPIR_CVAR_BCAST_MIN_PROCS))
     {
         /* send to intranode-rank 0 on the root's node */
         if (comm_ptr->node_comm != NULL &&
@@ -1011,12 +1107,12 @@ static int MPIR_SMP_Bcast(
                                       buffer, count, datatype, 0, comm_ptr->node_comm, errflag);
         }
     }
-    else /* (nbytes > MPIR_PARAM_BCAST_SHORT_MSG_SIZE) && (comm_ptr->size >= MPIR_PARAM_BCAST_MIN_PROCS) */
+    else /* (nbytes > MPIR_CVAR_BCAST_SHORT_MSG_SIZE) && (comm_ptr->size >= MPIR_CVAR_BCAST_MIN_PROCS) */
     {
         /* supposedly...
            smp+doubling good for pof2
            reg+ring better for non-pof2 */
-        if (nbytes < MPIR_PARAM_BCAST_LONG_MSG_SIZE && MPIU_is_pof2(comm_ptr->local_size, NULL))
+        if (nbytes < MPIR_CVAR_BCAST_LONG_MSG_SIZE && MPIU_is_pof2(comm_ptr->local_size, NULL))
         {
             /* medium-sized msg and pof2 np */
 
@@ -1150,7 +1246,8 @@ int MPIR_Bcast_intra (
     int mpi_errno_ret = MPI_SUCCESS;
     int comm_size;
     int nbytes=0;
-    int type_size, is_homogeneous;
+    int is_homogeneous;
+    MPI_Aint type_size;
     MPID_MPI_STATE_DECL(MPID_STATE_MPIR_BCAST);
 
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_BCAST);
@@ -1161,12 +1258,9 @@ int MPIR_Bcast_intra (
     if (count == 0) goto fn_exit;
 
     MPID_Datatype_get_size_macro(datatype, type_size);
-    nbytes = MPIR_PARAM_MAX_SMP_BCAST_MSG_SIZE ? type_size*count : 0;
-    if (MPIR_PARAM_ENABLE_SMP_COLLECTIVES && MPIR_PARAM_ENABLE_SMP_BCAST &&
-        nbytes <= MPIR_PARAM_MAX_SMP_BCAST_MSG_SIZE && MPIR_Comm_is_node_aware(comm_ptr)) {
-        #if OSU_MPIT
-            mpit_bcast_smp++;
-        #endif /* OSU_MPIT */
+    nbytes = MPIR_CVAR_MAX_SMP_BCAST_MSG_SIZE ? type_size*count : 0;
+    if (MPIR_CVAR_ENABLE_SMP_COLLECTIVES && MPIR_CVAR_ENABLE_SMP_BCAST &&
+        nbytes <= MPIR_CVAR_MAX_SMP_BCAST_MSG_SIZE && MPIR_Comm_is_node_aware(comm_ptr)) {
         mpi_errno = MPIR_SMP_Bcast(buffer, count, datatype, root, comm_ptr, errflag);
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
@@ -1203,11 +1297,8 @@ int MPIR_Bcast_intra (
     if (nbytes == 0)
         goto fn_exit; /* nothing to do */
 
-    if ((nbytes < MPIR_PARAM_BCAST_SHORT_MSG_SIZE) || (comm_size < MPIR_PARAM_BCAST_MIN_PROCS))
+    if ((nbytes < MPIR_CVAR_BCAST_SHORT_MSG_SIZE) || (comm_size < MPIR_CVAR_BCAST_MIN_PROCS))
     {
-        #if OSU_MPIT
-            mpit_bcast_binomial++;
-        #endif /* OSU_MPIT */
         mpi_errno = MPIR_Bcast_binomial(buffer, count, datatype, root, comm_ptr, errflag);
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
@@ -1216,13 +1307,10 @@ int MPIR_Bcast_intra (
             MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
     }
-    else /* (nbytes >= MPIR_PARAM_BCAST_SHORT_MSG_SIZE) && (comm_size >= MPIR_PARAM_BCAST_MIN_PROCS) */
+    else /* (nbytes >= MPIR_CVAR_BCAST_SHORT_MSG_SIZE) && (comm_size >= MPIR_CVAR_BCAST_MIN_PROCS) */
     {
-        if ((nbytes < MPIR_PARAM_BCAST_LONG_MSG_SIZE) && (MPIU_is_pof2(comm_size, NULL)))
+        if ((nbytes < MPIR_CVAR_BCAST_LONG_MSG_SIZE) && (MPIU_is_pof2(comm_size, NULL)))
         {
-            #if OSU_MPIT
-                mpit_bcast_scatter_doubling_allgather++;
-            #endif /* OSU_MPIT */
             mpi_errno = MPIR_Bcast_scatter_doubling_allgather(buffer, count, datatype, root, comm_ptr, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -1231,14 +1319,11 @@ int MPIR_Bcast_intra (
                 MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
         }
-        else /* (nbytes >= MPIR_PARAM_BCAST_LONG_MSG_SIZE) || !(comm_size_is_pof2) */
+        else /* (nbytes >= MPIR_CVAR_BCAST_LONG_MSG_SIZE) || !(comm_size_is_pof2) */
         {
             /* We want the ring algorithm whether or not we have a
                topologically aware communicator.  Doing inter/intra-node
                communication phases breaks the pipelining of the algorithm.  */
-            #if definedOSU_MPIT
-                mpit_bcast_scatter_ring_allgather++;
-            #endif /* OSU_MPIT */
             mpi_errno = MPIR_Bcast_scatter_ring_allgather(buffer, count, datatype, root, comm_ptr, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -1392,19 +1477,8 @@ int MPIR_Bcast_impl(void *buffer, int count, MPI_Datatype datatype, int root, MP
     }
     else
     {
-        if (comm_ptr->comm_kind == MPID_INTRACOMM)
-	{
-            /* intracommunicator */
-            mpi_errno = MPIR_Bcast_intra( buffer, count, datatype, root, comm_ptr, errflag );
-            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-            
-	}
-        else
-	{
-            /* intercommunicator */
-            mpi_errno = MPIR_Bcast_inter( buffer, count, datatype, root, comm_ptr, errflag );
-            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-        }
+        mpi_errno = MPIR_Bcast(buffer, count, datatype, root, comm_ptr, errflag);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
 
 
@@ -1426,7 +1500,7 @@ int MPIR_Bcast_impl(void *buffer, int count, MPI_Datatype datatype, int root, MP
 #define FUNCNAME MPIR_Bcast
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPID_Comm *comm_ptr, int *errflag)
+inline int MPIR_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPID_Comm *comm_ptr, int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
 
@@ -1545,12 +1619,12 @@ int MPI_Bcast( void *buffer, int count, MPI_Datatype datatype, int root,
     mpi_errno = MPIR_Bcast_impl( buffer, count, datatype, root, comm_ptr, &errflag );
     if (mpi_errno) goto fn_fail;
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#ifdef _OSU_MVAPICH_
     mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }
-#endif /*   #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
+#endif /* _OSU_MVAPICH_ */
 
 
     /* ... end of body of routine ... */

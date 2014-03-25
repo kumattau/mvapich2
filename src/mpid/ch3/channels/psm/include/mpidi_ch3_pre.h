@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <psm.h>
 #include <psm_mq.h>
+#include "mpiu_os_wrappers_pre.h"
 
 /* FIXME: These should be removed */
 #define MPIDI_DEV_IMPLEMENTS_KVS
@@ -66,7 +67,11 @@ typedef struct MPIDI_CH3I_Process_group_s
     void *pkbuf;                        \
     uint32_t pksz;                      \
     uint32_t psm_flags;                 \
+    int resp_rndv_tag;                  \
     void *vbufptr;                      
+
+typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
+
 
 #define PSM_BLOCKING    1
 #define PSM_NONBLOCKING 0
@@ -95,14 +100,21 @@ typedef struct MPIDI_CH3I_Process_group_s
 #define PSM_RNDVRECV_NC_REQ     0x00080000
 #define PSM_NEED_DTYPE_RELEASE  0x00100000
 #define PSM_RNDVRECV_GET_PACKED 0x00200000
+#define PSM_GETACCUMRESP_REQ    0x00400000  
 
 #define MPIDI_CH3_REQUEST_INIT(__p)  \
         __p->psm_flags = 0;          \
         __p->pkbuf = 0;              \
         __p->pksz = 0                \
 
-#define MPIDI_CH3_WIN_DECL      \
-    int *rank_mapping;          \
-    int16_t outstanding_rma;
-
+#define MPIDI_CH3_WIN_DECL                                                       \
+    int *rank_mapping;                                                           \
+    int16_t outstanding_rma;                                                     \
+    void *shm_base_addr;        /* base address of shared memory region */              \
+    MPI_Aint shm_segment_len;   /* size of shared memory region */                      \
+    MPIU_SHMW_Hnd_t shm_segment_handle; /* handle to shared memory region */            \
+    MPIDI_CH3I_SHM_MUTEX *shm_mutex;    /* shared memory windows -- lock for            \
+                                           accumulate/atomic operations */              \
+    MPIU_SHMW_Hnd_t shm_mutex_segment_handle; /* handle to interprocess mutex memory    \
+                                                 region */                              
 #endif

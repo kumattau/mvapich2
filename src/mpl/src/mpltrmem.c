@@ -120,6 +120,7 @@ static unsigned char TRDefaultByte = 0xda;
 static unsigned char TRFreedByte = 0xfc;
 #define MAX_TR_STACK 20
 static int TRdebugLevel = 0;
+static int TRSetBytes   = 0;
 #define TR_MALLOC 0x1
 #define TR_FREE   0x2
 
@@ -164,6 +165,10 @@ void MPL_trinit(int rank)
      * variables */
     /* these should properly only be "MPL_" parameters, but for backwards
      * compatibility we also support "MPICH_" parameters. */
+    s = getenv("MPICH_TRMEM_INIT");
+    if (s && *s && (strcmp(s, "YES") == 0 || strcmp(s, "yes") == 0)) {
+        TRSetBytes = 1;
+    }
     s = getenv("MPICH_TRMEM_VALIDATE");
     if (s && *s && (strcmp(s, "YES") == 0 || strcmp(s, "yes") == 0)) {
         TRdebugLevel = 1;
@@ -172,6 +177,10 @@ void MPL_trinit(int rank)
     if (s && *s && (strcmp(s, "YES") == 0 || strcmp(s, "yes") == 0)) {
         TRDefaultByte = 0;
         TRFreedByte = 0;
+    }
+    s = getenv("MPL_TRMEM_INIT");
+    if (s && *s && (strcmp(s, "YES") == 0 || strcmp(s, "yes") == 0)) {
+        TRSetBytes = 1;
     }
     s = getenv("MPL_TRMEM_VALIDATE");
     if (s && *s && (strcmp(s, "YES") == 0 || strcmp(s, "yes") == 0)) {
@@ -232,7 +241,9 @@ void *MPL_trmalloc(size_t a, int lineno, const char fname[])
     if (!new)
         goto fn_exit;
 
-    memset(new, TRDefaultByte, nsize + sizeof(TrSPACE) + sizeof(unsigned long));
+    if(TRSetBytes)
+      memset(new, TRDefaultByte, nsize + sizeof(TrSPACE) + sizeof(unsigned long));
+
     /* Cast to (void*) to avoid false warnings about alignment issues */
     head = (TRSPACE *) (void *)new;
     new += sizeof(TrSPACE);
@@ -433,7 +444,8 @@ void MPL_trfree(void *a_ptr, int line, const char file[])
          * them then our memset will elicit "invalid write" errors from
          * valgrind.  Mark it as accessible but undefined here to prevent this. */
         MPL_VG_MAKE_MEM_UNDEFINED((char *)a_ptr + 2 * sizeof(int), nset);
-        memset((char *)a_ptr + 2 * sizeof(int), TRFreedByte, nset);
+        if(TRSetBytes)
+          memset((char *)a_ptr + 2 * sizeof(int), TRFreedByte, nset);
     }
     free(head);
 }
@@ -561,13 +573,13 @@ int MPL_trvalid2(const char str[], int line, const char file[] )
 .   space - number of bytes currently allocated
 .   frags - number of blocks currently allocated
  +*/
-void MPL_trspace(int *space, int *fr)
+void MPL_trspace(size_t *space, size_t *fr)
 {
     /* We use ints because systems without prototypes will usually
      * allow calls with ints instead of longs, leading to unexpected
      * behavior */
-    *space = (int) allocated;
-    *fr = (int) frags;
+    *space =  allocated;
+    *fr =  frags;
 }
 
 /*+C
@@ -581,7 +593,9 @@ Input Parameters:
 void MPL_trdump(FILE * fp, int minid)
 {
     TRSPACE *head;
+#ifdef VALGRIND_MAKE_MEM_NOACCESS
     TRSPACE *old_head;
+#endif
     char hexstring[MAX_ADDRESS_CHARS];
 
     if (fp == 0)
@@ -607,7 +621,9 @@ void MPL_trdump(FILE * fp, int minid)
                 fprintf(fp, "%s[%d]\n", head->fname, head->lineno);
             }
         }
+#ifdef VALGRIND_MAKE_MEM_NOACCESS
         old_head = head;
+#endif
         head = head->next;
         MPL_VG_MAKE_MEM_NOACCESS(old_head, sizeof(*old_head));
     }

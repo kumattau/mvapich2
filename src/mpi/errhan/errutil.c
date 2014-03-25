@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -43,6 +43,38 @@
 
 /* stdio is needed for vsprintf and vsnprintf */
 #include <stdio.h>
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+categories:
+    - name        : ERROR_HANDLING
+      description : cvars that control error handling behavior (stack traces, aborts, etc)
+
+cvars:
+    - name        : MPIR_CVAR_PRINT_ERROR_STACK
+      category    : ERROR_HANDLING
+      type        : boolean
+      default     : true
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_LOCAL
+      description : >-
+        If true, print an error stack trace at error handling time.
+
+    - name        : MPIR_CVAR_CHOP_ERROR_STACK
+      category    : ERROR_HANDLING
+      type        : int
+      default     : 0
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_LOCAL
+      description : >-
+        If >0, truncate error stack output lines this many characters
+        wide.  If 0, do not truncate, and if <0 use a sensible default.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 
 /*
  * Structure of this file
@@ -432,14 +464,14 @@ static void handleFatalError( MPID_Comm *comm_ptr,
     /* FIXME: Not internationalized.  Since we are using MPIR_Err_get_string,
        we are assuming that the code is still able to execute a full 
        MPICH error code to message conversion. */
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     MPIU_Snprintf(error_msg, MAX_ERRMSG_STRING, "Fatal error in %s:\n", fcname);
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIU_Snprintf(error_msg, MAX_ERRMSG_STRING, "Fatal error in %s: ", fcname);
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     len = (int)strlen(error_msg);
     MPIR_Err_get_string(errcode, &error_msg[len], MAX_ERRMSG_STRING-len, NULL);
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     /*
      * Put newline at end of string
      */
@@ -449,7 +481,7 @@ static void handleFatalError( MPID_Comm *comm_ptr,
 	error_msg[len] = '\n';
 	error_msg[len+1] = '\0';
     }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     /* The third argument is a return code, a value of 1 usually indicates
        an error */
     MPID_Abort(comm_ptr, MPI_SUCCESS, 1, error_msg);
@@ -1180,7 +1212,7 @@ static void MPIR_Err_print_stack_string(int errcode, char *str, int maxlen )
 		    maxlen--;
 		}
 		
-		if (MPIR_PARAM_CHOP_ERROR_STACK > 0)
+		if (MPIR_CVAR_CHOP_ERROR_STACK > 0)
 		{
 		    cur_pos = ErrorRing[ring_idx].msg;
 		    len = (int)strlen(cur_pos);
@@ -1190,16 +1222,16 @@ static void MPIR_Err_print_stack_string(int errcode, char *str, int maxlen )
 		    }
 		    while (len)
 		    {
-			if (len >= MPIR_PARAM_CHOP_ERROR_STACK - max_location_len)
+			if (len >= MPIR_CVAR_CHOP_ERROR_STACK - max_location_len)
 			{
 			    if (len > maxlen)
 				break;
 			    /* FIXME: Don't use Snprint to append a string ! */
-			    MPIU_Snprintf(str, MPIR_PARAM_CHOP_ERROR_STACK - 1 - max_location_len, "%s", cur_pos);
-			    str[MPIR_PARAM_CHOP_ERROR_STACK - 1 - max_location_len] = '\n';
-			    cur_pos += MPIR_PARAM_CHOP_ERROR_STACK - 1 - max_location_len;
-			    str += MPIR_PARAM_CHOP_ERROR_STACK - max_location_len;
-			    maxlen -= MPIR_PARAM_CHOP_ERROR_STACK - max_location_len;
+			    MPIU_Snprintf(str, MPIR_CVAR_CHOP_ERROR_STACK - 1 - max_location_len, "%s", cur_pos);
+			    str[MPIR_CVAR_CHOP_ERROR_STACK - 1 - max_location_len] = '\n';
+			    cur_pos += MPIR_CVAR_CHOP_ERROR_STACK - 1 - max_location_len;
+			    str += MPIR_CVAR_CHOP_ERROR_STACK - max_location_len;
+			    maxlen -= MPIR_CVAR_CHOP_ERROR_STACK - max_location_len;
 			    if (maxlen < max_location_len)
 				break;
 			    for (i=0; i<max_location_len; i++)
@@ -1804,8 +1836,8 @@ static void MPIR_Err_stack_init( void )
 
     error_ring_mutex_create(&mpi_errno);
 
-    if (MPIR_PARAM_CHOP_ERROR_STACK < 0) {
-        MPIR_PARAM_CHOP_ERROR_STACK = 80;
+    if (MPIR_CVAR_CHOP_ERROR_STACK < 0) {
+        MPIR_CVAR_CHOP_ERROR_STACK = 80;
 #ifdef HAVE_WINDOWS_H
         {
             /* If windows, set the default width to the window size */
@@ -1816,7 +1848,7 @@ static void MPIR_Err_stack_init( void )
                 if (GetConsoleScreenBufferInfo(hConsole, &info))
                 {
                     /* override the parameter system in this case */
-                    MPIR_PARAM_CHOP_ERROR_STACK = info.dwMaximumWindowSize.X;
+                    MPIR_CVAR_CHOP_ERROR_STACK = info.dwMaximumWindowSize.X;
                 }
             }
         }
@@ -1991,7 +2023,7 @@ static int ErrGetInstanceString( int errorcode, char msg[], int num_remaining )
 {
     int len;
 
-    if (MPIR_PARAM_PRINT_ERROR_STACK) {
+    if (MPIR_CVAR_PRINT_ERROR_STACK) {
 	MPIU_Strncpy(msg, ", error stack:\n", num_remaining);
 	msg[num_remaining - 1] = '\0';
 	len = (int)strlen(msg);

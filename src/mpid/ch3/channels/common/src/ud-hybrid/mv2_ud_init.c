@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,9 +18,12 @@
 #include "mpimem.h"
 #include "mv2_ud.h"
 #include "debug_utils.h"
+#include "rdma_impl.h"
+
+extern mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
 
 /* create UD context */
-struct ibv_qp * mv2_ud_create_qp(mv2_ud_qp_info_t *qp_info)
+struct ibv_qp * mv2_ud_create_qp(mv2_ud_qp_info_t *qp_info, int hca_index)
 {
     struct ibv_qp *qp;
     struct ibv_qp_init_attr init_attr;
@@ -49,7 +52,7 @@ struct ibv_qp * mv2_ud_create_qp(mv2_ud_qp_info_t *qp_info)
         return NULL;
     }
     
-    if (mv2_ud_qp_transition(qp)) {
+    if (mv2_ud_qp_transition(qp, hca_index)) {
         return NULL;
     }
 
@@ -58,7 +61,7 @@ struct ibv_qp * mv2_ud_create_qp(mv2_ud_qp_info_t *qp_info)
     return qp;
 }
 
-int mv2_ud_qp_transition(struct ibv_qp *qp)
+int mv2_ud_qp_transition(struct ibv_qp *qp, int hca_index)
 {
     struct ibv_qp_attr attr;
 
@@ -66,7 +69,7 @@ int mv2_ud_qp_transition(struct ibv_qp *qp)
 
     attr.qp_state = IBV_QPS_INIT;
     attr.pkey_index = 0;
-    attr.port_num = rdma_default_port;
+    attr.port_num = mv2_MPIDI_CH3I_RDMA_Process.ports[hca_index][0];
     attr.qkey = 0;
 
     if (ibv_modify_qp(qp, &attr,
@@ -99,7 +102,7 @@ int mv2_ud_qp_transition(struct ibv_qp *qp)
 
 }
 
-mv2_ud_ctx_t* mv2_ud_create_ctx (mv2_ud_qp_info_t *qp_info)
+mv2_ud_ctx_t* mv2_ud_create_ctx (mv2_ud_qp_info_t *qp_info, int hca_index)
 {
     mv2_ud_ctx_t *ctx;
 
@@ -110,7 +113,7 @@ mv2_ud_ctx_t* mv2_ud_create_ctx (mv2_ud_qp_info_t *qp_info)
     }
     memset( ctx, 0, sizeof(mv2_ud_ctx_t) );
 
-    ctx->qp = mv2_ud_create_qp(qp_info);
+    ctx->qp = mv2_ud_create_qp(qp_info, hca_index);
     if(!ctx->qp) {
         fprintf(stderr, "Error in creating UD QP\n");
         return NULL;
@@ -120,22 +123,25 @@ mv2_ud_ctx_t* mv2_ud_create_ctx (mv2_ud_qp_info_t *qp_info)
 }
 
 /* create ud vc */
-int mv2_ud_set_vc_info (mv2_ud_vc_info_t *ud_vc_info, mv2_ud_exch_info_t *rem_info, struct ibv_pd *pd, int rdma_default_port)
+int mv2_ud_set_vc_info (mv2_ud_vc_info_t *ud_vc_info, mv2_ud_exch_info_t *rem_info, struct ibv_pd *pd, int port)
 {
     struct ibv_ah_attr ah_attr;
 
-    PRINT_DEBUG(DEBUG_UD_verbose>0,"lid:%d\n", rem_info->lid );
+    PRINT_DEBUG(DEBUG_UD_verbose>0,"lid:%d, qpn:%d, port: %d\n",
+                rem_info->lid,rem_info->qpn, port);
     
     memset(&ah_attr, 0, sizeof(ah_attr));
     ah_attr.is_global = 0; 
     ah_attr.dlid = rem_info->lid;
     ah_attr.sl = rdma_default_service_level;
     ah_attr.src_path_bits = 0; 
-    ah_attr.port_num = rdma_default_port;
+    ah_attr.port_num = port;
 
     ud_vc_info->ah = ibv_create_ah(pd, &ah_attr);
     if(!(ud_vc_info->ah)){    
         fprintf(stderr, "Error in creating address handle\n");
+        PRINT_DEBUG(DEBUG_UD_verbose>0,"Error in creating address handle: lid:%d, qpn:%d, port: %d\n",
+                    rem_info->lid,rem_info->qpn, port);
         return -1;
     }
     ud_vc_info->lid = rem_info->lid;

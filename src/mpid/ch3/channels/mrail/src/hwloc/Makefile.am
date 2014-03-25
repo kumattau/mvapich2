@@ -62,7 +62,7 @@ if !HWLOC_BUILD_README
 dist-hook: cannot-dist
 else
 dist-hook:
-	csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(HWLOC_VERSION)" "$(HWLOC_SVN_R)"
+	csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(HWLOC_VERSION)"
 endif HWLOC_BUILD_README
 endif HWLOC_BUILD_DOXYGEN
 endif HWLOC_BUILD_STANDALONE
@@ -90,8 +90,3 @@ uninstall-local:
 	rm -f $(DESTDIR)$(prefix)/README.txt $(DESTDIR)$(prefix)/NEWS.txt $(DESTDIR)$(prefix)/COPYING.txt
 endif HWLOC_HAVE_WINDOWS
 endif HWLOC_BUILD_STANDALONE
-
-mandoc:
-htmldoc:
-latexdoc:
-

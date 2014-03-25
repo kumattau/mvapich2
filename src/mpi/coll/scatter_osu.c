@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,8 +16,6 @@
  */
 
 #include "mpiimpl.h"
-
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 #include "bcast_tuning.h"
 #include "scatter_tuning.h"
@@ -900,12 +898,10 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
     MPI_Comm shmem_comm, leader_comm;
     MPID_Comm *shmem_commptr, *leader_commptr = NULL;
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_shmem_coll_calls, 1);
     comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
-    #if OSU_MPIT
-        mv2_num_shmem_coll_calls++;
-    #endif
 
     if (((rank == root) && (recvcnt == 0))
         || ((rank != root) && (sendcnt == 0))) {
@@ -1157,9 +1153,9 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
         || ((rank != root) && (sendcnt == 0))) {
         return MPI_SUCCESS;
     }
-    #if OSU_MPIT
-        mv2_num_shmem_coll_calls++;
-    #endif
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_shmem_coll_calls, 1);
+
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
     /* extract the rank,size information for the intra-node
@@ -1360,6 +1356,223 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
 
     return (mpi_errno);
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Scatter_index_tuned_intra_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Scatter_index_tuned_intra_MV2(const void *sendbuf,
+                           int sendcnt,
+                           MPI_Datatype sendtype,
+                           void *recvbuf,
+                           int recvcnt,
+                           MPI_Datatype recvtype,
+                           int root, MPID_Comm * comm_ptr, int *errflag)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    int rank, nbytes, comm_size;
+    int recvtype_size, sendtype_size;
+    int partial_sub_ok = 0;
+    int conf_index = 0;
+    int local_size = -1;
+    int comm_size_index = 0;
+    int inter_node_algo_index = 0;
+    int intra_node_algo_index = 0;
+    int i;
+    int table_min_comm_size = 0;
+    int table_max_comm_size = 0;
+    int table_min_inter_size = 0;
+    int table_max_inter_size = 0;
+    int table_min_intra_size = 0;
+    int table_max_intra_size = 0;
+    int last_inter;
+    int last_intra;
+    int lp2ltn; // largest power of 2 less than n
+    MPI_Comm shmem_comm;
+    MPID_Comm *shmem_commptr=NULL;
+    MPIU_THREADPRIV_DECL;
+
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
+    mpi_errno = PMPI_Comm_size(comm_ptr->handle, &comm_size);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    mpi_errno = PMPI_Comm_rank(comm_ptr->handle, &rank);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    MPIU_THREADPRIV_GET;
+
+    if (rank == root) {
+        MPID_Datatype_get_size_macro(sendtype, sendtype_size);
+        nbytes = sendcnt * sendtype_size;
+    } else {
+        MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+        nbytes = recvcnt * recvtype_size;
+    }
+
+    /* check if safe to use partial subscription mode */
+    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    
+        shmem_comm = comm_ptr->ch.shmem_comm;
+        MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+        local_size = shmem_commptr->local_size;
+        i = 0;
+        if (mv2_scatter_indexed_table_ppn_conf[0] == -1) {
+            /* Indicating user defined tuning */
+            conf_index = 0;
+            goto conf_check_end;
+        }
+        do {
+            if (local_size == mv2_scatter_indexed_table_ppn_conf[i]) {
+                conf_index = i;
+                partial_sub_ok = 1;
+                break;
+            }
+            i++;
+        } while(i < mv2_scatter_indexed_num_ppn_conf);
+    }
+    
+  conf_check_end:
+    if (partial_sub_ok != 1) {
+        conf_index = 0;
+    }
+
+    
+    /* Search for the corresponding system size inside the tuning table */
+    /*
+     * Comm sizes progress in powers of 2. Therefore comm_size can just be indexed instead
+     */
+    table_min_comm_size = mv2_scatter_indexed_thresholds_table[conf_index][0].numproc;
+    table_max_comm_size =
+	mv2_scatter_indexed_thresholds_table[conf_index][mv2_size_bcast_indexed_tuning_table[conf_index] - 1].numproc;
+    
+    if (comm_size < table_min_comm_size) {
+	/* Comm size smaller than smallest configuration in table: use smallest available */
+	comm_size_index = 0;
+    }
+    else if (comm_size > table_max_comm_size) {
+	/* Comm size larger than largest configuration in table: use largest available */
+	comm_size_index = mv2_size_scatter_indexed_tuning_table[conf_index] - 1;
+    }
+    else {
+	/* Comm size in between smallest and largest configuration: find closest match */
+	if (comm_ptr->ch.is_pof2) {
+	    comm_size_index = log2( comm_size / table_min_comm_size );
+	}
+	else {
+	    lp2ltn = pow(2, (int)log2(comm_size));
+	    comm_size_index = log2( lp2ltn / table_min_comm_size );
+	}
+    }
+
+    last_inter = mv2_scatter_indexed_thresholds_table[conf_index][comm_size_index].size_inter_table - 1;
+    table_min_inter_size = mv2_scatter_indexed_thresholds_table[conf_index][comm_size_index].inter_leader[0].msg_sz;
+    table_max_inter_size = mv2_scatter_indexed_thresholds_table[conf_index][comm_size_index].inter_leader[last_inter].msg_sz;
+    last_intra = mv2_scatter_indexed_thresholds_table[conf_index][comm_size_index].size_intra_table - 1;
+    table_min_intra_size = mv2_scatter_indexed_thresholds_table[conf_index][comm_size_index].intra_node[0].msg_sz;
+    table_max_intra_size = mv2_scatter_indexed_thresholds_table[conf_index][comm_size_index].intra_node[last_intra].msg_sz;
+    
+    if (nbytes < table_min_inter_size) {
+	/* Msg size smaller than smallest configuration in table: use smallest available */
+	inter_node_algo_index = 0;
+    }
+    else if (nbytes > table_max_inter_size) {
+	/* Msg size larger than largest configuration in table: use largest available */
+	inter_node_algo_index = last_inter;
+    }
+    else {
+	/* Msg size in between smallest and largest configuration: find closest match */
+	if (pow(2, (int)log2(nbytes)) == nbytes) {
+	    inter_node_algo_index = log2( nbytes / table_min_inter_size );
+	}
+	else {
+	    lp2ltn = pow(2, (int)log2(nbytes));
+	    inter_node_algo_index = log2( lp2ltn / table_min_inter_size );
+	}
+    }
+    
+    if (nbytes < table_min_intra_size) {
+	/* Msg size smaller than smallest configuration in table: use smallest available */
+	intra_node_algo_index = 0;
+    }
+    else if (nbytes > table_max_intra_size) {
+	/* Msg size larger than largest configuration in table: use largest available */
+	intra_node_algo_index = last_intra;
+    }
+    else {
+	/* Msg size in between smallest and largest configuration: find closest match */
+	if (pow(2, (int)log2(nbytes)) == nbytes) {
+	    intra_node_algo_index = log2(nbytes / table_min_intra_size );
+	}
+	else {
+	    lp2ltn = pow(2, (int)log2(nbytes));
+	    intra_node_algo_index = log2(lp2ltn / table_min_intra_size );
+	}
+    }
+
+    MV2_Scatter_function = mv2_scatter_indexed_thresholds_table[conf_index][comm_size_index].inter_leader[inter_node_algo_index]
+                            .MV2_pt_Scatter_function;
+
+    if(MV2_Scatter_function == &MPIR_Scatter_mcst_wrap_MV2) { 
+#if defined(_MCST_SUPPORT_)
+        if(comm_ptr->ch.is_mcast_ok == 1 
+           && mv2_use_mcast_scatter == 1 
+           && comm_ptr->ch.shmem_coll_ok == 1) {
+            MV2_Scatter_function = &MPIR_Scatter_mcst_MV2; 
+        } else
+#endif /*#if defined(_MCST_SUPPORT_) */
+        {
+            if(mv2_scatter_indexed_thresholds_table[conf_index][comm_size_index].inter_leader[inter_node_algo_index + 1].
+               MV2_pt_Scatter_function != NULL) { 
+                  MV2_Scatter_function = mv2_scatter_indexed_thresholds_table[conf_index][comm_size_index].
+		      inter_leader[inter_node_algo_index + 1].MV2_pt_Scatter_function;
+            } else { 
+                  /* Fallback! */ 
+                  MV2_Scatter_function = &MPIR_Scatter_MV2_Binomial; 
+            }  
+        } 
+    } 
+ 
+    if( (MV2_Scatter_function == &MPIR_Scatter_MV2_two_level_Direct) || 
+        (MV2_Scatter_function == &MPIR_Scatter_MV2_two_level_Binomial)) { 
+         if( comm_ptr->ch.shmem_coll_ok == 1 && 
+             comm_ptr->ch.is_global_block == 1 ) {
+             MV2_Scatter_intra_function = mv2_scatter_indexed_thresholds_table[conf_index][comm_size_index]
+		 .intra_node[intra_node_algo_index].MV2_pt_Scatter_function;
+
+             mpi_errno =
+                   MV2_Scatter_function(sendbuf, sendcnt, sendtype,
+                                        recvbuf, recvcnt, recvtype, root,
+                                        comm_ptr, errflag);
+         } else {
+             mpi_errno = MPIR_Scatter_MV2_Binomial(sendbuf, sendcnt, sendtype,
+                                        recvbuf, recvcnt, recvtype, root,
+                                        comm_ptr, errflag);
+
+         }
+    } else { 
+         mpi_errno = MV2_Scatter_function(sendbuf, sendcnt, sendtype,
+                                    recvbuf, recvcnt, recvtype, root,
+                                    comm_ptr, errflag);
+    } 
+
+
+    if (mpi_errno) {
+        /* for communication errors, just record the error but continue */
+        *errflag = TRUE;
+        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+    }
+
+  fn_fail:
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
+
+    return (mpi_errno);
+
 }
 
 #undef FUNCNAME
@@ -1781,7 +1994,6 @@ int MPIR_Scatter_inter_MV2(void *sendbuf,
 
     return mpi_errno;
 }
-#endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Scatter_MV2
@@ -1833,22 +2045,22 @@ int MPIR_Scatter_MV2(const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
    }
 #endif /*#ifdef _ENABLE_CUDA_*/    
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if (mv2_use_old_scatter == 1 ) {
         mpi_errno = MPIR_Scatter_intra_MV2(sendbuf, sendcnt, sendtype,
                                        recvbuf, recvcnt, recvtype, root,
                                        comm_ptr, errflag);
     } else {
-        mpi_errno = MPIR_Scatter_tune_intra_MV2(sendbuf, sendcnt, sendtype,
-                                       recvbuf, recvcnt, recvtype, root,
-                                       comm_ptr, errflag);
+	if (mv2_use_indexed_tuning || mv2_use_indexed_scatter_tuning) {
+	    mpi_errno = MPIR_Scatter_index_tuned_intra_MV2(sendbuf, sendcnt, sendtype,
+						    recvbuf, recvcnt, recvtype, root,
+						    comm_ptr, errflag);
+	}
+	else {
+	    mpi_errno = MPIR_Scatter_tune_intra_MV2(sendbuf, sendcnt, sendtype,
+						    recvbuf, recvcnt, recvtype, root,
+						    comm_ptr, errflag);
+	}
     }
-#else
-    mpi_errno = MPIR_Scatter_intra(sendbuf, sendcnt, sendtype,
-                                   recvbuf, recvcnt, recvtype, root,
-                                   comm_ptr, errflag);
-
-#endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 #ifdef _ENABLE_CUDA_ 
     if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
@@ -1864,9 +2076,7 @@ int MPIR_Scatter_MV2(const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
         }
     }
 #endif                          /*#ifdef _ENABLE_CUDA_*/     
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     comm_ptr->ch.intra_node_done = 0;
-#endif    
         if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
 

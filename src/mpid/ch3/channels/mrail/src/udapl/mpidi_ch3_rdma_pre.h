@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -78,8 +78,8 @@ struct MPIDI_CH3I_MRAILI_Request {  \
     MPI_Request partner_id;         \
     u_int8_t rndv_buf_alloc;              \
     void * rndv_buf;    \
-    int rndv_buf_sz;    \
-    int rndv_buf_off;   \
+    MPIDI_msg_sz_t rndv_buf_sz;    \
+    MPIDI_msg_sz_t rndv_buf_off;   \
     MRAILI_Protocol_t protocol;               \
     dreg_entry *d_entry;  \
     void * remote_addr;         \

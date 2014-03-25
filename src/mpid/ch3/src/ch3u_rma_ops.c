@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -19,11 +19,9 @@
 
 static int enableShortACC=1;
 
-#ifdef USE_MPIU_INSTR
-MPIU_INSTR_DURATION_EXTERN_DECL(rmaqueue_alloc);
-MPIU_INSTR_DURATION_EXTERN_DECL(rmaqueue_set);
-extern void MPIDI_CH3_RMA_InitInstr(void);
-#endif
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_rmaqueue_alloc);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_rmaqueue_set);
+extern void MPIDI_CH3_RMA_Init_Pvars(void);
 
 #define MPIDI_PASSIVE_TARGET_DONE_TAG  348297
 #define MPIDI_PASSIVE_TARGET_RMA_TAG 563924
@@ -67,7 +65,7 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
     mpi_errno = MPIDI_CH3I_Wait_for_pt_ops_finish(*win_ptr);
     if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     /*complete any pending outgoing operations*/
     if ((*win_ptr)->fall_back != 1) {
         MPIDI_CH3I_RDMA_finish_rma(*win_ptr);
@@ -96,25 +94,14 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
     if ((*win_ptr)->fall_back != 1) {
 	MPIDI_CH3I_RDMA_win_free(win_ptr);
     }
-#if !defined(DAPL_DEFAULT_PROVIDER)
-#if defined(_SMP_LIMIC_)
-    if (!(*win_ptr)->limic_fallback)
-    {
-        MPIDI_CH3I_LIMIC_win_free(win_ptr);
-        MPIU_Free((*win_ptr)->use_two_sided_lock);
+    if( (*win_ptr)->comm_ptr->ch.shmem_coll_ok == 1) {
+        free_2level_comm((*win_ptr)->comm_ptr);
     }
-#endif /* _SMP_LIMIC_ */
-    if (!(*win_ptr)->shm_fallback) 
-    {
-        MPIDI_CH3I_SHM_win_free(win_ptr);
-        MPIU_Free((*win_ptr)->use_two_sided_lock);
-    }
-#endif /* !DAPL_DEFAULT_PROVIDER */
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     MPIU_Free((*win_ptr)->rank_mapping);
-#endif /* _OSU_PSM_ */    
+#endif /* CHANNEL_PSM */    
     
     comm_ptr = (*win_ptr)->comm_ptr;
     mpi_errno = MPIR_Comm_free_impl(comm_ptr);
@@ -183,11 +170,17 @@ int MPIDI_Put(const void *origin_addr, int origin_count, MPI_Datatype
             int target_count, MPI_Datatype target_datatype, MPID_Win *win_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
-    int dt_contig ATTRIBUTE((unused)), rank, predefined;
+    int dt_contig ATTRIBUTE((unused)), rank;
     MPID_Datatype *dtp;
     MPI_Aint dt_true_lb ATTRIBUTE((unused));
     MPIDI_msg_sz_t data_sz;
+    MPIDI_VC_t *orig_vc, *target_vc;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_PUT);
+
+#if defined(CHANNEL_MRAIL)
+    int transfer_complete = 0;
+    int size, target_type_size;
+#endif
         
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_PUT);
 
@@ -211,8 +204,23 @@ int MPIDI_Put(const void *origin_addr, int origin_count, MPI_Datatype
 
     rank = win_ptr->comm_ptr->rank;
     
+    if (win_ptr->shm_allocated == TRUE && target_rank != rank && win_ptr->create_flavor != MPI_WIN_FLAVOR_SHARED) {
+        /* check if target is local and shared memory is allocated on window,
+           if so, we directly perform this operation on shared memory region. */
+
+        /* FIXME: Here we decide whether to perform SHM operations by checking if origin and target are on
+           the same node. However, in ch3:sock, even if origin and target are on the same node, they do
+           not within the same SHM region. Here we filter out ch3:sock by checking shm_allocated flag first,
+           which is only set to TRUE when SHM region is allocated in nemesis.
+           In future we need to figure out a way to check if origin and target are in the same "SHM comm".
+        */
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
+    }
+
     /* If the put is a local operation, do it here */
-    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED)
+    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
+        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))
     {
         mpi_errno = MPIDI_CH3I_Shm_put_op(origin_addr, origin_count, origin_datatype, target_rank,
                                           target_disp, target_count, target_datatype, win_ptr);
@@ -220,17 +228,39 @@ int MPIDI_Put(const void *origin_addr, int origin_count, MPI_Datatype
     }
     else
     {
+
+#if defined(CHANNEL_MRAIL)
+   MPID_Datatype_get_size_macro(target_datatype, target_type_size);
+   size = target_count * target_type_size;
+   if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) 
+        && MPIR_DATATYPE_IS_PREDEFINED(target_datatype)
+        && win_ptr->fall_back != 1 && win_ptr->enable_fast_path == 1
+        && win_ptr->use_rdma_path == 1
+        && ((win_ptr->is_active && win_ptr->post_flag[target_rank] == 1)
+        || (!win_ptr->is_active && win_ptr->using_lock == 0))
+        && size < rdma_large_msg_rail_sharing_threshold)
+    {
+        transfer_complete = MPIDI_CH3I_RDMA_try_rma_op_fast(MPIDI_RMA_PUT, (void *)origin_addr,
+                origin_count, origin_datatype, target_rank, target_disp,
+                target_count, target_datatype, NULL, NULL, win_ptr);
+    }
+    if (transfer_complete) {
+        goto fn_exit;
+    }
+    else 
+#endif
+    {
+
         MPIDI_RMA_Ops_list_t *ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
         MPIDI_RMA_Op_t *new_ptr = NULL;
-        MPIDI_VC_t *orig_vc, *target_vc;
 
 	/* queue it up */
-        MPIU_INSTR_DURATION_START(rmaqueue_alloc);
+        MPIR_T_PVAR_TIMER_START(RMA, rma_rmaqueue_alloc);
         mpi_errno = MPIDI_CH3I_RMA_Ops_alloc_tail(ops_list, &new_ptr);
-        MPIU_INSTR_DURATION_END(rmaqueue_alloc);
+        MPIR_T_PVAR_TIMER_END(RMA, rma_rmaqueue_alloc);
         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
-	MPIU_INSTR_DURATION_START(rmaqueue_set);
+	MPIR_T_PVAR_TIMER_START(RMA, rma_rmaqueue_set);
 	/* FIXME: For contig and very short operations, use a streamlined op */
 	new_ptr->type = MPIDI_RMA_PUT;
         /* Cast away const'ness for the origin address, as the
@@ -243,45 +273,28 @@ int MPIDI_Put(const void *origin_addr, int origin_count, MPI_Datatype
 	new_ptr->target_disp = target_disp;
 	new_ptr->target_count = target_count;
 	new_ptr->target_datatype = target_datatype;
-	MPIU_INSTR_DURATION_END(rmaqueue_set);
+	MPIR_T_PVAR_TIMER_END(RMA, rma_rmaqueue_set);
 
-	/* check if target is local and shared memory is allocated on window,
-	  if so, we do not need to increment reference counts on datatype. This is
-	  because this operation will be directly done on shared memory region, instead
-	  of sending and receiving through the progress engine, therefore datatype
-	  will not be referenced by the progress engine */
-
-        /* FIXME: Here we decide whether to perform SHM operations by checking if origin and target are on
-           the same node. However, in ch3:sock, even if origin and target are on the same node, they do
-           not within the same SHM region. Here we filter out ch3:sock by checking shm_allocated flag first,
-           which is only set to TRUE when SHM region is allocated in nemesis.
-           In future we need to figure out a way to check if origin and target are in the same "SHM comm".
-        */
-        MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
-        MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
-	if (!(win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id)) {
-	    /* if source or target datatypes are derived, increment their
-	       reference counts */
-	    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(origin_datatype, predefined);
-	    if (!predefined)
-	    {
-	        MPID_Datatype_get_ptr(origin_datatype, dtp);
-	        MPID_Datatype_add_ref(dtp);
-	    }
-	    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, predefined);
-	    if (!predefined)
-	    {
-	        MPID_Datatype_get_ptr(target_datatype, dtp);
-	        MPID_Datatype_add_ref(dtp);
-	    }
-        }
+	/* if source or target datatypes are derived, increment their
+	   reference counts */
+	if (!MPIR_DATATYPE_IS_PREDEFINED(origin_datatype))
+	{
+	    MPID_Datatype_get_ptr(origin_datatype, dtp);
+	    MPID_Datatype_add_ref(dtp);
+	}
+	if (!MPIR_DATATYPE_IS_PREDEFINED(target_datatype))
+	{
+	    MPID_Datatype_get_ptr(target_datatype, dtp);
+	    MPID_Datatype_add_ref(dtp);
+	}
+    }
     }
 
-#if defined(_OSU_MVAPICH_) && !defined(_SCHEDULE)
+#if defined(CHANNEL_MRAIL) && !defined(_SCHEDULE)
     if (win_ptr->fall_back != 1 && win_ptr->using_lock != 1) {
-        MPIDI_CH3I_RDMA_try_rma(win_ptr, 0, target_rank);
+        MPIDI_CH3I_RDMA_try_rma(win_ptr, target_rank);
     }
-#endif /* defined(_OSU_MVAPICH_) && !defined(_SCHEDULE) */
+#endif /* defined(CHANNEL_MRAIL) && !defined(_SCHEDULE) */
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_PUT);    
@@ -305,10 +318,16 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
 {
     int mpi_errno = MPI_SUCCESS;
     MPIDI_msg_sz_t data_sz;
-    int dt_contig ATTRIBUTE((unused)), rank, predefined;
+    int dt_contig ATTRIBUTE((unused)), rank;
     MPI_Aint dt_true_lb ATTRIBUTE((unused));
     MPID_Datatype *dtp;
+    MPIDI_VC_t *orig_vc, *target_vc;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_GET);
+
+#if defined(CHANNEL_MRAIL)
+    int transfer_complete = 0;
+    int size, target_type_size;
+#endif
         
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_GET);
 
@@ -331,9 +350,24 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
     }
 
     rank = win_ptr->comm_ptr->rank;
+
+    if (win_ptr->shm_allocated == TRUE && target_rank != rank && win_ptr->create_flavor != MPI_WIN_FLAVOR_SHARED) {
+        /* check if target is local and shared memory is allocated on window,
+           if so, we directly perform this operation on shared memory region. */
+
+        /* FIXME: Here we decide whether to perform SHM operations by checking if origin and target are on
+           the same node. However, in ch3:sock, even if origin and target are on the same node, they do
+           not within the same SHM region. Here we filter out ch3:sock by checking shm_allocated flag first,
+           which is only set to TRUE when SHM region is allocated in nemesis.
+           In future we need to figure out a way to check if origin and target are in the same "SHM comm".
+        */
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
+    }
     
     /* If the get is a local operation, do it here */
-    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED)
+    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
+        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))
     {
         mpi_errno = MPIDI_CH3I_Shm_get_op(origin_addr, origin_count, origin_datatype, target_rank,
                                           target_disp, target_count, target_datatype, win_ptr);
@@ -341,17 +375,38 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
     }
     else
     {
+
+#if defined(CHANNEL_MRAIL)
+   MPID_Datatype_get_size_macro(target_datatype, target_type_size);
+   size = target_count * target_type_size;
+	if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) 
+        && MPIR_DATATYPE_IS_PREDEFINED(target_datatype)
+        && win_ptr->fall_back != 1 && win_ptr->enable_fast_path == 1
+        && win_ptr->use_rdma_path == 1
+        && ((win_ptr->is_active && win_ptr->post_flag[target_rank] == 1)
+        || (!win_ptr->is_active && win_ptr->using_lock == 0))
+        && size < rdma_large_msg_rail_sharing_threshold)
+    {
+        transfer_complete = MPIDI_CH3I_RDMA_try_rma_op_fast(MPIDI_RMA_GET, origin_addr,
+                origin_count, origin_datatype, target_rank, target_disp,
+                target_count, target_datatype, NULL, NULL, win_ptr);
+    }
+    if (transfer_complete) {
+        goto fn_exit;
+    }
+    else 
+#endif
+    {
         MPIDI_RMA_Ops_list_t *ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
         MPIDI_RMA_Op_t *new_ptr = NULL;
-        MPIDI_VC_t *orig_vc, *target_vc;
 
 	/* queue it up */
-        MPIU_INSTR_DURATION_START(rmaqueue_alloc);
+        MPIR_T_PVAR_TIMER_START(RMA, rma_rmaqueue_alloc);
         mpi_errno = MPIDI_CH3I_RMA_Ops_alloc_tail(ops_list, &new_ptr);
-        MPIU_INSTR_DURATION_END(rmaqueue_alloc);
+        MPIR_T_PVAR_TIMER_END(RMA, rma_rmaqueue_alloc);
         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
-	MPIU_INSTR_DURATION_START(rmaqueue_set);
+	MPIR_T_PVAR_TIMER_START(RMA, rma_rmaqueue_set);
 	/* FIXME: For contig and very short operations, use a streamlined op */
 	new_ptr->type = MPIDI_RMA_GET;
 	new_ptr->origin_addr = origin_addr;
@@ -361,39 +416,28 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
 	new_ptr->target_disp = target_disp;
 	new_ptr->target_count = target_count;
 	new_ptr->target_datatype = target_datatype;
-	MPIU_INSTR_DURATION_END(rmaqueue_set);
+	MPIR_T_PVAR_TIMER_END(RMA, rma_rmaqueue_set);
 	
-	/* check if target is local and shared memory is allocated on window,
-	  if so, we do not need to increment reference counts on datatype. This is
-	  because this operation will be directly done on shared memory region, instead
-	  of sending and receiving through the progress engine, therefore datatype
-	  will not be referenced by the progress engine */
-
-        MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
-        MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
-	if (!(win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id)) {
-	    /* if source or target datatypes are derived, increment their
-	       reference counts */
-	    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(origin_datatype, predefined);
-	    if (!predefined)
-	    {
-	        MPID_Datatype_get_ptr(origin_datatype, dtp);
-	        MPID_Datatype_add_ref(dtp);
-	    }
-	    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, predefined);
-	    if (!predefined)
-	    {
-	        MPID_Datatype_get_ptr(target_datatype, dtp);
-	        MPID_Datatype_add_ref(dtp);
-	    }
-        }
+	/* if source or target datatypes are derived, increment their
+	   reference counts */
+	if (!MPIR_DATATYPE_IS_PREDEFINED(origin_datatype))
+	{
+	    MPID_Datatype_get_ptr(origin_datatype, dtp);
+	    MPID_Datatype_add_ref(dtp);
+	}
+	if (!MPIR_DATATYPE_IS_PREDEFINED(target_datatype))
+	{
+	    MPID_Datatype_get_ptr(target_datatype, dtp);
+	    MPID_Datatype_add_ref(dtp);
+	}
+    }
     }
 
-#if defined(_OSU_MVAPICH_) && !defined(_SCHEDULE)
+#if defined(CHANNEL_MRAIL) && !defined(_SCHEDULE)
     if (win_ptr->fall_back != 1 && win_ptr->using_lock != 1) {
-        MPIDI_CH3I_RDMA_try_rma(win_ptr, 0, target_rank);
+        MPIDI_CH3I_RDMA_try_rma(win_ptr, target_rank);
     }
-#endif /* defined(_OSU_MVAPICH_) && !defined(_SCHEDULE) */
+#endif /* defined(CHANNEL_MRAIL) && !defined(_SCHEDULE) */
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_GET);
@@ -418,9 +462,10 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
 {
     int mpi_errno=MPI_SUCCESS;
     MPIDI_msg_sz_t data_sz;
-    int dt_contig ATTRIBUTE((unused)), rank, origin_predefined, target_predefined;
+    int dt_contig ATTRIBUTE((unused)), rank;
     MPI_Aint dt_true_lb ATTRIBUTE((unused));
     MPID_Datatype *dtp;
+    MPIDI_VC_t *orig_vc, *target_vc;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_ACCUMULATE);
     
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_ACCUMULATE);
@@ -445,11 +490,23 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
 
     rank = win_ptr->comm_ptr->rank;
     
-    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(origin_datatype, origin_predefined);
-    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, target_predefined);
+    if (win_ptr->shm_allocated == TRUE && target_rank != rank && win_ptr->create_flavor != MPI_WIN_FLAVOR_SHARED) {
+        /* check if target is local and shared memory is allocated on window,
+           if so, we directly perform this operation on shared memory region. */
+
+        /* FIXME: Here we decide whether to perform SHM operations by checking if origin and target are on
+           the same node. However, in ch3:sock, even if origin and target are on the same node, they do
+           not within the same SHM region. Here we filter out ch3:sock by checking shm_allocated flag first,
+           which is only set to TRUE when SHM region is allocated in nemesis.
+           In future we need to figure out a way to check if origin and target are in the same "SHM comm".
+        */
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
+    }
 
     /* Do =! rank first (most likely branch?) */
-    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED)
+    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
+        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))
     {
 	mpi_errno = MPIDI_CH3I_Shm_acc_op(origin_addr, origin_count, origin_datatype,
 					  target_rank, target_disp, target_count, target_datatype,
@@ -460,17 +517,17 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
     {
         MPIDI_RMA_Ops_list_t *ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
         MPIDI_RMA_Op_t *new_ptr = NULL;
-        MPIDI_VC_t *orig_vc, *target_vc;
 
 	/* queue it up */
-        MPIU_INSTR_DURATION_START(rmaqueue_alloc);
+        MPIR_T_PVAR_TIMER_START(RMA, rma_rmaqueue_alloc);
         mpi_errno = MPIDI_CH3I_RMA_Ops_alloc_tail(ops_list, &new_ptr);
-        MPIU_INSTR_DURATION_END(rmaqueue_alloc);
+        MPIR_T_PVAR_TIMER_END(RMA, rma_rmaqueue_alloc);
         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
 	/* If predefined and contiguous, use a simplified element */
-	if (origin_predefined && target_predefined && enableShortACC) {
-	    MPIU_INSTR_DURATION_START(rmaqueue_set);
+	if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) &&
+            MPIR_DATATYPE_IS_PREDEFINED(target_datatype) && enableShortACC) {
+	    MPIR_T_PVAR_TIMER_START(RMA, rma_rmaqueue_set);
 	    new_ptr->type = MPIDI_RMA_ACC_CONTIG;
 	    /* Only the information needed for the contig/predefined acc */
             /* Cast away const'ness for origin_address as
@@ -483,11 +540,11 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
 	    new_ptr->target_count = target_count;
 	    new_ptr->target_datatype = target_datatype;
 	    new_ptr->op = op;
-	    MPIU_INSTR_DURATION_END(rmaqueue_set);
+	    MPIR_T_PVAR_TIMER_END(RMA, rma_rmaqueue_set);
 	    goto fn_exit;
 	}
 
-	MPIU_INSTR_DURATION_START(rmaqueue_set);
+	MPIR_T_PVAR_TIMER_START(RMA, rma_rmaqueue_set);
 	new_ptr->type = MPIDI_RMA_ACCUMULATE;
         /* Cast away const'ness for origin_address as MPIDI_RMA_Op_t
          * contain both PUT and GET like ops */
@@ -499,30 +556,20 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
 	new_ptr->target_count = target_count;
 	new_ptr->target_datatype = target_datatype;
 	new_ptr->op = op;
-	MPIU_INSTR_DURATION_END(rmaqueue_set);
+	MPIR_T_PVAR_TIMER_END(RMA, rma_rmaqueue_set);
 	
-	/* check if target is local and shared memory is allocated on window,
-	  if so, we do not need to increment reference counts on datatype. This is
-	  because this operation will be directly done on shared memory region, instead
-	  of sending and receiving through the progress engine, therefore datatype
-	  will not be referenced by the progress engine */
-
-        MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
-        MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
-	if (!(win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id)) {
-	    /* if source or target datatypes are derived, increment their
-	       reference counts */
-	    if (!origin_predefined)
-	    {
-	        MPID_Datatype_get_ptr(origin_datatype, dtp);
-	        MPID_Datatype_add_ref(dtp);
-	    }
-	    if (!target_predefined)
-	    {
-	        MPID_Datatype_get_ptr(target_datatype, dtp);
-	        MPID_Datatype_add_ref(dtp);
-	    }
-        }
+	/* if source or target datatypes are derived, increment their
+	   reference counts */
+	if (!MPIR_DATATYPE_IS_PREDEFINED(origin_datatype))
+	{
+	    MPID_Datatype_get_ptr(origin_datatype, dtp);
+	    MPID_Datatype_add_ref(dtp);
+	}
+	if (!MPIR_DATATYPE_IS_PREDEFINED(target_datatype))
+	{
+	    MPID_Datatype_get_ptr(target_datatype, dtp);
+	    MPID_Datatype_add_ref(dtp);
+	}
     }
 
  fn_exit:
@@ -547,7 +594,7 @@ void *MPIDI_Alloc_mem( size_t size, MPID_Info *info_ptr )
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_ALLOC_MEM);
 
-#if defined (_OSU_MVAPICH_) && !defined (DAPL_DEFAULT_PROVIDER)
+#if defined (CHANNEL_MRAIL) && !defined (DAPL_DEFAULT_PROVIDER)
     ap = MPIDI_CH3I_Alloc_mem(size, info_ptr);
 #else
     ap = MPIU_Malloc(size);
@@ -569,7 +616,7 @@ int MPIDI_Free_mem( void *ptr )
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_FREE_MEM);
 
-#if defined(_OSU_MVAPICH_) && !defined (DAPL_DEFAULT_PROVIDER)
+#if defined(CHANNEL_MRAIL) && !defined (DAPL_DEFAULT_PROVIDER)
     MPIDI_CH3I_Free_mem(ptr);
 #else
     MPIU_Free(ptr);

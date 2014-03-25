@@ -463,7 +463,7 @@ int MPIR_Iscatter_inter(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
         nbytes = recvtype_size * recvcount * local_size;
     }
 
-    if (nbytes < MPIR_PARAM_SCATTER_INTER_SHORT_MSG_SIZE) {
+    if (nbytes < MPIR_CVAR_SCATTER_INTER_SHORT_MSG_SIZE) {
         if (root == MPI_ROOT) {
             /* root sends all data to rank 0 on remote group and returns */
             mpi_errno = MPID_Sched_send(sendbuf, sendcount*remote_size, sendtype, 0, comm_ptr, s);
@@ -592,7 +592,8 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 /*@
-MPI_Iscatter - XXX description here
+MPI_Iscatter - Sends data from one process to all other processes in a
+               communicator in a nonblocking way
 
 Input Parameters:
 + sendbuf - address of send buffer (significant only at root) (choice)
@@ -613,11 +614,12 @@ Output Parameters:
 
 .N Errors
 @*/
-int MPI_Iscatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm, MPI_Request *request)
+int MPI_Iscatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+                 void *recvbuf, int recvcount, MPI_Datatype recvtype, int root,
+                 MPI_Comm comm, MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
-    MPID_Datatype *sendtype_ptr, *recvtype_ptr;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_ISCATTER);
 
     MPIU_THREAD_CS_ENTER(ALLFUNC,);
@@ -644,6 +646,7 @@ int MPI_Iscatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void
     {
         MPID_BEGIN_ERROR_CHECKS
         {
+            MPID_Datatype *sendtype_ptr, *recvtype_ptr;
             MPID_Comm_valid_ptr(comm_ptr, mpi_errno);
             if (comm_ptr->comm_kind == MPID_INTRACOMM) {
                 MPIR_ERRTEST_INTRA_ROOT(comm_ptr, root, mpi_errno);

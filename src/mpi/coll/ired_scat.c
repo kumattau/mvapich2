@@ -707,7 +707,7 @@ static int MPIR_Ireduce_scatter_noncomm(const void *sendbuf, void *recvbuf,
     /* Copy our send data to tmp_buf0.  We do this one block at a time and
        permute the blocks as we go according to the mirror permutation. */
     for (i = 0; i < comm_size; ++i) {
-        mpi_errno = MPID_Sched_copy(((char *)(sendbuf == MPI_IN_PLACE ? recvbuf : sendbuf) + (i * true_extent * block_size)),
+        mpi_errno = MPID_Sched_copy(((char *)(sendbuf == MPI_IN_PLACE ? (const void *)recvbuf : sendbuf) + (i * true_extent * block_size)),
                                     block_size, datatype,
                                     ((char *)tmp_buf0 + (MPIU_Mirror_permutation(i, log2_comm_size) * true_extent * block_size)),
                                     block_size, datatype, s);
@@ -856,11 +856,11 @@ int MPIR_Ireduce_scatter_intra(const void *sendbuf, void *recvbuf, const int rec
     nbytes = total_count * type_size;
 
     /* select an appropriate algorithm based on commutivity and message size */
-    if (is_commutative && (nbytes < MPIR_PARAM_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
+    if (is_commutative && (nbytes < MPIR_CVAR_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
         mpi_errno = MPIR_Ireduce_scatter_rec_hlv(sendbuf, recvbuf, recvcounts, datatype, op, comm_ptr, s);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
-    else if (is_commutative && (nbytes >= MPIR_PARAM_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
+    else if (is_commutative && (nbytes >= MPIR_CVAR_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
         mpi_errno = MPIR_Ireduce_scatter_pairwise(sendbuf, recvbuf, recvcounts, datatype, op, comm_ptr, s);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
@@ -1056,7 +1056,8 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 /*@
-MPI_Ireduce_scatter - XXX description here
+MPI_Ireduce_scatter - Combines values and scatters the results in
+                      a nonblocking way
 
 Input Parameters:
 + sendbuf - starting address of the send buffer (choice)

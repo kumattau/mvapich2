@@ -4,11 +4,73 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
+
 #include "mpiimpl.h"
 #include "collutil.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-#include "coll_shmem.h"
-#endif
+#ifdef _OSU_MVAPICH_
+#   include "coll_shmem.h"
+#endif /* _OSU_MVAPICH_ */
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_ALLREDUCE_SHORT_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 2048
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        the short message algorithm will be used if the send buffer size is <=
+        this value (in bytes)
+
+    - name        : MPIR_CVAR_ENABLE_SMP_COLLECTIVES
+      category    : COLLECTIVE
+      type        : boolean
+      default     : true
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Enable SMP aware collective communication.
+
+    - name        : MPIR_CVAR_ENABLE_SMP_ALLREDUCE
+      category    : COLLECTIVE
+      type        : boolean
+      default     : true
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Enable SMP aware allreduce.
+
+    - name        : MPIR_CVAR_MAX_SMP_ALLREDUCE_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 0
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Maximum message size for which SMP-aware allreduce is used.  A
+        value of '0' uses SMP-aware allreduce for all message sizes.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 
 /* -- Begin Profiling Symbol Block for routine MPI_Allreduce */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -139,7 +201,8 @@ int MPIR_Allreduce_intra (
     int is_homogeneous;
     int rc;
 #endif
-    int        comm_size, rank, type_size;
+    int comm_size, rank;
+    MPI_Aint type_size;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int nbytes = 0;
@@ -158,12 +221,12 @@ int MPIR_Allreduce_intra (
 
     is_commutative = MPIR_Op_is_commutative(op);
 
-    if (MPIR_PARAM_ENABLE_SMP_COLLECTIVES && MPIR_PARAM_ENABLE_SMP_ALLREDUCE) {
+    if (MPIR_CVAR_ENABLE_SMP_COLLECTIVES && MPIR_CVAR_ENABLE_SMP_ALLREDUCE) {
     /* is the op commutative? We do SMP optimizations only if it is. */
     MPID_Datatype_get_size_macro(datatype, type_size);
-    nbytes = MPIR_PARAM_MAX_SMP_ALLREDUCE_MSG_SIZE ? type_size*count : 0;
+    nbytes = MPIR_CVAR_MAX_SMP_ALLREDUCE_MSG_SIZE ? type_size*count : 0;
     if (MPIR_Comm_is_node_aware(comm_ptr) && is_commutative &&
-        nbytes <= MPIR_PARAM_MAX_SMP_ALLREDUCE_MSG_SIZE) {
+        nbytes <= MPIR_CVAR_MAX_SMP_ALLREDUCE_MSG_SIZE) {
         /* on each node, do a reduce to the local root */ 
         if (comm_ptr->node_comm != NULL) {
             /* take care of the MPI_IN_PLACE case. For reduce, 
@@ -346,7 +409,7 @@ int MPIR_Allreduce_intra (
            using recursive doubling in that case.) */
 
         if (newrank != -1) {
-            if ((count*type_size <= MPIR_PARAM_ALLREDUCE_SHORT_MSG_SIZE) ||
+            if ((count*type_size <= MPIR_CVAR_ALLREDUCE_SHORT_MSG_SIZE) ||
                 (HANDLE_GET_KIND(op) != HANDLE_KIND_BUILTIN) ||  
                 (count < pof2)) { /* use recursive doubling */
                 mask = 0x1;
@@ -865,12 +928,12 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
 
     mpi_errno = MPIR_Allreduce_impl(sendbuf, recvbuf, count, datatype, op, comm_ptr, &errflag);
     if (mpi_errno) goto fn_fail;
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#ifdef _OSU_MVAPICH_
     mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }
-#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* _OSU_MVAPICH_ */
 
 
     /* ... end of body of routine ... */

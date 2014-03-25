@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -449,12 +449,11 @@ mv2_arch_type mv2_get_arch_type()
 
                 } else if((0 == memcmp(INTEL_E2_2670_MAPPING, core_mapping,
                                 sizeof(int)*num_cpus)) && INTEL_E5_2670_MODEL == model) {
-                    if(strncmp(model_name, INTEL_E5_2670_MODEL_NAME, 
-                                strlen(INTEL_E5_2670_MODEL_NAME)) == 0){
-                        arch_type = MV2_ARCH_INTEL_XEON_E5_2670_16;
 
-                    } else if(strncmp(model_name, INTEL_E5_2680_MODEL_NAME, 
-                                strlen(INTEL_E5_2680_MODEL_NAME)) == 0){
+                    if(strstr(model_name, INTEL_E5_2670_MODEL_NAME) != NULL){
+                        arch_type = MV2_ARCH_INTEL_XEON_E5_2670_16;
+                        
+                    } else if(strstr(model_name, INTEL_E5_2680_MODEL_NAME) != NULL){
                         arch_type = MV2_ARCH_INTEL_XEON_E5_2680_16;
 
                     } else {

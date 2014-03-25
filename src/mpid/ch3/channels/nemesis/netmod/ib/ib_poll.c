@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -506,6 +506,10 @@ int MPID_nem_ib_poll(int in_blocking_poll)
         {
             MPIU_ERR_POP(mpi_errno);
         }
+    }
+
+    if (flowlist) {
+        MPID_nem_lmt_ib_process_rndv();
     }
 
 fn_fail:

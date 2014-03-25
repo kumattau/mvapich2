@@ -33,7 +33,7 @@ AS_CASE([$host],
 )
 
 
-AM_INIT_AUTOMAKE([-Wall -Werror foreign 1.12.3 subdir-objects])
+AM_INIT_AUTOMAKE([-Wall -Wno-portability-recursive -Werror foreign 1.12.3 subdir-objects])
 
 AM_PROG_AR
 
@@ -47,6 +47,13 @@ PAC_RESET_LINK_FLAGS()
 
 
 PAC_ARG_STRICT
+
+# In case the documentation targets are used, find doctext and attempt to find
+# the source for the doctext LaTex style files. Use "false" if doctext is not
+# found
+AC_PATH_PROG(DOCTEXT,doctext,false)
+export DOCTEXT
+AC_SUBST(DOCTEXT)
 
 AC_C_CONST
 AC_C_VOLATILE
@@ -81,6 +88,18 @@ fi
 AC_SUBST(HYDRA_VERSION)
 AC_DEFINE_UNQUOTED(HYDRA_VERSION,"$HYDRA_VERSION",[Hydra version information])
 AC_DEFINE_UNQUOTED(HYDRA_RELEASE_DATE,"$HYDRA_RELEASE_DATE",[Hydra release date information])
+
+AC_SUBST(HYDRA_PMI_PROXY)
+PAC_GET_EXENAME("hydra_pmi_proxy", HYDRA_PMI_PROXY)
+AC_DEFINE_UNQUOTED(HYDRA_PMI_PROXY,"$HYDRA_PMI_PROXY",[Hydra PMI proxy executable])
+
+# These substitutions are needed in the Makefile
+AC_SUBST(MPIEXEC_NAME)
+AC_SUBST(MPIEXEC_HYDRA_NAME)
+AC_SUBST(MPIRUN_NAME)
+PAC_GET_EXENAME("mpiexec", MPIEXEC_NAME)
+PAC_GET_EXENAME("mpiexec.hydra", MPIEXEC_HYDRA_NAME)
+PAC_GET_EXENAME("mpirun", MPIRUN_NAME)
 
 PAC_PUSH_ALL_FLAGS
 PAC_RESET_ALL_FLAGS
@@ -139,8 +158,11 @@ AC_CHECK_HEADERS(unistd.h strings.h sys/types.h sys/socket.h sched.h sys/stat.h 
 		 netinet/in.h netinet/tcp.h sys/un.h netdb.h sys/time.h time.h ifaddrs.h arpa/inet.h \
 		 poll.h fcntl.h netdb.h winsock2.h windows.h)
 
-AC_CHECK_LIB(socket,socket,LDFLAGS="$LDFLAGS -lsocket",)
-AC_CHECK_LIB(nsl,gethostbyname,LDFLAGS="$LDFLAGS -lnsl",)
+# These functions are in additional libraries on some platforms (like Solaris).
+# Check to see if they are needed.
+AC_SEARCH_LIBS(socket,socket,)
+AC_SEARCH_LIBS(gethostbyname,nsl,)
+AC_SEARCH_LIBS(hstrerror, resolv,)
 
 # Check for necessary functions
 AC_CHECK_FUNCS(gettimeofday time strdup sigaction signal usleep alloca unsetenv \
@@ -510,8 +532,6 @@ AC_DEFINE_UNQUOTED(HYDRA_AVAILABLE_CKPOINTLIBS,"$available_ckpointlibs",
 if test "$hydra_default_ckpointlib" != "" ; then
    AC_DEFINE_UNQUOTED(HYDRA_DEFAULT_CKPOINTLIB,"$hydra_default_ckpointlib",
 		[Default checkpointing library])
-else
-   AC_DEFINE(HYDRA_DEFAULT_CKPOINTLIB,NULL,[Default checkpointing library])
 fi
 AM_CONDITIONAL([hydra_have_blcr], [test "${have_blcr}" = "yes"])
 

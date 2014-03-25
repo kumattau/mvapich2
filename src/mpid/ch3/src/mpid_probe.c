@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -37,7 +37,7 @@ int MPID_Probe(int source, int tag, MPID_Comm * comm, int context_offset,
 	goto fn_exit;
     }
 
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
 	int complete = FALSE;
     MPID_Progress_poke();
     mpi_errno = MPIDI_CH3_Probe(source, tag, context, status,

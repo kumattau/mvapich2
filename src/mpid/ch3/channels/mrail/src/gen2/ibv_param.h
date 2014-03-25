@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,6 +26,7 @@ extern int rdma_num_rails;
 extern int mv2_cm_wait_time;
 
 extern unsigned long rdma_default_max_cq_size;
+extern int rdma_num_cqes_per_poll;
 extern int rdma_default_port;
 extern int rdma_default_gid_index;
 extern int rdma_default_max_send_wqe;
@@ -90,6 +91,7 @@ extern int rdma_num_extra_polls;
 extern int rdma_pin_pool_size;
 extern int rdma_put_fallback_threshold;
 extern int rdma_get_fallback_threshold;
+extern int rdma_num_ops_threshold;
 extern int rdma_iba_eager_threshold;
 extern long rdma_eagersize_1sc;
 extern int rdma_qos_num_sls;
@@ -147,13 +149,15 @@ extern int rdma_enable_hugepage;
 #ifdef _ENABLE_CUDA_
 extern int rdma_cuda_block_size;
 extern int rdma_num_cuda_rndv_blocks;
-extern int rdma_cuda_stream_count;
 extern int rdma_cuda_event_count;
-extern int rdma_cuda_event_sync;
 extern int rdma_enable_cuda;
 extern int rdma_cuda_dynamic_init;
-extern int rdma_cuda_thread_blk_size;
-extern int rdma_cuda_thread_ysize;
+extern int rdma_cuda_vec_thread_blksz;
+extern int rdma_cuda_vec_thread_ysz;
+extern int rdma_cuda_subarr_thread_blksz;
+extern int rdma_cuda_subarr_thread_xdim;
+extern int rdma_cuda_subarr_thread_ydim;
+extern int rdma_cuda_subarr_thread_zdim;
 extern int rdma_cuda_nonblocking_streams;
 extern int rdma_eager_cudahost_reg;
 extern int rdma_cuda_vector_dt_opt;
@@ -232,6 +236,7 @@ extern int mcast_skip_loopback;
 extern int rdma_default_async_thread_stack_size;
 
 #define PKEY_MASK 0x7fff        /* the last bit is reserved */
+#define RDMA_MAX_CQE_ENTRIES_PER_POLL   (64)
 #define RDMA_PIN_POOL_SIZE              (2*1024*1024)
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (40000)
 #define RDMA_DEFAULT_IWARP_CQ_SIZE      (8192)
@@ -449,6 +454,7 @@ typedef enum mv2_env_param_id {
     MV2_USE_DIRECT_GATHER_SYSTEM_SIZE_SMALL,
     MV2_USE_DIRECT_SCATTER,
     MV2_USE_OSU_COLLECTIVES,
+    MV2_USE_OSU_NB_COLLECTIVES,
     MV2_USE_KNOMIAL_2LEVEL_BCAST,
     MV2_USE_KNOMIAL_INTER_LEADER_BCAST,
     MV2_USE_SCATTER_RD_INTER_LEADER_BCAST,
@@ -583,7 +589,6 @@ typedef enum mv2_env_param_id {
     MV2_EAGER_CUDAHOST_REG,
     MV2_USE_CUDA,
     MV2_CUDA_NUM_EVENTS,
-    MV2_CUDA_EVENT_SYNC,
     MV2_CUDA_IPC,
     MV2_CUDA_IPC_THRESHOLD,
     MV2_CUDA_ENABLE_IPC_CACHE,

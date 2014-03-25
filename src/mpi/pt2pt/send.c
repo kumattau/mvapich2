@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -139,13 +139,13 @@ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int ta
 
     if (request_ptr == NULL)
     {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
         mpi_errno = MPID_Progress_test();
         if (mpi_errno != MPI_SUCCESS)
         {
             goto fn_fail;
         }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 	goto fn_exit;
     }
 

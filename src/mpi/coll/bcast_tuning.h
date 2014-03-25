@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -14,13 +14,18 @@
 #define _BCAST_TUNING_
 
 #include "coll_shmem.h"
-#if defined(_OSU_MVAPICH_)
-#ifndef DAPL_DEFAULT_PROVIDER
-#include "ibv_param.h"
-#else
-#include "udapl_param.h"
+
+#ifdef _OSU_MVAPICH_
+#   include "ib_param.h"
 #endif
-#endif                          /* #if defined(_OSU_MVAPICH_) */
+
+#ifdef CHANNEL_MRAIL_GEN2
+#   include "ibv_param.h"
+#endif
+
+#ifdef CHANNEL_MRAIL_UDAPL
+#   include "udapl_param.h"
+#endif
 
 #define NMATCH (3+1)
 
@@ -53,6 +58,33 @@ extern int bcast_segment_size;
 extern int mv2_size_bcast_tuning_table;
 extern mv2_bcast_tuning_table *mv2_bcast_thresholds_table;
 extern int mv2_use_old_bcast;
+
+/*Entries related to indexed tuning table*/
+typedef struct {
+    int msg_sz;
+    int (*MV2_pt_Bcast_function) (void *buf, int count, MPI_Datatype datatype,
+                                  int root, MPID_Comm * comm_ptr, int *errflag);
+    int zcpy_pipelined_knomial_factor;
+} mv2_bcast_indexed_tuning_element;
+
+typedef struct {
+    int numproc;
+    int bcast_segment_size;
+    int intra_node_knomial_factor;
+    int inter_node_knomial_factor;
+    int is_two_level_bcast[MV2_MAX_NB_THRESHOLDS];
+    int size_inter_table;
+    mv2_bcast_indexed_tuning_element inter_leader[MV2_MAX_NB_THRESHOLDS];
+    int size_intra_table;
+    mv2_bcast_indexed_tuning_element intra_node[MV2_MAX_NB_THRESHOLDS];
+} mv2_bcast_indexed_tuning_table;
+
+/* Indicates number of processes per node */
+extern int *mv2_bcast_indexed_table_ppn_conf;
+/* Indicates total number of configurations */
+extern int mv2_bcast_indexed_num_ppn_conf;
+extern int *mv2_size_bcast_indexed_tuning_table;
+extern mv2_bcast_indexed_tuning_table **mv2_bcast_indexed_thresholds_table;
 
 extern int MPIR_Bcast_binomial_MV2(void *buffer,
                                    int count,
@@ -113,7 +145,7 @@ extern int MPIR_Knomial_Bcast_inter_node_trace_MV2(int root, int mv2_bcast_knomi
                  int *expected_recv_count, int **dst_array,
                  MPID_Comm *comm_ptr); 
 
-#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) 
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
 extern int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
                          int count,
                          MPI_Datatype datatype,

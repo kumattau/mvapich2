@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
- *  (C) 2008 by Argonne National Laboratory.
+ *  (C) 2010 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
@@ -81,8 +81,9 @@ HYD_status HYDTI_bscd_ssh_store_launch_time(char *hostname)
      * mean that we need to deal with nested calls to the demux engine
      * and process launches. */
     if (time_left > 0) {
-        HYDU_dump(stdout, "WARNING: too many ssh connections to %s; waiting %d seconds\n",
-                  hostname, time_left);
+        if (HYDT_bscd_ssh_warnings)
+            HYDU_dump(stdout, "WARNING: too many ssh connections to %s; waiting %d seconds\n",
+                      hostname, time_left);
         sleep(time_left);
     }
 

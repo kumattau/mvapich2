@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,6 @@
  */
 
 #include "mpiimpl.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "datatype.h"
 #include "gather_tuning.h"
 
@@ -288,9 +287,7 @@ int MPIR_pt_pt_intra_gather(const void *sendbuf, int sendcnt, MPI_Datatype sendt
     MPI_Aint recvtype_extent = 0;  /* Datatype extent */
     MPI_Aint true_lb, sendtype_true_extent, recvtype_true_extent;
 
-    #if OSU_MPIT
-        mv2_num_shmem_coll_calls++;
-    #endif
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_shmem_coll_calls, 1);
 
     if (sendtype != MPI_DATATYPE_NULL) {
         MPIR_Type_get_true_extent_impl(sendtype, &true_lb,
@@ -902,7 +899,7 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
     int rank;
     int local_rank, local_size;
     int mpi_errno = MPI_SUCCESS;
-    int recvtype_size = 0, sendtype_size = 0, nbytes=0;
+    int recvtype_size = 0, nbytes=0;
     int sendtype_iscontig;
     int intra_sock_rank=0, intra_sock_comm_size=0;
     int intra_node_leader_rank=0, intra_node_leader_comm_size=0;
@@ -912,6 +909,8 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
     MPI_Comm shmem_comm;
     MPID_Comm *shmem_commptr;
     MPID_Comm *intra_sock_commptr = NULL, *intra_node_leader_commptr=NULL;
+    MPI_Aint position = 0;
+    MPI_Aint sendtype_size = 0;
     MPIU_CHKLMEM_DECL(1);
 
     rank = comm_ptr->rank;
@@ -962,8 +961,6 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
     }
     /*Pack data for non-contiguous buffer*/
     if ((!sendtype_iscontig) && (sendbuf != MPI_IN_PLACE)) {
-        int sendtype_size=0;
-        int position = 0;
         MPIR_Pack_size_impl(1, sendtype, &sendtype_size);
         send_nbytes= sendcnt * sendtype_size;
         MPIU_CHKLMEM_MALLOC(local_sendbuf, void *, send_nbytes, mpi_errno, "local_sendbuf");
@@ -1300,7 +1297,7 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
     int rank;
     int local_rank, local_size;
     int mpi_errno = MPI_SUCCESS;
-    int recvtype_size = 0, sendtype_size = 0, nbytes=0;
+    int recvtype_size = 0, nbytes=0;
     int sendtype_iscontig;
     int intra_sock_rank=0, intra_sock_comm_size=0;
     int intra_node_leader_rank=0;
@@ -1310,6 +1307,8 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
     MPI_Comm shmem_comm;
     MPID_Comm *shmem_commptr;
     MPID_Comm *intra_sock_commptr = NULL, *intra_node_leader_commptr=NULL;
+    MPI_Aint sendtype_size = 0;
+    MPI_Aint position = 0;
     MPIU_CHKLMEM_DECL(1);
 
     rank = comm_ptr->rank;
@@ -1361,8 +1360,6 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
     /*Pack data for non-contiguous buffer*/
     if ((!sendtype_iscontig) && (sendbuf != MPI_IN_PLACE)) {
 
-        int sendtype_size=0;
-        int position = 0;
         MPIR_Pack_size_impl(1, sendtype, &sendtype_size);
         send_nbytes= sendcnt * sendtype_size;
         MPIU_CHKLMEM_MALLOC(local_sendbuf, void *, send_nbytes, mpi_errno, "local_sendbuf");
@@ -1470,13 +1467,15 @@ static int MPIR_Limic_Gather_Scheme_SINGLE_LEADER(
     int rank;
     int local_rank, local_size;
     int mpi_errno = MPI_SUCCESS;
-    int recvtype_size = 0, sendtype_size = 0, nbytes=0;
+    int recvtype_size = 0, nbytes=0;
     int sendtype_iscontig;
     int send_nbytes=0; 
     MPI_Aint recvtype_extent = 0;  /* Datatype extent */
     MPI_Aint true_lb, sendtype_true_extent, recvtype_true_extent;
     MPI_Comm shmem_comm;
     MPID_Comm *shmem_commptr;
+    MPI_Aint sendtype_size = 0;
+    MPI_Aint position = 0;
     MPIU_CHKLMEM_DECL(1); 
 
     rank = comm_ptr->rank;
@@ -1517,8 +1516,6 @@ static int MPIR_Limic_Gather_Scheme_SINGLE_LEADER(
     /*Pack data for non-contiguous buffer*/
     if ((!sendtype_iscontig) && (sendbuf != MPI_IN_PLACE)) {
 
-        int sendtype_size=0;
-        int position = 0;
         MPIR_Pack_size_impl(1, sendtype, &sendtype_size);
         send_nbytes= sendcnt * sendtype_size;
         MPIU_CHKLMEM_MALLOC(local_sendbuf, void *, send_nbytes, mpi_errno, "local_sendbuf");
@@ -1717,7 +1714,249 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
 
 #endif    /*#if defined(_SMP_LIMIC_) */
 
-#endif    /* #if defined(_OSU_MVAPICH_)  || defined(_OSU_PSM_) */
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Gather_index_tuned_intra_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Gather_index_tuned_intra_MV2(const void *sendbuf,
+                    int sendcnt,
+                    MPI_Datatype sendtype,
+                    void *recvbuf,
+                    int recvcnt,
+                    MPI_Datatype recvtype,
+                    int root, MPID_Comm * comm_ptr, int *errflag) {
+    
+    int comm_size_index = 0;
+    int inter_node_algo_index = 0;
+    int intra_node_algo_index = 0;
+    int local_size = 0;
+    int partial_sub_ok = 0;
+    int conf_index = 0;
+    int i;
+    int table_min_comm_size = 0;
+    int table_max_comm_size = 0;
+    int table_min_inter_size = 0;
+    int table_max_inter_size = 0;
+    int table_min_intra_size = 0;
+    int table_max_intra_size = 0;
+    int last_inter;
+    int last_intra;
+    int lp2ltn; // largest power of 2 less than n
+    MPID_Comm *shmem_commptr = NULL;
+    MPI_Comm shmem_comm;
+    int mpi_errno = MPI_SUCCESS;
+    int nbytes = 0;
+    int comm_size = 0;
+    int recvtype_size, sendtype_size;
+    int rank = -1;
+    MPIU_THREADPRIV_DECL;
+
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
+    comm_size = comm_ptr->local_size;
+    rank = comm_ptr->rank;
+
+    MPIU_THREADPRIV_GET;
+    if (rank == root) {
+        MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+        nbytes = recvcnt * recvtype_size;
+    } else {
+        MPID_Datatype_get_size_macro(sendtype, sendtype_size);
+        nbytes = sendcnt * sendtype_size;
+    }
+    
+    /* check if safe to use partial subscription mode */
+    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    
+        shmem_comm = comm_ptr->ch.shmem_comm;
+        MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+        local_size = shmem_commptr->local_size;
+        i = 0;
+        if (mv2_gather_indexed_table_ppn_conf[0] == -1) {
+            // Indicating user defined tuning
+            conf_index = 0;
+            goto conf_check_end;
+        }
+        do {
+            if (local_size == mv2_gather_indexed_table_ppn_conf[i]) {
+                conf_index = i;
+                partial_sub_ok = 1;
+                break;
+            }
+            i++;
+        } while(i < mv2_gather_indexed_num_ppn_conf);
+    }
+
+  conf_check_end:
+    
+    if (partial_sub_ok != 1) {
+        conf_index = 0;
+    }
+    
+    /* Search for the corresponding system size inside the tuning table */
+    /*
+     * Comm sizes progress in powers of 2. Therefore comm_size can just be indexed instead
+     */
+    table_min_comm_size = mv2_gather_indexed_thresholds_table[conf_index][0].numproc;
+    table_max_comm_size =
+	mv2_gather_indexed_thresholds_table[conf_index][mv2_size_gather_indexed_tuning_table[conf_index] - 1].numproc;
+    
+    if (comm_size < table_min_comm_size) {
+	/* Comm size smaller than smallest configuration in table: use smallest available */
+	comm_size_index = 0;
+    }
+    else if (comm_size > table_max_comm_size) {
+	/* Comm size larger than largest configuration in table: use largest available */
+	comm_size_index = mv2_size_gather_indexed_tuning_table[conf_index] - 1;
+    }
+    else {
+	/* Comm size in between smallest and largest configuration: find closest match */
+	if (comm_ptr->ch.is_pof2) {
+	    comm_size_index = log2( comm_size / table_min_comm_size );
+	}
+	else {
+	    lp2ltn = pow(2, (int)log2(comm_size));
+	    comm_size_index = log2( lp2ltn / table_min_comm_size );
+	}
+    }
+
+    last_inter = mv2_gather_indexed_thresholds_table[conf_index][comm_size_index].size_inter_table - 1;
+    table_min_inter_size = mv2_gather_indexed_thresholds_table[conf_index][comm_size_index].inter_leader[0].msg_sz;
+    table_max_inter_size = mv2_gather_indexed_thresholds_table[conf_index][comm_size_index].inter_leader[last_inter].msg_sz;
+    last_intra = mv2_gather_indexed_thresholds_table[conf_index][comm_size_index].size_intra_table - 1;
+    table_min_intra_size = mv2_gather_indexed_thresholds_table[conf_index][comm_size_index].intra_node[0].msg_sz;
+    table_max_intra_size = mv2_gather_indexed_thresholds_table[conf_index][comm_size_index].intra_node[last_intra].msg_sz;
+    
+    if (nbytes < table_min_inter_size) {
+	/* Msg size smaller than smallest configuration in table: use smallest available */
+	inter_node_algo_index = 0;
+    }
+    else if (nbytes > table_max_inter_size) {
+	/* Msg size larger than largest configuration in table: use largest available */
+	inter_node_algo_index = last_inter;
+    }
+    else {
+	/* Msg size in between smallest and largest configuration: find closest match */
+	if (pow(2, (int)log2(nbytes)) == nbytes) {
+	    inter_node_algo_index = log2( nbytes / table_min_inter_size );
+	}
+	else {
+	    lp2ltn = pow(2, (int)log2(nbytes));
+	    inter_node_algo_index = log2( lp2ltn / table_min_inter_size );
+	}
+    }
+    
+    if (nbytes < table_min_intra_size) {
+	/* Msg size smaller than smallest configuration in table: use smallest available */
+	intra_node_algo_index = 0;
+    }
+    else if (nbytes > table_max_intra_size) {
+	/* Msg size larger than largest configuration in table: use largest available */
+	intra_node_algo_index = last_intra;
+    }
+    else {
+	/* Msg size in between smallest and largest configuration: find closest match */
+	if (pow(2, (int)log2(nbytes)) == nbytes) {
+	    intra_node_algo_index = log2(nbytes / table_min_intra_size );
+	}
+	else {
+	    lp2ltn = pow(2, (int)log2(nbytes));
+	    intra_node_algo_index = log2(lp2ltn / table_min_intra_size );
+	}
+    }
+    
+#ifdef _ENABLE_CUDA_
+   MPI_Aint sendtype_extent;
+   MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
+   int recvtype_extent = 0;
+   MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
+   int send_mem_type = 0;
+   int recv_mem_type = 0;
+   if (rdma_enable_cuda) {
+       send_mem_type = is_device_buffer(sendbuf);
+       recv_mem_type = is_device_buffer(recvbuf);
+   }
+   if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
+       rdma_cuda_use_naive && (nbytes <= rdma_cuda_gather_naive_limit/comm_size)) {
+       if (sendbuf != MPI_IN_PLACE) {
+            if (rank == root) {
+                mpi_errno = cuda_stage_alloc (NULL, 0,
+                          &recvbuf, recvcnt*recvtype_extent*comm_size, 
+                          0, recv_mem_type, 
+                          0);
+            } else {
+                mpi_errno = cuda_stage_alloc ((void **)&sendbuf, sendcnt*sendtype_extent,
+                          NULL, 0, 
+                          send_mem_type, 0, 
+                          0);
+            }
+       } else {
+            mpi_errno = cuda_stage_alloc ((void **)&sendbuf, recvcnt*recvtype_extent,
+                      &recvbuf, recvcnt*recvtype_extent*comm_size, 
+                      0, recv_mem_type, 
+                      rank*recvcnt*recvtype_extent);
+       }
+       if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+       }
+   }
+
+
+    /* Use Direct algorithm in cuda configuration */
+    if (rdma_enable_cuda && (((nbytes > rdma_cuda_gather_naive_limit/comm_size) &&
+        rdma_cuda_use_naive) || !rdma_cuda_use_naive)) {
+        mpi_errno = MPIR_Gather_MV2_Direct(sendbuf, sendcnt,
+                                           sendtype, recvbuf, recvcnt, recvtype,
+                                           root, comm_ptr, errflag);
+    } else
+#endif /*_ENABLE_CUDA_*/
+
+    if (comm_ptr->ch.is_global_block == 1 && mv2_use_direct_gather == 1 &&
+            mv2_use_two_level_gather == 1 && comm_ptr->ch.shmem_coll_ok == 1) {
+        /* Set intra-node function pt for gather_two_level */
+        MV2_Gather_intra_node_function = mv2_gather_indexed_thresholds_table[conf_index][comm_size_index].
+	    intra_node[intra_node_algo_index].MV2_pt_Gather_function;
+        /* Set inter-leader pt */
+        MV2_Gather_inter_leader_function = mv2_gather_indexed_thresholds_table[conf_index][comm_size_index].
+	    inter_leader[inter_node_algo_index].MV2_pt_Gather_function;
+        /* We call Gather function */
+        mpi_errno =
+            MV2_Gather_inter_leader_function(sendbuf, sendcnt, sendtype, recvbuf, recvcnt,
+                                             recvtype, root, comm_ptr, errflag);
+
+    } else {
+        mpi_errno = MPIR_Gather_intra(sendbuf, sendcnt, sendtype,
+                                      recvbuf, recvcnt, recvtype,
+                                      root, comm_ptr, errflag);
+    }
+
+#ifdef _ENABLE_CUDA_ 
+    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
+        rdma_cuda_use_naive && (nbytes <= rdma_cuda_gather_naive_limit/comm_size)){
+        if (rank == root) {
+            cuda_stage_free (NULL, 
+                        &recvbuf, recvcnt*recvtype_extent*comm_size,
+                        0, recv_mem_type);
+        } else {
+            cuda_stage_free ((void **)&sendbuf, 
+                        NULL, 0,
+                        send_mem_type, 0);
+        }
+    }
+#endif                          /*#ifdef _ENABLE_CUDA_*/     
+
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
+
+  fn_exit:
+    return mpi_errno;
+  fn_fail:
+    goto fn_exit;
+}
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Gather_MV2
@@ -1732,7 +1971,6 @@ int MPIR_Gather_MV2(const void *sendbuf,
                     int root, MPID_Comm * comm_ptr, int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     int range = 0;
     int range_threshold = 0;
     int range_intra_threshold = 0;
@@ -1740,23 +1978,26 @@ int MPIR_Gather_MV2(const void *sendbuf,
     int comm_size = 0;
     int recvtype_size, sendtype_size;
     int rank = -1;
-#endif                          /* #if defined(_OSU_MVAPICH_) */
     MPIU_THREADPRIV_DECL;
 
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
-#endif                          /* #if defined(_OSU_MVAPICH_) */
 
     MPIU_THREADPRIV_GET;
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if (rank == root) {
         MPID_Datatype_get_size_macro(recvtype, recvtype_size);
         nbytes = recvcnt * recvtype_size;
     } else {
         MPID_Datatype_get_size_macro(sendtype, sendtype_size);
         nbytes = sendcnt * sendtype_size;
+    }
+    
+    if (mv2_use_indexed_tuning || mv2_use_indexed_gather_tuning) {
+	mpi_errno =  MPIR_Gather_index_tuned_intra_MV2(sendbuf, sendcnt,
+                                           sendtype, recvbuf, recvcnt, recvtype,
+                                           root, comm_ptr, errflag);
+	goto fn_exit;
     }
     /* Search for the corresponding system size inside the tuning table */
     while ((range < (mv2_size_gather_tuning_table - 1)) &&
@@ -1856,11 +2097,9 @@ int MPIR_Gather_MV2(const void *sendbuf,
                                              recvtype, root, comm_ptr, errflag);
 
     } else {
-#endif                          /* #if defined(_OSU_MVAPICH_) */
         mpi_errno = MPIR_Gather_intra(sendbuf, sendcnt, sendtype,
                                       recvbuf, recvcnt, recvtype,
                                       root, comm_ptr, errflag);
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     }
 
 #ifdef _ENABLE_CUDA_ 
@@ -1878,7 +2117,6 @@ int MPIR_Gather_MV2(const void *sendbuf,
     }
 #endif                          /*#ifdef _ENABLE_CUDA_*/     
 
-#endif                          /* #if defined(_OSU_MVAPICH_) */
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }

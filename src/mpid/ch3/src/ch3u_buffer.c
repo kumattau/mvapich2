@@ -4,6 +4,18 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #include "mpidimpl.h"
 
 /* FIXME: Explain the contents of this file */
@@ -234,7 +246,6 @@ void MPIDI_CH3U_Buffer_copy_cuda(
 {
     int sdt_contig;
     int rdt_contig;
-    cudaError_t cuda_error = cudaSuccess;
     MPI_Aint sdt_true_lb, rdt_true_lb;
     MPIDI_msg_sz_t sdata_sz;
     MPIDI_msg_sz_t rdata_sz;
@@ -270,13 +281,8 @@ void MPIDI_CH3U_Buffer_copy_cuda(
     if (sdt_contig && rdt_contig)
     {
         MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
-        cuda_error = cudaMemcpy((char *)rbuf + rdt_true_lb, 
+        MPIU_Memcpy_CUDA((char *)rbuf + rdt_true_lb, 
                 (const char *)sbuf + sdt_true_lb, sdata_sz, cudaMemcpyDefault);
-        if (cuda_error != cudaSuccess) {
-            *rmpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, 
-                                    __LINE__, MPI_ERR_OTHER, "**cudamemcpy", 0);
-            goto fn_exit;
-        }
         MPIDI_FUNC_EXIT(MPID_STATE_MEMCPY);
         *rsz = sdata_sz;
     }
@@ -396,7 +402,7 @@ int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, int count,
 			       sreq->dev.datatype, &sreq->status.MPI_ERROR,
 			       buf, count, datatype, &data_sz, 
 			       &rreq->status.MPI_ERROR);
-	rreq->status.count = (int)data_sz;
+	MPIR_STATUS_SET_COUNT(rreq->status, data_sz);
 	MPID_REQUEST_SET_COMPLETED(sreq);
 	MPID_Request_release(sreq);
     }

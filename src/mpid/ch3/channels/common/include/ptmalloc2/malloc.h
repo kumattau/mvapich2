@@ -1,6 +1,6 @@
 /* Prototypes and definition for malloc implementation. */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -64,9 +64,9 @@
 # if defined __cplusplus && (__GNUC__ >= 3 || __GNUC_MINOR__ >= 8)
 #  define __THROW	throw ()
 # else
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 #undef __THROW
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 #  define __THROW
 # endif
 # define __MALLOC_P(args)	args __THROW

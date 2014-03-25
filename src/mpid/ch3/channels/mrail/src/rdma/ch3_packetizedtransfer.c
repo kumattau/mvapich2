@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -58,6 +58,11 @@ do {                                                          \
             break; \
         }   \
     case MPIDI_CH3_PKT_ACCUMULATE_RNDV:  \
+        {   \
+            _seqnum = ((MPIDI_CH3_Pkt_accum_rndv_t *) (_pkt))->seqnum;    \
+            break; \
+        }   \
+    case MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV:  \
         {   \
             _seqnum = ((MPIDI_CH3_Pkt_accum_rndv_t *) (_pkt))->seqnum;    \
             break; \

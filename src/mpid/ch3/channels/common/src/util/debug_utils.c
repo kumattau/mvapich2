@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -69,6 +69,9 @@ int DEBUG_MCST_verbose = 0;
 // Verbosity level for SHMEM Collectives
 int DEBUG_SHM_verbose;
 
+// Verbosity level for Channel manager
+int DEBUG_CHM_verbose;
+
 static inline int env2int (char *name)
 {
     char* env_str = getenv( name );
@@ -95,6 +98,7 @@ int initialize_debug_variables() {
     DEBUG_CUDA_verbose = env2int( "MV2_DEBUG_CUDA_VERBOSE" );
     DEBUG_MCST_verbose = env2int( "MV2_DEBUG_MCST_VERBOSE" );
     DEBUG_SHM_verbose = env2int( "MV2_DEBUG_SHM_VERBOSE" );
+    DEBUG_CHM_verbose = env2int( "MV2_DEBUG_CHM_VERBOSE" );
     return 0;
 }
 

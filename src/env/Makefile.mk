@@ -9,7 +9,8 @@ bin_SCRIPTS +=           \
     src/env/mpicc        \
     src/env/parkill
 
-bin_PROGRAMS += src/env/mpichversion
+bin_PROGRAMS += src/env/mpichversion \
+	src/env/mpivars
 
 src_env_mpichversion_SOURCES = src/env/mpichversion.c
 src_env_mpichversion_LDADD = lib/lib@MPILIBNAME@.la
@@ -18,6 +19,13 @@ src_env_mpichversion_LDADD += lib/lib@PMPILIBNAME@.la
 endif BUILD_PROFILING_LIB
 
 src_env_mpichversion_LDFLAGS = $(mpich_libtool_static_flag)
+
+src_env_mpivars_SOURCES = src/env/mpivars.c
+src_env_mpivars_LDADD   = lib/lib@MPILIBNAME@.la
+src_env_mpivars_LDFLAGS = $(mpich_libtool_static_flag)
+if BUILD_PROFILING_LIB
+src_env_mpivars_LDADD += lib/lib@PMPILIBNAME@.la
+endif BUILD_PROFILING_LIB
 
 if BUILD_F77_BINDING
 bin_SCRIPTS += src/env/mpif77

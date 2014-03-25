@@ -102,7 +102,7 @@ int MPIR_Iexscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype dat
     /* adjust for potential negative lower bound in datatype */
     tmp_buf = (void *)((char*)tmp_buf - true_lb);
 
-    mpi_errno = MPID_Sched_copy((sendbuf == MPI_IN_PLACE ? recvbuf : sendbuf), count, datatype,
+    mpi_errno = MPID_Sched_copy((sendbuf == MPI_IN_PLACE ? (const void *)recvbuf : sendbuf), count, datatype,
                                partial_scan, count, datatype, s);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -229,7 +229,9 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 /*@
-MPI_Iexscan - XXX description here
+MPI_Iexscan - Computes the exclusive scan (partial reductions) of data on a
+              collection of processes in a nonblocking way
+
 
 Input Parameters:
 + sendbuf - starting address of the send buffer (choice)
@@ -248,7 +250,8 @@ Output Parameters:
 
 .N Errors
 @*/
-int MPI_Iexscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm, MPI_Request *request)
+int MPI_Iexscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+                MPI_Op op, MPI_Comm comm, MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;

@@ -5,6 +5,18 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -97,7 +109,7 @@ int PREPEND_PREFIX(Segment_init)(const DLOOP_Buffer buf,
     }
     else if (count == 1) {
 	/* don't use the builtin */
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 	sblp->loop_params.count = 1;
 #endif
 	DLOOP_Handle_get_loopptr_macro(handle, dlp, flag);
@@ -596,7 +608,7 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 		return;
 	    }
 	    else /* myblocks >= cur_elmp->curblock */ {
-		int count_index = 0;
+		MPI_Aint count_index = 0;
 
 		/* this assumes we're either *just* processing the last parts
 		 * of the current block, or we're processing as many blocks as
@@ -739,7 +751,7 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 	}
 	else /* push the stackelm */ {
 	    DLOOP_Dataloop_stackelm *next_elmp;
-	    int count_index, block_index;
+	    MPI_Aint count_index, block_index;
 
 	    count_index = cur_elmp->orig_count - cur_elmp->curcount;
 	    block_index = cur_elmp->orig_block - cur_elmp->curblock;

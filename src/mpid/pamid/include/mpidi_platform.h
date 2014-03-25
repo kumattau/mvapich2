@@ -42,6 +42,7 @@
 #undef  OUT_OF_ORDER_HANDLING
 #undef  DYNAMIC_TASKING
 #undef  RDMA_FAILOVER
+#undef  QUEUE_BINARY_SEARCH_SUPPORT
 
 #define ASYNC_PROGRESS_MODE_DEFAULT 0
 
@@ -110,6 +111,15 @@ static const char _ibm_release_version_[] = "V1R2M0";
 #endif
 
 #ifdef __PE__
+
+/*
+ * This 'maximum contexts' define needs to be changed when mpich on PE
+ * will support multiple contexts. Currently the PE PAMI allows multiple
+ * contexts, but the PE mpich code is not set up to use them.
+ */
+#undef MPIDI_MAX_CONTEXTS
+#define MPIDI_MAX_CONTEXTS 1
+
 #undef USE_PAMI_CONSISTENCY
 #define USE_PAMI_CONSISTENCY PAMI_HINT_DISABLE
 #undef  MPIDI_SHORT_LIMIT
@@ -128,6 +138,7 @@ static const char _ibm_release_version_[] = "V1R2M0";
 #define MPIDI_NO_ASSERT       1
 #define TOKEN_FLOW_CONTROL    1
 #define DYNAMIC_TASKING       1
+#define QUEUE_BINARY_SEARCH_SUPPORT 1
 
 /* Allow MPICH to detect local tasks */
 #define MPID_USE_NODE_IDS 1

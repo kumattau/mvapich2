@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -154,6 +154,7 @@ GetSeqNumVbuf (vbuf * buf)
       case MPIDI_CH3_PKT_PT_RMA_DONE:
       case MPIDI_CH3_PKT_PUT_RNDV:
       case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
+      case MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV:
       case MPIDI_CH3_PKT_GET_RNDV:
       case MPIDI_CH3_PKT_CAS:
       case MPIDI_CH3_PKT_CAS_RESP:

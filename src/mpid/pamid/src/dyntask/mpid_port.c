@@ -16,6 +16,8 @@
 #define MPI_MAX_TASKID_NAME 8
 #define MPIDI_TASKID_TAG_KEY "taskid"
 
+extern mpidi_dynamic_tasking;
+
 static int MPIDI_Open_port(MPID_Info *, char *);
 static int MPIDI_Close_port(const char *);
 
@@ -88,10 +90,21 @@ int MPID_Close_port(const char *port_name)
     return mpi_errno;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPID_Comm_accept
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_Comm_accept(const char * port_name, MPID_Info * info, int root,
 		     MPID_Comm * comm, MPID_Comm ** newcomm_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
+
+    if(mpidi_dynamic_tasking == 0) {
+	fprintf(stderr, "Dynamic tasking API is called on non-dynamic jobs\n");
+        MPIU_ERR_SETANDSTMT(mpi_errno, MPI_ERR_SPAWN,
+                            return mpi_errno, "**spawn");
+
+    }
 
     if (portFns.CommAccept) {
 	mpi_errno = portFns.CommAccept( port_name, info, root, comm,
@@ -105,10 +118,21 @@ int MPID_Comm_accept(const char * port_name, MPID_Info * info, int root,
     return mpi_errno;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPID_Comm_connect
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_Comm_connect(const char * port_name, MPID_Info * info, int root,
 		      MPID_Comm * comm, MPID_Comm ** newcomm_ptr)
 {
     int mpi_errno=MPI_SUCCESS;
+
+    if(mpidi_dynamic_tasking == 0) {
+	fprintf(stderr, "Dynamic tasking API is called on non-dynamic jobs\n");
+        MPIU_ERR_SETANDSTMT(mpi_errno, MPI_ERR_SPAWN,
+                            return mpi_errno, "**spawn");
+
+    }
 
     if (portFns.CommConnect) {
 	mpi_errno = portFns.CommConnect( port_name, info, root, comm,

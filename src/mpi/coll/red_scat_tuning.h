@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -14,13 +14,17 @@
 #define _RED_SCAT_TUNING_
 
 #include "coll_shmem.h"
-#if defined(_OSU_MVAPICH_)
-#ifndef DAPL_DEFAULT_PROVIDER
-#include "ibv_param.h"
-#else
-#include "udapl_param.h"
+#ifdef _OSU_MVAPICH_
+#   include "ib_param.h"
 #endif
-#endif                          /* #if defined(_OSU_MVAPICH_) */
+
+#ifdef CHANNEL_MRAIL_GEN2
+#   include "ibv_param.h"
+#endif
+
+#ifdef CHANNEL_MRAIL_UDAPL
+#   include "udapl_param.h"
+#endif
 
 #define NMATCH (3+1)
 

@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,16 +21,14 @@
 #include "mpl_utlist.h"
 #include "mpidi_ch3_impl.h"
 
-#if defined(_OSU_MVAPICH_) && !defined(_DAPL_DEFAULT_PROVIDER_)
+#if defined(CHANNEL_MRAIL) && !defined(_DAPL_DEFAULT_PROVIDER_)
 #define MPIDI_CH3I_SHM_win_mutex_lock(win, rank) pthread_mutex_lock(&win->shm_win_mutex[rank]);
 #define MPIDI_CH3I_SHM_win_mutex_unlock(win, rank) pthread_mutex_unlock(&win->shm_win_mutex[rank]);
 #endif
 
-#ifdef USE_MPIU_INSTR
-MPIU_INSTR_DURATION_EXTERN_DECL(wincreate_allgather);
-MPIU_INSTR_DURATION_EXTERN_DECL(winfree_rs);
-MPIU_INSTR_DURATION_EXTERN_DECL(winfree_complete);
-#endif
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_wincreate_allgather);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_winfree_rs);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_winfree_complete);
 
 typedef enum MPIDI_RMA_Op_type {
     MPIDI_RMA_PUT               = 23,
@@ -64,7 +62,7 @@ enum MPID_Lock_state {
 typedef struct MPIDI_RMA_dtype_info { /* for derived datatypes */
     int           is_contig; 
     int           max_contig_blocks;
-    int           size;     
+    MPI_Aint      size;
     MPI_Aint      extent;   
     int           dataloop_size; /* not needed because this info is sent in 
 				    packet header. remove it after lock/unlock 
@@ -127,27 +125,9 @@ typedef struct MPIDI_Win_lock_queue {
 						 lock-put-unlock optimization */
 } MPIDI_Win_lock_queue;
 
-#if defined(_OSU_MVAPICH_) && !defined(_DAPL_DEFAULT_PROVIDER_)
-typedef struct MPIDI_Win_pending_lock {
-   MPID_Win *win_ptr;
-   struct MPIDI_Win_pending_lock *next;
-} MPIDI_Win_pending_lock_t;
-
-extern MPIDI_Win_pending_lock_t *pending_lock_winlist;
-#endif
-
 /* Routine use to tune RMA optimizations */
 void MPIDI_CH3_RMA_SetAccImmed( int flag );
-#if defined(_OSU_MVAPICH_)
-typedef enum {
-   /*local process gets the shared memory lock*/
-   ACQUIRE_SHARED_LOCK,
-   /*Before granting lock to others, local process 
-    *  acquire this shared memory lock */
-   BLOCK_OTHERS,
-   RELEASE_LOCK,
-   REMOVE_BLOCK
-} shared_memory_lock_flag_t;
+#if defined(CHANNEL_MRAIL)
 
 void *MPIDI_CH3I_Alloc_mem (size_t size, MPID_Info *info);
 void MPIDI_CH3I_Free_mem (void *ptr);
@@ -155,31 +135,16 @@ void MPIDI_CH3I_RDMA_win_create(void *base, MPI_Aint size, int comm_size,
                            int rank, MPID_Win ** win_ptr, MPID_Comm * comm_ptr);
 void MPIDI_CH3I_RDMA_win_free(MPID_Win ** win_ptr);
 void MPIDI_CH3I_RDMA_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
-void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank);
+void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank);
+int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int origin_count,
+        MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
+        int target_count, MPI_Datatype target_datatype, void *compare_addr,
+        void *result_addr, MPID_Win *win_ptr);
 int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank);
 int MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
 int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr);
 int MPIDI_CH3I_RDMA_finish_rma_target(MPID_Win *win_ptr, int target_rank);
-#if !defined(_DAPL_DEFAULT_PROVIDER_)
-void MPIDI_CH3I_SHM_win_create(void *base, MPI_Aint size, MPID_Win ** win_ptr);
-void MPIDI_CH3I_SHM_win_free(MPID_Win ** win_ptr);
-int MPIDI_CH3I_SHM_try_rma(MPID_Win * win_ptr, int dest);
-int MPIDI_CH3I_SHM_win_lock (int dest_rank, int lock_type_requested, 
-                MPID_Win *win_ptr, int blocking, 
-                shared_memory_lock_flag_t type);
-void MPIDI_CH3I_SHM_win_unlock (int dest_rank, MPID_Win *win_ptr,
-                shared_memory_lock_flag_t type);
-void MPIDI_CH3I_SHM_win_lock_enqueue (MPID_Win *win_ptr);
-int MPIDI_CH3I_Process_locks();
-void MPIDI_CH3I_INTRANODE_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
-void MPIDI_CH3I_INTRANODE_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
-#if defined(_SMP_LIMIC_)
-void MPIDI_CH3I_LIMIC_win_create(void *base, MPI_Aint size, MPID_Win ** win_ptr);
-void MPIDI_CH3I_LIMIC_win_free(MPID_Win** win_ptr);
-int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr, int dest);
-#endif /* _SMP_LIMIC_ */
-#endif /* !_DAPL_DEFAULT_PROVIDER_ */
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
 /*** RMA OPS LIST HELPER ROUTINES ***/
 
@@ -384,6 +349,237 @@ static inline MPIDI_RMA_Ops_list_t *MPIDI_CH3I_RMA_Get_ops_list(MPID_Win *win_pt
  */
 /* ------------------------------------------------------------------------ */
 
+#define ASSIGN_COPY(src, dest, count, type)     \
+    {                                           \
+        type *src_ = (type *) src;              \
+        type *dest_ = (type *) dest;            \
+        int i;                                  \
+        for (i = 0; i < count; i++)             \
+            dest_[i] = src_[i];                 \
+        goto fn_exit;                           \
+    }
+
+static inline int shm_copy(const void *src, int scount, MPI_Datatype stype,
+                           void *dest, int dcount, MPI_Datatype dtype)
+{
+    int mpi_errno = MPI_SUCCESS;
+
+    /* We use a threshold of operations under which a for loop of assignments is
+     * used.  Even though this happens at smaller block lengths, making it
+     * potentially inefficient, it can take advantage of some vectorization
+     * available on most modern processors. */
+#define SHM_OPS_THRESHOLD  (16)
+
+    if (MPIR_DATATYPE_IS_PREDEFINED(stype) && MPIR_DATATYPE_IS_PREDEFINED(dtype) &&
+        scount <= SHM_OPS_THRESHOLD) {
+
+        /* FIXME: We currently only optimize a few predefined datatypes, which
+         * have a direct C datatype mapping. */
+
+        /* The below list of datatypes is based on those specified in the MPI-3
+         * standard on page 665. */
+        switch (stype) {
+            case MPI_CHAR:
+                ASSIGN_COPY(src, dest, scount, char);
+
+            case MPI_SHORT:
+                ASSIGN_COPY(src, dest, scount, signed short int);
+
+            case MPI_INT:
+                ASSIGN_COPY(src, dest, scount, signed int);
+
+            case MPI_LONG:
+                ASSIGN_COPY(src, dest, scount, signed long int);
+
+            case MPI_LONG_LONG_INT:  /* covers MPI_LONG_LONG too */
+                ASSIGN_COPY(src, dest, scount, signed long long int);
+
+            case MPI_SIGNED_CHAR:
+                ASSIGN_COPY(src, dest, scount, signed char);
+
+            case MPI_UNSIGNED_CHAR:
+                ASSIGN_COPY(src, dest, scount, unsigned char);
+
+            case MPI_UNSIGNED_SHORT:
+                ASSIGN_COPY(src, dest, scount, unsigned short int);
+
+            case MPI_UNSIGNED:
+                ASSIGN_COPY(src, dest, scount, unsigned int);
+
+            case MPI_UNSIGNED_LONG:
+                ASSIGN_COPY(src, dest, scount, unsigned long int);
+
+            case MPI_UNSIGNED_LONG_LONG:
+                ASSIGN_COPY(src, dest, scount, unsigned long long int);
+
+            case MPI_FLOAT:
+                ASSIGN_COPY(src, dest, scount, float);
+
+            case MPI_DOUBLE:
+                ASSIGN_COPY(src, dest, scount, double);
+
+            case MPI_LONG_DOUBLE:
+                ASSIGN_COPY(src, dest, scount, long double);
+
+#if 0
+            /* FIXME: we need a configure check to define HAVE_WCHAR_T before
+             * this can be enabled */
+            case MPI_WCHAR:
+                ASSIGN_COPY(src, dest, scount, wchar_t);
+#endif
+
+#if 0
+            /* FIXME: we need a configure check to define HAVE_C_BOOL before
+             * this can be enabled */
+            case MPI_C_BOOL:
+                ASSIGN_COPY(src, dest, scount, _Bool);
+#endif
+
+#if HAVE_INT8_T
+            case MPI_INT8_T:
+                ASSIGN_COPY(src, dest, scount, int8_t);
+#endif /* HAVE_INT8_T */
+
+#if HAVE_INT16_T
+            case MPI_INT16_T:
+                ASSIGN_COPY(src, dest, scount, int16_t);
+#endif /* HAVE_INT16_T */
+
+#if HAVE_INT32_T
+            case MPI_INT32_T:
+                ASSIGN_COPY(src, dest, scount, int32_t);
+#endif /* HAVE_INT32_T */
+
+#if HAVE_INT64_T
+            case MPI_INT64_T:
+                ASSIGN_COPY(src, dest, scount, int64_t);
+#endif /* HAVE_INT64_T */
+
+#if HAVE_UINT8_T
+            case MPI_UINT8_T:
+                ASSIGN_COPY(src, dest, scount, uint8_t);
+#endif /* HAVE_UINT8_T */
+
+#if HAVE_UINT16_T
+            case MPI_UINT16_T:
+                ASSIGN_COPY(src, dest, scount, uint16_t);
+#endif /* HAVE_UINT16_T */
+
+#if HAVE_UINT32_T
+            case MPI_UINT32_T:
+                ASSIGN_COPY(src, dest, scount, uint32_t);
+#endif /* HAVE_UINT32_T */
+
+#if HAVE_UINT64_T
+            case MPI_UINT64_T:
+                ASSIGN_COPY(src, dest, scount, uint64_t);
+#endif /* HAVE_UINT64_T */
+
+            case MPI_AINT:
+                ASSIGN_COPY(src, dest, scount, MPI_Aint);
+
+            case MPI_COUNT:
+                ASSIGN_COPY(src, dest, scount, MPI_Count);
+
+            case MPI_OFFSET:
+                ASSIGN_COPY(src, dest, scount, MPI_Offset);
+
+#if 0
+            /* FIXME: we need a configure check to define HAVE_C_COMPLEX before
+             * this can be enabled */
+            case MPI_C_COMPLEX:  /* covers MPI_C_FLOAT_COMPLEX as well */
+                ASSIGN_COPY(src, dest, scount, float _Complex);
+#endif
+
+#if 0
+            /* FIXME: we need a configure check to define HAVE_C_DOUPLE_COMPLEX
+             * before this can be enabled */
+            case MPI_C_DOUBLE_COMPLEX:
+                ASSIGN_COPY(src, dest, scount, double _Complex);
+#endif
+
+#if 0
+            /* FIXME: we need a configure check to define
+             * HAVE_C_LONG_DOUPLE_COMPLEX before this can be enabled */
+            case MPI_C_LONG_DOUBLE_COMPLEX:
+                ASSIGN_COPY(src, dest, scount, long double _Complex);
+#endif
+
+#if 0
+            /* Types that don't have a direct equivalent */
+            case MPI_BYTE:
+            case MPI_PACKED:
+#endif
+
+#if 0 /* Fortran types */
+            case MPI_INTEGER:
+            case MPI_REAL:
+            case MPI_DOUBLE_PRECISION:
+            case MPI_COMPLEX:
+            case MPI_LOGICAL:
+            case MPI_CHARACTER:
+#endif
+
+#if 0 /* C++ types */
+            case MPI_CXX_BOOL:
+            case MPI_CXX_FLOAT_COMPLEX:
+            case MPI_CXX_DOUBLE_COMPLEX:
+            case MPI_CXX_LONG_DOUBLE_COMPLEX:
+#endif
+
+#if 0 /* Optional Fortran types */
+            case MPI_DOUBLE_COMPLEX:
+            case MPI_INTEGER1:
+            case MPI_INTEGER2:
+            case MPI_INTEGER4:
+            case MPI_INTEGER8:
+            case MPI_INTEGER16:
+            case MPI_REAL2:
+            case MPI_REAL4:
+            case MPI_REAL8:
+            case MPI_REAL16:
+            case MPI_COMPLEX4:
+            case MPI_COMPLEX8:
+            case MPI_COMPLEX16:
+            case MPI_COMPLEX32:
+#endif
+
+#if 0 /* C datatypes for reduction functions */
+            case MPI_FLOAT_INT:
+            case MPI_DOUBLE_INT:
+            case MPI_LONG_INT:
+            case MPI_2INT:
+            case MPI_LONG_DOUBLE_INT:
+#endif
+
+#if 0 /* Fortran datatypes for reduction functions */
+            case MPI_2REAL:
+            case MPI_2DOUBLE_PRECISION:
+            case MPI_2INTEGER:
+#endif
+
+#if 0 /* Random types not present in the standard */
+            case MPI_2COMPLEX:
+            case MPI_2DOUBLE_COMPLEX:
+#endif
+
+            default:
+                /* Just to make sure the switch statement is not empty */
+                ;
+        }
+    }
+
+    mpi_errno = MPIR_Localcopy(src, scount, stype, dest, dcount, dtype);
+    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+
+ fn_exit:
+    return mpi_errno;
+    /* --BEGIN ERROR HANDLING-- */
+ fn_fail:
+    goto fn_exit;
+    /* --END ERROR HANDLING-- */
+}
+
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Shm_put_op
 #undef FCNAME
@@ -396,20 +592,11 @@ static inline int MPIDI_CH3I_Shm_put_op(const void *origin_addr, int origin_coun
     int mpi_errno = MPI_SUCCESS;
     void *base = NULL;
     int disp_unit;
-    MPIDI_VC_t *orig_vc, *target_vc;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHM_PUT_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHM_PUT_OP);
 
-    /* FIXME: Here we decide whether to perform SHM operations by checking if origin and target are on
-       the same node. However, in ch3:sock, even if origin and target are on the same node, they do
-       not within the same SHM region. Here we filter out ch3:sock by checking shm_allocated flag first,
-       which is only set to TRUE when SHM region is allocated in nemesis.
-       In future we need to figure out a way to check if origin and target are in the same "SHM comm".
-    */
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, win_ptr->comm_ptr->rank, &orig_vc);
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
-    if (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id) {
+    if (win_ptr->shm_allocated == TRUE) {
         base = win_ptr->shm_base_addrs[target_rank];
         disp_unit = win_ptr->disp_units[target_rank];
     }
@@ -418,9 +605,8 @@ static inline int MPIDI_CH3I_Shm_put_op(const void *origin_addr, int origin_coun
         disp_unit = win_ptr->disp_unit;
     }
 
-    mpi_errno = MPIR_Localcopy(origin_addr, origin_count, origin_datatype,
-                               (char *) base + disp_unit * target_disp,
-                               target_count, target_datatype);
+    mpi_errno = shm_copy(origin_addr, origin_count, origin_datatype,
+                         (char *) base + disp_unit * target_disp, target_count, target_datatype);
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
  fn_exit:
@@ -444,23 +630,15 @@ static inline int MPIDI_CH3I_Shm_acc_op(const void *origin_addr, int origin_coun
 {
     void *base = NULL;
     int disp_unit, shm_op = 0;
-    int origin_predefined, target_predefined;
     MPI_User_function *uop = NULL;
     MPID_Datatype *dtp;
-    MPIDI_VC_t *orig_vc, *target_vc;
     int mpi_errno = MPI_SUCCESS;
     MPIU_CHKLMEM_DECL(2);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHM_ACC_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHM_ACC_OP);
 
-    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(origin_datatype, origin_predefined);
-    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, target_predefined);
-
-    /* FIXME: refer to FIXME in MPIDI_CH3I_Shm_put_op */
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, win_ptr->comm_ptr->rank, &orig_vc);
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
-    if (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id) {
+    if (win_ptr->shm_allocated == TRUE) {
         shm_op = 1;
         base = win_ptr->shm_base_addrs[target_rank];
         disp_unit = win_ptr->disp_units[target_rank];
@@ -469,36 +647,14 @@ static inline int MPIDI_CH3I_Shm_acc_op(const void *origin_addr, int origin_coun
         base = win_ptr->base;
         disp_unit = win_ptr->disp_unit;
     }
-#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
-    int l_rank = -1;
-    if (!win_ptr->shm_fallback) {
-        l_rank = win_ptr->shm_g2l_rank[win_ptr->comm_ptr->rank]; 
-        mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, l_rank);
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-               "**fail %s", "mutex lock error");
-        }
-    }
-#endif
 
     if (op == MPI_REPLACE)
     {
         if (shm_op) MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
-        mpi_errno = MPIR_Localcopy(origin_addr, origin_count,
-                                   origin_datatype,
-                                   (char *) base + disp_unit * target_disp,
-                                   target_count, target_datatype);
+        mpi_errno = shm_copy(origin_addr, origin_count, origin_datatype,
+                             (char *) base + disp_unit * target_disp, target_count, target_datatype);
         if (shm_op) MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
-            if (!win_ptr->shm_fallback) {
-                mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_rank);
-                if (mpi_errno != MPI_SUCCESS) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                            "**fail", "**fail %s", "mutex unlock error");
-                }
-            }
-#endif
         goto fn_exit;
     }
 
@@ -509,7 +665,7 @@ static inline int MPIDI_CH3I_Shm_acc_op(const void *origin_addr, int origin_coun
     /* get the function by indexing into the op table */
     uop = MPIR_OP_HDL_TO_FN(op);
 
-    if (origin_predefined && target_predefined)
+    if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) && MPIR_DATATYPE_IS_PREDEFINED(target_datatype))
     {
         /* Cast away const'ness for origin_address in order to
          * avoid changing the prototype for MPI_User_function */
@@ -552,7 +708,7 @@ static inline int MPIDI_CH3I_Shm_acc_op(const void *origin_addr, int origin_coun
             if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
         }
 
-        if (target_predefined) {
+        if (MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
             /* target predefined type, origin derived datatype */
 
             if (shm_op) MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
@@ -578,14 +734,15 @@ static inline int MPIDI_CH3I_Shm_acc_op(const void *origin_addr, int origin_coun
 
             MPID_Segment_pack_vector(segp, first, &last, dloop_vec, &vec_len);
 
-            source_buf = (tmp_buf != NULL) ? tmp_buf : origin_addr;
+            source_buf = (tmp_buf != NULL) ? (const void *)tmp_buf : origin_addr;
             target_buf = (char *) base + disp_unit * target_disp;
             type = dtp->eltype;
             type_size = MPID_Datatype_get_basic_size(type);
             if (shm_op) MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
             for (i=0; i<vec_len; i++)
             {
-                count = (dloop_vec[i].DLOOP_VECTOR_LEN)/type_size;
+		MPIU_Assign_trunc(count, (dloop_vec[i].DLOOP_VECTOR_LEN)/type_size, int);
+
                 (*uop)((char *)source_buf + MPIU_PtrToAint(dloop_vec[i].DLOOP_VECTOR_BUF),
                        (char *)target_buf + MPIU_PtrToAint(dloop_vec[i].DLOOP_VECTOR_BUF),
                        &count, &type);
@@ -595,16 +752,6 @@ static inline int MPIDI_CH3I_Shm_acc_op(const void *origin_addr, int origin_coun
             MPID_Segment_free(segp);
         }
     }
-
-#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
-    if (!win_ptr->shm_fallback) {
-        mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_rank);
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "mutex unlock error");
-        }
-    }
-#endif
 
  fn_exit:
     MPIU_CHKLMEM_FREEALL();
@@ -632,24 +779,13 @@ static inline int MPIDI_CH3I_Shm_get_acc_op(const void *origin_addr, int origin_
     void *base = NULL;
     MPI_User_function *uop = NULL;
     MPID_Datatype *dtp;
-    int origin_predefined, target_predefined;
-    MPIDI_VC_t *orig_vc, *target_vc;
     int mpi_errno = MPI_SUCCESS;
     MPIU_CHKLMEM_DECL(2);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHM_GET_ACC_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHM_GET_ACC_OP);
 
-    origin_predefined = TRUE; /* quiet uninitialized warnings (b/c goto) */
-    if (op != MPI_NO_OP) {
-        MPIDI_CH3I_DATATYPE_IS_PREDEFINED(origin_datatype, origin_predefined);
-    }
-    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, target_predefined);
-
-    /* FIXME: refer to FIXME in MPIDI_CH3I_Shm_put_op */
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, win_ptr->comm_ptr->rank, &orig_vc);
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
-    if (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id) {
+    if (win_ptr->shm_allocated == TRUE) {
         base = win_ptr->shm_base_addrs[target_rank];
         disp_unit = win_ptr->disp_units[target_rank];
         MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
@@ -661,9 +797,8 @@ static inline int MPIDI_CH3I_Shm_get_acc_op(const void *origin_addr, int origin_
     }
 
     /* Perform the local get first, then the accumulate */
-    mpi_errno = MPIR_Localcopy((char *) base + disp_unit * target_disp,
-                               target_count, target_datatype,
-                               result_addr, result_count, result_datatype);
+    mpi_errno = shm_copy((char *) base + disp_unit * target_disp, target_count, target_datatype,
+                         result_addr, result_count, result_datatype);
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
     /* NO_OP: Don't perform the accumulate */
@@ -677,9 +812,8 @@ static inline int MPIDI_CH3I_Shm_get_acc_op(const void *origin_addr, int origin_
     }
 
     if (op == MPI_REPLACE) {
-        mpi_errno = MPIR_Localcopy(origin_addr, origin_count, origin_datatype,
-                                   (char *) base + disp_unit * target_disp,
-                                   target_count, target_datatype);
+        mpi_errno = shm_copy(origin_addr, origin_count, origin_datatype,
+                             (char *) base + disp_unit * target_disp, target_count, target_datatype);
 
         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
@@ -698,7 +832,8 @@ static inline int MPIDI_CH3I_Shm_get_acc_op(const void *origin_addr, int origin_
     /* get the function by indexing into the op table */
     uop = MPIR_OP_HDL_TO_FN(op);
 
-    if (origin_predefined && target_predefined) {
+    if ((op == MPI_NO_OP || MPIR_DATATYPE_IS_PREDEFINED(origin_datatype)) &&
+        MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
         /* Cast away const'ness for origin_address in order to
          * avoid changing the prototype for MPI_User_function */
         (*uop)((void *) origin_addr, (char *) base + disp_unit*target_disp,
@@ -736,7 +871,7 @@ static inline int MPIDI_CH3I_Shm_get_acc_op(const void *origin_addr, int origin_
             if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
         }
 
-        if (target_predefined) {
+        if (MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
             /* target predefined type, origin derived datatype */
 
             (*uop)(tmp_buf, (char *) base + disp_unit * target_disp,
@@ -760,13 +895,13 @@ static inline int MPIDI_CH3I_Shm_get_acc_op(const void *origin_addr, int origin_
 
             MPID_Segment_pack_vector(segp, first, &last, dloop_vec, &vec_len);
 
-            source_buf = (tmp_buf != NULL) ? tmp_buf : origin_addr;
+            source_buf = (tmp_buf != NULL) ? (const void *)tmp_buf : origin_addr;
             target_buf = (char *) base + disp_unit * target_disp;
             type = dtp->eltype;
             type_size = MPID_Datatype_get_basic_size(type);
 
             for (i=0; i<vec_len; i++) {
-                count = (dloop_vec[i].DLOOP_VECTOR_LEN)/type_size;
+		MPIU_Assign_trunc(count, (dloop_vec[i].DLOOP_VECTOR_LEN)/type_size, int);
                 (*uop)((char *)source_buf + MPIU_PtrToAint(dloop_vec[i].DLOOP_VECTOR_BUF),
                        (char *)target_buf + MPIU_PtrToAint(dloop_vec[i].DLOOP_VECTOR_BUF),
                        &count, &type);
@@ -805,16 +940,12 @@ static inline int MPIDI_CH3I_Shm_get_op(void *origin_addr, int origin_count, MPI
 {
     void *base = NULL;
     int disp_unit;
-    MPIDI_VC_t *orig_vc, *target_vc;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHM_GET_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHM_GET_OP);
 
-    /* FIXME: refer to FIXME in MPIDI_CH3I_Shm_put_op */
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, win_ptr->comm_ptr->rank, &orig_vc);
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
-    if (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id) {
+    if (win_ptr->shm_allocated == TRUE) {
         base = win_ptr->shm_base_addrs[target_rank];
         disp_unit = win_ptr->disp_units[target_rank];
     }
@@ -823,9 +954,8 @@ static inline int MPIDI_CH3I_Shm_get_op(void *origin_addr, int origin_count, MPI
         disp_unit = win_ptr->disp_unit;
     }
 
-    mpi_errno = MPIR_Localcopy((char *) base + disp_unit * target_disp,
-                               target_count, target_datatype, origin_addr,
-                               origin_count, origin_datatype);
+    mpi_errno = shm_copy((char *) base + disp_unit * target_disp, target_count, target_datatype,
+                         origin_addr, origin_count, origin_datatype);
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
  fn_exit:
@@ -848,17 +978,14 @@ static inline int MPIDI_CH3I_Shm_cas_op(const void *origin_addr, const void *com
 {
     void *base = NULL, *dest_addr = NULL;
     int disp_unit;
-    int len, shm_locked = 0;
+    MPI_Aint len;
+    int shm_locked = 0;
     int mpi_errno = MPI_SUCCESS;
-    MPIDI_VC_t *orig_vc, *target_vc;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHM_CAS_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHM_CAS_OP);
 
-    /* FIXME: refer to FIXME in MPIDI_CH3I_Shm_put_op */
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, win_ptr->comm_ptr->rank, &orig_vc);
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
-    if (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id) {
+    if (win_ptr->shm_allocated == TRUE) {
         base = win_ptr->shm_base_addrs[target_rank];
         disp_unit = win_ptr->disp_units[target_rank];
 
@@ -908,17 +1035,14 @@ static inline int MPIDI_CH3I_Shm_fop_op(const void *origin_addr, void *result_ad
     void *base = NULL, *dest_addr = NULL;
     MPI_User_function *uop = NULL;
     int disp_unit;
-    int len, one, shm_locked = 0;
-    MPIDI_VC_t *orig_vc, *target_vc;
+    MPI_Aint len;
+    int one, shm_locked = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHM_FOP_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHM_FOP_OP);
 
-    /* FIXME: refer to FIXME in MPIDI_CH3I_Shm_put_op */
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, win_ptr->comm_ptr->rank, &orig_vc);
-    MPIDI_Comm_get_vc(win_ptr->comm_ptr, target_rank, &target_vc);
-    if (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id) {
+    if (win_ptr->shm_allocated == TRUE) {
         base = win_ptr->shm_base_addrs[target_rank];
         disp_unit = win_ptr->disp_units[target_rank];
 
@@ -972,20 +1096,20 @@ static inline int MPIDI_CH3I_Wait_for_pt_ops_finish(MPID_Win *win_ptr)
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WAIT_FOR_PT_OPS_FINISH);
 
     comm_ptr = win_ptr->comm_ptr;
-    MPIU_INSTR_DURATION_START(winfree_rs);
+    MPIR_T_PVAR_TIMER_START(RMA, rma_winfree_rs);
     mpi_errno = MPIR_Reduce_scatter_block_impl(win_ptr->pt_rma_puts_accs,
                                                &total_pt_rma_puts_accs, 1,
                                                MPI_INT, MPI_SUM, comm_ptr, &errflag);
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
     MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
-    MPIU_INSTR_DURATION_END(winfree_rs);
+    MPIR_T_PVAR_TIMER_END(RMA, rma_winfree_rs);
 
     if (total_pt_rma_puts_accs != win_ptr->my_pt_rma_puts_accs)
     {
 	MPID_Progress_state progress_state;
 
 	/* poke the progress engine until the two are equal */
-	MPIU_INSTR_DURATION_START(winfree_complete);
+	MPIR_T_PVAR_TIMER_START(RMA, rma_winfree_complete);
 	MPID_Progress_start(&progress_state);
 	while (total_pt_rma_puts_accs != win_ptr->my_pt_rma_puts_accs)
 	{
@@ -999,7 +1123,7 @@ static inline int MPIDI_CH3I_Wait_for_pt_ops_finish(MPID_Win *win_ptr)
 	    /* --END ERROR HANDLING-- */
 	}
 	MPID_Progress_end(&progress_state);
-	MPIU_INSTR_DURATION_END(winfree_complete);
+	MPIR_T_PVAR_TIMER_END(RMA, rma_winfree_complete);
     }
 
  fn_exit:

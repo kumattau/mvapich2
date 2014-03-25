@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -46,13 +46,13 @@ do {                                            \
 
 #define MV2_UD_RESET_CREDITS(_vc, _v)  {    \
     if (_v->transport == IB_TRANSPORT_UD) { \
-        _vc->mrail.ud.ack_pending = 0;      \
+        _vc->mrail.rely.ack_pending = 0;      \
     }                                       \
 }   
 
 #define MV2_UD_ACK_CREDIT_CHECK(_vc, _v)   {                            \
     if (_v->transport == IB_TRANSPORT_UD) {                             \
-        if (++(_vc->mrail.ud.ack_pending) > rdma_ud_max_ack_pending) {  \
+        if (++(_vc->mrail.rely.ack_pending) > rdma_ud_max_ack_pending) {  \
             mv2_send_explicit_ack(_vc);                                 \
         }                                                               \
     }                                                                   \
@@ -100,6 +100,9 @@ typedef struct _mv2_ud_vc_info_t {
     struct ibv_ah *ah;
     uint32_t qpn;
     uint16_t lid;
+} mv2_ud_vc_info_t;
+
+typedef struct _mv2_ud_reliability_info_t {
     uint16_t ack_pending;
     message_queue_t send_window;
     message_queue_t ext_window;
@@ -110,7 +113,7 @@ typedef struct _mv2_ud_vc_info_t {
     uint64_t cntl_acks;
     uint64_t resend_count;
     uint64_t ext_win_send_count;
-}mv2_ud_vc_info_t;
+} mv2_ud_reliability_info_t;
 
 /* ud exhange info */
 typedef struct _mv2_ud_exch_info_t
@@ -144,14 +147,14 @@ typedef struct _mv2_ud_zcopy_info_t {
 }mv2_ud_zcopy_info_t;
 
 /* create UD context */
-mv2_ud_ctx_t* mv2_ud_create_ctx (mv2_ud_qp_info_t *qp_info);
+mv2_ud_ctx_t* mv2_ud_create_ctx (mv2_ud_qp_info_t *qp_info, int hca_index);
 
-int mv2_ud_qp_transition(struct ibv_qp *qp);
+int mv2_ud_qp_transition(struct ibv_qp *qp, int hca_index);
 
 void mv2_ud_zcopy_poll_cq(mv2_ud_zcopy_info_t *zcopy_info, mv2_ud_ctx_t *ud_ctx,
                                 vbuf *resend_buf, int hca_index, int *found);
 /* create UD QP */
-struct ibv_qp *mv2_ud_create_qp (mv2_ud_qp_info_t *qp_info);
+struct ibv_qp *mv2_ud_create_qp (mv2_ud_qp_info_t *qp_info, int hca_index);
 
 /* create ud vc */
 int mv2_ud_set_vc_info (mv2_ud_vc_info_t *,

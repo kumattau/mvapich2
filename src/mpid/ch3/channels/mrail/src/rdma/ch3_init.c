@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,6 +25,9 @@
 #define MPIDI_CH3I_HOST_DESCRIPTION_KEY "description"
 
 MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
+int (*check_cq_overflow) (MPIDI_VC_t *c, int rail);
+int (*perform_blocking_progress) (int hca_num, int num_cqs);
+void (*handle_multiple_cqs) (int num_cqs, int cq_choice, int is_send_completion);
 
 #if defined(HAVE_LIBHWLOC)
 #undef FUNCNAME
@@ -121,6 +124,37 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
 #endif /* defined(HAVE_LIBHWLOC) */
 
 #undef FUNCNAME
+#define FUNCNAME split_type
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int split_type(MPID_Comm * comm_ptr, int stype, int key,
+                      MPID_Info *info_ptr, MPID_Comm ** newcomm_ptr)
+{
+    MPID_Node_id_t id;
+    MPIR_Rank_t nid;
+    int mpi_errno = MPI_SUCCESS;
+
+    mpi_errno = MPID_Get_node_id(comm_ptr, comm_ptr->rank, &id);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    nid = (stype == MPI_COMM_TYPE_SHARED) ? id : MPI_UNDEFINED;
+    mpi_errno = MPIR_Comm_split_impl(comm_ptr, nid, key, newcomm_ptr);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+  fn_exit:
+    return mpi_errno;
+
+    /* --BEGIN ERROR HANDLING-- */
+  fn_fail:
+    goto fn_exit;
+    /* --END ERROR HANDLING-- */
+}
+
+static MPID_CommOps comm_fns = {
+    split_type
+};
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Init
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -130,6 +164,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     int pg_size, threshold, dpm = 0, p;
     char *dpm_str, *value, *conn_info = NULL;
     MPIDI_VC_t *vc;
+
+    /* Override split_type */
+    MPID_Comm_fns = &comm_fns;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_INIT);
@@ -268,6 +305,18 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         MPIU_Assert(MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND);
     }
 #endif
+
+    if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
+        check_cq_overflow           = check_cq_overflow_for_iwarp;
+        handle_multiple_cqs         = handle_multiple_cqs_for_iwarp;
+        MPIDI_CH3I_MRAILI_Cq_poll   = MPIDI_CH3I_MRAILI_Cq_poll_iwarp;
+        perform_blocking_progress   = perform_blocking_progress_for_iwarp;
+    } else {
+        check_cq_overflow           = check_cq_overflow_for_ib;
+        handle_multiple_cqs         = handle_multiple_cqs_for_ib;
+        MPIDI_CH3I_MRAILI_Cq_poll   = MPIDI_CH3I_MRAILI_Cq_poll_ib;
+        perform_blocking_progress   = perform_blocking_progress_for_ib;
+    }
 
     /* save my vc_ptr for easy access */
     MPIDI_PG_Get_vc(pg, pg_rank, &MPIDI_CH3I_Process.vc);
@@ -440,7 +489,7 @@ int MPIDI_CH3_VC_Init(MPIDI_VC_t * vc)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_VC_INIT);
     int mpi_errno = MPI_SUCCESS;
     vc->smp.local_nodes = -1;
-#if !defined (_OSU_PSM_)
+#if !defined (CHANNEL_PSM)
     vc->smp.sendq_head = NULL;
     vc->smp.sendq_tail = NULL;
     vc->smp.recv_active = NULL;
@@ -451,7 +500,7 @@ int MPIDI_CH3_VC_Init(MPIDI_VC_t * vc)
     vc->mrail.srp.credits = NULL;
     vc->mrail.cmanager.msg_channels = NULL;
 #endif /* #ifndef DAPL_DEFAULT_PROVIDER */
-#endif /* #if !defined (_OSU_PSM_) */
+#endif /* #if !defined (CHANNEL_PSM) */
     vc->ch.sendq_head = NULL;
     vc->ch.sendq_tail = NULL;
     vc->ch.req = (MPID_Request *) MPIU_Malloc(sizeof(MPID_Request));
@@ -679,7 +728,7 @@ int MPIDI_CH3_VC_Destroy(struct MPIDI_VC *vc)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_VC_DESTROY);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_VC_DESTROY);
 
-#if !defined (_OSU_PSM_)
+#if !defined (CHANNEL_PSM)
     if (vc->smp.sendq_head != NULL) {
         MPIU_Free(vc->smp.sendq_head);
     }
@@ -706,7 +755,7 @@ int MPIDI_CH3_VC_Destroy(struct MPIDI_VC *vc)
         MPIU_Free(vc->mrail.rails);
     }
 #endif /* #ifndef DAPL_DEFAULT_PROVIDER */
-#endif /* #if !defined (_OSU_PSM_) */
+#endif /* #if !defined (CHANNEL_PSM) */
 
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_VC_DESTROY);

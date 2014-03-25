@@ -320,6 +320,7 @@ if test "$enable_nemesis_lock_free_queues" = "yes" ; then
     AC_DEFINE(MPID_NEM_USE_LOCK_FREE_QUEUES, 1, [Define to enable lock-free communication queues])
 fi
 
+
 AC_SUBST(device_name)
 AC_SUBST(channel_name)
 AC_SUBST(nemesis_networks)
@@ -339,6 +340,8 @@ AC_CONFIG_FILES([
 src/mpid/ch3/channels/nemesis/include/mpid_nem_net_module_defs.h
 src/mpid/ch3/channels/nemesis/src/mpid_nem_net_array.c
 ])
+
+AC_DEFINE([CHANNEL_NEMESIS], [1], [Define if using the nemesis channel])
 
 ])dnl end AM_COND_IF(BUILD_CH3_NEMESIS,...)
 ])dnl end _BODY

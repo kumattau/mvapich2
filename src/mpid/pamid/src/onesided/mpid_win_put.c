@@ -106,7 +106,6 @@ MPIDI_Put_use_pami_rput(pami_context_t context, MPIDI_Win_request * req,int *fre
 	will not change till that RMA has completed. In the meanwhile
 	the rest of the RMAs will have memory leaks */
     if (req->target.dt.num_contig - req->state.index == 1) {
-    //if (sync->total - sync->complete == 1) {
          map=NULL;
          if (req->target.dt.map != &req->target.dt.__map) {
              map=(void *) req->target.dt.map;
@@ -217,7 +216,7 @@ MPIDI_Put_use_pami_put(pami_context_t   context, MPIDI_Win_request * req,int *fr
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 int
-MPID_Put(void         *origin_addr,
+MPID_Put(const void   *origin_addr,
          int           origin_count,
          MPI_Datatype  origin_datatype,
          int           target_rank,
@@ -229,7 +228,13 @@ MPID_Put(void         *origin_addr,
   int mpi_errno = MPI_SUCCESS;
   MPIDI_Win_request *req = MPIU_Calloc0(1, MPIDI_Win_request);
   req->win          = win;
-  req->type         = MPIDI_WIN_REQUEST_PUT;
+  if(win->mpid.request_based != 1) 
+    req->type         = MPIDI_WIN_REQUEST_PUT;
+  else {
+    req->req_handle   = win->mpid.rreq;
+    req->type         = MPIDI_WIN_REQUEST_RPUT;
+    req->req_handle->mpid.win_req = req;
+  }
 
   if(win->mpid.sync.origin_epoch_type == win->mpid.sync.target_epoch_type &&
      win->mpid.sync.origin_epoch_type == MPID_EPOTYPE_REFENCE){
@@ -244,6 +249,13 @@ MPID_Put(void         *origin_addr,
   }
 
   req->offset = target_disp * win->mpid.info[target_rank].disp_unit;
+#ifdef __BGQ__
+  /* PAMI limitation as it doesnt permit VA of 0 to be passed into
+   * memregion create, so we must pass base_va of heap computed from
+   * an SPI call instead. So the target offset must be adjusted */
+  if (req->win->create_flavor == MPI_WIN_FLAVOR_DYNAMIC)
+    req->offset -= (size_t)req->win->mpid.info[target_rank].base_addr;
+#endif
 
   MPIDI_Win_datatype_basic(origin_count,
                            origin_datatype,
@@ -254,26 +266,30 @@ MPID_Put(void         *origin_addr,
   #ifndef MPIDI_NO_ASSERT
      MPID_assert(req->origin.dt.size == req->target.dt.size);
   #else
-  /* temp fix, should be fixed as part of error injection for one sided comm.*/
-  /* in 10/12                                                                */
-     if (req->origin.dt.size != req->target.dt.size) {
-         exit(1);
-     }
+     MPIU_ERR_CHKANDJUMP((req->origin.dt.size != req->target.dt.size), mpi_errno, MPI_ERR_SIZE, "**rmasize");
   #endif
+
 
 
   if ( (req->origin.dt.size == 0) ||
        (target_rank == MPI_PROC_NULL))
     {
-      MPIU_Free(req);
+      if(req->req_handle)
+       MPID_cc_set(req->req_handle->cc_ptr, 0);
+      else
+       MPIU_Free(req);
       return MPI_SUCCESS;
     }
+
 
   /* If the get is a local operation, do it here */
   if (target_rank == win->comm_ptr->rank)
     {
       size_t offset = req->offset;
-      MPIU_Free(req);
+      if(req->req_handle)
+        MPID_cc_set(req->req_handle->cc_ptr, 0);
+      else
+        MPIU_Free(req);
       return MPIR_Localcopy(origin_addr,
                             origin_count,
                             origin_datatype,
@@ -287,7 +303,7 @@ MPID_Put(void         *origin_addr,
   if (req->origin.dt.contig)
     {
       req->buffer_free = 0;
-      req->buffer      = origin_addr + req->origin.dt.true_lb;
+      req->buffer      = (void *) ((uintptr_t) origin_addr + req->origin.dt.true_lb);
     }
   else
     {
@@ -360,7 +376,6 @@ MPID_Put(void         *origin_addr,
    *        better latency for one-sided operations.
    */
   PAMI_Context_post(MPIDI_Context[0], &req->post_request, MPIDI_Put, req);  
-  //MPIDI_Put(MPIDI_Context[0], req);
 
 fn_fail:
   return mpi_errno;

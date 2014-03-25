@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -115,9 +115,9 @@ int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p,
     MPID_Request *sreq = *sreq_p;
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
     
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                      "sending non-contiguous eager message, data_sz=" MPIDI_MSG_SZ_FMT,
@@ -147,7 +147,7 @@ int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p,
     }
 #endif
 
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
         mpi_errno = psm_do_pack(count, datatype, comm, sreq, buf, data_sz);
         if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -162,7 +162,7 @@ int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p,
             sreq->pkbuf = NULL;
         }
         goto fn_exit;
-#endif /* _OSU_PSM_ */
+#endif /* CHANNEL_PSM */
 
     MPIU_DBG_MSGPKT(vc,tag,eager_pkt->match.parts.context_id,rank,data_sz,
                     "Eager");
@@ -204,7 +204,7 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
 {
     int mpi_errno = MPI_SUCCESS;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     if(MPIDI_CH3_ContigSend(sreq_p, MPIDI_CH3_PKT_EAGER_SEND_CONTIG, buf, data_sz, 
                 rank, tag, comm, context_offset) == 0)
         goto fn_fail;
@@ -215,9 +215,9 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
     MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
     MPID_Request *sreq = *sreq_p;
     MPID_IOV iov[2];
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
     
     MPIDI_Pkt_init(eager_pkt, reqtype);
     eager_pkt->match.parts.rank	= comm->rank;
@@ -294,9 +294,9 @@ int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p,
     MPIDI_CH3_Pkt_eagershort_send_t * const eagershort_pkt = 
 	&upkt.eagershort_send;
     MPID_Request *sreq = *sreq_p;
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
     
     /*    printf( "Sending short eager\n"); fflush(stdout); */
     MPIDI_Pkt_init(eagershort_pkt, reqtype);
@@ -382,7 +382,7 @@ int MPIDI_CH3_PktHandler_EagerShortSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 
     (rreq)->status.MPI_SOURCE = (eagershort_pkt)->match.parts.rank;
     (rreq)->status.MPI_TAG    = (eagershort_pkt)->match.parts.tag;
-    (rreq)->status.count      = (eagershort_pkt)->data_sz;
+    MPIR_STATUS_SET_COUNT((rreq)->status, (eagershort_pkt)->data_sz);
     (rreq)->dev.recv_data_sz  = (eagershort_pkt)->data_sz;
     MPIDI_Request_set_seqnum((rreq), (eagershort_pkt)->seqnum);
     /* FIXME: Why do we set the message type? */
@@ -424,7 +424,7 @@ int MPIDI_CH3_PktHandler_EagerShortSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		     "**truncate", "**truncate %d %d %d %d", 
 		     rreq->status.MPI_SOURCE, rreq->status.MPI_TAG, 
 		     rreq->dev.recv_data_sz, userbuf_sz );
-		rreq->status.count = userbuf_sz;
+		MPIR_STATUS_SET_COUNT(rreq->status, userbuf_sz);
 		data_sz = userbuf_sz;
 	    }
 
@@ -478,7 +478,7 @@ int MPIDI_CH3_PktHandler_EagerShortSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    /* There are two cases:  a datatype mismatch (could
 		       not consume all data) or a too-short buffer. We
 		       need to distinguish between these two types. */
-		    rreq->status.count = (int)last;
+		    MPIR_STATUS_SET_COUNT(rreq->status, last);
 		    if (rreq->dev.recv_data_sz <= userbuf_sz) {
 			MPIU_ERR_SETSIMPLE(rreq->status.MPI_ERROR,MPI_ERR_TYPE,
 					   "**dtypemismatch");
@@ -509,7 +509,7 @@ int MPIDI_CH3_PktHandler_EagerShortSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
                a buffer that we've allocated). */
 	    /* printf( "Allocating into tmp\n" ); fflush(stdout); */
 	    recv_data_sz = rreq->dev.recv_data_sz;
-            MPIR_T_ADD(RECVQ_STATISTICS, MPIDI_CH3I_unexpected_recvq_buffer_size, recv_data_sz);
+        MPIR_T_PVAR_LEVEL_INC(RECVQ, unexpected_recvq_buffer_size, recv_data_sz);
 	    rreq->dev.tmpbuf = MPIU_Malloc(recv_data_sz);
 	    if (!rreq->dev.tmpbuf) {
 		MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomem");
@@ -593,9 +593,9 @@ int MPIDI_CH3_EagerContigIsend( MPID_Request **sreq_p,
     MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
     MPID_Request *sreq = *sreq_p;
     MPID_IOV iov[MPID_IOV_LIMIT];
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
 	       "sending contiguous eager message, data_sz=" MPIDI_MSG_SZ_FMT,
 					data_sz));
@@ -659,7 +659,7 @@ int MPIDI_CH3_EagerContigIsend( MPID_Request **sreq_p,
 {								\
     (rreq_)->status.MPI_SOURCE = (pkt_)->match.parts.rank;	\
     (rreq_)->status.MPI_TAG = (pkt_)->match.parts.tag;		\
-    (rreq_)->status.count = (pkt_)->data_sz;			\
+    MPIR_STATUS_SET_COUNT((rreq_)->status, (pkt_)->data_sz);		\
     (rreq_)->dev.sender_req_id = (pkt_)->sender_req_id;		\
     (rreq_)->dev.recv_data_sz = (pkt_)->data_sz;		\
     MPIDI_Request_set_seqnum((rreq_), (pkt_)->seqnum);		\
@@ -711,7 +711,7 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
     data_len = ((*buflen >= rreq->dev.recv_data_sz)
                 ? rreq->dev.recv_data_sz : *buflen );
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     if (vc->smp.local_nodes != -1
             && eager_pkt->in_cuda_region == 1
@@ -757,7 +757,7 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
 
     if (rreq->dev.recv_data_sz == 0) {
         /* return the number of bytes processed in this function */
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
         *buflen = MPIDI_CH3U_PKT_SIZE(pkt);
 #else
         *buflen = sizeof(MPIDI_CH3_Pkt_eager_send_t);
@@ -794,7 +794,7 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
    }
 #endif
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
    *buflen = data_len + MPIDI_CH3U_PKT_SIZE(pkt);
 #else
    *buflen = data_len + sizeof(MPIDI_CH3_Pkt_eager_send_t);
@@ -1057,7 +1057,7 @@ int MPIDI_CH3_PktHandler_ReadySend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 				      "**rsendnomatch %d %d", 
 				      ready_pkt->match.parts.rank,
 				      ready_pkt->match.parts.tag);
-	rreq->status.count = 0;
+	MPIR_STATUS_SET_COUNT(rreq->status, 0);
 	if (rreq->dev.recv_data_sz > 0)
 	{
 	    /* force read of extra data */
@@ -1143,7 +1143,7 @@ int MPIDI_CH3_PktPrint_ReadySend( FILE *fp, MPIDI_CH3_Pkt_t *pkt )
 
 #endif /* MPICH_DBG_OUTPUT */
 
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
 int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
                 *sreq, const void *buf, int data_sz)
 {

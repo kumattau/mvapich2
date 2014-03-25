@@ -1,5 +1,5 @@
 /*!\file */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -36,7 +36,7 @@ typedef struct{
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
-    int recv_sz;
+    MPIDI_msg_sz_t recv_sz;
 
    /* MPIDI_CH3I_MRAILI_IBA_PKT_DECL (new MPIDI_nem_ib_pkt_comm_header_t)*/
     uint8_t  vbuf_credit;
@@ -64,8 +64,8 @@ typedef struct{
     /*why do we need to store buf and size here though we have already store it
     inside request*/
     void * rndv_buf;
-    int rndv_buf_sz;
-    int rndv_buf_off;
+    MPIDI_msg_sz_t rndv_buf_sz;
+    MPIDI_msg_sz_t rndv_buf_off;
     MPID_nem_ib_rndv_protocol_t protocol;
     /*temporary holder for registered memory*/
     struct dreg_entry *d_entry;
@@ -74,6 +74,8 @@ typedef struct{
     uint8_t  nearly_complete;
     uint8_t  num_rdma_read_completions;
     uint32_t completion_counter;
+    /*hold the next request in flowlist*/
+    void *next_inflow;
 } __attribute__((__packed__)) MPID_nem_ib_rndv_info;
 
 
@@ -122,5 +124,5 @@ int MPID_nem_ib_lmt_done_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq);
 int MPIDI_nem_ib_lmt_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer);
 void MPIDI_nem_ib_lmt_r3_recv_ack(MPIDI_VC_t * vc,
                                void* vstart);
-
+void MPID_nem_lmt_ib_process_rndv(void);
 #endif

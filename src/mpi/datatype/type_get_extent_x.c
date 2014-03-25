@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
- *  (C) 2012 by Argonne National Laboratory.
+ *  (C) 2011 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
@@ -99,7 +99,6 @@ int MPI_Type_get_extent_x(MPI_Datatype datatype, MPI_Count *lb, MPI_Count *exten
                 MPID_Datatype *datatype_ptr = NULL;
                 MPID_Datatype_get_ptr(datatype, datatype_ptr);
                 MPID_Datatype_valid_ptr(datatype_ptr, mpi_errno);
-                MPID_Datatype_committed_ptr(datatype_ptr, mpi_errno);
             }
 
             /* TODO more checks may be appropriate (counts, in_place, buffer aliasing, etc) */

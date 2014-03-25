@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,7 +17,6 @@
  */
 
 #include "mpiimpl.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 #include "allreduce_tuning.h"
 #include "bcast_tuning.h"
@@ -788,7 +787,8 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
     int rc;
     int is_homogeneous = 1;
 #endif
-    int comm_size, rank, type_size;
+    int comm_size, rank;
+    MPI_Aint type_size;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int mask, dst, is_commutative, pof2, newrank = 0, rem, newdst, i,
@@ -1233,12 +1233,21 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
         return MPI_SUCCESS;
     }
 
+    
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_shmem_coll_calls, 1);
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
     MPID_Datatype_get_extent_macro(datatype, extent);
     stride = count * MPIR_MAX(extent, true_extent);
-    #if OSU_MPIT
-        mv2_num_shmem_coll_calls++;
-    #endif
+ 
+    shmem_comm = comm_ptr->ch.shmem_comm;
+    PMPI_Comm_size(shmem_comm, &local_size);
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);   
+    if (count * (MPIR_MAX(extent, true_extent)) >= SHMEM_COLL_BLOCK_SIZE) {
+                mpi_errno =
+                    MPIR_Reduce_intra(sendbuf, recvbuf, count, datatype, op, 0,
+                                      shmem_commptr, errflag);
+        goto fn_exit;
+    }
 
     /* Get the operator and check whether it is commutative or not */
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
@@ -1266,9 +1275,6 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
         }
     }
 
-    shmem_comm = comm_ptr->ch.shmem_comm;
-    PMPI_Comm_size(shmem_comm, &local_size);
-    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
     shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
@@ -1457,9 +1463,17 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
 
     /* Doing the shared memory gather and reduction by the leader */
     if (local_rank == 0) {
+        if ((MV2_Allreduce_intra_function == &MPIR_Allreduce_reduce_shmem_MV2) || 
+              (MV2_Allreduce_intra_function == &MPIR_Allreduce_reduce_p2p_MV2) ) {
         mpi_errno =
         MV2_Allreduce_intra_function(sendbuf, recvbuf, count, datatype,
                                      op, comm_ptr, errflag);
+        }
+        else {
+        mpi_errno =
+        MV2_Allreduce_intra_function(sendbuf, recvbuf, count, datatype,
+                                     op, shmem_commptr, errflag);
+        }
 
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
@@ -1488,9 +1502,17 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
         }
     } else {
         /* insert the first reduce here */
+        if ((MV2_Allreduce_intra_function == &MPIR_Allreduce_reduce_shmem_MV2) || 
+              (MV2_Allreduce_intra_function == &MPIR_Allreduce_reduce_p2p_MV2) ) {
         mpi_errno =
         MV2_Allreduce_intra_function(sendbuf, recvbuf, count, datatype,
-                                    op, comm_ptr, errflag);
+                                     op, comm_ptr, errflag);
+        }
+        else {
+        mpi_errno =
+        MV2_Allreduce_intra_function(sendbuf, recvbuf, count, datatype,
+                                     op, shmem_commptr, errflag);
+        }
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = TRUE;
@@ -1738,8 +1760,8 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
     MPI_Aint true_lb, true_extent;
    /*We use reduce (at rank =0) followed by mcst-bcast to implement the 
     * allreduce operation */
-    int root=0, nbytes=0, position=0;
-    int type_size=0; 
+    int root=0, nbytes=0;
+    MPI_Aint type_size=0, position=0; 
     int mpi_errno=MPI_SUCCESS;
     int mpi_errno_ret=MPI_SUCCESS;
     int rank = comm_ptr->rank, is_contig=0, is_commutative=0;
@@ -1866,7 +1888,6 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
     goto fn_exit;
 }
 #endif /*  #if defined(_MCST_SUPPORT_) */ 
-#endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allreduce_new_MV2
@@ -1904,8 +1925,8 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-    int sendtype_size = 0, nbytes = 0;
+    MPI_Aint sendtype_size = 0;
+    int nbytes = 0;
     int range = 0, range_threshold = 0, range_threshold_intra = 0;
     int is_two_level = 0;
     int is_commutative = 0;
@@ -1933,7 +1954,6 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     MPID_Datatype_get_extent_macro(datatype, extent);
     int stride = 0;
     stride = count * MPIR_MAX(extent, true_extent);
-    cudaError_t  cuerr = cudaSuccess;
     int recv_mem_type = 0;
     int send_mem_type = 0;
     char *recv_host_buf = NULL;
@@ -1949,25 +1969,19 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
 
     if(rdma_enable_cuda && send_mem_type){
         send_host_buf = (char*) MPIU_Malloc(stride);
-        cuerr = cudaMemcpy((void *)send_host_buf, 
+        MPIU_Memcpy_CUDA((void *)send_host_buf, 
                             (void *)sendbuf, 
                             stride, 
                             cudaMemcpyDeviceToHost);
-        if(cudaSuccess != cuerr){
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-        }
         sendbuf = send_host_buf;
     }
 
     if(rdma_enable_cuda && recv_mem_type){
         recv_host_buf = (char*) MPIU_Malloc(stride);
-        cuerr = cudaMemcpy((void *)recv_host_buf, 
+        MPIU_Memcpy_CUDA((void *)recv_host_buf, 
                             (void *)recvbuf, 
                             stride, 
                             cudaMemcpyDeviceToHost);
-        if(cudaSuccess != cuerr){
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-        }
         recvbuf = recv_host_buf;
     }
 #endif
@@ -2086,23 +2100,13 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
         }
     } 
 
-#else                           /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
-    mpi_errno = MPIR_Allreduce_intra(sendbuf, recvbuf, count, datatype,
-                                     op, comm_ptr, errflag);
-
-#endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
-
 #ifdef _ENABLE_CUDA_
-    cuerr = cudaSuccess;
     if(rdma_enable_cuda && recv_mem_type){
         recvbuf = temp_recvbuf;
-        cuerr = cudaMemcpy((void *)recvbuf, 
+        MPIU_Memcpy_CUDA((void *)recvbuf, 
                             (void *)recv_host_buf, 
                             stride, 
                             cudaMemcpyHostToDevice);
-        if(cudaSuccess != cuerr){
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-        }
     }
     if(rdma_enable_cuda && recv_mem_type){
         if(recv_host_buf){
@@ -2117,9 +2121,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
         }
     }
 #endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 	comm_ptr->ch.intra_node_done=0;
-#endif
 	
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
@@ -2139,6 +2141,348 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
 
 }
 
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Allreduce_index_tuned_intra_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
+                       void *recvbuf,
+                       int count,
+                       MPI_Datatype datatype,
+                       MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+{
+#ifdef MPID_HAS_HETERO
+    int rc;
+    int is_homogeneous = 1;
+#endif
+
+    int mpi_errno = MPI_SUCCESS;
+    int comm_size_index = 0;
+    int inter_node_algo_index = 0;
+    int intra_node_algo_index = 0;
+    int local_size = 0;
+    int partial_sub_ok = 0;
+    int conf_index = 0;
+    int i;
+    int table_min_comm_size = 0;
+    int table_max_comm_size = 0;
+    int table_min_inter_size = 0;
+    int table_max_inter_size = 0;
+    int table_min_intra_size = 0;
+    int table_max_intra_size = 0;
+    int last_inter;
+    int last_intra;
+    int lp2ltn; // largest power of 2 less than n
+    MPID_Comm *shmem_commptr = NULL;
+    MPI_Comm shmem_comm;
+    int rank = 0, comm_size = 0;
+    MPI_Aint sendtype_size = 0;
+    int nbytes = 0;
+    int range = 0, range_threshold = 0, range_threshold_intra = 0;
+    int is_two_level = 0;
+    int is_commutative = 0;
+    MPI_Aint true_lb, true_extent;
+   
+    mpi_errno = PMPI_Comm_size(comm_ptr->handle, &comm_size);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    mpi_errno = PMPI_Comm_rank(comm_ptr->handle, &rank);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    if (count == 0) {
+        return MPI_SUCCESS;
+    }
+
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
+
+    MPID_Datatype_get_size_macro(datatype, sendtype_size);
+    nbytes = count * sendtype_size;
+
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Op *op_ptr;
+
+    if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
+        is_commutative = 1;
+    } else {
+        MPID_Op_get_ptr(op, op_ptr);
+        if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) {
+            is_commutative = 0;
+        } else {
+            is_commutative = 1;
+        }
+    }
+
+#ifdef _ENABLE_CUDA_
+    MPI_Aint extent;
+    MPID_Datatype_get_extent_macro(datatype, extent);
+    int stride = 0;
+    stride = count * MPIR_MAX(extent, true_extent);
+    int recv_mem_type = 0;
+    int send_mem_type = 0;
+    char *recv_host_buf = NULL;
+    char *send_host_buf = NULL;
+    char *temp_recvbuf = recvbuf;
+
+    if (rdma_enable_cuda) {
+	recv_mem_type = is_device_buffer(recvbuf);
+	if ( sendbuf != MPI_IN_PLACE ){
+	    send_mem_type = is_device_buffer(sendbuf);
+	}
+    }
+
+    if(rdma_enable_cuda && send_mem_type){
+        send_host_buf = (char*) MPIU_Malloc(stride);
+        MPIU_Memcpy_CUDA((void *)send_host_buf, 
+			 (void *)sendbuf, 
+			 stride, 
+			 cudaMemcpyDeviceToHost);
+        sendbuf = send_host_buf;
+    }
+
+    if(rdma_enable_cuda && recv_mem_type){
+        recv_host_buf = (char*) MPIU_Malloc(stride);
+        MPIU_Memcpy_CUDA((void *)recv_host_buf, 
+			 (void *)recvbuf, 
+			 stride, 
+			 cudaMemcpyDeviceToHost);
+        recvbuf = recv_host_buf;
+    }
+#endif
+    
+    /* check if safe to use partial subscription mode */
+    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    
+        shmem_comm = comm_ptr->ch.shmem_comm;
+        MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+        local_size = shmem_commptr->local_size;
+        i = 0;
+        if (mv2_allreduce_indexed_table_ppn_conf[0] == -1) {
+            // Indicating user defined tuning
+            conf_index = 0;
+            goto conf_check_end;
+        }
+        do {
+            if (local_size == mv2_allreduce_indexed_table_ppn_conf[i]) {
+                conf_index = i;
+                partial_sub_ok = 1;
+                break;
+            }
+            i++;
+        } while(i < mv2_allreduce_indexed_num_ppn_conf);
+    }
+
+ conf_check_end:
+    
+    if (partial_sub_ok != 1) {
+        conf_index = 0;
+    }
+
+#ifdef MPID_HAS_HETERO
+    if (comm_ptr->is_hetero) {
+        is_homogeneous = 0;
+    }
+
+    if (!is_homogeneous) {
+        /* heterogeneous. To get the same result on all processes, we
+           do a reduce to 0 and then broadcast. */
+        mpi_errno = MPIR_Reduce_MV2(sendbuf, recvbuf, count, datatype,
+                                    op, 0, comm, errflag);
+        /* 
+           FIXME: mpi_errno is error CODE, not necessarily the error
+           class MPI_ERR_OP.  In MPICH2, we can get the error class 
+           with errorclass = mpi_errno & ERROR_CLASS_MASK;
+	*/
+        if (mpi_errno == MPI_ERR_OP || mpi_errno == MPI_SUCCESS) {
+            /* Allow MPI_ERR_OP since we can continue from this error */
+            rc = MPIR_Bcast_impl(recvbuf, count, datatype, 0, comm_ptr,
+                                 errflag);
+            if (rc)
+                mpi_errno = rc;
+        }
+    } else
+#endif /* MPID_HAS_HETERO */
+	{
+    
+	    /* Search for the corresponding system size inside the tuning table */
+	    /*
+	     * Comm sizes progress in powers of 2. Therefore comm_size can just be indexed instead
+	     */
+	    table_min_comm_size = mv2_allreduce_indexed_thresholds_table[conf_index][0].numproc;
+	    table_max_comm_size =
+		mv2_allreduce_indexed_thresholds_table[conf_index][mv2_size_allreduce_indexed_tuning_table[conf_index] - 1].
+		numproc;
+    
+	    if (comm_size < table_min_comm_size) {
+		/* Comm size smaller than smallest configuration in table: use smallest available */
+		comm_size_index = 0;
+	    }
+	    else if (comm_size > table_max_comm_size) {
+		/* Comm size larger than largest configuration in table: use largest available */
+		comm_size_index = mv2_size_allreduce_indexed_tuning_table[conf_index] - 1;
+	    }
+	    else {
+		/* Comm size in between smallest and largest configuration: find closest match */
+		if (comm_ptr->ch.is_pof2) {
+		    comm_size_index = log2( comm_size / table_min_comm_size );
+		}
+		else {
+		    lp2ltn = pow(2, (int)log2(comm_size));
+		    comm_size_index = log2( lp2ltn / table_min_comm_size );
+		}
+	    }
+	    /* Search for corresponding inter-leader function */
+	    /* skip mcast poiters if mcast is not available */
+    
+	    last_inter = mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].size_inter_table - 1;
+	    table_min_inter_size = mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].inter_leader[0].msg_sz;
+	    table_max_inter_size = mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].
+		inter_leader[last_inter].msg_sz;
+	    last_intra = mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].size_intra_table - 1;
+	    table_min_intra_size = mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].intra_node[0].msg_sz;
+	    table_max_intra_size = mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].
+		intra_node[last_intra].msg_sz;
+    
+	    if (nbytes < table_min_inter_size) {
+		/* Msg size smaller than smallest configuration in table: use smallest available */
+		inter_node_algo_index = 0;
+	    }
+	    else if (nbytes > table_max_inter_size) {
+		/* Msg size larger than largest configuration in table: use largest available */
+		inter_node_algo_index = last_inter;
+	    }
+	    else {
+		/* Msg size in between smallest and largest configuration: find closest match */
+		if (pow(2, (int)log2(nbytes)) == nbytes) {
+		    inter_node_algo_index = log2( nbytes / table_min_inter_size );
+		}
+		else {
+		    lp2ltn = pow(2, (int)log2(nbytes));
+		    inter_node_algo_index = log2( lp2ltn / table_min_inter_size );
+		}
+	    }
+    
+	    if (nbytes < table_min_intra_size) {
+		/* Msg size smaller than smallest configuration in table: use smallest available */
+		intra_node_algo_index = 0;
+	    }
+	    else if (nbytes > table_max_intra_size) {
+		/* Msg size larger than largest configuration in table: use largest available */
+		intra_node_algo_index = last_intra;
+	    }
+	    else {
+		/* Msg size in between smallest and largest configuration: find closest match */
+		if (pow(2, (int)log2(nbytes)) == nbytes) {
+		    intra_node_algo_index = log2(nbytes / table_min_intra_size );
+		}
+		else {
+		    lp2ltn = pow(2, (int)log2(nbytes));
+		    intra_node_algo_index = log2(lp2ltn / table_min_intra_size );
+		}
+	    }
+	    
+	    if(mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].
+	       is_two_level_allreduce[inter_node_algo_index] == 1){
+		is_two_level = 1;    
+	    }
+
+	    MV2_Allreduce_function = mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].
+		inter_leader[inter_node_algo_index].MV2_pt_Allreduce_function;
+
+	    MV2_Allreduce_intra_function = mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].
+		intra_node[intra_node_algo_index].MV2_pt_Allreduce_function;
+
+	    /* check if mcast is ready, otherwise replace mcast with other algorithm */
+	    if((MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2)||
+	       (MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2)){
+#if defined(_MCST_SUPPORT_)
+		if(comm_ptr->ch.is_mcast_ok == 1
+		   && comm_ptr->ch.shmem_coll_ok == 1
+		   && mv2_use_mcast_allreduce == 1){
+		} else
+#endif  /* #if defined(_MCST_SUPPORT_) */
+		    {
+			MV2_Allreduce_function = &MPIR_Allreduce_pt2pt_rd_MV2;
+		    }
+		if(is_two_level != 1) {
+		    MV2_Allreduce_function = &MPIR_Allreduce_pt2pt_rd_MV2;
+		}
+	    } 
+
+	    if(is_two_level == 1) {
+#if defined(_MCST_SUPPORT_)
+		if((MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2)||
+		   (MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2)){ 
+
+		    mpi_errno = MPIR_Allreduce_mcst_MV2(sendbuf, recvbuf, count,
+							datatype, op, comm_ptr, errflag);
+		} else
+#endif  /* #if defined(_MCST_SUPPORT_) */
+		    { 
+			/* check if shm is ready, if not use other algorithm first */
+			if ((comm_ptr->ch.shmem_coll_ok == 1)
+			    && (mv2_disable_shmem_allreduce == 0)
+			    && (is_commutative)
+			    && (mv2_enable_shmem_collectives)) {
+			    mpi_errno = MPIR_Allreduce_two_level_MV2(sendbuf, recvbuf, count,
+								     datatype, op, comm_ptr, errflag);
+			} else {
+			    mpi_errno = MPIR_Allreduce_pt2pt_rd_MV2(sendbuf, recvbuf, count,
+								    datatype, op, comm_ptr, errflag);
+			}
+		    }
+	    } else { 
+		mpi_errno = MV2_Allreduce_function(sendbuf, recvbuf, count,
+						   datatype, op, comm_ptr, errflag);
+	    }
+	}
+
+#ifdef _ENABLE_CUDA_
+    if(rdma_enable_cuda && recv_mem_type){
+        recvbuf = temp_recvbuf;
+        MPIU_Memcpy_CUDA((void *)recvbuf, 
+			 (void *)recv_host_buf, 
+			 stride, 
+			 cudaMemcpyHostToDevice);
+    }
+    if(rdma_enable_cuda && recv_mem_type){
+        if(recv_host_buf){
+            free(recv_host_buf);
+            recv_host_buf = NULL;
+        }
+    }
+    if(rdma_enable_cuda && send_mem_type){
+        if(send_host_buf){
+            free(send_host_buf);
+            send_host_buf = NULL;
+        }
+    }
+#endif
+    comm_ptr->ch.intra_node_done=0;
+	
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
+
+    if (MPIU_THREADPRIV_FIELD(op_errno)) {
+        mpi_errno = MPIU_THREADPRIV_FIELD(op_errno);
+    }
+
+ fn_exit:
+    return (mpi_errno);
+
+ fn_fail:
+    goto fn_exit;
+
+}
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allreduce_old_MV2
@@ -2161,7 +2505,6 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     int stride = 0, is_commutative = 0;
     MPI_Aint true_lb, true_extent, extent;
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
@@ -2181,7 +2524,6 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
     }
 
 #ifdef _ENABLE_CUDA_
-    cudaError_t  cuerr = cudaSuccess;
     int recv_mem_type = 0;
     int send_mem_type = 0;
     char *recv_host_buf = NULL;
@@ -2197,25 +2539,19 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
 
     if(rdma_enable_cuda && send_mem_type){
         send_host_buf = (char*) MPIU_Malloc(stride);
-        cuerr = cudaMemcpy((void *)send_host_buf, 
+        MPIU_Memcpy_CUDA((void *)send_host_buf, 
                             (void *)sendbuf, 
                             stride, 
                             cudaMemcpyDeviceToHost);
-        if(cudaSuccess != cuerr){
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-        }
         sendbuf = send_host_buf;
     }
 
     if(rdma_enable_cuda && recv_mem_type){
         recv_host_buf = (char*) MPIU_Malloc(stride);
-        cuerr = cudaMemcpy((void *)recv_host_buf, 
+        MPIU_Memcpy_CUDA((void *)recv_host_buf, 
                             (void *)recvbuf, 
                             stride, 
                             cudaMemcpyDeviceToHost);
-        if(cudaSuccess != cuerr){
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-        }
         recvbuf = recv_host_buf;
     }
 #endif
@@ -2246,23 +2582,14 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
 
         }
     } 
-#else                           /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
-    mpi_errno = MPIR_Allreduce_intra(sendbuf, recvbuf, count, datatype,
-                                     op, comm_ptr, errflag);
-
-#endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 #ifdef _ENABLE_CUDA_
-    cuerr = cudaSuccess;
     if(rdma_enable_cuda && recv_mem_type){
         recvbuf = temp_recvbuf;
-        cuerr = cudaMemcpy((void *)recvbuf, 
+        MPIU_Memcpy_CUDA((void *)recvbuf, 
                             (void *)recv_host_buf, 
                             stride, 
                             cudaMemcpyHostToDevice);
-        if(cudaSuccess != cuerr){
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-        }
     }
     if(rdma_enable_cuda && recv_mem_type){
         if(recv_host_buf){
@@ -2277,9 +2604,7 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
         }
     }
 #endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 	comm_ptr->ch.intra_node_done=0;
-#endif
 	
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
@@ -2313,17 +2638,18 @@ int MPIR_Allreduce_MV2(const void *sendbuf,
     if (count == 0) {
         return MPI_SUCCESS;
     }
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if(mv2_use_old_allreduce == 1){
         mpi_errno = MPIR_Allreduce_old_MV2(sendbuf, recvbuf, count,
                                         datatype, op, comm_ptr, errflag);
-    } else { 
+    } else {
+	if (mv2_use_indexed_tuning || mv2_use_indexed_allreduce_tuning) {
+	    mpi_errno = MPIR_Allreduce_index_tuned_intra_MV2(sendbuf, recvbuf, count,
+							 datatype, op, comm_ptr, errflag);
+	}
+	else {
          mpi_errno = MPIR_Allreduce_new_MV2(sendbuf, recvbuf, count,
                                         datatype, op, comm_ptr, errflag);
+	}
     }
-#else
-    mpi_errno = MPIR_Allreduce_intra(sendbuf, recvbuf, count, datatype,
-                                     op, comm_ptr, errflag);
-#endif
     return (mpi_errno);
 }

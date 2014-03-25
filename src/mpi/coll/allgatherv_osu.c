@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,6 @@
  */
 
 #include "mpiimpl.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 #include "allgatherv_tuning.h"
 
@@ -771,12 +770,8 @@ int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
      * local copy to complete*/
     if (rdma_enable_cuda && cuda_initialized && enable_device_ptr_checks
         && rdma_cuda_nonblocking_streams) {
-            if (rdma_cuda_event_sync) {
-                CUDA_CHECK(cudaEventRecord(cuda_nbstream_sync_event, 0));
-                CUDA_CHECK(cudaStreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 0));
-            } else { /*using streams for pipelining, dont know which stream will be used*/
-                CUDA_CHECK(cudaStreamSynchronize(0));
-            }
+            CUDA_CHECK(cudaEventRecord(cuda_nbstream_sync_event, 0));
+            CUDA_CHECK(cudaStreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 0));
     }
 #endif
 
@@ -790,8 +785,8 @@ int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
     for (i = 1; i < comm_size; i++)
         if (min > recvcounts[i])
             min = recvcounts[i];
-    if (min * recvtype_extent < MPIR_PARAM_ALLGATHERV_PIPELINE_MSG_SIZE)
-        min = MPIR_PARAM_ALLGATHERV_PIPELINE_MSG_SIZE / recvtype_extent;
+    if (min * recvtype_extent < MPIR_CVAR_ALLGATHERV_PIPELINE_MSG_SIZE)
+        min = MPIR_CVAR_ALLGATHERV_PIPELINE_MSG_SIZE / recvtype_extent;
     /* Handle the case where the datatype extent is larger than
      * the pipeline size. */
     if (!min)
@@ -884,7 +879,6 @@ int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
   fn_fail:
     goto fn_exit;
 }
-#endif                          /* (_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 /* MPIR_Allgatherv performs an allgatherv using point-to-point
    messages.  This is intended to be used by device-specific
@@ -900,13 +894,10 @@ int MPIR_Allgatherv_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
                         int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     int range = 0, comm_size, total_count, recvtype_size, i;
     int range_threshold = 0;
     int nbytes = 0;
-#endif                          /* (_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     comm_size = comm_ptr->local_size;
     total_count = 0;
     for (i = 0; i < comm_size; i++)
@@ -958,12 +949,6 @@ int MPIR_Allgatherv_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
                                     recvbuf, recvcounts, displs,
                                     recvtype, comm_ptr, errflag);
     }
-#else                           /* (_OSU_MVAPICH_) || defined(_OSU_PSM_) */
-    /* Call allgatherv of MPICH2 */
-    mpi_errno = MPIR_Allgatherv_intra(sendbuf, sendcount, sendtype,
-                                      recvbuf, recvcounts, displs,
-                                      recvtype, comm_ptr, errflag);
-#endif                          /* (_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
     if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);

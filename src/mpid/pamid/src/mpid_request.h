@@ -135,6 +135,11 @@ void    MPIDI_Request_allocate_pool();
 
 #endif
 
+#ifdef HAVE_DEBUGGER_SUPPORT
+#define MPIDI_Request_clear_dbg(req_) ((req_)->dbg_next = NULL)
+#else
+#define MPIDI_Request_clear_dbg(req_)
+#endif
 
 /**
  * \brief Create a very generic request
@@ -157,6 +162,7 @@ MPIDI_Request_create_basic()
   memset(&req->mpid, 0xFFFFFFFF, sizeof(struct MPIDI_Request));
 #endif
   req->mpid.next = NULL;
+  MPIDI_Request_clear_dbg(req);
 
   return req;
 }
@@ -184,8 +190,8 @@ MPIDI_Request_initialize(MPID_Request * req)
 {
   req->greq_fns          = NULL;
 
-  req->status.count      = 0;
-  req->status.cancelled  = FALSE;
+  MPIR_STATUS_SET_COUNT(req->status, 0);
+  MPIR_STATUS_SET_CANCEL_BIT(req->status, FALSE);
   req->status.MPI_SOURCE = MPI_UNDEFINED;
   req->status.MPI_TAG    = MPI_UNDEFINED;
   req->status.MPI_ERROR  = MPI_SUCCESS;
@@ -203,6 +209,7 @@ MPIDI_Request_initialize(MPID_Request * req)
   mpid->nextR            = NULL;
   mpid->oo_peer          = NULL;
 #endif
+  mpid->win_req          = NULL;
   MPIDI_Request_setCA(req, MPIDI_CA_COMPLETE);
 }
 
@@ -259,6 +266,7 @@ MPID_Request_release_inline(MPID_Request *req)
   MPIU_Object_release_ref(req, &count);
   MPID_assert(count >= 0);
 
+
   if (count == 0)
   {
     MPID_assert(MPID_cc_is_complete(&req->cc));
@@ -269,6 +277,7 @@ MPID_Request_release_inline(MPID_Request *req)
     if (req->mpid.uebuf_malloc== mpiuMalloc) {
         MPIU_Free(req->mpid.uebuf);
     }
+    if(req->mpid.win_req)       MPIU_Free(req->mpid.win_req);
 #if TOKEN_FLOW_CONTROL
     else if (req->mpid.uebuf_malloc == mpidiBufMM) {
         MPIU_THREAD_CS_ENTER(MSGQUEUE,0);
@@ -299,7 +308,7 @@ MPID_Request_discard_inline(MPID_Request *req)
 }
 
 #define MPID_REQUEST_SET_COMPLETED(req_) \
-  MPIDI_Request_complete_inline(req_)
+  MPIDI_Request_complete_norelease_inline(req_)
 
 static inline void
 MPIDI_Request_complete_inline(MPID_Request *req)

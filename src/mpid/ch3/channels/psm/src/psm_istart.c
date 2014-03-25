@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -45,6 +45,20 @@ int psm_istartmsgv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request **rptr
             mpi_errno = psm_1sided_accumpkt(acpkt, iov, iov_n, rptr); //ODOT: error handle
             goto fn_exit;
         }
+        case MPIDI_CH3_PKT_GET_ACCUM: {
+            MPIDI_CH3_Pkt_accum_t *acpkt = (MPIDI_CH3_Pkt_accum_t *) genpkt;
+            iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
+            DBG("mpi get_accum to %d\n", acpkt->mapped_trank);
+            mpi_errno = psm_1sided_getaccumpkt(acpkt, iov, iov_n, rptr); //ODOT: error handle
+            goto fn_exit;
+        }
+        case MPIDI_CH3_PKT_GET_ACCUM_RESP: {
+            MPIDI_CH3_Pkt_get_accum_resp_t *acpkt = (MPIDI_CH3_Pkt_get_accum_resp_t *) genpkt;
+            iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
+            DBG("mpi get_accum to %d\n", acpkt->mapped_trank);
+            mpi_errno = psm_1sided_getaccumresppkt(acpkt, iov, iov_n, rptr); //ODOT: error handle
+            goto fn_exit;
+        }
         case MPIDI_CH3_PKT_GET_RESP: {
             MPIDI_CH3_Pkt_get_resp_t *resppkt = (MPIDI_CH3_Pkt_get_resp_t *) genpkt;
             iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
@@ -71,6 +85,26 @@ int psm_istartmsgv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request **rptr
             goto fn_exit;
         }
 
+        case MPIDI_CH3_PKT_FOP:{
+            MPIDI_CH3_Pkt_t * pkt = (MPIDI_CH3_Pkt_t *) genpkt;
+            iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
+            mpi_errno = psm_1sided_atomicpkt(pkt, iov, iov_n,
+                    pkt->fop.mapped_trank, pkt->fop.mapped_srank, rptr);
+            if(unlikely(mpi_errno != MPI_SUCCESS)) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            goto fn_exit;
+         }
+        case MPIDI_CH3_PKT_FOP_RESP: {
+            MPIDI_CH3_Pkt_t * pkt = (MPIDI_CH3_Pkt_t *) genpkt;
+            iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
+            mpi_errno = psm_1sided_atomicpkt(pkt, iov, iov_n,
+                    pkt->fop_resp.mapped_trank, pkt->fop_resp.mapped_srank, rptr);
+            if(unlikely(mpi_errno != MPI_SUCCESS)) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            goto fn_exit;
+        }
         default: {
             DBG("sending packet type %d\n", genpkt->type);
             if(genpkt->type != MPIDI_CH3_PKT_EAGER_SEND) {
@@ -158,6 +192,46 @@ int psm_istartmsg(MPIDI_VC_t *vc, void *upkt, MPIDI_msg_sz_t pkt_sz, MPID_Reques
             }
             break;
 
+        case MPIDI_CH3_PKT_FOP: 
+            buflen = sizeof(MPIDI_CH3_Pkt_t);
+            src = ((MPIDI_CH3_Pkt_fop_t *) genpkt)->mapped_srank;
+            trank = ((MPIDI_CH3_Pkt_fop_t *) genpkt)->mapped_trank;
+            mpi_errno = psm_send_1sided_ctrlpkt(rptr, trank, buf, buflen, src, 1);
+            if(unlikely(mpi_errno != MPI_SUCCESS)) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            break;
+
+        case MPIDI_CH3_PKT_FOP_RESP: 
+            buflen = sizeof(MPIDI_CH3_Pkt_t);
+            src = ((MPIDI_CH3_Pkt_fop_resp_t *) genpkt)->mapped_srank;
+            trank = ((MPIDI_CH3_Pkt_fop_resp_t *) genpkt)->mapped_trank;
+            mpi_errno = psm_send_1sided_ctrlpkt(rptr, trank, buf, buflen, src, 1);
+            if(unlikely(mpi_errno != MPI_SUCCESS)) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            break;
+
+        case MPIDI_CH3_PKT_CAS: 
+            buflen = sizeof(MPIDI_CH3_Pkt_t);
+            src = ((MPIDI_CH3_Pkt_cas_t *) genpkt)->mapped_srank;
+            trank = ((MPIDI_CH3_Pkt_cas_t *) genpkt)->mapped_trank;
+            mpi_errno = psm_send_1sided_ctrlpkt(rptr, trank, buf, buflen, src, 1);
+            if(unlikely(mpi_errno != MPI_SUCCESS)) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            break;
+
+        case MPIDI_CH3_PKT_CAS_RESP: 
+            buflen = sizeof(MPIDI_CH3_Pkt_t);
+            src = ((MPIDI_CH3_Pkt_cas_resp_t *) genpkt)->mapped_srank;
+            trank = ((MPIDI_CH3_Pkt_cas_resp_t *) genpkt)->mapped_trank;
+            mpi_errno = psm_send_1sided_ctrlpkt(rptr, trank, buf, buflen, src, 1);
+            if(unlikely(mpi_errno != MPI_SUCCESS)) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            break;
+
         case MPIDI_CH3_PKT_LOCK:
             buflen = sizeof(MPIDI_CH3_Pkt_t);
             src = ((MPIDI_CH3_Pkt_lock_t *) genpkt)->mapped_srank;
@@ -169,12 +243,22 @@ int psm_istartmsg(MPIDI_VC_t *vc, void *upkt, MPIDI_msg_sz_t pkt_sz, MPID_Reques
             }
             break;
 
+        case MPIDI_CH3_PKT_UNLOCK:
+            buflen = sizeof(MPIDI_CH3_Pkt_t);
+            src = ((MPIDI_CH3_Pkt_unlock_t *) genpkt)->mapped_srank;
+            trank = ((MPIDI_CH3_Pkt_unlock_t *) genpkt)->mapped_trank;
+            DBG("Sending UNLOCK packet to %d from %d\n", trank, src);
+            mpi_errno = psm_send_1sided_ctrlpkt(rptr, trank, buf, buflen, src, 1);
+            if(unlikely(mpi_errno != MPI_SUCCESS)) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            break;
+
         case MPIDI_CH3_PKT_LOCK_GRANTED:
             buflen = sizeof(MPIDI_CH3_Pkt_t);
             src = ((MPIDI_CH3_Pkt_lock_granted_t *) genpkt)->mapped_srank;
-            trank = ((MPIDI_CH3_Pkt_lock_granted_t *) genpkt)->mapped_trank;
             DBG("Sending LOCK_GRANTED packet to %d from %d\n", trank, src);
-            mpi_errno = psm_send_1sided_ctrlpkt(rptr, trank, buf, buflen, src, 1);
+            mpi_errno = psm_send_1sided_ctrlpkt(rptr, vc->pg_rank, buf, buflen, src, 1);
             if(unlikely(mpi_errno != MPI_SUCCESS)) {
                 MPIU_ERR_POP(mpi_errno);
             }
@@ -183,6 +267,16 @@ int psm_istartmsg(MPIDI_VC_t *vc, void *upkt, MPIDI_msg_sz_t pkt_sz, MPID_Reques
         case MPIDI_CH3_PKT_PT_RMA_DONE:
             buflen = sizeof(MPIDI_CH3_Pkt_t);
             src = ((MPIDI_CH3_Pkt_pt_rma_done_t *) genpkt)->source_rank;
+            mpi_errno = psm_send_1sided_ctrlpkt(rptr, vc->pg_rank, buf, buflen, src, 1);
+            if(unlikely(mpi_errno != MPI_SUCCESS)) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            break;
+
+        case MPIDI_CH3_PKT_FLUSH:
+            buflen = sizeof(MPIDI_CH3_Pkt_t);
+            src = ((MPIDI_CH3_Pkt_flush_t *) genpkt)->mapped_srank;
+            DBG("Sending FLUSH packet to %d from %d\n", trank, src);
             mpi_errno = psm_send_1sided_ctrlpkt(rptr, vc->pg_rank, buf, buflen, src, 1);
             if(unlikely(mpi_errno != MPI_SUCCESS)) {
                 MPIU_ERR_POP(mpi_errno);

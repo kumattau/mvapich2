@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -63,6 +63,8 @@ typedef struct dreg_entry dreg_entry;
 
 extern int g_is_dreg_initialized; 
 extern int g_is_dreg_finalize;
+extern unsigned long dreg_stat_cache_hit;
+extern unsigned long dreg_stat_cache_miss;
 struct dreg_entry {
     unsigned long pagenum;
 #ifdef DAPL_DEFAULT_PROVIDER
@@ -249,11 +251,11 @@ int dreg_init(void);
 
 int dreg_finalize(void);
 
-dreg_entry *dreg_register(void *buf, int len);
+dreg_entry *dreg_register(void *buf, size_t len);
 
 void dreg_unregister(dreg_entry * entry);
 
-dreg_entry *dreg_find(void *buf, int len);
+dreg_entry *dreg_find(void *buf, size_t len);
 
 dreg_entry *dreg_get(void);
 
@@ -265,7 +267,7 @@ void dreg_decr_refcount(dreg_entry * d);
 
 void dreg_incr_refcount(dreg_entry * d);
 
-dreg_entry *dreg_new_entry(void *buf, int len);
+dreg_entry *dreg_new_entry(void *buf, size_t len);
 
 void flush_dereg_mrs_external(void);
 

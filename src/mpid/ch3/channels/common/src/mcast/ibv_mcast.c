@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -10,7 +10,7 @@
  *
  */
 
-#include "rdma_impl.h"
+#include <mpichconf.h>
 
 #if defined(_MCST_SUPPORT_)
 #include <infiniband/verbs.h>
@@ -18,6 +18,8 @@
 #include <infiniband/mad.h>
 #include <string.h>
 #include <errno.h>
+
+#include "rdma_impl.h"
 #include "ibv_mcast.h"
 #include "vbuf.h"
 #include "debug_utils.h"
@@ -585,7 +587,7 @@ mv2_ud_ctx_t * mv2_mcast_prepare_ud_ctx()
         qp_info.srq = create_srq(&mv2_MPIDI_CH3I_RDMA_Process, 0);
     }
     qp_info.cap.max_inline_data = rdma_max_inline_size;
-    ud_ctx = mv2_ud_create_ctx(&qp_info);
+    ud_ctx = mv2_ud_create_ctx(&qp_info, 0);
     if (!ud_ctx) {
         PRINT_ERROR("MCAST UD QP creation failed");
         return NULL;

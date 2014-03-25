@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,6 @@
  *
  */
 
-#include "mpiimpl.h"
 #include "mpidi_ch3_impl.h"
 #include "mpiutil.h"
 #include "rdma_impl.h"
@@ -76,10 +75,8 @@ volatile unsigned int MPIDI_CH3I_progress_completion_count = 0;
     MPID_Thread_cond_t MPIDI_CH3I_progress_completion_cond;
 #endif
 
-#if defined (_OSU_MVAPICH_) && OSU_MPIT
-unsigned long mpit_progress_poll = 0;
-#endif /* (_OSU_MVAPICH_) && OSU_MPIT */
-
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mpit_progress_poll);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, rdma_ud_retransmissions);
 
 inline static int MPIDI_CH3I_Seq(int type)
 { 
@@ -113,6 +110,7 @@ inline static int MPIDI_CH3I_Seq(int type)
         case MPIDI_CH3_PKT_PT_RMA_DONE:
         case MPIDI_CH3_PKT_PUT_RNDV:
         case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
+        case MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV:
         case MPIDI_CH3_PKT_GET_RNDV:
         case MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND:
             return 1;
@@ -202,10 +200,7 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
     {
 
 start_polling:
-        #if defined (_OSU_MVAPICH_) && OSU_MPIT
-            mpit_progress_poll++;
-        #endif /* (_OSU_MVAPICH_) && OSU_MPIT */
-
+        MPIR_T_PVAR_COUNTER_INC(MV2, mpit_progress_poll, 1);
         smp_completions = MPIDI_CH3I_progress_completion_count;
         smp_found = 0;
         /*needed if early send complete does not occur */
@@ -220,21 +215,6 @@ start_polling:
         if (smp_completions != MPIDI_CH3I_progress_completion_count) {
             smp_found = 1;
         }
-
-#if !defined(DAPL_DEFAULT_PROVIDER)
-        if (SMP_INIT && (mv2_MPIDI_CH3I_RDMA_Process.has_shm_one_sided 
-#if defined(_SMP_LIMIC_)
-            || mv2_MPIDI_CH3I_RDMA_Process.has_limic_one_sided
-#endif
-            )) {
-            /*Check and process rma locks released through shared memory*/
-            mpi_errno = MPIDI_CH3I_Process_locks();
-            if (mpi_errno != MPI_SUCCESS)
-            {
-                MPIU_ERR_POP(mpi_errno);
-            }
-        }
-#endif
 
 #ifdef CKPT
         if (MPIDI_CH3I_Process.reactivation_complete) {
@@ -317,9 +297,8 @@ start_polling:
                     if (UD_ACK_PROGRESS_TIMEOUT) {
                         rdma_ud_last_check = mv2_get_time_us();
                         mv2_check_resend();
-                        #if OSU_MPIT
-                            rdma_ud_retransmissions++;
-                        #endif
+                        MPIR_T_PVAR_COUNTER_INC(MV2, rdma_ud_retransmissions,
+                                1);
                         MV2_UD_SEND_ACKS();
                     }
                 }
@@ -424,9 +403,7 @@ start_polling:
 #ifdef _ENABLE_UD_
     if ( !SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
         mv2_check_resend();
-        #if OSU_MPIT
-            rdma_ud_retransmissions++;
-        #endif
+        MPIR_T_PVAR_COUNTER_INC(MV2, rdma_ud_retransmissions, 1);
         MV2_UD_SEND_ACKS();
         rdma_ud_last_check = mv2_get_time_us();
     }
@@ -489,21 +466,6 @@ int MPIDI_CH3I_Progress_test()
         {
             MPIU_ERR_POP(mpi_errno);
         }
-
-#if !defined(DAPL_DEFAULT_PROVIDER)
-        if (mv2_MPIDI_CH3I_RDMA_Process.has_shm_one_sided 
-#if defined(_SMP_LIMIC_)
-            || mv2_MPIDI_CH3I_RDMA_Process.has_limic_one_sided
-#endif
-            ) { 
-            /*Check and process rma locks released through shared memory*/
-            mpi_errno = MPIDI_CH3I_Process_locks();
-            if (mpi_errno != MPI_SUCCESS)
-            {
-                MPIU_ERR_POP(mpi_errno);
-            }
-        }
-#endif
     }
 
 #if defined(CKPT)
@@ -623,9 +585,7 @@ int MPIDI_CH3I_Progress_test()
 #ifdef _ENABLE_UD_
     if ( !SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
         mv2_check_resend();
-        #if OSU_MPIT
-            rdma_ud_retransmissions++;
-        #endif
+        MPIR_T_PVAR_COUNTER_INC(MV2, rdma_ud_retransmissions, 1);
         MV2_UD_SEND_ACKS();
         rdma_ud_last_check = mv2_get_time_us();
     }
@@ -708,7 +668,7 @@ int MPIDI_CH3I_Request_adjust_iov(MPID_Request * req, MPIDI_msg_sz_t nb)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_REQUEST_ADJUST_IOV);
 
     while (offset < count) {
-        if (req->dev.iov[offset].MPID_IOV_LEN <= (unsigned int) nb) {
+        if (req->dev.iov[offset].MPID_IOV_LEN <= (MPIDI_msg_sz_t) nb) {
             nb -= req->dev.iov[offset].MPID_IOV_LEN;
             ++offset;
         } else {
@@ -728,6 +688,7 @@ int MPIDI_CH3I_Request_adjust_iov(MPID_Request * req, MPIDI_msg_sz_t nb)
 
     MPIDI_DBG_PRINTF((60, FCNAME, "adjust_iov returning TRUE"));
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_REQUEST_ADJUST_IOV);
+
     return TRUE;
 }
 

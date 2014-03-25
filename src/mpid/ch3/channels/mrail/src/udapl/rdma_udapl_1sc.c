@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -233,7 +233,7 @@ MPIDI_CH3I_RDMA_finish_rma (MPID_Win * win_ptr)
 
 /* Go through RMA op list once, and start as many RMA ops as possible */
 void
-MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr, int passive, int target_rank)
+MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr, int target_rank)
 {
     MPIDI_RMA_Op_t *curr_ptr = NULL;
     MPIDI_RMA_Op_t *head = NULL;

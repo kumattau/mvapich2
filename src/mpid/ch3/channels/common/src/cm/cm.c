@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -2062,7 +2062,7 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
 #ifdef USE_MEMORY_TRACING
     cm_ud_buf = MPIU_Malloc((sizeof(cm_msg) + 40) * (cm_recv_buffer_size + 1));
 #else
-    result = posix_memalign(&cm_ud_buf, page_size,
+    result = MPIU_Memalign(&cm_ud_buf, page_size,
                             (sizeof(cm_msg) + 40) * (cm_recv_buffer_size + 1));
 #endif
     if (result != 0 || cm_ud_buf == NULL) {

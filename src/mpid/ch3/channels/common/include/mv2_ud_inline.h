@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -147,7 +147,7 @@ static inline void mv2_ud_unack_queue_remove(message_queue_t *q, vbuf *v)
     q->count--;
 }
 
-static inline void mv2_ud_track_send(mv2_ud_vc_info_t *ud_vc, message_queue_t *unack_queue, vbuf *v)
+static inline void mv2_ud_track_send(mv2_ud_reliability_info_t *ud_vc, message_queue_t *unack_queue, vbuf *v)
 {
     rdma_ud_last_check = mv2_get_time_us();
     if (v->transport == IB_TRANSPORT_RC) {

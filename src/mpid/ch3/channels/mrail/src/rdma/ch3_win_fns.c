@@ -4,9 +4,24 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
+
 #include "mpidimpl.h"
 #include "mpiinfo.h"
 #include "mpidrma.h"
+
+#include "coll_shmem.h"
 
 /* FIXME: get this from OS */
 #define MPIDI_CH3_PAGESIZE ((MPI_Aint)4096)
@@ -46,6 +61,7 @@ int MPIDI_CH3_SHM_Win_shared_query(MPID_Win *win_ptr, int target_rank, MPI_Aint 
         for (i = 0; i < comm_size; i++) {
             if (win_ptr->sizes[i] > 0) {
                 *size               = win_ptr->sizes[i];
+                *disp_unit          = win_ptr->disp_units[i];
                 *((void**) baseptr) = win_ptr->shm_base_addrs[i];
                 break;
             }
@@ -53,6 +69,7 @@ int MPIDI_CH3_SHM_Win_shared_query(MPID_Win *win_ptr, int target_rank, MPI_Aint 
 
     } else {
         *size               = win_ptr->sizes[target_rank];
+        *disp_unit          = win_ptr->disp_units[target_rank];
         *((void**) baseptr) = win_ptr->shm_base_addrs[target_rank];
     }
 
@@ -97,15 +114,13 @@ int MPIDI_CH3_SHM_Win_free(MPID_Win **win_ptr)
     /* Free shared process mutex memory region */
     if ((*win_ptr)->shm_mutex && (*win_ptr)->shm_segment_len > 0) {
         MPID_Comm *node_comm_ptr = NULL;
-
         /* When allocating shared memory region segment, we need comm of processes
            that are on the same node as this process (node_comm).
            If node_comm == NULL, this process is the only one on this node, therefore
            we use comm_self as node comm. */
-        if ((*win_ptr)->comm_ptr->node_comm != NULL)
-            node_comm_ptr = (*win_ptr)->comm_ptr->node_comm;
-        else
-            node_comm_ptr = MPIR_Process.comm_self;
+        MPI_Comm shmem_comm;
+        shmem_comm = (*win_ptr)->comm_ptr->ch.shmem_comm;
+        MPID_Comm_get_ptr(shmem_comm, node_comm_ptr);
         MPIU_Assert(node_comm_ptr != NULL);
 
         if (node_comm_ptr->rank == 0) {
@@ -168,6 +183,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     int noncontig = FALSE;
     MPIU_CHKPMEM_DECL(6);
     MPIU_CHKLMEM_DECL(3);
+    MPI_Comm shmem_comm;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_WIN_ALLOCATE_SHM);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WIN_ALLOCATE_SHM);
@@ -202,29 +218,24 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
        that are on the same node as this process (node_comm).
        If node_comm == NULL, this process is the only one on this node, therefore
        we use comm_self as node comm. */
-    if ((*win_ptr)->comm_ptr->node_comm != NULL)
-        node_comm_ptr = (*win_ptr)->comm_ptr->node_comm;
-    else
-        node_comm_ptr = MPIR_Process.comm_self;
+
+    /* This node comm only works with hydra, it doesn't work when using mpirun_rsh, so call this
+     *  function to create shm comm */
+    if((*win_ptr)->comm_ptr->ch.shmem_coll_ok == 0)
+        mpi_errno = create_2level_comm((*win_ptr)->comm_ptr->handle, (*win_ptr)->comm_ptr->local_size, (*win_ptr)->comm_ptr->rank);
+    if(mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }           
+
+    shmem_comm = (*win_ptr)->comm_ptr->ch.shmem_comm;
+    MPID_Comm_get_ptr(shmem_comm, node_comm_ptr);
+
     MPIU_Assert(node_comm_ptr != NULL);
     
-
-#if defined(_OSU_MVAPICH_)
-    MPIDI_VC_t *vc;
-    node_size = 0;    
-    for(i=0; i<comm_size; i++) {
-        MPIDI_Comm_get_vc(comm_ptr, i, &vc);
-        if(vc->smp.local_nodes != -1) {
-            node_size++;
-        } 
-    }
-#else
     node_size = node_comm_ptr->local_size;
-#endif
-
     node_rank = node_comm_ptr->rank;
 
-    MPIU_INSTR_DURATION_START(wincreate_allgather);
+    MPIR_T_PVAR_TIMER_START(RMA, rma_wincreate_allgather);
     /* allocate memory for the base addresses, disp_units, and
        completion counters of all processes */
     MPIU_CHKPMEM_MALLOC((*win_ptr)->base_addrs, void **,
@@ -262,7 +273,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     mpi_errno = MPIR_Allgather_impl(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
                                     tmp_buf, 3 * sizeof(MPI_Aint), MPI_BYTE,
                                     (*win_ptr)->comm_ptr, &errflag);
-    MPIU_INSTR_DURATION_END(wincreate_allgather);
+    MPIR_T_PVAR_TIMER_START(RMA, rma_wincreate_allgather);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
@@ -286,7 +297,6 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
                window may not be on the same node. Because we only need the sizes of local
                processes (in order), we copy their sizes to a seperate array and keep them
                in order, fur purpose of future use of calculating shm_base_addrs. */
-#if defined(_OSU_MVAPICH_)
             /* Since, this intranode_table is not populated when using run_rsh,
              * so we use our rank info */
             MPIDI_VC_t *vc;
@@ -296,12 +306,6 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
                 MPIU_Assert(l_rank < node_size);
                 node_sizes[l_rank] = (*win_ptr)->sizes[i];
             } 
-#else
-            if ((*win_ptr)->comm_ptr->intranode_table[i] >= 0) {
-                MPIU_Assert((*win_ptr)->comm_ptr->intranode_table[i] < node_size);
-                node_sizes[(*win_ptr)->comm_ptr->intranode_table[i]] = (*win_ptr)->sizes[i];
-            }
-#endif       
         }
     }
     for (i = 0; i < node_size; i++) {
@@ -332,7 +336,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
         mpi_errno = MPIU_SHMW_Hnd_get_serialized_by_ref((*win_ptr)->shm_segment_handle, &serialized_hnd_ptr);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-        mpi_errno = MPIR_Bcast_impl(serialized_hnd_ptr, MPIU_SHMW_GHND_SZ, MPI_CHAR, 0, node_comm_ptr, &errflag);
+        mpi_errno = MPIR_Shmem_Bcast_MV2(serialized_hnd_ptr, MPIU_SHMW_GHND_SZ, MPI_BYTE, 0, node_comm_ptr, errflag);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
@@ -348,8 +352,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     } else {
         char serialized_hnd[MPIU_SHMW_GHND_SZ] = {0};
 
-        /* get serialized handle from rank 0 and deserialize it */
-        mpi_errno = MPIR_Bcast_impl(serialized_hnd, MPIU_SHMW_GHND_SZ, MPI_CHAR, 0, node_comm_ptr, &errflag);
+        mpi_errno = MPIR_Shmem_Bcast_MV2(serialized_hnd, MPIU_SHMW_GHND_SZ, MPI_BYTE, 0, node_comm_ptr, &errflag);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
@@ -384,7 +387,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
         mpi_errno = MPIU_SHMW_Hnd_get_serialized_by_ref((*win_ptr)->shm_mutex_segment_handle, &serialized_hnd_ptr);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-        mpi_errno = MPIR_Bcast_impl(serialized_hnd_ptr, MPIU_SHMW_GHND_SZ, MPI_CHAR, 0, node_comm_ptr, &errflag);
+        mpi_errno = MPIR_Shmem_Bcast_MV2(serialized_hnd_ptr, MPIU_SHMW_GHND_SZ, MPI_CHAR, 0, node_comm_ptr, &errflag);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
@@ -400,7 +403,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
         char serialized_hnd[MPIU_SHMW_GHND_SZ] = {0};
 
         /* get serialized handle from rank 0 and deserialize it */
-        mpi_errno = MPIR_Bcast_impl(serialized_hnd, MPIU_SHMW_GHND_SZ, MPI_CHAR, 0, node_comm_ptr, &errflag);
+        mpi_errno = MPIR_Shmem_Bcast_MV2(serialized_hnd, MPIU_SHMW_GHND_SZ, MPI_CHAR, 0, node_comm_ptr, &errflag);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
@@ -451,7 +454,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
             /* if MPI_WIN_FLAVOR_SHARED is not set, copy from node_shm_base_addrs to
                (*win_ptr)->shm_base_addrs */
             for (i = 0; i < comm_size; i++) {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
             MPIDI_VC_t *vc;
             MPIDI_Comm_get_vc(comm_ptr, i, &vc);
             int l_rank = vc->smp.local_rank;
@@ -488,6 +491,22 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
         (*win_ptr)->base_addrs[i] = MPIU_AintToPtr(tmp_buf[i]);
 
     *base_pp = (*win_ptr)->base;
+
+#if defined(_OSU_MVAPICH_)
+    (*win_ptr)->my_id = rank;
+    (*win_ptr)->comm_size = comm_size;
+    /* -- OSU-MPI2 uses extended CH3 interface */
+    if (comm_ptr->comm_kind == MPID_INTRACOMM)
+    {
+        /* Only Intracomm supports drect one-sided communication*/
+        /* Intercomm is not well supported currently,
+         * directly fall back to pt2pt implementation if we use inter
+         * communicator */
+        (*win_ptr)->fall_back = 0;
+        MPIDI_CH3I_RDMA_win_create(*base_pp, size, comm_size,
+                rank, win_ptr, comm_ptr);
+    }
+#endif /* defined(_OSU_MVAPICH_) */
 
     /* Provide operation overrides for this window flavor */
     (*win_ptr)->RMAFns.Win_shared_query = MPIDI_CH3_SHM_Win_shared_query;

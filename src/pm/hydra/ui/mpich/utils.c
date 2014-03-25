@@ -48,7 +48,7 @@ static HYD_status get_current_exec(struct HYD_exec **exec)
 static void help_help_fn(void)
 {
     printf("\n");
-    printf("Usage: ./mpiexec [global opts] [exec1 local opts] : [exec2 local opts] : ...\n\n");
+    printf("Usage: ./mpiexec [global opts] [local opts for exec1] [exec1] [exec1 args] : [local opts for exec2] [exec2] [exec2 args] : ...\n\n");
 
     printf("Global options (passed to all executables):\n");
 
@@ -237,7 +237,7 @@ static void genvlist_help_fn(void)
 
 static HYD_status genvlist_fn(char *arg, char ***argv)
 {
-    int len;
+    size_t len;
     HYD_status status = HYD_SUCCESS;
 
     if (reading_config_file && HYD_server_info.user_global.global_env.prop) {
@@ -684,7 +684,7 @@ static void envlist_help_fn(void)
 
 static HYD_status envlist_fn(char *arg, char ***argv)
 {
-    int len;
+    size_t len;
     struct HYD_exec *exec;
     HYD_status status = HYD_SUCCESS;
 
@@ -926,8 +926,6 @@ static void bind_to_help_fn(void)
     printf("            l1cache          -- map to L1 cache domain\n");
     printf("            l2cache          -- map to L2 cache domain\n");
     printf("            l3cache          -- map to L3 cache domain\n");
-    printf("            TCSNB            -- map in order of T, C, S, N, B\n");
-    printf("            CTSNB            -- map in order of C, T, S, N, B\n");
 
     printf("\n\n");
 
@@ -1541,7 +1539,7 @@ static HYD_status set_default_values(void)
                                 "cannot set iface and force hostname propagation");
         }
 
-        HYDU_append_env_to_list("MPIR_PARAM_NEMESIS_TCP_NETWORK_IFACE",
+        HYDU_append_env_to_list("MPIR_CVAR_NEMESIS_TCP_NETWORK_IFACE",
                                 HYD_server_info.user_global.iface,
                                 &HYD_server_info.user_global.global_env.system);
 
@@ -1552,7 +1550,7 @@ static HYD_status set_default_values(void)
     /* If hostname propagation is requested (or not set), set the
      * environment variable for doing that */
     if (hostname_propagation || hostname_propagation == -1)
-        HYD_server_info.iface_ip_env_name = HYDU_strdup("MPIR_PARAM_CH3_INTERFACE_HOSTNAME");
+        HYD_server_info.iface_ip_env_name = HYDU_strdup("MPIR_CVAR_CH3_INTERFACE_HOSTNAME");
 
     /* Default universe size if the user did not specify anything is
      * INFINITE */
@@ -1632,7 +1630,8 @@ static HYD_status parse_args(char **t_argv)
 
 HYD_status HYD_uii_mpx_get_parameters(char **t_argv)
 {
-    int ret, len;
+    int ret;
+    size_t len;
     char **argv = t_argv;
     char *progname = *argv;
     char *post, *loc, *tmp[HYD_NUM_TMP_STRINGS], *conf_file;
@@ -1742,7 +1741,7 @@ HYD_status HYD_uii_mpx_get_parameters(char **t_argv)
     /* If the user set the checkpoint prefix, set env var to enable
      * checkpointing on the processes  */
     if (HYD_server_info.user_global.ckpoint_prefix)
-        HYDU_append_env_to_list("MPIR_PARAM_NEMESIS_ENABLE_CKPOINT", "1",
+        HYDU_append_env_to_list("MPIR_CVAR_NEMESIS_ENABLE_CKPOINT", "1",
                                 &HYD_server_info.user_global.global_env.system);
 
     /* Preset common environment options for disabling STDIO buffering

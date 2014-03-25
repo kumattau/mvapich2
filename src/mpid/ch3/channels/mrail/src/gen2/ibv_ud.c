@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,16 +21,16 @@
 static inline void mv2_ud_flush_ext_window(MPIDI_VC_t *vc)
 {
     vbuf *next;
-    message_queue_t *q = &vc->mrail.ud.ext_window;
+    message_queue_t *q = &vc->mrail.rely.ext_window;
     while (q->head != NULL && 
-            vc->mrail.ud.send_window.count < rdma_default_ud_sendwin_size) {
+            vc->mrail.rely.send_window.count < rdma_default_ud_sendwin_size) {
         next = (q->head)->extwin_msg.next;
         mv2_MPIDI_CH3I_RDMA_Process.post_send(vc, q->head, (q->head)->rail);
         PRINT_DEBUG(DEBUG_UD_verbose>1,"Send ext window message(%p) nextseqno :"
                 "%d\n", next, vc->mrail.seqnum_next_tosend);
         q->head = next;
         --q->count;
-        vc->mrail.ud.ext_win_send_count++;
+        vc->mrail.rely.ext_win_send_count++;
     }
     if (q->head == NULL) {
         MPIU_Assert(q->count == 0);
@@ -39,22 +39,22 @@ static inline void mv2_ud_flush_ext_window(MPIDI_VC_t *vc)
 }
 static inline void mv2_ud_process_ack(MPIDI_VC_t *vc, uint16_t acknum)
 {
-    vbuf *sendwin_head = vc->mrail.ud.send_window.head;
+    vbuf *sendwin_head = vc->mrail.rely.send_window.head;
 
     PRINT_DEBUG(DEBUG_UD_verbose>2,"ack recieved: %d next_to_ack: %d\n",acknum, vc->mrail.seqnum_next_toack);
 
     while (sendwin_head != NULL && 
             INCL_BETWEEN (acknum, sendwin_head->seqnum, vc->mrail.seqnum_next_tosend))
     {
-        mv2_ud_send_window_remove(&vc->mrail.ud.send_window, sendwin_head);
+        mv2_ud_send_window_remove(&vc->mrail.rely.send_window, sendwin_head);
         mv2_ud_unack_queue_remove(&(mv2_MPIDI_CH3I_RDMA_Process.unack_queue), sendwin_head);
         MRAILI_Process_send(sendwin_head);
-        sendwin_head = vc->mrail.ud.send_window.head;
+        sendwin_head = vc->mrail.rely.send_window.head;
     }
 
     /*see if we can flush from ext window queue */
-    if (vc->mrail.ud.ext_window.head != NULL && 
-            vc->mrail.ud.send_window.count < rdma_default_ud_sendwin_size) {
+    if (vc->mrail.rely.ext_window.head != NULL && 
+            vc->mrail.rely.send_window.count < rdma_default_ud_sendwin_size) {
         mv2_ud_flush_ext_window(vc);
     }    
 }
@@ -84,7 +84,7 @@ static inline void mv2_ud_place_recvwin(vbuf *v)
         } else {
             /* we are not in order */
             PRINT_DEBUG(DEBUG_UD_verbose>1,"Got out-of-order packet recv:%d expected:%d\n",v->seqnum, vc->mrail.seqnum_next_torecv);
-            ret = mv2_ud_recv_window_add(&vc->mrail.ud.recv_window, v, vc->mrail.seqnum_next_torecv);
+            ret = mv2_ud_recv_window_add(&vc->mrail.rely.recv_window, v, vc->mrail.seqnum_next_torecv);
             if (ret == MSG_IN_RECVWIN) {
                 MPIDI_CH3I_MRAIL_Release_vbuf(v);
             }
@@ -95,12 +95,12 @@ static inline void mv2_ud_place_recvwin(vbuf *v)
         }
 
         /* process in-order messages in recv windiw head */
-        while ( vc->mrail.ud.recv_window.head != NULL && 
-                (vc->mrail.ud.recv_window.head->seqnum == 
+        while ( vc->mrail.rely.recv_window.head != NULL && 
+                (vc->mrail.rely.recv_window.head->seqnum == 
                  vc->mrail.seqnum_next_torecv)) {
             PRINT_DEBUG(DEBUG_UD_verbose>1,"get one with in-order seqnum:%d \n",vc->mrail.seqnum_next_torecv);
-            handle_read(vc, vc->mrail.ud.recv_window.head);
-            mv2_ud_recv_window_remove(&vc->mrail.ud.recv_window);
+            handle_read(vc, vc->mrail.rely.recv_window.head);
+            mv2_ud_recv_window_remove(&vc->mrail.rely.recv_window);
             vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
             ++vc->mrail.seqnum_next_torecv;
         }
@@ -127,7 +127,7 @@ int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *send_ud_ctx)
     p->src.rank  = MPIDI_Process.my_pg_rank;
     MPIU_Assert(v->transport == IB_TRANSPORT_UD);
 
-    SEND_WINDOW_CHECK(&vc->mrail.ud, v);
+    SEND_WINDOW_CHECK(&vc->mrail.rely, v);
 
     v->seqnum = p->seqnum = vc->mrail.seqnum_next_tosend;
     vc->mrail.seqnum_next_tosend++;
@@ -137,12 +137,12 @@ int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *send_ud_ctx)
     MV2_UD_RESET_CREDITS(vc, v);
     v->flags |= UD_VBUF_SEND_INPROGRESS;
 
-    PRINT_DEBUG(DEBUG_UD_verbose>1,"UD Send : to:%d seqnum:%d acknum:%d len:%d\n", 
-                vc->pg_rank, p->seqnum, p->acknum, v->desc.sg_entry.length);
+    PRINT_DEBUG(DEBUG_UD_verbose>1,"UD Send : to:%d seqnum:%d acknum:%d len:%d rail:%d\n", 
+                vc->pg_rank, p->seqnum, p->acknum, v->desc.sg_entry.length, rail);
 
-    IBV_UD_POST_SR(v, vc->mrail.ud, ud_ctx);
+    IBV_UD_POST_SR(v, vc->mrail.ud[rail], ud_ctx);
 
-    mv2_ud_track_send(&vc->mrail.ud, &mv2_MPIDI_CH3I_RDMA_Process.unack_queue, v);     
+    mv2_ud_track_send(&vc->mrail.rely, &mv2_MPIDI_CH3I_RDMA_Process.unack_queue, v);     
 
     return 0;
 }
@@ -162,9 +162,9 @@ void mv2_send_control_msg(MPIDI_VC_t *vc, vbuf *v)
     MARK_ACK_COMPLETED(vc);
     MV2_UD_RESET_CREDITS(vc, v);
 
-    IBV_UD_POST_SR(v, vc->mrail.ud, ud_ctx);
+    IBV_UD_POST_SR(v, vc->mrail.ud[p->rail], ud_ctx);
 
-    vc->mrail.ud.cntl_acks++;
+    vc->mrail.rely.cntl_acks++;
 
 }
 
@@ -261,7 +261,7 @@ void mv2_ud_resend(vbuf *v)
             ibv_error_abort(-1, "reliability resend failed");
         }
     }
-    vc->mrail.ud.resend_count++;
+    vc->mrail.rely.resend_count++;
 }    
 
 void MRAILI_Process_recv(vbuf *v) 

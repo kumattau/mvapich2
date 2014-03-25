@@ -69,7 +69,7 @@
  *   libraries (gcc, xl, xl.ndebug) and MPI_Init_thread() is called with
  *   MPI_THREAD_MULTIPLE.
  *   - NOTE: This environment variable has the same effect as setting
- *           MPIR_PARAM_DEFAULT_THREAD_LEVEL=multiple
+ *           MPIR_CVAR_DEFAULT_THREAD_LEVEL=multiple
  *
  * - PAMID_CONTEXT_MAX - This variable sets the maximum allowable number
  *   of contexts. Contexts are a method of dividing hardware resources
@@ -867,7 +867,7 @@ MPIDI_Env_setup(int rank, int requested)
       if(env != NULL)
       {
          if(strncasecmp(env, "N", 1) == 1)
-            MPIDI_Process.optimized.collectives = 0;
+            MPIDI_Process.optimized.collectives = MPID_COLL_OFF;
       }
    }
 
@@ -894,13 +894,15 @@ MPIDI_Env_setup(int rank, int requested)
              if(strncasecmp(env, "TUN", 3) == 0)
              {
                MPIDI_Process.optimized.auto_select_colls = MPID_AUTO_SELECT_COLLS_TUNE;
-               MPIDI_Process.optimized.collectives       = 1;
+               if(MPIDI_Process.optimized.collectives   != MPID_COLL_FCA)
+                 MPIDI_Process.optimized.collectives     = MPID_COLL_ON;
              }
              else if(strncasecmp(env, "YES", 3) == 0)
              {
                MPIDI_Process.optimized.auto_select_colls = MPID_AUTO_SELECT_COLLS_ALL; /* All collectives will be using auto coll sel.
                                                                                     We will check later on each individual coll. */
-               MPIDI_Process.optimized.collectives       = 1;
+               if(MPIDI_Process.optimized.collectives   != MPID_COLL_FCA)
+                 MPIDI_Process.optimized.collectives     = MPID_COLL_ON;
              }
              else
                MPIDI_Process.optimized.auto_select_colls = MPID_AUTO_SELECT_COLLS_NONE;
@@ -1136,6 +1138,11 @@ MPIDI_Env_setup(int rank, int requested)
            MPIDI_Process.mp_buf_mem=0;
 #endif
     }
+
+#ifdef QUEUE_BINARY_SEARCH_SUPPORT
+    char* names[] = {"MP_S_USE_QUEUE_BINARY_SEARCH_SUPPORT", NULL};
+    ENV_Char(names, &MPIDI_Process.queue_binary_search_support_on);
+#endif
   /* Exit if any deprecated environment variables were specified. */
   if (found_deprecated_env_var)
     {

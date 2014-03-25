@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,6 +21,7 @@
 #else
 #include "pmi.h"
 #endif
+#undef utarray_oom
 #define utarray_oom() do { goto fn_oom; } while (0)
 #include "mpiu_utarray.h"
 
@@ -253,9 +254,9 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_close_t * close_pkt = &upkt.close;
     MPID_Request * sreq;
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_VC_SENDCLOSE);
 
@@ -295,14 +296,14 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
     close_pkt->ack = (vc->state == MPIDI_VC_STATE_ACTIVE) ? FALSE : TRUE;
 #endif
 
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(close_pkt, seqnum);
     if(vc->smp.local_nodes == -1) {
        vc->pending_close_ops += 1;
     }
 
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 
     
     /* MT: this is not thread safe, the CH3COMM CS is scoped to the vc and
@@ -364,9 +365,9 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPIDI_CH3_Pkt_close_t * close_pkt = &pkt->close;
     int mpi_errno = MPI_SUCCESS;
 
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 	    
 #ifdef _ENABLE_XRC_
     MPICM_lock();
@@ -387,14 +388,14 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	MPIDI_Pkt_init(resp_pkt, MPIDI_CH3_PKT_CLOSE);
 	resp_pkt->ack = TRUE;
 
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(resp_pkt, seqnum);
     if(vc->smp.local_nodes == -1) {
             vc->pending_close_ops += 1;
     }
 
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */	
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */	
 
 	MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL,"sending close(TRUE) to %d",
 		       vc->pg_rank);
@@ -421,10 +422,12 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	else /* (vc->state == MPIDI_VC_STATE_ACTIVE) */
         {
 	    if (vc->state != MPIDI_VC_STATE_ACTIVE)
+            {
 		MPIU_DBG_MSG_FMT(CH3_DISCONNECT, TYPICAL, (MPIU_DBG_FDEST, "Unexpected state %s in vc %p (rank=%d) (expecting MPIDI_VC_STATE_ACTIVE)\n", MPIDI_VC_GetStateString(vc->state), vc, vc->pg_rank ));
 	    MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL,
                      "received close(FALSE) from %d, moving to REMOTE_CLOSE.",
 				   vc->pg_rank);
+            }
 #ifdef _ENABLE_XRC_
 	    MPIU_Assert(vc->state == MPIDI_VC_STATE_ACTIVE || USE_XRC);
 #else
@@ -449,7 +452,7 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         MPIDI_CHANGE_VC_STATE(vc, CLOSED);
 	/* For example, with sockets, Connection_terminate will close
 	   the socket */
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     if(vc->pending_close_ops > 0) {
        vc->disconnect = 1;
     } else {
@@ -457,7 +460,7 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     }
 #else
 	mpi_errno = MPIDI_CH3_Connection_terminate(vc);
-#endif /* #if defined(_OSU_MVAPICH_)  */ 
+#endif /* #if defined(CHANNEL_MRAIL)  */ 
     }
     
     *buflen = sizeof(MPIDI_CH3_Pkt_t);
@@ -548,7 +551,7 @@ static int terminate_failed_VCs(MPID_Group *new_failed_group)
         while (isspace(*c)) /* skip spaces */                                                   \
             ++c;                                                                                \
         MPIU_ERR_CHKINTERNAL(!isdigit(*c), mpi_errno, "error parsing failed process list");     \
-        *(r_p) = strtol(c, &c, 0);                                                              \
+        *(r_p) = (int)strtol(c, &c, 0);                                                         \
         while (isspace(*c)) /* skip spaces */                                                   \
             ++c;                                                                                \
     } while (0)

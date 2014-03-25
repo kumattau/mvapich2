@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -92,6 +92,36 @@ static int psm_mq_init_barrier(psm_mq_t mq, int rank, int ranks, psm_epaddr_t* a
     return rc;
 }
 
+#define FUNCNAME split_type
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int split_type(MPID_Comm * comm_ptr, int stype, int key,
+        MPID_Info *info_ptr, MPID_Comm ** newcomm_ptr)
+{
+    MPID_Node_id_t id;
+    MPIR_Rank_t nid;
+    int mpi_errno = MPI_SUCCESS;
+
+    mpi_errno = MPID_Get_node_id(comm_ptr, comm_ptr->rank, &id);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    nid = (stype == MPI_COMM_TYPE_SHARED) ? id : MPI_UNDEFINED;
+    mpi_errno = MPIR_Comm_split_impl(comm_ptr, nid, key, newcomm_ptr);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+fn_exit:
+    return mpi_errno;
+
+    /* --BEGIN ERROR HANDLING-- */
+fn_fail:
+    goto fn_exit;
+    /* --END ERROR HANDLING-- */
+}
+
+static MPID_CommOps comm_fns = {
+    split_type
+};
+
 #undef FUNCNAME
 #define FUNCNAME psm_doinit
 #undef FCNAME
@@ -103,6 +133,9 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     int heterogeneity = 0; 
     psm_epid_t myid, *epidlist = NULL;
     psm_error_t *errs = NULL, err;
+
+    /* Override split_type */
+    MPID_Comm_fns = &comm_fns;
 
     pg_size = MPIDI_PG_Get_size(pg);
     MPIDI_PG_GetConnKVSname(&kvsid);

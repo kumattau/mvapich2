@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -101,6 +101,7 @@ typedef struct MPIDI_CH3_Pkt_packetized_send_data {
     MPI_Request receiver_req_id;
 } MPIDI_CH3_Pkt_packetized_send_data_t;
 
+extern MPIDI_VC_t *flowlist;
 
 #define MPIDI_CH3_Pkt_rndv_r3_data_t MPIDI_CH3_Pkt_packetized_send_data_t
 
@@ -123,6 +124,59 @@ typedef struct MPIDI_CH3_Pkt_packetized_send_data {
         VC_FIELD(vc_, seqnum_send) = 0;         \
     }
 
+#define RENDEZVOUS_IN_PROGRESS(c_, s_) {                         \
+    MPIR_Request_add_ref(s_);                                    \
+    if (NULL == VC_FIELD(c_, connection)->sreq_tail) {           \
+        VC_FIELD(c_, connection)->sreq_head = (void *)(s_);      \
+    } else {                                                     \
+        REQ_FIELD(((MPID_Request *)                              \
+         VC_FIELD(c_, connection)->sreq_tail),next_inflow) =     \
+            (void *)(s_);                                        \
+    }                                                            \
+    VC_FIELD(c_, connection)->sreq_tail = (void *)(s_);          \
+    REQ_FIELD(((MPID_Request *)                                  \
+        VC_FIELD(c_, connection)->sreq_tail),next_inflow) = NULL;\
+}
+
+#define RENDEZVOUS_DONE(c_) {                                  \
+    MPID_Request *req = VC_FIELD(c_, connection)->sreq_head;   \
+    VC_FIELD(c_, connection)->sreq_head =                      \
+    REQ_FIELD(((MPID_Request *)                                \
+     VC_FIELD(c_, connection)->sreq_head),next_inflow);        \
+    if (NULL == VC_FIELD(c_, connection)->sreq_head) {         \
+         VC_FIELD(c_, connection)->sreq_tail = NULL;           \
+    }                                                          \
+    MPID_Request_release(req);                                 \
+}
+
+#define PUSH_FLOWLIST(c_) {                                      \
+    if (0 == VC_FIELD(c_, connection)->inflow) {                 \
+        VC_FIELD(c_, connection)->inflow = 1;                    \
+        VC_FIELD(c_, connection)->nextflow = (void *)flowlist;   \
+        flowlist = c_;                                           \
+    }                                                            \
+}
+
+#define POP_FLOWLIST() {                                             \
+    if (flowlist != NULL) {                                          \
+        MPIDI_VC_t *c_;                                              \
+        c_ = flowlist;                                               \
+        flowlist = (MPIDI_VC_t *)VC_FIELD(c_, connection)->nextflow; \
+        VC_FIELD(c_, connection)->inflow = 0;                        \
+        VC_FIELD(c_, connection)->nextflow = NULL;                   \
+    }                                                                \
+}
+
+#define ADD_PENDING_FLOWLIST(c_, _list) {                   \
+    VC_FIELD(c_, connection)->nextflow = _list;             \
+    _list = c_;                                             \
+}                                                           \
+
+#define REMOVE_PENDING_FLOWLIST(c_, _list) {                \
+    c_ = _list;                                             \
+    _list = VC_FIELD(c_, connection)->nextflow;             \
+    VC_FIELD(c_, connection)->nextflow = NULL;              \
+}
 
 int MRAILI_Process_send(void *vbuf_addr);
 int MRAILI_Send_noop_if_needed(MPIDI_VC_t * vc, int rail);
@@ -160,4 +214,5 @@ int MPID_nem_ib_send_queued(MPIDI_VC_t *vc, MPIDI_nem_ib_request_queue_t *send_q
 int MPID_nem_ib_iStartContigMsg_paused(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_sz, void *data, MPIDI_msg_sz_t data_sz,
                                     MPID_Request **sreq_ptr);
 #endif
+int MPIDI_nem_ib_send_select_rail(MPIDI_VC_t *vc);
 #endif

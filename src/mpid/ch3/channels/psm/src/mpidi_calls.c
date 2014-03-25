@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -246,7 +246,7 @@ inline int MPIDI_CH3_Progress_test(void)
 
 inline int MPIDI_CH3_Progress_poke()
 {
-    return MPI_SUCCESS;
+    return (psm_progress_wait(FALSE));
 }
 
 #undef FUNCNAME

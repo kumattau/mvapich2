@@ -8,6 +8,24 @@
 #include "mpiimpl.h"
 #include "collutil.h"
 
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 524288
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        the long message algorithm will be used if the operation is commutative
+        and the send buffer size is >= this value (in bytes)
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
+
 /* -- Begin Profiling Symbol Block for routine MPI_Reduce_scatter */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Reduce_scatter = PMPI_Reduce_scatter
@@ -84,7 +102,8 @@ static int MPIR_Reduce_scatter_noncomm(const void *sendbuf, void *recvbuf, const
     /* Copy our send data to tmp_buf0.  We do this one block at a time and
        permute the blocks as we go according to the mirror permutation. */
     for (i = 0; i < comm_size; ++i) {
-        mpi_errno = MPIR_Localcopy((char *)(sendbuf == MPI_IN_PLACE ? recvbuf : sendbuf) + (i * true_extent * block_size), block_size, datatype,
+        mpi_errno = MPIR_Localcopy((char *)(sendbuf == MPI_IN_PLACE ? (const void *)recvbuf : sendbuf) + (i * true_extent * block_size),
+                                   block_size, datatype,
                                    (char *)tmp_buf0 + (MPIU_Mirror_permutation(i, log2_comm_size) * true_extent * block_size), block_size, datatype);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
@@ -282,7 +301,7 @@ int MPIR_Reduce_scatter_intra(const void *sendbuf, void *recvbuf, const int recv
      * a user-passed in buffer */
     MPID_Ensure_Aint_fits_in_pointer(total_count * MPIR_MAX(true_extent, extent));
 
-    if ((is_commutative) && (nbytes < MPIR_PARAM_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
+    if ((is_commutative) && (nbytes < MPIR_CVAR_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
         /* commutative and short. use recursive halving algorithm */
 
         /* allocate temp. buffer to receive incoming data */
@@ -505,7 +524,7 @@ int MPIR_Reduce_scatter_intra(const void *sendbuf, void *recvbuf, const int recv
         }
     }
     
-    if (is_commutative && (nbytes >= MPIR_PARAM_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
+    if (is_commutative && (nbytes >= MPIR_CVAR_REDSCAT_COMMUTATIVE_LONG_MSG_SIZE)) {
 
         /* commutative and long message, or noncommutative and long message.
            use (p-1) pairwise exchanges */ 

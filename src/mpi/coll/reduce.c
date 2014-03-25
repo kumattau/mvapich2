@@ -5,11 +5,63 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #include "mpiimpl.h"
 #include "collutil.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-#include "coll_shmem.h"
-#endif
+#ifdef _OSU_MVAPICH_
+#   include "coll_shmem.h"
+#endif /* _OSU_MVAPICH_ */
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_REDUCE_SHORT_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 2048
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        the short message algorithm will be used if the send buffer size is <=
+        this value (in bytes)
+
+    - name        : MPIR_CVAR_ENABLE_SMP_REDUCE
+      category    : COLLECTIVE
+      type        : boolean
+      default     : true
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Enable SMP aware reduce.
+
+    - name        : MPIR_CVAR_MAX_SMP_REDUCE_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 0
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Maximum message size for which SMP-aware reduce is used.  A
+        value of '0' uses SMP-aware reduce for all message sizes.
+
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 
 /* -- Begin Profiling Symbol Block for routine MPI_Reduce */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -695,7 +747,7 @@ int MPIR_Reduce_intra (
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
-    if (MPIR_PARAM_ENABLE_SMP_COLLECTIVES && MPIR_PARAM_ENABLE_SMP_REDUCE) {
+    if (MPIR_CVAR_ENABLE_SMP_COLLECTIVES && MPIR_CVAR_ENABLE_SMP_REDUCE) {
     /* is the op commutative? We do SMP optimizations only if it is. */
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN)
         is_commutative = 1;
@@ -705,9 +757,9 @@ int MPIR_Reduce_intra (
     }
 
     MPID_Datatype_get_size_macro(datatype, type_size);
-    nbytes = MPIR_PARAM_MAX_SMP_REDUCE_MSG_SIZE ? type_size*count : 0;
+    nbytes = MPIR_CVAR_MAX_SMP_REDUCE_MSG_SIZE ? type_size*count : 0;
     if (MPIR_Comm_is_node_aware(comm_ptr) && is_commutative &&
-        nbytes <= MPIR_PARAM_MAX_SMP_REDUCE_MSG_SIZE) {
+        nbytes <= MPIR_CVAR_MAX_SMP_REDUCE_MSG_SIZE) {
 
         void *tmp_buf = NULL;
         MPI_Aint  true_lb, true_extent, extent;
@@ -820,7 +872,7 @@ int MPIR_Reduce_intra (
     while (pof2 <= comm_size) pof2 <<= 1;
     pof2 >>=1;
 
-    if ((count*type_size > MPIR_PARAM_REDUCE_SHORT_MSG_SIZE) &&
+    if ((count*type_size > MPIR_CVAR_REDUCE_SHORT_MSG_SIZE) &&
         (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) && (count >= pof2)) {
         /* do a reduce-scatter followed by gather to root. */
         mpi_errno = MPIR_Reduce_redscat_gather(sendbuf, recvbuf, count, datatype, op, root, comm_ptr, errflag);
@@ -1221,14 +1273,14 @@ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     mpi_errno = MPIR_Reduce_impl(sendbuf, recvbuf, count, datatype, op, root, comm_ptr, &errflag);
     if (mpi_errno) goto fn_fail;
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#ifdef _OSU_MVAPICH_
     if(comm_ptr->ch.shmem_coll_ok == 0) { 
         mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
     } 
-#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* _OSU_MVAPICH_ */
 
     
     /* ... end of body of routine ... */

@@ -5,10 +5,40 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #include "mpiimpl.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-#include "coll_shmem.h"
-#endif
+#ifdef _OSU_MVAPICH_
+#   include "coll_shmem.h"
+#endif /* _OSU_MVAPICH_ */
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_SCATTER_INTER_SHORT_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 2048
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        use the short message algorithm for intercommunicator MPI_Scatter if the
+        send buffer size is < this value (in bytes)
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 
 /* -- Begin Profiling Symbol Block for routine MPI_Scatter */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -446,7 +476,7 @@ int MPIR_Scatter_inter(const void *sendbuf, int sendcount, MPI_Datatype sendtype
         nbytes = recvtype_size * recvcount * local_size;
     }
 
-    if (nbytes < MPIR_PARAM_SCATTER_INTER_SHORT_MSG_SIZE) {
+    if (nbytes < MPIR_CVAR_SCATTER_INTER_SHORT_MSG_SIZE) {
         if (root == MPI_ROOT) {
             /* root sends all data to rank 0 on remote group and returns */
             mpi_errno = MPIC_Send(sendbuf, sendcount*remote_size,
@@ -783,14 +813,14 @@ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     mpi_errno = MPIR_Scatter_impl(sendbuf, sendcount, sendtype,
                                   recvbuf, recvcount, recvtype, root,
                                   comm_ptr, &errflag);
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#ifdef _OSU_MVAPICH_
     if(comm_ptr->ch.shmem_coll_ok == 0) { 
         mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
     } 
-#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* _OSU_MVAPICH_ */
 
     if (mpi_errno) goto fn_fail;
 

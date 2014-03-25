@@ -5,6 +5,18 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #include "mpiimpl.h"
 #include "mpicomm.h"
 
@@ -37,7 +49,11 @@ int MPIR_Comm_split_type_impl(MPID_Comm * comm_ptr, int split_type, int key,
     /* Only MPI_COMM_TYPE_SHARED and MPI_UNDEFINED are supported */
     MPIU_Assert(split_type == MPI_COMM_TYPE_SHARED || split_type == MPI_UNDEFINED);
 
+#if defined(CHANNEL_MRAIL)
+    if (MPID_Comm_fns == NULL || MPID_Comm_fns->split_type == NULL || !SMP_INIT) {
+#else 
     if (MPID_Comm_fns == NULL || MPID_Comm_fns->split_type == NULL) {
+#endif 
         int color = (split_type == MPI_COMM_TYPE_SHARED) ? comm_ptr->rank : MPI_UNDEFINED;
 
         /* The default implementation is to either pass MPI_UNDEFINED

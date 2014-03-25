@@ -21,25 +21,13 @@
  */
 #include "mpidi_onesided.h"
 
-
-typedef struct
-{
-  unsigned            peer;
-  int                 lock_type;
-  MPID_Win          * win;
-
-  volatile unsigned   done;
-  pami_work_t         work;
-} MPIDI_WinLock_info;
-
-
-static inline void
+void
 MPIDI_WinLockAck_post(pami_context_t   context,
                       unsigned         peer,
                       MPID_Win       * win);
 
 
-static inline void
+void
 MPIDI_WinLockAdvance(pami_context_t   context,
                      MPID_Win       * win)
 {
@@ -63,8 +51,12 @@ MPIDI_WinLockAdvance(pami_context_t   context,
 
       ++slock->local.count;
       slock->local.type = lock->type;
-
-      MPIDI_WinLockAck_post(context, lock->rank, win);
+      if (lock->mtype == MPIDI_REQUEST_LOCK)
+          MPIDI_WinLockAck_post(context, lock->rank, win);
+       else if (lock->mtype == MPIDI_REQUEST_LOCKALL)
+          MPIDI_WinLockAllAck_post(context, lock->rank, win);
+       else
+          MPID_assert_always(0);
       MPIU_Free(lock);
       MPIDI_WinLockAdvance(context, win);
     }
@@ -97,7 +89,13 @@ MPIDI_WinLockReq_proc(pami_context_t              context,
 {
   MPID_Win * win = info->win;
   struct MPIDI_Win_lock* lock = MPIU_Calloc0(1, struct MPIDI_Win_lock);
-  lock->rank = peer;
+  if (info->type == MPIDI_WIN_MSGTYPE_LOCKREQ)
+       lock->mtype = MPIDI_REQUEST_LOCK;
+  else if (info->type == MPIDI_WIN_MSGTYPE_LOCKALLREQ) {
+       lock->mtype = MPIDI_REQUEST_LOCKALL;
+       lock->flagAddr = (void *) info->flagAddr;
+  }
+  lock->rank = info->rank;
   lock->type = info->data.lock.type;
 
   struct MPIDI_Win_queue* q = &win->mpid.sync.lock.local.requested;
@@ -112,7 +110,7 @@ MPIDI_WinLockReq_proc(pami_context_t              context,
 }
 
 
-static inline void
+void
 MPIDI_WinLockAck_post(pami_context_t   context,
                       unsigned         peer,
                       MPID_Win       * win)
@@ -129,7 +127,11 @@ MPIDI_WinLockAck_proc(pami_context_t              context,
                       const MPIDI_Win_control_t * info,
                       unsigned                    peer)
 {
-  info->win->mpid.sync.lock.remote.locked = 1;
+  if (info->type == MPIDI_WIN_MSGTYPE_LOCKACK)
+     info->win->mpid.sync.lock.remote.locked = 1;
+  else  if (info->type == MPIDI_WIN_MSGTYPE_LOCKALLACK)
+     info->win->mpid.sync.lock.remote.allLocked += 1;
+
 }
 
 
@@ -174,6 +176,8 @@ MPID_Win_lock(int       lock_type,
     MPIU_ERR_SETANDSTMT(mpi_errno, MPI_ERR_RMA_SYNC,
                         return mpi_errno, "**rmasync");
    }
+  if (rank == MPI_PROC_NULL) goto fn_exit;
+  struct MPIDI_Win_sync* sync = &win->mpid.sync;
 
   MPIDI_WinLock_info info = {
   .done = 0,
@@ -184,7 +188,7 @@ MPID_Win_lock(int       lock_type,
 
   MPIDI_Context_post(MPIDI_Context[0], &info.work, MPIDI_WinLockReq_post, &info);
   MPID_PROGRESS_WAIT_WHILE(!slock->remote.locked);
-
+fn_exit:
   win->mpid.sync.origin_epoch_type = MPID_EPOTYPE_LOCK;
 
   return mpi_errno;
@@ -202,9 +206,9 @@ MPID_Win_unlock(int       rank,
     MPIU_ERR_SETANDSTMT(mpi_errno, MPI_ERR_RMA_SYNC,
                         return mpi_errno, "**rmasync");
    }
-
+  if (rank == MPI_PROC_NULL) goto fn_exit;
   struct MPIDI_Win_sync* sync = &win->mpid.sync;
-  MPID_PROGRESS_WAIT_WHILE(sync->total != sync->complete);
+  MPID_PROGRESS_WAIT_DO_WHILE(sync->total != sync->complete);
   sync->total    = 0;
   sync->started  = 0;
   sync->complete = 0;
@@ -216,7 +220,7 @@ MPID_Win_unlock(int       rank,
   };
   MPIDI_Context_post(MPIDI_Context[0], &info.work, MPIDI_WinUnlock_post, &info);
   MPID_PROGRESS_WAIT_WHILE(sync->lock.remote.locked);
-
+fn_exit:
   if(win->mpid.sync.target_epoch_type == MPID_EPOTYPE_REFENCE)
   {
     win->mpid.sync.origin_epoch_type = MPID_EPOTYPE_REFENCE;

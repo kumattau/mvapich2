@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -574,6 +574,14 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_GROUP_collective,
     "MV2_USE_OSU_COLLECTIVES",
     &mv2_use_osu_collectives,
+    1,
+    NULL    },
+{
+    MV2_USE_OSU_NB_COLLECTIVES,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_collective,
+    "MV2_USE_OSU_NB_COLLECTIVES",
+    &mv2_use_osu_nb_collectives,
     1,
     NULL    },
 {
@@ -1564,14 +1572,6 @@ mv2_env_param_list_t  param_list[] = {
     0,
     NULL    },
 {
-    MV2_CUDA_NUM_STREAMS,
-    MV2_PARAM_TYPE_INT,
-    MV2_PARAM_GROUP_cuda,
-    "MV2_CUDA_NUM_STREAMS",
-    &rdma_cuda_stream_count,
-    0,
-    NULL    },
-{
     MV2_CUDA_VECTOR_OPT,
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_cuda,
@@ -1609,14 +1609,6 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_GROUP_cuda,
     "MV2_CUDA_NUM_EVENTS",
     &rdma_cuda_event_count,
-    0,
-    NULL    },
-{
-    MV2_CUDA_EVENT_SYNC,
-    MV2_PARAM_TYPE_INT,
-    MV2_PARAM_GROUP_cuda,
-    "MV2_CUDA_EVENT_SYNC",
-    &rdma_cuda_event_sync,
     0,
     NULL    },
 #if defined(HAVE_CUDA_IPC)
@@ -1985,26 +1977,10 @@ mv2_env_param_list_t  param_list[] = {
     1,
     NULL    },
 {
-    MV2_USE_LIMIC_ONE_SIDED,
-    MV2_PARAM_TYPE_INVALID,
-    MV2_PARAM_GROUP_rma,
-    "MV2_USE_LIMIC_ONE_SIDED",
-    NULL,
-    0,
-    NULL    },
-{
     MV2_USE_RDMA_ONE_SIDED,
     MV2_PARAM_TYPE_INVALID,
     MV2_PARAM_GROUP_rma,
     "MV2_USE_RDMA_ONE_SIDED",
-    NULL,
-    1,
-    NULL    },
-{
-    MV2_USE_SHM_ONE_SIDED,
-    MV2_PARAM_TYPE_INVALID,
-    MV2_PARAM_GROUP_rma,
-    "MV2_USE_SHM_ONE_SIDED",
     NULL,
     1,
     NULL    },

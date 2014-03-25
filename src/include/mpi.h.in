@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -178,7 +178,21 @@ static const MPI_Datatype mpich_mpi_float_int       MPICH_ATTR_TYPE_TAG_LAYOUT_C
 static const MPI_Datatype mpich_mpi_double_int      MPICH_ATTR_TYPE_TAG_LAYOUT_COMPATIBLE(struct mpich_struct_mpi_double_int)      = MPI_DOUBLE_INT;
 static const MPI_Datatype mpich_mpi_long_int        MPICH_ATTR_TYPE_TAG_LAYOUT_COMPATIBLE(struct mpich_struct_mpi_long_int)        = MPI_LONG_INT;
 static const MPI_Datatype mpich_mpi_short_int       MPICH_ATTR_TYPE_TAG_LAYOUT_COMPATIBLE(struct mpich_struct_mpi_short_int)       = MPI_SHORT_INT;
-static const MPI_Datatype mpich_mpi_2int            MPICH_ATTR_TYPE_TAG_LAYOUT_COMPATIBLE(struct mpich_struct_mpi_2int)            = MPI_2INT;
+
+/*
+ * The MPI_2INT line is commented out because currently Clang 3.3 flags
+ * struct {int i1; int i2;} as different from int[2]. But actually these
+ * two types are of the same layout. Clang gives a type mismatch warning
+ * for a definitely correct code like the following:
+ *  int in[2], out[2];
+ *  MPI_Reduce(in, out, 1, MPI_2INT, MPI_MAXLOC, 0, MPI_COMM_WORLD);
+ *
+ * So, we disable type checking for MPI_2INT until Clang fixes this bug.
+ */
+
+/* static const MPI_Datatype mpich_mpi_2int            MPICH_ATTR_TYPE_TAG_LAYOUT_COMPATIBLE(struct mpich_struct_mpi_2int)            = MPI_2INT
+ */
+
 #if @MPI_LONG_DOUBLE_INT@ != 0x0c000000
 static const MPI_Datatype mpich_mpi_long_double_int MPICH_ATTR_TYPE_TAG_LAYOUT_COMPATIBLE(struct mpich_struct_mpi_long_double_int) = MPI_LONG_DOUBLE_INT;
 #endif
@@ -514,15 +528,15 @@ enum MPIR_Combiner_enum {
     MPI_COMBINER_HINDEXED_INTEGER = 8, 
     MPI_COMBINER_HINDEXED         = 9, 
     MPI_COMBINER_INDEXED_BLOCK    = 10, 
-    MPI_COMBINER_HINDEXED_BLOCK   = 11,
-    MPI_COMBINER_STRUCT_INTEGER   = 12,
-    MPI_COMBINER_STRUCT           = 13,
-    MPI_COMBINER_SUBARRAY         = 14,
-    MPI_COMBINER_DARRAY           = 15,
-    MPI_COMBINER_F90_REAL         = 16,
-    MPI_COMBINER_F90_COMPLEX      = 17,
-    MPI_COMBINER_F90_INTEGER      = 18,
-    MPI_COMBINER_RESIZED          = 19
+    MPI_COMBINER_STRUCT_INTEGER   = 11,
+    MPI_COMBINER_STRUCT           = 12,
+    MPI_COMBINER_SUBARRAY         = 13,
+    MPI_COMBINER_DARRAY           = 14,
+    MPI_COMBINER_F90_REAL         = 15,
+    MPI_COMBINER_F90_COMPLEX      = 16,
+    MPI_COMBINER_F90_INTEGER      = 17,
+    MPI_COMBINER_RESIZED          = 18,
+    MPI_COMBINER_HINDEXED_BLOCK   = 19
 };
 
 /* for info */
@@ -580,27 +594,26 @@ static const MPI_Datatype mpich_mpi_offset MPICH_ATTR_TYPE_TAG(MPI_Offset) = MPI
 
 /* The order of these elements must match that in mpif.h */
 typedef struct MPI_Status {
+    int count_lo;
+    int count_hi_and_cancelled;
     int MPI_SOURCE;
     int MPI_TAG;
     int MPI_ERROR;
-    MPI_Count count;
-    int cancelled;
-    int abi_slush_fund[2];
-    @EXTRA_STATUS_DECL@
 } MPI_Status;
 
 /* types for the MPI_T_ interface */
-struct MPIR_T_enum;
-typedef struct MPIR_T_enum * MPI_T_enum;
-struct MPIR_T_cvar_handle;
-typedef struct MPIR_T_cvar_handle * MPI_T_cvar_handle;
-struct MPIR_T_pvar_handle;
-typedef struct MPIR_T_pvar_handle * MPI_T_pvar_handle;
-struct MPIR_T_pvar_session;
-typedef struct MPIR_T_pvar_session * MPI_T_pvar_session;
+struct MPIR_T_enum_s;
+struct MPIR_T_cvar_handle_s;
+struct MPIR_T_pvar_handle_s;
+struct MPIR_T_pvar_session_s;
+
+typedef struct MPIR_T_enum_s * MPI_T_enum;
+typedef struct MPIR_T_cvar_handle_s * MPI_T_cvar_handle;
+typedef struct MPIR_T_pvar_handle_s * MPI_T_pvar_handle;
+typedef struct MPIR_T_pvar_session_s * MPI_T_pvar_session;
 
 /* extra const at front would be safer, but is incompatible with MPI_T_ prototypes */
-extern struct MPIR_T_pvar_handle * const MPI_T_PVAR_ALL_HANDLES;
+extern struct MPIR_T_pvar_handle_s * const MPI_T_PVAR_ALL_HANDLES;
 
 #define MPI_T_ENUM_NULL         ((MPI_T_enum)NULL)
 #define MPI_T_CVAR_HANDLE_NULL  ((MPI_T_cvar_handle)NULL)
@@ -609,7 +622,7 @@ extern struct MPIR_T_pvar_handle * const MPI_T_PVAR_ALL_HANDLES;
 
 /* the MPI_T_ interface requires that these VERBOSITY constants occur in this
  * relative order with increasing values */
-enum MPIR_T_verbosity_t {
+typedef enum MPIR_T_verbosity_t {
     /* don't name-shift this if/when MPI_T_ is accepted, this is an MPICH-only
      * extension */
     MPIX_T_VERBOSITY_INVALID = 0,
@@ -626,9 +639,9 @@ enum MPIR_T_verbosity_t {
     MPI_T_VERBOSITY_MPIDEV_BASIC,
     MPI_T_VERBOSITY_MPIDEV_DETAIL,
     MPI_T_VERBOSITY_MPIDEV_ALL
-};
+} MPIR_T_verbosity_t;
 
-enum MPIR_T_bind_t {
+typedef enum MPIR_T_bind_t {
     /* don't name-shift this if/when MPI_T_ is accepted, this is an MPICH-only
      * extension */
     MPIX_T_BIND_INVALID = 0,
@@ -645,29 +658,31 @@ enum MPIR_T_bind_t {
     MPI_T_BIND_MPI_WIN,
     MPI_T_BIND_MPI_MESSAGE,
     MPI_T_BIND_MPI_INFO
-};
+} MPIR_T_bind_t;
 
-enum MPIR_T_scope_t {
+typedef enum MPIR_T_scope_t {
     /* don't name-shift this if/when MPI_T_ is accepted, this is an MPICH-only
      * extension */
     MPIX_T_SCOPE_INVALID = 0,
 
     /* arbitrarily shift values to aid debugging and reduce accidental errors */
-    MPI_T_SCOPE_READONLY = 60439,
+    MPI_T_SCOPE_CONSTANT = 60438,
+    MPI_T_SCOPE_READONLY,
     MPI_T_SCOPE_LOCAL,
     MPI_T_SCOPE_GROUP,
     MPI_T_SCOPE_GROUP_EQ,
     MPI_T_SCOPE_ALL,
     MPI_T_SCOPE_ALL_EQ
-};
+} MPIR_T_scope_t;
 
-enum MPIR_T_pvar_class_t {
+typedef enum MPIR_T_pvar_class_t {
     /* don't name-shift this if/when MPI_T_ is accepted, this is an MPICH-only
      * extension */
     MPIX_T_PVAR_CLASS_INVALID = 0,
 
     /* arbitrarily shift values to aid debugging and reduce accidental errors */
-    MPI_T_PVAR_CLASS_STATE = 240,
+    MPIR_T_PVAR_CLASS_FIRST = 240,
+    MPI_T_PVAR_CLASS_STATE = MPIR_T_PVAR_CLASS_FIRST,
     MPI_T_PVAR_CLASS_LEVEL,
     MPI_T_PVAR_CLASS_SIZE,
     MPI_T_PVAR_CLASS_PERCENTAGE,
@@ -676,8 +691,10 @@ enum MPIR_T_pvar_class_t {
     MPI_T_PVAR_CLASS_COUNTER,
     MPI_T_PVAR_CLASS_AGGREGATE,
     MPI_T_PVAR_CLASS_TIMER,
-    MPI_T_PVAR_CLASS_GENERIC
-};
+    MPI_T_PVAR_CLASS_GENERIC,
+    MPIR_T_PVAR_CLASS_LAST,
+    MPIR_T_PVAR_CLASS_NUMBER = MPIR_T_PVAR_CLASS_LAST - MPIR_T_PVAR_CLASS_FIRST
+} MPIR_T_pvar_class_t;
 
 /* Handle conversion types/functions */
 
@@ -834,10 +851,29 @@ typedef int (MPIX_Grequest_wait_function)(int, void **, double, MPI_Status *);
 #define MPI_ERR_RMA_SHARED 57       /* */
 #define MPI_ERR_RMA_FLAVOR 58       /* */
 
+/* Return codes for functions in the MPI Tool Information Interface */
+#define MPI_T_ERR_MEMORY            59  /* Out of memory */
+#define MPI_T_ERR_NOT_INITIALIZED   60  /* Interface not initialized */
+#define MPI_T_ERR_CANNOT_INIT       61  /* Interface not in the state to
+                                           be initialized */
+#define MPI_T_ERR_INVALID_INDEX     62  /* The index is invalid or
+                                           has been deleted  */
+#define MPI_T_ERR_INVALID_ITEM      63  /* Item index queried is out of range */
+#define MPI_T_ERR_INVALID_HANDLE    64  /* The handle is invalid */
+#define MPI_T_ERR_OUT_OF_HANDLES    65  /* No more handles available */
+#define MPI_T_ERR_OUT_OF_SESSIONS   66  /* No more sessions available */
+#define MPI_T_ERR_INVALID_SESSION   67  /* Session argument is not valid */
+#define MPI_T_ERR_CVAR_SET_NOT_NOW  68  /* Cvar can't be set at this moment */
+#define MPI_T_ERR_CVAR_SET_NEVER    69  /* Cvar can't be set until
+                                           end of execution */
+#define MPI_T_ERR_PVAR_NO_STARTSTOP 70  /* Pvar can't be started or stopped */
+#define MPI_T_ERR_PVAR_NO_WRITE     71  /* Pvar can't be written or reset */
+#define MPI_T_ERR_PVAR_NO_ATOMIC    72  /* Pvar can't be R/W atomically */
+
 #define MPI_ERR_LASTCODE    0x3fffffff  /* Last valid error code for a 
 					   predefined error class */
 /* WARNING: this is also defined in mpishared.h.  Update both locations */
-#define MPICH_ERR_LAST_CLASS 58     /* It is also helpful to know the
+#define MPICH_ERR_LAST_CLASS 72     /* It is also helpful to know the
 				       last valid class */
 /* End of MPI's error classes */
 
@@ -2161,9 +2197,9 @@ int PMPI_T_category_changed(int *stamp);
 #endif 
 #endif
 
-#if defined(_OSU_MVAPICH_) && defined(CKPT)
+#if defined(CHANNEL_MRAIL) && defined(CKPT)
 int MVAPICH2_Sync_Checkpoint();
-#endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
+#endif /* defined(CHANNEL_MRAIL) && defined(CKPT) */
 
 
 /* Generalized requests extensions */

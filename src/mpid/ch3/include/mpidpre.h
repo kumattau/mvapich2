@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -76,11 +76,11 @@ typedef int MPIDI_CH3_PktHandler_Fcn(struct MPIDI_VC *vc, union MPIDI_CH3_Pkt *p
 #endif
 
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 typedef uint16_t MPID_Seqnum_t;
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
 typedef unsigned long MPID_Seqnum_t;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 #endif
 
 #include "mpichconf.h"
@@ -135,14 +135,7 @@ typedef union {
  * upper level code may then modify this value after MPID_Init and before the
  * end of MPIR_Init_thread.  Don't use this value directly, always check the
  * runtime global value. */
-/* The first bit of the tag space is reserved for error propagation. We are
- * still well over the required tag size and this allows us to retain the
- * matching semantics while piggybacking the notification. If the message is
- * propagating an error, the data being transmitted is probably garbage. The
- * macros to set/access this bit are in src/include/mpiimpl.h. If the
- * location of this bit changes, those macros also need to be adjusted.
- */
-#define MPIDI_TAG_UB (0x3fffffff)
+#define MPIDI_TAG_UB (0x7fffffff)
 
 /* Provides MPIDI_CH3_Pkt_t.  Must come after MPIDI_Message_match definition. */
 #include "mpidpkt.h"
@@ -207,7 +200,7 @@ typedef struct MPIDI_CH3I_comm
     struct MPID_nem_barrier_vars *barrier_vars; /* shared memory variables used in barrier */
     struct MPID_Comm *next; /* next pointer for list of communicators */
     struct MPID_Comm *prev; /* prev pointer for list of communicators */
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#ifdef _OSU_MVAPICH_
     MPI_Comm     leader_comm;
     MPI_Comm     shmem_comm;
     MPI_Comm     allgather_comm;
@@ -229,7 +222,6 @@ typedef struct MPIDI_CH3I_comm
     int     shmem_coll_count; 
     int     allgather_coll_count; 
     void    *shmem_info; /* intra node shmem info */
-#if defined(_OSU_MVAPICH_)
 #if defined(_SMP_LIMIC_)    
     MPI_Comm     intra_sock_comm;
     MPI_Comm     intra_sock_leader_comm;
@@ -242,7 +234,6 @@ typedef struct MPIDI_CH3I_comm
     void    *bcast_info;
 #endif
 #endif /* _OSU_MVAPICH_ */
-#endif /* _OSU_MVAPICH_ || _OSU_PSM_*/
 }
 MPIDI_CH3I_comm_t;
 
@@ -360,9 +351,7 @@ struct MPIDI_Win_target_state {
     MPID_Group *start_group_ptr; /* group passed in MPI_Win_start */     \
     int start_assert;   /* assert passed to MPI_Win_start */             \
     int shm_allocated; /* flag: TRUE iff this window has a shared memory \
-                          region associated with it */                   \
-    int cas_complete;    /*flag for compare-and-swap to increase counter  \
-                          and release lock*/                               
+                          region associated with it */                   
 
 #ifdef MPIDI_CH3_WIN_DECL
 #define MPID_DEV_WIN_DECL \
@@ -398,7 +387,7 @@ typedef struct MPIDI_Request {
        iov_offset points to the current head element in the IOV */
     MPID_IOV iov[MPID_IOV_LIMIT];
     int iov_count;
-    int iov_offset;
+    size_t iov_offset;
 
     /* OnDataAvail is the action to take when data is now available.
        For example, when an operation described by an iov has 
@@ -476,16 +465,16 @@ typedef struct MPIDI_Request {
 #define MPID_REQUEST_DECL MPIDI_Request dev;
 
 #if defined(MPIDI_CH3_REQUEST_DECL)
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #define MPID_DEV_REQUEST_DECL                   \
 MPID_REQUEST_DECL                               \
 MPIDI_CH3_REQUEST_DECL                          \
 MPIDI_CH3I_MRAILI_REQUEST_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
 #define MPID_DEV_REQUEST_DECL			\
 MPID_REQUEST_DECL				\
 MPIDI_CH3_REQUEST_DECL
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 #else
 #define MPID_DEV_REQUEST_DECL			\
 MPID_REQUEST_DECL

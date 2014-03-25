@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,6 +38,7 @@ extern int mv2_enable_affinity;
 
 
 int mv2_cm_wait_time = DEF_MV2_CM_WAIT_TIME;
+int rdma_num_cqes_per_poll = RDMA_MAX_CQE_ENTRIES_PER_POLL;
 int rdma_num_hcas = 1;
 int rdma_num_req_hcas = 0;
 int rdma_num_ports = 1;
@@ -68,6 +69,7 @@ int rdma_default_put_get_list_size = RDMA_DEFAULT_PUT_GET_LIST_SIZE;
 long rdma_eagersize_1sc;
 int rdma_put_fallback_threshold;
 int rdma_get_fallback_threshold;
+int rdma_num_ops_threshold;
 int rdma_polling_set_limit = -1;
 int rdma_polling_set_threshold = 10;
 int rdma_fp_buffer_size = RDMA_FP_DEFAULT_BUF_SIZE;
@@ -127,7 +129,7 @@ int rdma_num_extra_polls = 1;
 int rdma_local_id = -1;
 int rdma_num_local_procs = -1;
 /* Whether coalescing of messages should be attempted */
-int rdma_use_coalesce = 1;
+int rdma_use_coalesce = 0;
 unsigned long rdma_polling_spin_count_threshold = 5;
 int mv2_use_thread_yield = 1;
 int mv2_spins_before_lock = 2000;
@@ -183,7 +185,6 @@ long rdma_ud_progress_timeout = 48000;
 long rdma_ud_retry_timeout = 500000;
 long rdma_ud_max_retry_timeout = 20000000;
 long rdma_ud_last_check;
-long rdma_ud_retransmissions=0;
 uint32_t rdma_ud_zcopy_threshold;
 uint32_t rdma_ud_zcopy_rq_size = 4096;
 uint32_t rdma_hybrid_enable_threshold = 1024;
@@ -275,15 +276,17 @@ int apm_tester = 0;
 #ifdef _ENABLE_CUDA_
 int rdma_cuda_block_size;
 int rdma_num_cuda_rndv_blocks = 8;
-int rdma_cuda_stream_count = DEFAULT_CUDA_STREAM_COUNT;
 int rdma_cuda_event_count = 64;
-int rdma_cuda_event_sync = 1;
 int rdma_enable_cuda = 0;
 int rdma_cuda_dynamic_init = 1;
 int rdma_cuda_nonblocking_streams = 1;
 int cuda_initialized = 0;
-int rdma_cuda_thread_blk_size = 0;
-int rdma_cuda_thread_ysize = 0;
+int rdma_cuda_vec_thread_blksz = 0;
+int rdma_cuda_vec_thread_ysz = 0;
+int rdma_cuda_subarr_thread_blksz = 0;
+int rdma_cuda_subarr_thread_xdim = 0;
+int rdma_cuda_subarr_thread_ydim = 0;
+int rdma_cuda_subarr_thread_zdim = 0;
 int rdma_eager_cudahost_reg = 0;
 int rdma_cuda_vector_dt_opt = 1;
 int rdma_cuda_kernel_dt_opt = 1;
@@ -332,6 +335,8 @@ int limic_put_threshold;
 int limic_get_threshold;
 
 mv2_polling_level rdma_polling_level = MV2_POLLING_LEVEL_1;
+
+int g_atomics_support = 1;
 
 static int check_hsam_parameters(void);
 
@@ -1008,20 +1013,6 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = getenv("MV2_SMP_SEND_BUF_SIZE")) != NULL) {
         s_smp_block_size = atoi(value);
     }
-#if defined(CKPT)
-    proc->has_shm_one_sided = 0;
-    proc->has_limic_one_sided = 0;
-#else
-    proc->has_shm_one_sided = (value =
-                               getenv("MV2_USE_SHM_ONE_SIDED")) !=
-        NULL ? !!atoi(value) : 0;
-
-    if (!proc->has_shm_one_sided) {
-        proc->has_limic_one_sided = (value =
-                                     getenv("MV2_USE_LIMIC_ONE_SIDED")) !=
-            NULL ? !!atoi(value) : 1;
-    }
-#endif
 
     if ((value = getenv("MV2_LIMIC_PUT_THRESHOLD")) != NULL) {
         limic_put_threshold =
@@ -1346,6 +1337,10 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         NULL ? !!atoi(value) : 1;
 #endif /* !defined(DISABLE_PTMALLOC) */
 
+    proc->enable_rma_fast_path = (value = 
+                              getenv("MV2_USE_RMA_FAST_PATH")) != 
+        NULL ? !! atoi(value) : 1;                    
+
 #if defined(CKPT)
     {
         proc->has_one_sided = 0;
@@ -1395,10 +1390,8 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         }
     }
 
-    if (proc->hca_type == MV2_HCA_MLX_CX_DDR ||
-        proc->hca_type == MV2_HCA_MLX_CX_SDR ||
-        proc->hca_type == MV2_HCA_MLX_CX_QDR ||
-        proc->hca_type == MV2_HCA_MLX_CX_FDR) {
+    if (proc->hca_type == MV2_HCA_MLX_CX_SDR ||
+        proc->hca_type == MV2_HCA_MLX_CX_DDR) {
         rdma_use_coalesce = 0;
     }
 #ifdef _ENABLE_XRC_
@@ -2736,6 +2729,7 @@ void rdma_set_default_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     rdma_eagersize_1sc = 4 * 1024;
     rdma_put_fallback_threshold = 2 * 1024;
     rdma_get_fallback_threshold = 192 * 1024;
+    rdma_num_ops_threshold = 2;
 
     switch (multirail_info) {
 
@@ -2917,6 +2911,15 @@ void rdma_get_user_parameters(int num_proc, int me)
         }
     }
 
+    /* Number of CQE's retrieved per poll */
+    if ((value = getenv("MV2_NUM_CQES_PER_POLL")) != NULL) {
+        rdma_num_cqes_per_poll = atoi(value);
+        if (rdma_num_cqes_per_poll <= 0 ||
+            rdma_num_cqes_per_poll >= RDMA_MAX_CQE_ENTRIES_PER_POLL) {
+            rdma_num_cqes_per_poll = RDMA_MAX_CQE_ENTRIES_PER_POLL;
+        }
+    }
+ 
     /* Get number of ports/HCA used by a process */
     if ((value = getenv("MV2_NUM_PORTS")) != NULL) {
         rdma_num_ports = atoi(value);
@@ -3139,6 +3142,9 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
     if ((value = getenv("MV2_PUT_FALLBACK_THRESHOLD")) != NULL) {
         rdma_put_fallback_threshold = atoi(value);
+    }
+    if ((value = getenv("MV2_RMA_NUM_OPS_THRESHOLD")) != NULL) {
+        rdma_num_ops_threshold = atoi(value);
     }
     if ((value = getenv("MV2_GET_FALLBACK_THRESHOLD")) != NULL) {
         rdma_get_fallback_threshold =
@@ -3588,18 +3594,20 @@ void mv2_print_env_info(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
             mv2_get_hca_name(hca_type));
     fprintf(stderr, "\tHETEROGENEOUS HCA              : %s\n",
             (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity) ? "YES" : "NO");
-    fprintf(stderr, "\tMV2_VBUF_TOTAL_SIZE            : %d\n",
-            rdma_vbuf_total_size);
-    fprintf(stderr, "\tMV2_IBA_EAGER_THRESHOLD        : %d\n",
-            rdma_iba_eager_threshold);
-    fprintf(stderr, "\tMV2_RDMA_FAST_PATH_BUF_SIZE    : %d\n",
-            rdma_fp_buffer_size);
+    if (!SMP_ONLY) {
+        fprintf(stderr, "\tMV2_VBUF_TOTAL_SIZE            : %d\n",
+                rdma_vbuf_total_size);
+        fprintf(stderr, "\tMV2_IBA_EAGER_THRESHOLD        : %d\n",
+                rdma_iba_eager_threshold);
+        fprintf(stderr, "\tMV2_RDMA_FAST_PATH_BUF_SIZE    : %d\n",
+                rdma_fp_buffer_size);
+        fprintf(stderr, "\tMV2_PUT_FALLBACK_THRESHOLD     : %d\n",
+                rdma_put_fallback_threshold);
+        fprintf(stderr, "\tMV2_GET_FALLBACK_THRESHOLD     : %d\n",
+                rdma_get_fallback_threshold);
+    }
     fprintf(stderr, "\tMV2_EAGERSIZE_1SC              : %lu\n",
             rdma_eagersize_1sc);
-    fprintf(stderr, "\tMV2_PUT_FALLBACK_THRESHOLD     : %d\n",
-            rdma_put_fallback_threshold);
-    fprintf(stderr, "\tMV2_GET_FALLBACK_THRESHOLD     : %d\n",
-            rdma_get_fallback_threshold);
     fprintf(stderr, "\tMV2_SMP_EAGERSIZE              : %d\n", g_smp_eagersize);
     fprintf(stderr, "\tMV2_SMPI_LENGTH_QUEUE          : %d\n",
             s_smpi_length_queue);

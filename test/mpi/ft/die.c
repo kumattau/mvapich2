@@ -6,27 +6,21 @@
  */
 #include <mpi.h>
 #include <stdio.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <signal.h>
+#include <stdlib.h>
 
 int main(int argc, char **argv)
 {
     int rank, size;
-    pid_t pid;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     if (rank == 1) {
-        pid = getpid();
-        kill(pid, SIGKILL);
+        exit(EXIT_FAILURE);
     }
 
-    MTestSleep(1);
-
     if (rank == 0) {
-        printf("No Errors\n");
+        printf(" No Errors\n");
         fflush( stdout );
     }
 

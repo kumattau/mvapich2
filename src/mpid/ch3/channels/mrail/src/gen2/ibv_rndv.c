@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -102,6 +102,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
 #endif
         ) {
         req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
+        MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req);
     }
 #ifdef _ENABLE_CUDA_
     if (rdma_enable_cuda && req->mrail.cuda_transfer_mode != NONE) {
@@ -577,22 +578,18 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
         MPID_Request * sreq)
 {
     vbuf *v;
-    int rail, disp, s_total, inc;
-    int nbytes, rail_index;
+    int rail, disp, s_total;
+    MPIDI_msg_sz_t nbytes, inc;
+    int rail_index;
 
     int count_rail;
 
     int mapped[MAX_NUM_SUBRAILS];
     int actual_index[MAX_NUM_SUBRAILS];
+    int queued = 0;
 
     double time;
 
-    if (sreq->mrail.rndv_buf_off != 0) {
-        ibv_va_error_abort(GEN_ASSERT_ERR,
-                "s->bytes_sent != 0 Rendezvous Push, %d",
-                sreq->mrail.nearly_complete);
-    }
-    
     for(rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
         if(mv2_MPIDI_CH3I_RDMA_Process.has_apm && apm_tester) {
             perform_manual_apm(vc->mrail.rails[rail_index].qp_hndl);
@@ -654,10 +651,14 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
                 sreq->mrail.rndv_buf_off, sreq->mrail.remote_addr);
         
         if (nbytes <= rdma_large_msg_rail_sharing_threshold) {
+            rail = MRAILI_Send_select_rail(vc);
+
+            if (vc->mrail.rails[rail].ext_sendq_size >= rdma_rndv_ext_sendq_size) {
+                break;
+            }
+
             v = get_vbuf();
             v->sreq = sreq;
-
-            rail = MRAILI_Send_select_rail(vc);
 
             MRAILI_RDMA_Put(vc, v,
                     (char *) (sreq->mrail.rndv_buf) +
@@ -670,6 +671,16 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
                     nbytes, rail);
            
         } else if(!mv2_MPIDI_CH3I_RDMA_Process.has_hsam) {
+            for(rail = 0; rail < rdma_num_rails; rail++) {
+                if (vc->mrail.rails[rail].ext_sendq_size >= rdma_rndv_ext_sendq_size) {
+                    queued = 1;
+                    break;
+                }
+            }
+            if (queued) {
+                break;
+            }
+
             inc = nbytes / rdma_num_rails;
             
             for(rail = 0; rail < rdma_num_rails - 1; rail++) {
@@ -761,22 +772,24 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
 
 
         }
-        /* Send the finish message immediately after the data */  
         sreq->mrail.rndv_buf_off += nbytes; 
     }
-    if( sreq->mrail.rndv_buf_off != sreq->mrail.rndv_buf_sz ){
-          DEBUG_PRINT("%s: [%d -> %d]: rndv_buf_off %d != rndv_buf_sz %d...,hang...\n", __func__, 
+
+    if( sreq->mrail.rndv_buf_off != sreq->mrail.rndv_buf_sz ) {
+          DEBUG_PRINT("%s: [%d -> %d]: rndv_buf_off %d != rndv_buf_sz %d putting vc back in flowlist\n", __func__, 
           MPIDI_Process.my_pg_rank, vc->pg_rank, 
           sreq->mrail.rndv_buf_off, sreq->mrail.rndv_buf_sz  );
     }
 
-    MPIU_Assert(sreq->mrail.rndv_buf_off == sreq->mrail.rndv_buf_sz);
-
-    /* Send the finish message through the rails */
-    for(rail = 0; rail < rdma_num_rails; rail++) { 
-        MRAILI_RDMA_Put_finish(vc, sreq, rail);
+    /* Send the finish message through the rails, when all data is sent */
+    if (sreq->mrail.rndv_buf_off == sreq->mrail.rndv_buf_sz) {
+        for(rail = 0; rail < rdma_num_rails; rail++) { 
+            MRAILI_RDMA_Put_finish(vc, sreq, rail);
+        }
+        sreq->mrail.nearly_complete = 1;
+    } else { 
+        sreq->mrail.nearly_complete = 0;
     }
-    sreq->mrail.nearly_complete = 1;
 }
 
 int MPIDI_CH3I_MRAILI_Rendezvous_r3_ack_send(MPIDI_VC_t *vc)

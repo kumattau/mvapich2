@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -58,7 +58,7 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
        unexpected queue. If data is contig just call the blocking MPIDI_CH3_Recv
        If data is non-contig,... */
 
-#if defined(_OSU_PSM_)
+#if defined(CHANNEL_PSM)
     MPI_Aint dt_true_lb;
     MPID_Datatype *dt_ptr;
     MPIDI_msg_sz_t data_sz;
@@ -202,7 +202,7 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	}
 	else if (MPIDI_Request_get_msg_type(rreq) == MPIDI_REQUEST_RNDV_MSG)
 	{
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
         MPIDI_Comm_get_vc(comm, rreq->dev.match.parts.rank, &vc);
         mpi_errno = MPIDI_CH3_RecvRndv( vc, rreq );
 #else
@@ -228,7 +228,9 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	else
 	{
 	    /* --BEGIN ERROR HANDLING-- */
+#ifdef HAVE_ERROR_CHECKING
             int msg_type = MPIDI_Request_get_msg_type(rreq);
+#endif
             MPID_Request_release(rreq);
 	    rreq = NULL;
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_INTERN, "**ch3|badmsgtype",
@@ -280,7 +282,7 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
     return mpi_errno;
 }
 
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
 int psm_do_unpack(int count, MPI_Datatype datatype, MPID_Comm *comm, 
                   void *pkbuf, int pksz, void *inbuf, int data_sz)
 {

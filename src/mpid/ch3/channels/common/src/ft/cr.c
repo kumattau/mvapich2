@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -602,7 +602,7 @@ int CR_Thread_loop()
         }
 
         CR_MPDU_readline(MPICR_MPD_fd, cr_msg_buf, MAX_CR_MSG_LEN);
-        PRINT_DEBUG(DEBUG_CR_verbose, "CR_Thread_loop:Got request from MPD %s\n", cr_msg_buf);
+        PRINT_DEBUG(DEBUG_CR_verbose, "CR_Thread_loop:Got request from mpirun_rsh %s\n", cr_msg_buf);
         CR_MPDU_parse_keyvals(cr_msg_buf);
         CR_MPDU_getval("cmd", valstr, CRU_MAX_VAL_LEN);
 
@@ -1083,7 +1083,7 @@ static int CR_Callback(void *arg)
             CR_ERR_ABORT("CR_MPDU_connect_MPD failed\n");
         }
 
-        PRINT_DEBUG(DEBUG_CR_verbose, "MPD connected\n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "connected to mpirun_rsh\n");
 
         if (CR_MPDU_Reset_PMI_port()) {
             CR_MPDU_Rsrt_fail();
@@ -1684,6 +1684,17 @@ int CR_IBU_Rebuild_network()
 
             if (PMI_KVS_Put(pg->ch.kvs_name, key, val) != 0) {
                 CR_ERR_ABORT("PMI_KVS_Put failed\n");
+            }
+
+            /* when running with slurm, srun can get overwhelmed with RPC
+             * messages. This small delay (if needed) helps spread out the RPCs */
+            if(!using_mpirun_rsh) {
+                int slurm_pmi_delay = 0;
+                char *envval;
+                if ((envval = getenv("MV2_CKPT_SLURM_PMI_DELAY")) != NULL) {
+                    slurm_pmi_delay = atoi(envval);
+                }
+                sleep(slurm_pmi_delay);
             }
 
             if (PMI_KVS_Commit(pg->ch.kvs_name) != 0) {

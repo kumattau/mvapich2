@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,7 +38,7 @@
 #define FUNCNAME MPIR_Unpack_impl
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Unpack_impl(const void *inbuf, int insize, int *position,
+int MPIR_Unpack_impl(const void *inbuf, MPI_Aint insize, MPI_Aint *position,
                      void *outbuf, int outcount, MPI_Datatype datatype)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -66,20 +66,16 @@ int MPIR_Unpack_impl(const void *inbuf, int insize, int *position,
 
 #if defined(_ENABLE_CUDA_)
     int outbuf_isdev = 0;
-    cudaError_t cuda_error = cudaSuccess;
     outbuf_isdev = is_device_buffer(outbuf);
 #endif
 
     if (contig) {
 #if defined(_ENABLE_CUDA_)
         if (rdma_enable_cuda && outbuf_isdev) {
-            cuda_error = cudaMemcpy((void *) ((char *)outbuf + *position),
+            MPIU_Memcpy_CUDA((void *) ((char *)outbuf + *position),
                     (void *) ((char *)inbuf + dt_true_lb),
                     data_sz,
                     cudaMemcpyHostToDevice);
-            if (cuda_error != cudaSuccess) {
-                MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-            }
         } else
 #endif
         {
@@ -178,6 +174,7 @@ int MPI_Unpack(const void *inbuf, int insize, int *position,
 	       MPI_Comm comm)
 {
     int mpi_errno = MPI_SUCCESS;
+    MPI_Aint position_x;
     MPID_Comm *comm_ptr = NULL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_UNPACK);
 
@@ -234,8 +231,10 @@ int MPI_Unpack(const void *inbuf, int insize, int *position,
 
     /* ... body of routine ...  */
     
-    mpi_errno = MPIR_Unpack_impl(inbuf, insize, position, outbuf, outcount, datatype);
+    position_x = *position;
+    mpi_errno = MPIR_Unpack_impl(inbuf, insize, &position_x, outbuf, outcount, datatype);
     if (mpi_errno) goto fn_fail;
+    MPIU_Assign_trunc(*position, position_x, int);
     
     /* ... end of body of routine ... */
 

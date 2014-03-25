@@ -22,7 +22,7 @@ OF LIABILITY, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -89,10 +89,10 @@ static inline int mutex_trylock(mutex_t *m) {
   return r;
 }
 static inline int mutex_unlock(mutex_t *m) {
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 /*  __asm__ __volatile__ ("movl %1, %0" : "=m" (m->lock) : "g"(0) : "memory"); */
   __asm__ __volatile__ ("movl %1, %0" : "=m" (m->lock) : "i"(0) : "memory");
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
   return 0;
 }
 
@@ -141,9 +141,9 @@ typedef pthread_key_t tsd_key_t;
 #define thread_atfork(prepare, parent, child) \
                                    pthread_atfork(prepare, parent, child)
 
-/* <_OSU_MVAPICH_> */
+/* <CHANNEL_MRAIL> */
 /* #include <sysdeps/generic/malloc-machine.h> */
 #include "../../sysdeps/generic/malloc-machine.h"
-/* </_OSU_MVAPICH_> */
+/* </CHANNEL_MRAIL> */
 
 #endif /* !defined(_MALLOC_MACHINE_H) */

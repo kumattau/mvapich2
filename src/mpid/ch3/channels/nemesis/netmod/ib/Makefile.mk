@@ -1,7 +1,7 @@
 ## -*- Mode: Makefile; -*-
 ## vim: set ft=automake :
 ##
-## Copyright (c) 2001-2013, The Ohio State University. All rights
+## Copyright (c) 2001-2014, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -61,7 +61,6 @@ noinst_HEADERS +=                                               \
     src/mpid/ch3/channels/nemesis/netmod/ib/ib_hca.h            \
     src/mpid/ch3/channels/nemesis/netmod/ib/ib_init.h           \
     src/mpid/ch3/channels/nemesis/netmod/ib/ib_lmt.h            \
-    src/mpid/ch3/channels/nemesis/netmod/ib/ib_param.h          \
     src/mpid/ch3/channels/nemesis/netmod/ib/ib_poll.h           \
     src/mpid/ch3/channels/nemesis/netmod/ib/ib_process.h        \
     src/mpid/ch3/channels/nemesis/netmod/ib/ib_rdma.h           \

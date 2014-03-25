@@ -11,7 +11,7 @@ AC_DEFUN([PAC_PROG_CC],[
         dnl developers notice this case.
         AC_BEFORE([$0],[AC_PROG_CC])
 	PAC_PUSH_FLAG([CFLAGS])
-	AC_PROG_CC([icc pgcc xlc xlC pathcc gcc clang cc])
+	AC_PROG_CC([gcc icc pgcc pathcc xlc xlC clang cc])
 	PAC_POP_FLAG([CFLAGS])
 ])
 dnl
@@ -361,8 +361,13 @@ pac_cv_attr_weak_import=yes,pac_cv_attr_weak_import=no)])
 # Check if the alias option for weak attributes is allowed
 AC_CACHE_CHECK([whether __attribute__((weak,alias(...))) allowed],
 pac_cv_attr_weak_alias,[
+PAC_PUSH_FLAG([CFLAGS])
+# force an error exit if the weak attribute isn't understood
+CFLAGS=-Werror
 AC_TRY_COMPILE([int foo(int) __attribute__((weak,alias("__foo")));],[int a;],
-pac_cv_attr_weak_alias=yes,pac_cv_attr_weak_alias=no)])
+pac_cv_attr_weak_alias=yes,pac_cv_attr_weak_alias=no)
+# Restore original CFLAGS
+PAC_POP_FLAG([CFLAGS])])
 if test "$pac_cv_attr_weak_alias" = "yes" ; then
     AC_DEFINE(HAVE_WEAK_ATTRIBUTE,1,[Attribute style weak pragma])
 fi
@@ -1639,22 +1644,35 @@ AC_DEFUN([PAC_C_MACRO_VA_ARGS],[
     AC_MSG_CHECKING([for variable argument list macro functionality])
 
     # check if the program links correctly
-    rm -f pac_test.log
-    PAC_LINK_IFELSE_LOG([pac_test.log],[AC_LANG_PROGRAM([
+    rm -f pac_test1.log pac_test2.log
+
+    PAC_LINK_IFELSE_LOG([pac_test1.log],[AC_LANG_PROGRAM([
         #include <stdio.h>
         #define conftest_va_arg_macro(...) printf(__VA_ARGS__)
     ],
     [conftest_va_arg_macro("a test %d", 3);])],
     prog_links=yes,prog_links=no)
 
+    PAC_LINK_IFELSE_LOG([pac_test2.log],[AC_LANG_PROGRAM([
+        #include <stdio.h>
+        #define conftest_va_arg_macro printf
+    ],
+    [conftest_va_arg_macro("a test %d", 3);])])
+
     # If the program linked OK, make sure there were no warnings
-    if test "$prog_links" = "yes" -a "`cat pac_test.log`" = "" ; then
+    if test "$prog_links" = "yes" -a "`diff pac_test1.log pac_test2.log`" = "" ; then
        AC_DEFINE([HAVE_MACRO_VA_ARGS],[1],[Define if C99-style variable argument list macro functionality])
        AC_MSG_RESULT([yes])
+    elif "`diff pac_test1.log pac_test2.log`" = "" ; then
+       AC_MSG_RESULT([no, compiler generates warnings])
+       echo "With VA_ARGS:"
+       cat pac_test1.log
+       echo "Without VA_ARGS:"
+       cat pac_test2.log
     else
        AC_MSG_RESULT([no])
     fi
-    rm -f pac_test.log
+    rm -f pac_test1.log pac_test2.log
 ])dnl
 
 # Will AC_DEFINE([HAVE_BUILTIN_EXPECT]) if the compiler supports __builtin_expect.

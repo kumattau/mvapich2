@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -50,9 +50,9 @@ int MPIDI_CH3_EagerSyncNoncontigSend( MPID_Request **sreq_p,
     MPIDI_VC_t * vc;
     MPID_Request *sreq = *sreq_p;
 
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 
     /* MT FIXME what are the two operations we are waiting for?  the send and
      * the sync response? */
@@ -137,9 +137,9 @@ int MPIDI_CH3_EagerSyncZero(MPID_Request **sreq_p, int rank, int tag,
     MPIDI_CH3_Pkt_eager_sync_send_t * const es_pkt = &upkt.eager_sync_send;
     MPIDI_VC_t * vc;
     MPID_Request *sreq = *sreq_p;
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
     
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending zero length message");
     
@@ -218,7 +218,7 @@ int MPIDI_CH3_EagerSyncAck( MPIDI_VC_t *vc, MPID_Request *rreq )
 {								\
     (rreq_)->status.MPI_SOURCE = (pkt_)->match.parts.rank;	\
     (rreq_)->status.MPI_TAG = (pkt_)->match.parts.tag;		\
-    (rreq_)->status.count = (pkt_)->data_sz;			\
+    MPIR_STATUS_SET_COUNT((rreq_)->status, (pkt_)->data_sz);		\
     (rreq_)->dev.sender_req_id = (pkt_)->sender_req_id;		\
     (rreq_)->dev.recv_data_sz = (pkt_)->data_sz;		\
     MPIDI_Request_set_seqnum((rreq_), (pkt_)->seqnum);		\

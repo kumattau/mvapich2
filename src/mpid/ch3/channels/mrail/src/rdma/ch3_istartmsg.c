@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -304,7 +304,7 @@ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_SMP_ISTARTMSG);
     return mpi_errno;
 
-#ifndef _OSU_MVAPICH_
+#ifndef CHANNEL_MRAIL
 fn_fail:
 #endif
     goto fn_exit;

@@ -5,10 +5,52 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ */
+
 #include "mpiimpl.h"
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#ifdef _OSU_MVAPICH_
 #include "coll_shmem.h"
-#endif
+#endif /* _OSU_MVAPICH_ */
+
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_ALLGATHER_SHORT_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 81920
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        For MPI_Allgather and MPI_Allgatherv, the short message algorithm will
+        be used if the send buffer size is < this value (in bytes).
+        (See also: MPIR_CVAR_ALLGATHER_LONG_MSG_SIZE)
+
+    - name        : MPIR_CVAR_ALLGATHER_LONG_MSG_SIZE
+      category    : COLLECTIVE
+      type        : int
+      default     : 524288
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        For MPI_Allgather and MPI_Allgatherv, the long message algorithm will be
+        used if the send buffer size is >= this value (in bytes)
+        (See also: MPIR_CVAR_ALLGATHER_SHORT_MSG_SIZE)
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 
 /* -- Begin Profiling Symbol Block for routine MPI_Allgather */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -124,7 +166,7 @@ int MPIR_Allgather_intra (
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
     tot_bytes = (MPI_Aint)recvcount * comm_size * type_size;
-    if ((tot_bytes < MPIR_PARAM_ALLGATHER_LONG_MSG_SIZE) && !(comm_size & (comm_size - 1))) {
+    if ((tot_bytes < MPIR_CVAR_ALLGATHER_LONG_MSG_SIZE) && !(comm_size & (comm_size - 1))) {
 
         /* Short or medium size message and power-of-two no. of processes. Use
          * recursive doubling algorithm */   
@@ -449,7 +491,7 @@ int MPIR_Allgather_intra (
 #endif /* MPID_HAS_HETERO */
     }
 
-    else if (tot_bytes < MPIR_PARAM_ALLGATHER_SHORT_MSG_SIZE) {
+    else if (tot_bytes < MPIR_CVAR_ALLGATHER_SHORT_MSG_SIZE) {
         /* Short message and non-power-of-two no. of processes. Use
          * Bruck algorithm (see description above). */
 
@@ -962,14 +1004,14 @@ int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                                     recvbuf, recvcount, recvtype,
                                     comm_ptr, &errflag);
     if (mpi_errno) goto fn_fail;
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#ifdef _OSU_MVAPICH_
     if(comm_ptr->ch.allgather_comm_ok >= 0) {
         mpi_errno = mv2_increment_allgather_coll_counter(comm_ptr);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
     } 
-#endif /*   #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
+#endif /* _OSU_MVAPICH_ */
     
     /* ... end of body of routine ... */
     

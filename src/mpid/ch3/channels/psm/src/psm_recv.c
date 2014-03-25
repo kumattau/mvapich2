@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -68,7 +68,8 @@ int psm_recv(int src, int tag, int context_id, void *buf, int buflen,
         stat->MPI_TAG = req->status.MPI_TAG;
         stat->MPI_ERROR = req->status.MPI_ERROR;
         stat->MPI_SOURCE = req->status.MPI_SOURCE;
-        stat->count = req->status.count;
+        stat->count_lo = req->status.count_lo;
+        stat->count_hi_and_cancelled = req->status.count_hi_and_cancelled;
         mpi_errno = stat->MPI_ERROR;
     }    
 

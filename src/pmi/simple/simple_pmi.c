@@ -4,6 +4,18 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 /*********************** PMI implementation ********************************/
 /*
  * This file implements the client-side of the PMI interface.
@@ -451,11 +463,12 @@ int PMI_Publish_name( const char service_name[], const char port[] )
 		       "cmd=publish_name service=%s port=%s\n",
 		       service_name, port );
 	err = GetResponse( cmd, "publish_result", 0 );
-	/* FIXME: This should have used rc and msg */
 	if (err == PMI_SUCCESS) {
-	    PMIU_getval( "info", buf, PMIU_MAXLINE );
-	    if ( strcmp(buf,"ok") != 0 ) {
-	        PMIU_printf( 1, "publish failed; reason = %s\n", buf );
+	    PMIU_getval( "rc", buf, PMIU_MAXLINE );
+	    if ( strcmp(buf,"0") != 0 ) {
+                PMIU_getval( "msg", buf, PMIU_MAXLINE );
+                PMIU_printf( PMI_debug, "publish failed; reason = %s\n", buf );
+
 	        return( PMI_FAIL );
 	    }
 	}
@@ -479,13 +492,12 @@ int PMI_Unpublish_name( const char service_name[] )
 		       service_name );
 	err = GetResponse( cmd, "unpublish_result", 0 );
 	if (err == PMI_SUCCESS) {
-	    PMIU_getval( "info", buf, PMIU_MAXLINE );
-	    if ( strcmp(buf,"ok") != 0 ) {
-		/* FIXME: Do correct error reporting */
-		/*
-	        PMIU_printf( 1, "unpublish failed; reason = %s\n", buf );
-		*/
-	        return( PMI_FAIL );
+	    PMIU_getval( "rc", buf, PMIU_MAXLINE );
+	    if ( strcmp(buf,"0") != 0 ) {
+                PMIU_getval( "msg", buf, PMIU_MAXLINE );
+                PMIU_printf( PMI_debug, "unpublish failed; reason = %s\n", buf );
+
+                return( PMI_FAIL );
 	    }
 	}
     }
@@ -508,12 +520,11 @@ int PMI_Lookup_name( const char service_name[], char port[] )
 		       service_name );
 	err = GetResponse( cmd, "lookup_result", 0 );
 	if (err == PMI_SUCCESS) {
-	    PMIU_getval( "info", buf, PMIU_MAXLINE );
-	    if ( strcmp(buf,"ok") != 0 ) {
-		/* FIXME: Do correct error reporting */
-		/****
-	        PMIU_printf( 1, "lookup failed; reason = %s\n", buf );
-		****/
+	    PMIU_getval( "rc", buf, PMIU_MAXLINE );
+	    if ( strcmp(buf,"0") != 0 ) {
+                PMIU_getval( "msg", buf, PMIU_MAXLINE );
+                PMIU_printf( PMI_debug, "lookup failed; reason = %s\n", buf );
+
 	        return( PMI_FAIL );
 	    }
 	    PMIU_getval( "port", port, MPI_MAX_PORT_NAME );
@@ -544,7 +555,7 @@ int PMI_Spawn_multiple(int count,
     int  i,rc,argcnt,spawncnt,total_num_processes,num_errcodes_found;
     char buf[PMIU_MAXLINE], tempbuf[PMIU_MAXLINE], cmd[PMIU_MAXLINE];
     char *lead, *lag;
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     char *val;
     char small[PMIU_MAXLINE];
     int mpirun = 0, sz;
@@ -554,7 +565,7 @@ int PMI_Spawn_multiple(int count,
 
     total_num_processes = 0;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     val = getenv("MPIRUN_RSH_LAUNCH");
     if(val && (atoi(val) == 1)) {
         mpirun = 1;
@@ -618,7 +629,7 @@ int PMI_Spawn_multiple(int count,
 		}
                 argcnt++;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
                if(mpirun) {
                    sz = strlen(buf);
                    write(PMI_fd, &sz, sizeof(uint32_t));
@@ -703,7 +714,7 @@ int PMI_Spawn_multiple(int count,
 	if (rc != 0) {
 	    return PMI_FAIL;
 	}
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
         if(mpirun) {
             sz = strlen(buf);
             write(PMI_fd, &sz, sizeof(uint32_t));

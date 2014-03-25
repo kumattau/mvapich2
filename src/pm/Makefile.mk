@@ -4,7 +4,7 @@
 ## (C) 2011 by Argonne National Laboratory.
 ##     See COPYRIGHT in top-level directory.
 ##
-## Copyright (c) 2001-2013, The Ohio State University. All rights
+## Copyright (c) 2001-2014, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -21,7 +21,6 @@
 include $(top_srcdir)/src/pm/util/Makefile.mk
 
 include $(top_srcdir)/src/pm/gforker/Makefile.mk
-include $(top_srcdir)/src/pm/smpd/Makefile.mk
 include $(top_srcdir)/src/pm/remshell/Makefile.mk
 
 ## a note about DIST_SUBDIRS:
@@ -45,6 +44,7 @@ endif BUILD_PM_MPIRUN
 if BUILD_PM_HYDRA
 SUBDIRS += src/pm/hydra
 DIST_SUBDIRS += src/pm/hydra
+MANDOC_SUBDIRS += src/pm/hydra
 endif BUILD_PM_HYDRA
 
 # uses a separate Makefile.sm, not Makefile.mk
@@ -52,6 +52,3 @@ if BUILD_PM_MPD
 SUBDIRS += src/pm/mpd
 DIST_SUBDIRS += src/pm/mpd
 endif BUILD_PM_MPD
-
-## FIXME TEMPORARY
-EXTRA_DIST += src/pm/smpd/smpd_version.h

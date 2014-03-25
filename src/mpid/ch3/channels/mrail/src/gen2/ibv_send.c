@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -105,6 +105,35 @@ static inline void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c,
     MPIDI_FUNC_EXIT(MPID_STATE_MRAILI_EXT_SENDQ_ENQUEUE);
 }
 
+int check_cq_overflow_for_ib(MPIDI_VC_t *c, int rail)
+{
+    return 0;
+}
+
+int check_cq_overflow_for_iwarp(MPIDI_VC_t *c, int rail)
+{
+    char cq_overflow = 0;
+
+    if(rdma_iwarp_use_multiple_cq) {
+      if ((NULL != c->mrail.rails[rail].send_cq_hndl) &&
+          (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq >= 
+           rdma_default_max_cq_size)) {
+          /* We are monitoring CQ's and there is CQ overflow */
+          cq_overflow = 1;
+      }
+    } else {
+      if ((NULL != c->mrail.rails[rail].send_cq_hndl) &&
+          ((mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq +
+            mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq) >= 
+            rdma_default_max_cq_size)) {
+          /* We are monitoring CQ's and there is CQ overflow */       
+          cq_overflow = 1; 
+      }
+    }
+
+    return cq_overflow;
+}
+
 /* dequeue and send as many as we can from the extended send queue
  * this is called in each function which may post send prior to it attempting
  * its send, hence ordering of sends is maintained
@@ -116,7 +145,7 @@ static inline void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c,
 static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)    
 {
     vbuf *v;
-    char no_cq_overflow = 1;
+    char cq_overflow = 0;
 
     MPIDI_STATE_DECL(MPID_STATE_MRAILI_EXT_SENDQ_SEND);
     MPIDI_FUNC_ENTER(MPID_STATE_MRAILI_EXT_SENDQ_SEND);
@@ -125,25 +154,10 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
     MPIU_Assert (!USE_XRC || VC_XST_ISUNSET (c, XF_INDIRECT_CONN));
 #endif
 
-    if(rdma_iwarp_use_multiple_cq) {
-      if ((NULL != c->mrail.rails[rail].send_cq_hndl) &&
-          (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq >= 
-           rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */
-          no_cq_overflow = 0;
-      }
-    } else {
-      if ((NULL != c->mrail.rails[rail].send_cq_hndl) &&
-          ((mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq +
-            mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq) >= 
-            rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */       
-          no_cq_overflow = 0; 
-      }
-    }
+    cq_overflow = check_cq_overflow(c, rail);
 
     while (c->mrail.rails[rail].send_wqes_avail
-            && no_cq_overflow
+            && !cq_overflow
             && c->mrail.rails[rail].ext_sendq_head) {
         v = c->mrail.rails[rail].ext_sendq_head;
         c->mrail.rails[rail].ext_sendq_head = v->desc.next;
@@ -160,12 +174,7 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
             MPIDI_CH3I_MRAILI_Pkt_comm_header *p = v->pheader;
             vbuf_init_send(v, v->content_size, v->rail);
 
-            if (p->type == MPIDI_CH3_PKT_NOOP) {
-                v->seqnum = p->seqnum = -1;
-            } else {
-                v->seqnum = p->seqnum = c->mrail.seqnum_next_tosend;
-                c->mrail.seqnum_next_tosend++;
-            }
+            p->seqnum = v->seqnum;
 
             if(c->mrail.coalesce_vbuf == v) {
                 c->mrail.coalesce_vbuf = NULL;
@@ -208,7 +217,7 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
 int MPIDI_CH3I_RDMA_put_datav(MPIDI_VC_t * vc, MPID_IOV * iov, int n,
                               int *num_bytes_ptr)
 {
-    int mpi_errno;
+    int mpi_errno = MPI_SUCCESS;
     /* all variable must be declared before the state declarations */
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_PUT_DATAV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PUT_DATAV);
@@ -229,7 +238,7 @@ int MPIDI_CH3I_RDMA_read_datav(MPIDI_VC_t * recv_vc_ptr, MPID_IOV * iov,
                                int iovlen, int
                                *num_bytes_ptr)
 {
-    int mpi_errno;
+    int mpi_errno = MPI_SUCCESS;
     /* all variable must be declared before the state declarations */
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RDMA_READ_DATAV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_READ_DATAV);
@@ -378,37 +387,21 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     /* We have filled the header, it is time to fit in the actual data */
 #ifdef _ENABLE_CUDA_
     cudaError_t cuda_error = cudaSuccess;
-    if (rdma_enable_cuda && is_device_buffer(iov[1].MPID_IOV_BUF)) {
-        /*if (n_iov > 2) {
-            //Assuming vector datatype
-            cudaMemcpy2D(data_buf,
-                    iov[1].MPID_IOV_LEN,
-                    iov[1].MPID_IOV_BUF,
-                    iov[2].MPID_IOV_BUF - iov[1].MPID_IOV_BUF,
-                    iov[1].MPID_IOV_LEN,
-                    n_iov-1,
-                    cudaMemcpyDeviceToHost);
-            for (i=1; i<n_iov; i++) {
-                *num_bytes_ptr += iov[i].MPID_IOV_LEN;
-                avail -= iov[i].MPID_IOV_LEN;
-            }
-            MPIU_Assert(avail >= 0);
-        } else */
-        if (n_iov == 2) {
-            cuda_error = cudaMemcpy(data_buf,
-                    iov[1].MPID_IOV_BUF,
-                    iov[1].MPID_IOV_LEN,
-                    cudaMemcpyDeviceToHost);
-            if (cuda_error != cudaSuccess) {
-                ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpy Failed to Host\n");
-            }
-            *num_bytes_ptr += iov[1].MPID_IOV_LEN;
-            avail -= iov[1].MPID_IOV_LEN;
-            MPIU_Assert(avail >= 0);
-        }
+    if (rdma_enable_cuda && n_iov > 1 && is_device_buffer(iov[1].MPID_IOV_BUF)) {
+        /* in the case of GPU buffers, there is only one data iov, if data is non-contiguous
+         * it should have been packed before this */
+        MPIU_Assert(n_iov == 2);
+
+        MPIU_Memcpy_CUDA(data_buf,
+                iov[1].MPID_IOV_BUF,
+                iov[1].MPID_IOV_LEN,
+                cudaMemcpyDeviceToHost);
+        *num_bytes_ptr += iov[1].MPID_IOV_LEN;
+        avail -= iov[1].MPID_IOV_LEN;
+
+        MPIU_Assert(avail >= 0);
     } else {
 #endif
-
     for (i = 1; i < n_iov; i++) {
         if (avail >= iov[i].MPID_IOV_LEN) {
           MPIU_Memcpy(data_buf, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
@@ -506,22 +499,8 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
     p->crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
                               *v->head_flag - sizeof *p);
 #endif
-    if(rdma_iwarp_use_multiple_cq) {
-      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-          (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq >= 
-           rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */
-          cq_overflow = 1;
-      } 
-    } else {
-      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-          ((mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq + 
-             mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq) >= 
-             rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */
-          cq_overflow = 1;
-      }
-    }
+
+    cq_overflow = check_cq_overflow(vc, rail);
 
     if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
         DEBUG_PRINT("[send: rdma_send] Warning! no send wqe or send cq available\n");
@@ -544,7 +523,7 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
 #define FUNCNAME MPIDI_CH3I_MRAILI_Fast_rdma_ok
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_MRAILI_Fast_rdma_ok(MPIDI_VC_t * vc, int len)
+int MPIDI_CH3I_MRAILI_Fast_rdma_ok(MPIDI_VC_t * vc, MPIDI_msg_sz_t len)
 {
     int i = 0;
 
@@ -660,7 +639,7 @@ int mv2_post_ud_recv_buffers(int num_bufs, mv2_ud_ctx_t *ud_ctx)
             break;
         }
 
-        vbuf_init_ud_recv(v, rdma_default_ud_mtu, 0);
+        vbuf_init_ud_recv(v, rdma_default_ud_mtu, ud_ctx->hca_num);
         v->transport = IB_TRANSPORT_UD;
         if (ud_ctx->qp->srq) {
             ret = ibv_post_srq_recv(ud_ctx->qp->srq, &v->desc.u.rr, &bad_wr);
@@ -674,11 +653,13 @@ int mv2_post_ud_recv_buffers(int num_bufs, mv2_ud_ctx_t *ud_ctx)
         }
     }
 
-    PRINT_DEBUG(DEBUG_UD_verbose>0 ,"Posted %d buffers of size:%d to UD QP\n",num_bufs, rdma_default_ud_mtu);
+    PRINT_DEBUG(DEBUG_UD_verbose>0 ,"Posted %d buffers of size:%d to UD QP on HCA %d\n",
+                num_bufs, rdma_default_ud_mtu, ud_ctx->hca_num);
 
     MPIDI_FUNC_EXIT(MPID_STATE_POST_SRQ_BUFFERS);
     return i;
 }
+
 #undef FUNCNAME
 #undef FUNCNAME
 #define FUNCNAME post_hybrid
@@ -693,16 +674,16 @@ int post_hybrid_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 
     switch (v->transport) {
         case IB_TRANSPORT_UD:
-            vc->mrail.ud.total_messages++;
+            vc->mrail.rely.total_messages++;
             /* Enable RC conection if total no of msgs on UD channel reachd a
              * threshold and total rc connections less than threshold  
              */
             if (!(vc->mrail.state & (MRAILI_RC_CONNECTED | MRAILI_RC_CONNECTING)) 
                 && (rdma_ud_num_msg_limit)
-                && (vc->mrail.ud.total_messages > rdma_ud_num_msg_limit)
+                && (vc->mrail.rely.total_messages > rdma_ud_num_msg_limit)
                 && ((mv2_MPIDI_CH3I_RDMA_Process.rc_connections + rdma_hybrid_pending_rc_conn)
                     < rdma_hybrid_max_rc_conn)
-                && vc->mrail.ud.ext_window.head == NULL) {
+                && vc->mrail.rely.ext_window.head == NULL) {
                 /* This is hack to create RC channel usig CM protocol.
                 ** Need to handle this by sending REQ/REP on UD channel itself
                 */
@@ -771,22 +752,7 @@ int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 
     FLUSH_RAIL(vc, rail);
 
-    if(rdma_iwarp_use_multiple_cq) {
-      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-          (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq >= 
-           rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */
-          cq_overflow = 1;
-      }
-    } else {
-      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) && 
-          ((mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq + 
-             mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq) >= 
-             rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */
-          cq_overflow = 1;
-      }
-    }
+    cq_overflow = check_cq_overflow(vc, rail);
 
     if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
         MRAILI_Ext_sendq_enqueue(vc, rail, v);
@@ -871,22 +837,7 @@ int post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
         XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
         FLUSH_RAIL(vc, rail);
 
-        if(rdma_iwarp_use_multiple_cq) {
-          if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-              (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq >= 
-               rdma_default_max_cq_size)) {
-              /* We are monitoring CQ's and there is CQ overflow */
-              cq_overflow = 1;
-          }
-        } else {
-          if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-              ((mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq +
-                 mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq) >=                
-                 rdma_default_max_cq_size)) {
-              /* We are monitoring CQ's and there is CQ overflow */
-              cq_overflow = 1;
-          }
-        } 
+        cq_overflow = check_cq_overflow(vc, rail);
 
         if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow)
             
@@ -946,38 +897,22 @@ int MRAILI_Fill_start_buffer(vbuf * v,
     DEBUG_PRINT("buffer: %p, content size: %d\n", v->buffer, v->content_size);
 
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && is_device_buffer(iov[1].MPID_IOV_BUF)) {
+    if (rdma_enable_cuda && n_iov > 1 && is_device_buffer(iov[1].MPID_IOV_BUF)) {
+        /* in the case of GPU buffers, there is only one data iov, if data is non-contiguous
+         * it should have been packed before this */
+        MPIU_Assert(n_iov == 2);
+
         MPIU_Memcpy(ptr, iov[0].MPID_IOV_BUF,
                 (iov[0].MPID_IOV_LEN));
         len += (iov[0].MPID_IOV_LEN);
         avail -= (iov[0].MPID_IOV_LEN);
         ptr = (void *) ((unsigned long) ptr + iov[0].MPID_IOV_LEN);
 
-        /*if (n_iov > 2) {
-            cuda_error = cudaMemcpy2D(ptr,
-                    iov[1].MPID_IOV_LEN,
-                    iov[1].MPID_IOV_BUF,
-                    iov[2].MPID_IOV_BUF - iov[1].MPID_IOV_BUF,
-                    iov[1].MPID_IOV_LEN,
-                    n_iov-1,
-                    cudaMemcpyDeviceToHost);
-            for (i=1; i<n_iov; i++) {
-                len += iov[i].MPID_IOV_LEN;
-                avail -= iov[i].MPID_IOV_LEN;
-                ptr = (void *) ((unsigned long) ptr + iov[i].MPID_IOV_LEN);
-            }
-            MPIU_Assert(avail >= 0);
-        } else */
-        if (n_iov == 2) {
-            cuda_error = cudaMemcpy(ptr,
-                    iov[1].MPID_IOV_BUF,
-                    iov[1].MPID_IOV_LEN,
-                    cudaMemcpyDeviceToHost);
-            len += iov[1].MPID_IOV_LEN;
-        }
-        if (cuda_error != cudaSuccess) {
-            ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpy Failed to Host\n");
-        }
+        MPIU_Memcpy_CUDA(ptr,
+                iov[1].MPID_IOV_BUF,
+                iov[1].MPID_IOV_LEN,
+                cudaMemcpyDeviceToHost);
+        len += iov[1].MPID_IOV_LEN;
     } else 
 #endif
     {
@@ -1011,7 +946,7 @@ v->content_size += len;
 #define FUNCNAME MRAILI_Get_Vbuf
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static vbuf * MRAILI_Get_Vbuf(MPIDI_VC_t * vc, int pkt_len)
+static vbuf * MRAILI_Get_Vbuf(MPIDI_VC_t * vc, size_t pkt_len)
 {
     vbuf* temp_v = NULL;
 
@@ -1061,6 +996,10 @@ static vbuf * MRAILI_Get_Vbuf(MPIDI_VC_t * vc, int pkt_len)
 
         if(MRAILI_Coalesce_ok(vc, temp_v->rail)) {
             vc->mrail.coalesce_vbuf = temp_v;
+
+            temp_v->seqnum = vc->mrail.seqnum_next_tosend;
+            vc->mrail.seqnum_next_tosend++;
+
             temp_v->coalesce = 1;
             MRAILI_Ext_sendq_enqueue(vc, temp_v->rail, temp_v); 
             DEBUG_PRINT("coalesce is ok\n");
@@ -1287,22 +1226,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
         XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
         FLUSH_RAIL(vc, rail);
  
-        if(rdma_iwarp_use_multiple_cq) {
-          if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-              (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq >= 
-               rdma_default_max_cq_size)) {
-              /* We are monitoring CQ's and there is CQ overflow */
-              cq_overflow = 1;
-          }
-        } else {
-          if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-              ((mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq + 
-                 mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq) >=
-                 rdma_default_max_cq_size)) {
-              /* We are monitoring CQ's and there is CQ overflow */
-              cq_overflow = 1;
-          }
-        }
+        cq_overflow = check_cq_overflow(vc, rail);
 
         if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
             MRAILI_Ext_sendq_enqueue(vc, rail, v);
@@ -1703,6 +1627,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_GET:
     case MPIDI_CH3_PKT_GET_RNDV:
     case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
+    case MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV:
     case MPIDI_CH3_PKT_LOCK:
     case MPIDI_CH3_PKT_LOCK_GRANTED:
     case MPIDI_CH3_PKT_UNLOCK:
@@ -1715,7 +1640,6 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_FOP:
     case MPIDI_CH3_PKT_FOP_RESP:
     case MPIDI_CH3_PKT_GET_ACCUM:
-    case MPIDI_CH3_PKT_GET_ACCUM_RESP:
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
     case MPIDI_CH3_PKT_RNDV_R3_ACK:
     case MPIDI_CH3_PKT_ZCOPY_FINISH:
@@ -1725,6 +1649,23 @@ int MRAILI_Process_send(void *vbuf_addr)
             MRAILI_Release_vbuf(v);
         }
         else v->padding = FREE_FLAG;
+        break;
+   case MPIDI_CH3_PKT_GET_ACCUM_RESP:
+        req = v->sreq;
+        if (NULL != req) {
+            MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(req);
+
+            MPIDI_CH3U_Handle_send_req(vc, req, &complete);
+            if (complete != TRUE) {
+                ibv_error_abort(IBV_STATUS_ERR, "Get incomplete eager send request\n");
+            }
+        }
+
+        if (v->padding == NORMAL_VBUF_FLAG) {
+            MRAILI_Release_vbuf(v);
+        } else {
+            v->padding = FREE_FLAG;
+        }
         break;
    case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK: /* optimization for single puts */
    case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK: /* optimization for single accumulates */
@@ -1854,22 +1795,7 @@ void MRAILI_RDMA_Get(   MPIDI_VC_t * vc, vbuf *v,
 
     XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
     
-    if(rdma_iwarp_use_multiple_cq) { 
-      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-          (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq >= 
-           rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */
-          cq_overflow = 1;
-      }
-    } else {
-      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-          ((mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq + 
-             mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq) >=
-             rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */
-          cq_overflow = 1;
-      }
-    }
+    cq_overflow = check_cq_overflow(vc, rail);
 
     if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
         MRAILI_Ext_sendq_enqueue(vc,rail, v);
@@ -1906,22 +1832,7 @@ void MRAILI_RDMA_Put(   MPIDI_VC_t * vc, vbuf *v,
     v->vc = (void *)vc;
     XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
  
-    if(rdma_iwarp_use_multiple_cq) {
-      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-         (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq >= 
-          rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */
-          cq_overflow = 1;
-      }
-    } else {
-      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-          ((mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq +
-             mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq) >=
-             rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */
-          cq_overflow = 1;
-      }
-    }
+    cq_overflow = check_cq_overflow(vc, rail);
 
     if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
         
@@ -1973,26 +1884,12 @@ void vbuf_address_reply_send(MPIDI_VC_t *vc, uint8_t data)
 
 int mv2_shm_coll_post_send(vbuf *v, int rail, MPIDI_VC_t * vc)
 { 
-   char cq_overflow = 0;
-   int mpi_errno = MPI_SUCCESS;
+    char cq_overflow = 0;
+    int mpi_errno = MPI_SUCCESS;
 
-   v->rail = rail; 
-   if(rdma_iwarp_use_multiple_cq) {
-      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-          (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq >=
-           rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */
-          cq_overflow = 1;
-      }
-   } else {
-      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-          ((mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq +
-             mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq) >=
-             rdma_default_max_cq_size)) {
-          /* We are monitoring CQ's and there is CQ overflow */
-          cq_overflow = 1;
-      }
-   }
+    v->rail = rail; 
+
+    cq_overflow = check_cq_overflow(vc, rail);
 
     if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
         DEBUG_PRINT("[send: rdma_send] Warning! no send wqe or send cq available\n");

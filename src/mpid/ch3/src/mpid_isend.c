@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -51,7 +51,7 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif    
-#if !defined(_OSU_MVAPICH_)
+#if !defined(CHANNEL_MRAIL)
     int eager_threshold = -1;
 #endif
     int mpi_errno = MPI_SUCCESS;
@@ -65,15 +65,15 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
     
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
         goto skip_self_send; /* psm will internally do self-send, no special
                                 handling is needed here */
-#endif /* _OSU_PSM_ */          
+#endif /* CHANNEL_PSM */          
 	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, 
 			    context_offset, MPIDI_REQUEST_TYPE_SEND, &sreq);
 	goto fn_exit;
     }
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
 skip_self_send:
 #endif
 
@@ -105,9 +105,9 @@ skip_self_send:
     
     if (data_sz == 0)
     {
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
         goto eager_send;
-#endif /* _OSU_PSM_ */
+#endif /* CHANNEL_PSM */
 	MPIDI_CH3_Pkt_t upkt;
 	MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
 
@@ -143,7 +143,7 @@ skip_self_send:
 	goto fn_exit;
     }
 
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     if(HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN) {
         sreq->dev.datatype_ptr = dt_ptr;
         MPID_Datatype_add_ref(dt_ptr);
@@ -151,9 +151,9 @@ skip_self_send:
     }
     if(vc->force_eager)
         goto eager_send;
-#endif /* _OSU_PSM_ */
+#endif /* CHANNEL_PSM */
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     int i;
     for (i = 0 ; i < rdma_num_extra_polls; i++)
     {
@@ -220,18 +220,18 @@ skip_self_send:
     }
 #endif
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <=	vc->eager_max_msg_sz
         && !vc->force_rndv)
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_GET_EAGER_THRESHOLD(&eager_threshold, comm, vc);
 
     /* FIXME: flow control: limit number of outstanding eager messages
        containing data and need to be buffered by the receiver */
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= eager_threshold)
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     {
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
 eager_send:
 #endif /* _OSU_PSM */
         if (dt_contig) 
@@ -244,7 +244,7 @@ eager_send:
         } 
         else 
         {
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
             sreq->psm_flags |= PSM_NON_BLOCKING_SEND;
 #endif
             mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq, 
@@ -252,7 +252,7 @@ eager_send:
                                                           buf, count, datatype,
                                                           data_sz, rank, tag, 
                                                           comm, context_offset );
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
             goto fn_exit;
 #endif            
             /* If we're not complete, then add a reference to the datatype */
@@ -278,10 +278,10 @@ rndv_send:
            because the CTS packet could arrive and be processed before the 
 	   above iStartmsg completes (depending on the progress
            engine, threads, etc.). */
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
         /* rndv transfers need to process CTS packet to initiate the actual RDMA transfer */
         MPID_Progress_test();
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 	
 	if (sreq && dt_ptr != NULL)
 	{
@@ -293,7 +293,7 @@ rndv_send:
   fn_exit:
     *request = sreq;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     for (i = 0 ; i < rdma_num_extra_polls; i++)
     {
         if (rdma_global_ext_sendq_size > 1)

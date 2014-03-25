@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -66,6 +66,7 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     mv2_arch_hca_type            arch_hca_type;
     int                         cluster_size;
     uint8_t                     heterogeneity;
+    uint8_t                     enable_rma_fast_path;
     uint8_t                     has_srq;
     uint8_t                     has_hsam;
     uint8_t                     has_apm;
@@ -74,8 +75,6 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     uint8_t                     has_lazy_mem_unregister;
     uint8_t                     has_one_sided;
     uint8_t                     has_flush;
-    uint8_t                     has_limic_one_sided;
-    uint8_t                     has_shm_one_sided;
     int                         maxtransfersize;
     int                         global_used_send_cq;
     int                         global_used_recv_cq;
@@ -138,7 +137,7 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
 #ifdef _ENABLE_UD_
     /* UD specific parameters */
     mv2_ud_ctx_t                *ud_rails[MAX_NUM_HCAS];
-    mv2_ud_exch_info_t          *remote_ud_info;
+    mv2_ud_exch_info_t          **remote_ud_info;
     message_queue_t             unack_queue;
     mv2_ud_zcopy_info_t         zcopy_info;
     uint32_t                    rc_connections;
@@ -164,6 +163,12 @@ typedef struct ud_addr_info {
 struct MPIDI_PG;
 
 extern mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
+extern int (*perform_blocking_progress) (int hca_num, int num_cqs);
+extern void (*handle_multiple_cqs) (int num_cqs, int cq_choice, int is_send_completion);
+extern int (*MPIDI_CH3I_MRAILI_Cq_poll) (vbuf **vbuf_handle,
+        MPIDI_VC_t * vc_req, int receiving, int is_blocking);
+extern int (*check_cq_overflow) (MPIDI_VC_t *c, int rail);
+
 
 #define GEN_EXIT_ERR     -1     /* general error which forces us to abort */
 #define GEN_ASSERT_ERR   -2     /* general assert error */
@@ -259,16 +264,11 @@ do {                                                                    \
         } else {                                                      \
             (_v)->desc.u.sr.send_flags = IBV_SEND_SIGNALED ;          \
         }                                                             \
-        if ((_rail) != (_v)->rail)                                    \
-        {                                                             \
-                DEBUG_PRINT("[%s:%d] rail %d, vrail %d\n",            \
-                        __FILE__, __LINE__,(_rail), (_v)->rail);      \
-                MPIU_Assert((_rail) == (_v)->rail);                   \
-        }                                                             \
-        mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq++;                \
+        MPIU_Assert((_rail) == (_v)->rail);                           \
+        mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq++;            \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \
                   &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));         \
-        if(__ret) {                                                   \
+        if(unlikely(__ret)) {                                                   \
             fprintf(stderr, "failed while avail wqe is %d, "          \
                     "rail %d\n",                                      \
                     (_c)->mrail.rails[(_rail)].send_wqes_avail,       \
@@ -328,16 +328,11 @@ inline static void print_info(vbuf* v, char* title, int err)
         } else {                                                      \
             (_v)->desc.u.sr.send_flags = IBV_SEND_SIGNALED ;          \
         }                                                             \
-        if ((_rail) != (_v)->rail)                                    \
-        {                                                             \
-                DEBUG_PRINT("[%s:%d] rail %d, vrail %d\n",            \
-                        __FILE__, __LINE__,(_rail), (_v)->rail);      \
-                MPIU_Assert((_rail) == (_v)->rail);                   \
-        }                                                             \
-        mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq++;                \
+        MPIU_Assert((_rail) == (_v)->rail);                           \
+        mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq++;            \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \
                   &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));         \
-        if(__ret) {                                                   \
+        if(unlikely(__ret)) {                                                   \
 		printf("[%d => %d]: %s(%s): ret=%d, errno=%d: failed while avail wqe is %d, "  \
                     "rail %d\n",  MPIDI_Process.my_pg_rank, _c->pg_rank, \
                                        __func__, err_string, __ret, errno,    \
@@ -356,7 +351,7 @@ inline static void print_info(vbuf* v, char* title, int err)
     __ret = ibv_post_recv(_c->mrail.rails[(_rail)].qp_hndl,     \
                           &((_vbuf)->desc.u.rr),                \
             &((_vbuf)->desc.y.bad_rr));                         \
-    if (__ret) {                                                \
+    if (unlikely(__ret)) {                                                \
         ibv_va_error_abort(IBV_RETURN_ERR,                      \
             "ibv_post_recv err with %d",          \
                 __ret);                                         \
@@ -472,7 +467,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
 /* Other prototype */
 struct process_init_info *alloc_process_init_info(int pg_size, int num_rails);
 void free_process_init_info(struct process_init_info *, int pg_size);
-struct ibv_mr * register_memory(void *, int len, int hca_num);
+struct ibv_mr * register_memory(void *, size_t len, int hca_num);
 int deregister_memory(struct ibv_mr * mr);
 int MRAILI_Backlog_send(MPIDI_VC_t * vc, int subrail);
 int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
@@ -498,6 +493,17 @@ int MRAILI_Process_send(void *vbuf_addr);
 void MRAILI_Process_recv(vbuf *v); 
 int post_send(MPIDI_VC_t *vc, vbuf *v, int rail);
 int post_srq_send(MPIDI_VC_t *vc, vbuf *v, int rail);
+int perform_blocking_progress_for_iwarp(int hca_num, int num_cqs);
+int perform_blocking_progress_for_ib(int hca_num, int num_cqs);
+void handle_multiple_cqs_for_ib(int num_cqs, int cq_choice, int is_send_completion);
+void handle_multiple_cqs_for_iwarp(int num_cqs, int cq_choice, int is_send_completion);
+int MPIDI_CH3I_MRAILI_Cq_poll_iwarp(vbuf **vbuf_handle,
+        MPIDI_VC_t * vc_req, int receiving, int is_blocking);
+int MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf **vbuf_handle,
+        MPIDI_VC_t * vc_req, int receiving, int is_blocking);
+int check_cq_overflow_for_ib(MPIDI_VC_t *c, int rail);
+int check_cq_overflow_for_iwarp(MPIDI_VC_t *c, int rail);
+
 #ifdef _ENABLE_UD_
 int post_hybrid_send(MPIDI_VC_t *vc, vbuf *v, int rail);
 int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *);
@@ -561,6 +567,7 @@ int reload_alternate_path(struct ibv_qp *qp);
 int power_two(int x);
 int qp_required(MPIDI_VC_t* vc, int my_rank, int dst_rank);
 
+int init_MV2_collops(MPID_Comm *comm);
 int MPIDI_CH3I_comm_create(MPID_Comm *comm, void *param);
 int MPIDI_CH3I_comm_destroy(MPID_Comm *comm, void *param);
 #endif                          /* RDMA_IMPL_H */

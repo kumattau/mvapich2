@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -417,7 +417,7 @@ const char *MPIDI_Pkt_GetDescString( MPIDI_CH3_Pkt_t *pkt )
 	MPIU_Snprintf( pktmsg, sizeof(pktmsg), 
 		       "FLOW_CNTL_UPDATE" );
 	break;
-#if !defined(_OSU_MVAPICH_)
+#if !defined(CHANNEL_MRAIL)
 #ifdef MPIDI_CH3_CHANNEL_RNDV
     case MPIDI_CH3_PKT_RTS_IOV:
 	MPIU_Snprintf( pktmsg, sizeof(pktmsg), 
@@ -447,7 +447,7 @@ const char *MPIDI_Pkt_GetDescString( MPIDI_CH3_Pkt_t *pkt )
 		       pkt->iov.iov_len );
 	break;
 #endif
-#endif /* !defined(_OSU_MVAPICH_) */
+#endif /* !defined(CHANNEL_MRAIL) */
     case MPIDI_CH3_PKT_CLOSE:
 	MPIU_Snprintf( pktmsg, sizeof(pktmsg), 
 		       "CLOSE ack=%d", 

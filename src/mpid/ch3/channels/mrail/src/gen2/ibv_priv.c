@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,7 +25,7 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
-struct ibv_mr * register_memory(void * buf, int len, int hca_num)
+struct ibv_mr * register_memory(void * buf, size_t len, int hca_num)
 {
     struct ibv_mr * mr = ibv_reg_mr(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_num], buf, len,
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
@@ -86,7 +86,7 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
         vbuf_ctrl_buf = MPIU_Malloc(sizeof(struct vbuf) * num_rdma_buffer);
 #else
 	/* allocate vbuf struct buffers */
-        if(posix_memalign((void **) &vbuf_ctrl_buf, 64,
+        if(MPIU_Memalign((void **) &vbuf_ctrl_buf, 64,
             sizeof(struct vbuf) * num_rdma_buffer)) {
             DEBUG_PRINT("malloc failed: vbuf in vbuf_fast_rdma_alloc\n");
             goto fn_fail;
@@ -104,7 +104,7 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 #else
         int pagesize = getpagesize();
         /* allocate vbuf RDMA buffers */
-        if(posix_memalign((void **)&vbuf_rdma_buf, pagesize,
+        if(MPIU_Memalign((void **)&vbuf_rdma_buf, pagesize,
                             rdma_fp_buffer_size * num_rdma_buffer)) {
             DEBUG_PRINT("malloc failed: vbuf DMA in vbuf_fast_rdma_alloc");
             goto fn_exit;

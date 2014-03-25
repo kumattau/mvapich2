@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,6 +22,41 @@ cuda_event_t *free_cudaipc_event_list_head = NULL;
 cuda_event_t *free_cuda_event_list_head = NULL;
 cuda_event_t *busy_cuda_event_list_head = NULL;
 cuda_event_t *busy_cuda_event_list_tail = NULL;
+
+cudaStream_t  stream_d2h = 0, stream_h2d = 0, stream_kernel = 0;
+cudaEvent_t cuda_nbstream_sync_event = 0;
+
+void allocate_cuda_rndv_streams()
+{
+    cudaError_t result;
+    if (rdma_cuda_nonblocking_streams) {
+        CUDA_CHECK(cudaStreamCreateWithFlags(&stream_d2h, cudaStreamNonBlocking));
+        CUDA_CHECK(cudaStreamCreateWithFlags(&stream_h2d, cudaStreamNonBlocking));
+        CUDA_CHECK(cudaStreamCreateWithFlags(&stream_kernel, cudaStreamNonBlocking));
+        CUDA_CHECK(cudaEventCreateWithFlags(&cuda_nbstream_sync_event,
+                  cudaEventDisableTiming));
+    } else {
+        CUDA_CHECK(cudaStreamCreate(&stream_d2h));
+        CUDA_CHECK(cudaStreamCreate(&stream_h2d));
+        CUDA_CHECK(cudaStreamCreate(&stream_kernel));
+    }
+}
+
+void deallocate_cuda_rndv_streams()
+{
+    if (stream_d2h) {
+        cudaStreamDestroy(stream_d2h);
+    }
+    if (stream_h2d) {
+        cudaStreamDestroy(stream_h2d);
+    }
+    if (stream_kernel) {
+        cudaStreamDestroy(stream_kernel);
+    }
+    if (cuda_nbstream_sync_event) {
+        cudaEventDestroy(cuda_nbstream_sync_event);
+    }
+}
 
 void allocate_cuda_events()
 {

@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -42,7 +42,7 @@ int MPID_Irecv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
         goto fn_exit;
     }
 
-#if defined (_OSU_PSM_) /* psm: post request to psm library and return request
+#if defined (CHANNEL_PSM) /* psm: post request to psm library and return request
                            to MPI_Recv. */
     MPI_Aint dt_true_lb;
     MPID_Datatype *dt_ptr;
@@ -86,7 +86,7 @@ int MPID_Irecv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
         if(mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
     goto fn_exit;
-#endif /* _OSU_PSM_ */
+#endif /* CHANNEL_PSM */
 
     MPIU_THREAD_CS_ENTER(MSGQUEUE,);
     rreq = MPIDI_CH3U_Recvq_FDU_or_AEP(rank, tag, 
@@ -207,7 +207,7 @@ int MPID_Irecv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 
 
 	
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
         mpi_errno = MPIDI_CH3_RecvRndv( vc, rreq );
 #else
 	    mpi_errno = vc->rndvRecv_fn( vc, rreq );
@@ -227,7 +227,9 @@ int MPID_Irecv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	else
 	{
 	    /* --BEGIN ERROR HANDLING-- */
+#ifdef HAVE_ERROR_CHECKING
             int msg_type = MPIDI_Request_get_msg_type(rreq);
+#endif
             MPID_Request_release(rreq);
 	    rreq = NULL;
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_INTERN, "**ch3|badmsgtype",

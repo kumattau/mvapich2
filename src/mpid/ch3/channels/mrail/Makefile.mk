@@ -1,7 +1,7 @@
 ## -*- Mode: Makefile; -*-
 ## vim: set ft=automake :
 ##
-## Copyright (c) 2001-2013, The Ohio State University. All rights
+## Copyright (c) 2001-2014, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -15,8 +15,24 @@
 
 if BUILD_MRAIL
 
-AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/mrail/include	\
-               -I$(top_builddir)/src/mpid/ch3/channels/mrail/include
+AM_CPPFLAGS += -I$(top_builddir)/src/mpid/ch3/channels/mrail/include	\
+	       -I$(top_srcdir)/src/mpid/ch3/channels/mrail/include	\
+	       -I$(top_builddir)/src/mpid/ch3/channels/common/include	\
+	       -I$(top_srcdir)/src/mpid/ch3/channels/common/include	\
+	       -I$(top_builddir)/src/mpid/common/locks			\
+	       -I$(top_srcdir)/src/mpid/common/locks			\
+	       -I$(top_builddir)/src/util/wrappers			\
+	       -I$(top_srcdir)/src/util/wrappers
+
+if BUILD_MRAIL_GEN2
+AM_CPPFLAGS += -I$(top_builddir)/src/mpid/ch3/channels/mrail/src/gen2	\
+	       -I$(top_srcdir)/src/mpid/ch3/channels/mrail/src/gen2
+endif
+
+if BUILD_MRAIL_UDAPL
+AM_CPPFLAGS += -I$(top_builddir)/src/mpid/ch3/channels/mrail/src/udapl	\
+	       -I$(top_srcdir)/src/mpid/ch3/channels/mrail/src/udapl
+endif
 
 include $(top_srcdir)/src/mpid/ch3/channels/mrail/src/Makefile.mk
 

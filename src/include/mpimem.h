@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -34,6 +34,10 @@ extern "C" {
 
 #include "mpichconf.h"
 #include "mpl.h"
+
+#ifdef _OSU_MVAPICH_
+#include "mv2_mpit.h"
+#endif
 
 /* ensure that we weren't included out of order */
 #include "mpibase.h"
@@ -156,7 +160,7 @@ void MPIU_trinit(int);
 void *MPIU_trmalloc(size_t, int, const char []);
 void MPIU_trfree(void *, int, const char []);
 int MPIU_trvalid(const char []);
-void MPIU_trspace(int *, int *);
+void MPIU_trspace(size_t *, size_t *);
 void MPIU_trid(int);
 void MPIU_trlevel(int);
 void MPIU_trDebugLevel(int);
@@ -254,15 +258,10 @@ void MPIU_trdump(FILE *, int);
 #define MPIU_Realloc(a,b)    MPIU_trrealloc((a),(b),__LINE__,__FILE__)
 
 /* Define these as invalid C to catch their use in the code */
-
-/* #if defined(_OSU_MVAPICH_) */
-/* Commented to support alternative malloc implementation 
 #define malloc(a)         'Error use MPIU_Malloc' :::
 #define calloc(a,b)       'Error use MPIU_Calloc' :::
 #define free(a)           'Error use MPIU_Free'   :::
-#define realloc(a)        'Error use MPIU_Realloc' :::
-*/
-/* #endif defined(_OSU_MVAPICH_) */
+#define realloc(a,b)      'Error use MPIU_Realloc' :::
 
 #if defined(strdup) || defined(__strdup)
 #undef strdup
@@ -279,28 +278,10 @@ void MPIU_trdump(FILE *, int);
 
 #else /* USE_MEMORY_TRACING */
 /* No memory tracing; just use native functions */
-
-#if defined (_OSU_MVAPICH_) && OSU_MPIT
-
-void *MPIT_malloc(size_t);
-void *MPIT_calloc(size_t,size_t);
-void *MPIT_realloc(void *, size_t);
-void *MPIT_strdup(const char *);
-void MPIT_free(void *);
-
-#define MPIU_Malloc(a)       MPIT_malloc(a)
-#define MPIU_Calloc(a,b)     MPIT_calloc(a,b)
-#define MPIU_Free(a)         MPIT_free(a)
-#define MPIU_Strdup(a)       MPIT_strdup(a)
-#define MPIU_Realloc(a,b)    MPIT_realloc(a,b)
-
-#else
-
 #define MPIU_Malloc(a)    malloc((size_t)(a))
 #define MPIU_Calloc(a,b)  calloc((size_t)(a),(size_t)(b))
 #define MPIU_Free(a)      free((void *)(a))
 #define MPIU_Realloc(a,b)  realloc((void *)(a),(size_t)(b))
-
 
 #ifdef HAVE_STRDUP
 /* Watch for the case where strdup is defined as a macro by a header include */
@@ -311,11 +292,28 @@ extern char *strdup( const char * );
 #else
 /* Don't define MPIU_Strdup, provide it in safestr.c */
 #endif /* HAVE_STRDUP */
-
-#endif /* (_OSU_MVAPICH_) && OSU_MPI */ 
-
 #endif /* USE_MEMORY_TRACING */
 
+#ifdef _OSU_MVAPICH_
+#   if ENABLE_PVAR_MV2
+#       undef MPIU_Malloc
+#       undef MPIU_Calloc
+#       undef MPIU_Free
+#       undef MPIU_Strdup
+#       undef MPIU_Realloc
+#
+#       define MPIU_Malloc(a)       MPIT_malloc(a, __LINE__, __FILE__)
+#       define MPIU_Calloc(a,b)     MPIT_calloc(a, b, __LINE__, __FILE__)
+#       define MPIU_Free(a)         MPIT_free(a, __LINE__, __FILE__)
+#       define MPIU_Strdup(a)       MPIT_strdup(a, __LINE__, __FILE__)
+#       define MPIU_Realloc(a,b)    MPIT_realloc(a, b, __LINE__, __FILE__)
+#       define MPIU_Memalign(a,b,c) MPIT_memalign(a, b, c, __LINE__, __FILE__)
+#       define MPIU_Memalign_Free(a) MPIT_memalign_free(a, __LINE__, __FILE__)
+#   else /* ENABLE_PVAR_MV2 */
+#       define MPIU_Memalign(a,b,c) posix_memalign(a, b, c)
+#       define MPIU_Memalign_Free(a) Real_Free(a)
+#   endif /* ENABLE_PVAR_MV2 */
+#endif /* _OSU_MVAPICH_ */
 
 /* Memory allocation macros. See document. */
 
@@ -405,7 +403,7 @@ if (pointer_) { \
 
 /* Persistent memory that we may want to recover if something goes wrong */
 #define MPIU_CHKPMEM_DECL(n_) \
- void *(mpiu_chkpmem_stk_[n_]);\
+ void *(mpiu_chkpmem_stk_[n_]) = { NULL };     \
  int mpiu_chkpmem_stk_sp_=0;\
  MPIU_AssertDeclValue(const int mpiu_chkpmem_stk_sz_,n_)
 #define MPIU_CHKPMEM_MALLOC_ORSTMT(pointer_,type_,nbytes_,rc_,name_,stmt_) \
@@ -524,19 +522,19 @@ void MPIU_Basename(char *path, char **basename);
         }                                                                                                       \
     } while (0)
 
-/* #if defined(_OSU_MVAPICH_) */
+/* #if defined(CHANNEL_MRAIL) */
 #define MPIU_MEM_CHECK_MEMSET(dst_,c_,len_)                  \
     do {                                                     \
           MPIU_Assert( len_>0 );                              \
           MPL_VG_CHECK_MEM_IS_ADDRESSABLE((dst_),(len_));   \
     } while (0)
-/* #endif / * defined(_OSU_MVAPICH_) */
+/* #endif / * defined(CHANNEL_MRAIL) */
 
 #else
 #define MPIU_MEM_CHECK_MEMCPY(dst_,src_,len_) do {} while(0)
-/* #if defined(_OSU_MVAPICH_) */
+/* #if defined(CHANNEL_MRAIL) */
   #define MPIU_MEM_CHECK_MEMSET(dst_,c_,len_)
-/* #endif / * defined(_OSU_MVAPICH_) */
+/* #endif / * defined(CHANNEL_MRAIL) */
 #endif
 
 /* valgrind macros are now provided by MPL (via mpl.h included in mpiimpl.h) */

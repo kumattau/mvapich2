@@ -4,6 +4,18 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #include "mpid_nem_impl.h"
 #include "mpid_nem_fbox.h"
 #include "mpid_nem_nets.h"
@@ -63,6 +75,11 @@ MPID_nem_mpich_init(void)
     MPID_nem_curr_fboxq_elem = NULL;
     MPID_nem_curr_fbox_all_poll = &MPID_nem_fboxq_elem_list[0];
     MPID_nem_fboxq_elem_list_last = &MPID_nem_fboxq_elem_list[MPID_nem_mem_region.num_local - 1];
+
+#ifdef _OSU_MVAPICH_
+    MPIDI_Process.my_pg->ch.local_process_id = MPID_nem_mem_region.local_rank;
+    MPIDI_Process.my_pg->ch.num_local_processes = MPID_nem_mem_region.num_local;
+#endif /* _OSU_MVAPICH_ */
 
     MPIU_CHKPMEM_COMMIT();
 fn_exit:

@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -76,7 +76,7 @@ typedef union {
 enum MPIDI_CH3_Pkt_types
 {
     MPIDI_CH3_PKT_EAGER_SEND = 0,
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     MPIDI_CH3_PKT_EAGER_SEND_CONTIG,
 #ifndef MV2_DISABLE_HEADER_CACHING 
     MPIDI_CH3_PKT_FAST_EAGER_SEND,
@@ -95,7 +95,8 @@ enum MPIDI_CH3_Pkt_types
     MPIDI_CH3_PKT_CUDA_CTS_CONTI,
     MPIDI_CH3_PKT_PUT_RNDV,
     MPIDI_CH3_PKT_ACCUMULATE_RNDV,  /*8*/
-    MPIDI_CH3_PKT_GET_RNDV,         /*9*/
+    MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV,  /*9*/
+    MPIDI_CH3_PKT_GET_RNDV,         /*10*/
     MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND,
     MPIDI_CH3_PKT_PACKETIZED_SEND_START,
     MPIDI_CH3_PKT_PACKETIZED_SEND_DATA,
@@ -112,7 +113,7 @@ enum MPIDI_CH3_Pkt_types
 #if defined(_SMP_LIMIC_) || defined(_SMP_CMA_)
     MPIDI_CH3_PKT_SMP_DMA_COMP,
 #endif
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 #if defined(USE_EAGER_SHORT)
     MPIDI_CH3_PKT_EAGERSHORT_SEND,
 #endif /* defined(USE_EAGER_SHORT) */
@@ -171,18 +172,18 @@ typedef uint16_t MPIDI_CH3_Pkt_flags_t;
 #define MPIDI_CH3_PKT_FLAG_RMA_SHARED          64  /* .........X...... */
 #define MPIDI_CH3_PKT_FLAG_RMA_EXCLUSIVE      128  /* ........X....... */
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 extern char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1];
 #endif
 
 typedef struct MPIDI_CH3_Pkt_send
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;  /* XXX - uint8_t to conserve space ??? */
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPI_Request sender_req_id;	/* needed for ssend and send cancel */
     MPIDI_Message_match match;
     MPIDI_msg_sz_t data_sz;
@@ -193,7 +194,7 @@ typedef struct MPIDI_CH3_Pkt_send
 }
 MPIDI_CH3_Pkt_send_t;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 #if defined(_SMP_LIMIC_) || defined(_SMP_CMA_)
 typedef struct MPIDI_CH3_Pkt_comp
 {
@@ -203,26 +204,26 @@ typedef struct MPIDI_CH3_Pkt_comp
     MPI_Request *send_req_id;
 } MPIDI_CH3_Pkt_comp_t;
 #endif
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
 /* NOTE: Normal and synchronous eager sends, as well as all ready-mode sends, 
    use the same structure but have a different type value. */
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_eager_send_t;
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_eager_sync_send_t;
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_ready_send_t;
- #if defined(_OSU_MVAPICH_)
+ #if defined(CHANNEL_MRAIL)
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_eager_send_contig_t;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
 #if defined(USE_EAGER_SHORT)
 typedef struct MPIDI_CH3_Pkt_eagershort_send
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;  /* XXX - uint8_t to conserve space ??? */
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPIDI_Message_match match;
     MPIDI_msg_sz_t data_sz;
     int  data[MPIDI_EAGER_SHORT_INTS];    /* FIXME: Experimental for now */
@@ -232,17 +233,17 @@ MPIDI_CH3_Pkt_eagershort_send_t;
 
 typedef struct MPIDI_CH3_Pkt_eager_sync_ack
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPI_Request sender_req_id;
 }
 MPIDI_CH3_Pkt_eager_sync_ack_t;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 typedef struct MPIDI_CH3_Pkt_rndv_req_to_send
 {
     uint8_t type;
@@ -270,30 +271,30 @@ typedef struct MPIDI_CH3I_Pkt_address_reply {
 #define RDMA_FP_SENDBUFF_ALLOC_FAILED   121
 #define RDMA_FP_MAX_SEND_CONN_REACHED   131
 
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_rndv_req_to_send_t;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 typedef struct MPIDI_CH3I_Pkt_rndv_r3_Ack
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     uint32_t ack_data;
 } MPIDI_CH3_Pkt_rndv_r3_ack_t;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
 
 typedef struct MPIDI_CH3_Pkt_rndv_clr_to_send
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     MPIDI_msg_sz_t recv_sz;
     MPIDI_CH3I_MRAILI_RNDV_INFO_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPI_Request sender_req_id;
     MPI_Request receiver_req_id;
 }
@@ -305,17 +306,17 @@ typedef MPIDI_CH3_Pkt_rndv_clr_to_send_t MPIDI_CH3_Pkt_cuda_cts_cont_t;
 
 typedef struct MPIDI_CH3_Pkt_rndv_send
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPI_Request receiver_req_id;
 }
 MPIDI_CH3_Pkt_rndv_send_t;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 typedef struct MPIDI_CH3_Pkt_packetized_send_start {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
@@ -390,16 +391,16 @@ typedef struct MPIDI_CH3_Pkt_cm_establish_t
     uint64_t vc_addr; /* The VC that is newly created */
 } MPIDI_CH3_Pkt_cm_establish_t;
 
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
 typedef struct MPIDI_CH3_Pkt_cancel_send_req
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPI_Request sender_req_id;
     MPIDI_Message_match match;
 }
@@ -407,12 +408,12 @@ MPIDI_CH3_Pkt_cancel_send_req_t;
 
 typedef struct MPIDI_CH3_Pkt_cancel_send_resp
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPI_Request sender_req_id;
     int ack;
 }
@@ -424,13 +425,13 @@ MPIDI_CH3_PKT_DEFS
 
 typedef struct MPIDI_CH3_Pkt_put
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     uint32_t rma_issued;
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_flags_t flags;
     void *addr;
     int count;
@@ -443,7 +444,7 @@ typedef struct MPIDI_CH3_Pkt_put
     MPI_Win source_win_handle; /* Used in the last RMA operation in an
                                * epoch in the case of passive target rma
                                * with shared locks. Otherwise set to NULL*/
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     uint32_t rndv_len;
     int source_rank;
     int target_rank;
@@ -455,7 +456,7 @@ typedef struct MPIDI_CH3_Pkt_put
 }
 MPIDI_CH3_Pkt_put_t;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 /*
 Top elements of MPIDI_CH3_Pkt_put_rndv should match with MPIDI_CH3_Pkt_put_t 
 TODO: remove this restriction
@@ -482,17 +483,17 @@ typedef struct MPIDI_CH3_Pkt_put_rndv
     MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
 }
 MPIDI_CH3_Pkt_put_rndv_t;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
 typedef struct MPIDI_CH3_Pkt_get
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     uint32_t rma_issued;
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_flags_t flags;
     void *addr;
     int count;
@@ -506,7 +507,7 @@ typedef struct MPIDI_CH3_Pkt_get
     MPI_Win source_win_handle; /* Used in the last RMA operation in an
                                * epoch in the case of passive target rma
                                * with shared locks. Otherwise set to NULL*/
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     int rndv_mode;
     int target_rank;
     int source_rank;
@@ -518,7 +519,7 @@ typedef struct MPIDI_CH3_Pkt_get
 }
 MPIDI_CH3_Pkt_get_t;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 /*
 Top elements of MPIDI_CH3_Pkt_get_rndv should match with MPIDI_CH3_Pkt_get_t 
 TODO: remove this restriction
@@ -545,19 +546,19 @@ typedef struct MPIDI_CH3_Pkt_get_rndv
     MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
 }
 MPIDI_CH3_Pkt_get_rndv_t;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
 typedef struct MPIDI_CH3_Pkt_get_resp
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     int protocol;
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPI_Request request_handle;
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     int target_rank;
     int source_rank;
     int rndv_tag;
@@ -567,12 +568,12 @@ typedef struct MPIDI_CH3_Pkt_get_resp
     MPI_Win source_win_handle;
     int mapped_trank;
     int mapped_srank;
-#endif /* _OSU_PSM_ */
+#endif /* CHANNEL_PSM */
 }
 MPIDI_CH3_Pkt_get_resp_t;
 
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 /*
 Top elements of MPIDI_CH3_Pkt_accum_rndv should match with MPIDI_CH3_Pkt_accum_t 
 TODO: remove this restriction
@@ -602,17 +603,43 @@ typedef struct MPIDI_CH3_Pkt_accum_rndv
     MPIDI_CH3I_MRAILI_RNDV_INFO_DECL
 }
 MPIDI_CH3_Pkt_accum_rndv_t;
-#endif /* defined(_OSU_MVAPICH_) */
 
-typedef struct MPIDI_CH3_Pkt_accum
+typedef struct MPIDI_CH3_Pkt_get_accum_rndv
 {
-#if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     uint32_t rma_issued;
-#else /* defined(_OSU_MVAPICH_) */
+    MPIDI_CH3_Pkt_flags_t flags;
+    MPI_Request request_handle; 
+    void *addr;
+    int count;
+    MPI_Datatype datatype;
+    int dataloop_size;   /* for derived datatypes */
+    MPI_Op op;
+    MPI_Win target_win_handle; /* Used in the last RMA operation in each
+                               * epoch for decrementing rma op counter in
+                               * active target rma and for unlocking window
+                               * in passive target rma. Otherwise set to NULL*/
+    MPI_Win source_win_handle; /* Used in the last RMA operation in an
+                               * epoch in the case of passive target rma
+                               * with shared locks. Otherwise set to NULL*/
+    MPI_Request sender_req_id;
+    MPIDI_msg_sz_t data_sz;
+
+    MPIDI_CH3I_MRAILI_RNDV_INFO_DECL;
+}
+MPIDI_CH3_Pkt_get_accum_rndv_t;
+#endif /* defined(CHANNEL_MRAIL) */
+
+typedef struct MPIDI_CH3_Pkt_accum
+{
+#if defined(CHANNEL_MRAIL)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    uint32_t rma_issued;
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_flags_t flags;
     MPI_Request request_handle; /* For get_accumulate response */
     void *addr;
@@ -627,11 +654,12 @@ typedef struct MPIDI_CH3_Pkt_accum
     MPI_Win source_win_handle; /* Used in the last RMA operation in an
                                * epoch in the case of passive target rma
                                * with shared locks. Otherwise set to NULL*/
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     uint32_t rndv_len;
     int source_rank;
     int target_rank;
     int rndv_tag;
+    int resp_rndv_tag;
     int rndv_mode;
     int mapped_srank;
     int mapped_trank;
@@ -641,25 +669,37 @@ MPIDI_CH3_Pkt_accum_t;
 
 typedef struct MPIDI_CH3_Pkt_get_accum_resp
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    int protocol;
 #else
     MPIDI_CH3_Pkt_type_t type;
 #endif
     MPI_Request request_handle;
+#if defined (CHANNEL_PSM)
+    int target_rank;
+    int source_rank;
+    int rndv_tag;
+    int rndv_mode;
+    int rndv_len;
+    MPI_Win target_win_handle;
+    MPI_Win source_win_handle;
+    int mapped_trank;
+    int mapped_srank;
+#endif /* CHANNEL_PSM */
 }
 MPIDI_CH3_Pkt_get_accum_resp_t;
 
 typedef struct MPIDI_CH3_Pkt_accum_immed
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     uint32_t rma_issued;
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */ 
+#endif /* defined(CHANNEL_MRAIL) */ 
     MPIDI_CH3_Pkt_flags_t flags;
     void *addr;
     int count;
@@ -675,7 +715,7 @@ typedef struct MPIDI_CH3_Pkt_accum_immed
                                * epoch in the case of passive target rma
                                * with shared locks. Otherwise set to NULL*/
     int data[MPIDI_RMA_IMMED_INTS];
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     int source_rank;
     int target_rank;
     int mapped_srank;
@@ -686,12 +726,12 @@ MPIDI_CH3_Pkt_accum_immed_t;
 
 typedef struct MPIDI_CH3_Pkt_cas
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_flags_t flags;
     MPI_Datatype datatype;
     void *addr;
@@ -702,30 +742,39 @@ typedef struct MPIDI_CH3_Pkt_cas
                                 * in passive target rma. Otherwise set to NULL*/
     MPIDI_CH3_CAS_Immed_u origin_data;
     MPIDI_CH3_CAS_Immed_u compare_data;
+#if defined (CHANNEL_PSM)
+    int source_rank;
+    int mapped_srank;
+    int mapped_trank;
+#endif
 }
 MPIDI_CH3_Pkt_cas_t;
 
 typedef struct MPIDI_CH3_Pkt_cas_resp
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPI_Request request_handle;
     MPIDI_CH3_CAS_Immed_u data;
+#if defined (CHANNEL_PSM)
+    int mapped_srank;
+    int mapped_trank;
+#endif
 }
 MPIDI_CH3_Pkt_cas_resp_t;
 
 typedef struct MPIDI_CH3_Pkt_fop
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_flags_t flags;
     MPI_Datatype datatype;
     void *addr;
@@ -736,36 +785,45 @@ typedef struct MPIDI_CH3_Pkt_fop
                                 * active target rma and for unlocking window 
                                 * in passive target rma. Otherwise set to NULL*/
     int origin_data[MPIDI_RMA_FOP_IMMED_INTS];
+#if defined (CHANNEL_PSM)
+    int source_rank;
+    int mapped_srank;
+    int mapped_trank;
+#endif
 }
 MPIDI_CH3_Pkt_fop_t;
 
 typedef struct MPIDI_CH3_Pkt_fop_resp
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPI_Request request_handle;
     int data[MPIDI_RMA_FOP_RESP_IMMED_INTS];
+#if defined (CHANNEL_PSM)
+    int mapped_srank;
+    int mapped_trank;
+#endif
 }
 MPIDI_CH3_Pkt_fop_resp_t;
 
 typedef struct MPIDI_CH3_Pkt_lock
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     int lock_type;
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
     int target_rank;            /* Used in unluck/flush response to look up the
                                    target state at the origin. */
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     int source_rank;
     int mapped_srank;
     int mapped_trank;
@@ -775,16 +833,16 @@ MPIDI_CH3_Pkt_lock_t;
 
 typedef struct MPIDI_CH3_Pkt_lock_granted
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPI_Win source_win_handle;
     int target_rank;            /* Used in pt_rma_done response to look up the
                                    target state at the origin. */
-#if defined (_OSU_PSM_)
+#if defined (CHANNEL_PSM)
     int source_rank;
     MPI_Win target_win_handle;
     int mapped_srank;
@@ -799,13 +857,13 @@ typedef MPIDI_CH3_Pkt_lock_t MPIDI_CH3_Pkt_flush_t;
 
 typedef struct MPIDI_CH3_Pkt_lock_put_unlock
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     uint32_t rma_issued;
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_flags_t flags;
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
@@ -818,13 +876,13 @@ MPIDI_CH3_Pkt_lock_put_unlock_t;
 
 typedef struct MPIDI_CH3_Pkt_lock_get_unlock
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     uint32_t rma_issued;
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_flags_t flags;
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
@@ -838,13 +896,13 @@ MPIDI_CH3_Pkt_lock_get_unlock_t;
 
 typedef struct MPIDI_CH3_Pkt_lock_accum_unlock
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     uint32_t rma_issued;
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_flags_t flags;
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
@@ -859,19 +917,19 @@ MPIDI_CH3_Pkt_lock_accum_unlock_t;
 
 typedef struct MPIDI_CH3_Pkt_close
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     int ack;
 }
 MPIDI_CH3_Pkt_close_t;
 
 typedef union MPIDI_CH3_Pkt
 {
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     uint8_t type;
     MPIDI_CH3_Pkt_address_t address;
     MPIDI_CH3_Pkt_address_reply_t addr_reply;
@@ -880,9 +938,9 @@ typedef union MPIDI_CH3_Pkt
     MPIDI_CH3_Pkt_get_rndv_t get_rndv;
     MPIDI_CH3_Pkt_accum_rndv_t accum_rndv;
     MPIDI_CH3_Pkt_rndv_r3_ack_t rndv_r3_ack;
-#else /* defined(_OSU_MVAPICH_) */
+#else /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_type_t type;
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
     MPIDI_CH3_Pkt_eager_send_t eager_send;
 #if defined(USE_EAGER_SHORT)
     MPIDI_CH3_Pkt_eagershort_send_t eagershort_send;
@@ -920,9 +978,9 @@ typedef union MPIDI_CH3_Pkt
 }
 MPIDI_CH3_Pkt_t;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
 extern int MPIDI_CH3_Pkt_size_index[];
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(CHANNEL_MRAIL) */
 
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
 typedef struct MPIDI_CH3_Pkt_send_container

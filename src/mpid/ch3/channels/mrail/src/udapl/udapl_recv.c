@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -196,6 +196,12 @@ MPIDI_CH3I_MRAIL_Parse_header (MPIDI_VC_t * vc,
               break;
           }
       case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
+          {
+              *header_size = sizeof (MPIDI_CH3_Pkt_accum_rndv_t);
+              *pkt = vstart;
+              break;
+          }
+      case MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV:
           {
               *header_size = sizeof (MPIDI_CH3_Pkt_accum_rndv_t);
               *pkt = vstart;

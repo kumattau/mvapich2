@@ -1,9 +1,9 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
- *  (C) 2008 by Argonne National Laboratory.
+ *  (C) 2010 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2013, The Ohio State University. All rights
+/* Copyright (c) 2001-2014, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -473,7 +473,7 @@ static int local_to_global_id(int local_id)
 
 static HYD_status launch_procs(void)
 {
-    int i, j, process_id;
+    int i, j, process_id, dummy;
     int using_pmi_port = 0;
     char *str, *envstr, *list, *pmi_port;
     struct HYD_string_stash stash;
@@ -694,7 +694,7 @@ static HYD_status launch_procs(void)
                 HYDU_ERR_POP(status, "unable to add env to list\n");
 
                 /* mvapich2 specific flags */
-                /* _OSU_MVAPICH_ */
+                /* CHANNEL_MRAIL */
                 status = HYDU_append_env_to_list("MV2_COMM_WORLD_SIZE", str, &force_env);
                 HYDU_ERR_POP(status, "unable to add env to list\n");
                 str = HYDU_int_to_str(HYD_pmcd_pmip.local.proxy_process_count);
@@ -706,7 +706,7 @@ static HYD_status launch_procs(void)
                 str = HYDU_int_to_str(HYD_pmcd_pmip.downstream.pmi_rank[process_id]);
                 status = HYDU_append_env_to_list("MV2_COMM_WORLD_RANK", str, &force_env);
                 HYDU_ERR_POP(status, "unable to add env to list\n");
-                /* _OSU_MVAPICH_ */
+                /* CHANNEL_MRAIL */
 
                 HYDU_FREE(str);
             }
@@ -715,8 +715,17 @@ static HYD_status launch_procs(void)
             for (j = 0; exec->exec[j]; j++)
                 HYD_STRING_STASH(stash, HYDU_strdup(exec->exec[j]), status);
 
+            /* For non rank-0 processes, store the stdin socket in a
+             * dummy variable instead of passing NULL.  Passing NULL
+             * will cause the create_process function to close the
+             * STDIN socket, allowing the process to reuse that
+             * socket.  However, if an application reopens stdin, it
+             * causes an incorrect socket (which is not STDIN) to be
+             * closed.  This is technically a user application bug,
+             * but this is a safe-guard to workaround that.  See
+             * ticket #1622 for more details. */
             status = HYDU_create_process(stash.strlist, force_env,
-                                         HYD_pmcd_pmip.downstream.pmi_rank[process_id] ? NULL :
+                                         HYD_pmcd_pmip.downstream.pmi_rank[process_id] ? &dummy :
                                          &HYD_pmcd_pmip.downstream.in,
                                          &HYD_pmcd_pmip.downstream.out[process_id],
                                          &HYD_pmcd_pmip.downstream.err[process_id],
@@ -826,8 +835,10 @@ static HYD_status parse_exec_params(char **t_argv)
     if (HYD_pmcd_pmip.user_global.topolib == NULL && HYDRA_DEFAULT_TOPOLIB)
         HYD_pmcd_pmip.user_global.topolib = HYDU_strdup(HYDRA_DEFAULT_TOPOLIB);
 
-    if (HYD_pmcd_pmip.user_global.ckpointlib == NULL && HYDRA_DEFAULT_CKPOINTLIB)
+#ifdef HYDRA_DEFAULT_CKPOINTLIB
+    if (HYD_pmcd_pmip.user_global.ckpointlib == NULL)
         HYD_pmcd_pmip.user_global.ckpointlib = HYDU_strdup(HYDRA_DEFAULT_CKPOINTLIB);
+#endif
 
   fn_exit:
     HYDU_FUNC_EXIT();
