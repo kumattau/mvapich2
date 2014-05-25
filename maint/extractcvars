@@ -40,6 +40,8 @@ my $ns = "MPIR_CVAR";
 my $alt_ns = "MPIR_PARAM";
 # deprecated prefix for backward compatibility
 my $dep_ns = "MPICH";
+# MVAPICH2-specific prefix
+my $mv2_ns = "MV2";
 
 # Default :output source files
 my $header_file = "src/include/mpich_cvars.h";
@@ -317,9 +319,11 @@ EOT
 
     # Process extra envs first so the primary always wins
     push @env_names, map { "${dep_ns}_$_" } @{$p->{'alt-env'}};
+    push @env_names, map { "${mv2_ns}_$_" } @{$p->{'alt-env'}};
     push @env_names, map { "${alt_ns}_$_" } @{$p->{'alt-env'}};
     push @env_names, map { "${uc_ns}_$_" } @{$p->{'alt-env'}};
     push @env_names, "${dep_ns}_" . $p->{name};
+    push @env_names, "${mv2_ns}_" . $p->{name};
     push @env_names, "${alt_ns}_" . $p->{name};
     push @env_names, "${uc_ns}_" . $p->{name};
 
@@ -430,9 +434,11 @@ foreach my $p (@cvars) {
     # process extra envs first so the primary always wins
     push @env_names, "${alt_ns}_" . $p->{name};
     push @env_names, "${dep_ns}_" . $p->{name};
+    push @env_names, "${mv2_ns}_" . $p->{name};
     push @env_names, map { "${uc_ns}_$_" } @{$p->{'alt-env'}};
     push @env_names, map { "${alt_ns}_$_" } @{$p->{'alt-env'}};
     push @env_names, map { "${dep_ns}_$_" } @{$p->{'alt-env'}};
+    push @env_names, map { "${mv2_ns}_$_" } @{$p->{'alt-env'}};
 
     print OUTPUT_README "${uc_ns}_$p->{name}\n";
 

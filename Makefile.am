@@ -126,9 +126,18 @@ if BUILD_PROFILING_LIB
 lib_lib@PMPILIBNAME@_la_SOURCES += $(mpi_sources)
 endif BUILD_PROFILING_LIB
 
+if BUILD_OSU_MVAPICH
+SUBDIRS += contrib/hwloc
+endif
+
 # build the current directory and then the examples directory after everything else
 SUBDIRS += . examples osu_benchmarks src/env/mpiname src/util/mv2_ckpt_rebuild
 DIST_SUBDIRS += . examples test
+
+if BUILD_OSU_MVAPICH
+AM_CPPFLAGS += -Icontrib/hwloc/include/ -I$(top_srcdir)/contrib/hwloc/include
+lib_lib@MPILIBNAME@_la_LIBADD += contrib/hwloc/src/libhwloc_embedded.la
+endif
 
 EXTRA_DIST += README CHANGES COPYRIGHT README.envvar
 

@@ -723,26 +723,6 @@ AC_ARG_WITH([cluster-size],
                             [specify the cluster size])
             ])
 
-AC_ARG_WITH([dapl-include],
-            [AS_HELP_STRING([--with-dapl-include=path],
-                            [specify the path to the DAPL header files])
-            ])
-
-AC_ARG_WITH([dapl-libpath],
-            [AS_HELP_STRING([--with-dapl-libpath=path],
-                            [specify the path to the dapl library])
-            ])
-
-AC_ARG_WITH([dapl-provider],
-            [AS_HELP_STRING([--with-dapl-provider=type],
-                            [specify the dapl provider])
-            ])
-
-AC_ARG_WITH([dapl-version],
-            [AS_HELP_STRING([--with-dapl-version=version],
-                            [specify the dapl version])
-            ])
-
 AC_ARG_ENABLE([header-caching],
               [AS_HELP_STRING([--enable-header-caching],
                               [enable header caching])
@@ -1916,20 +1896,6 @@ for this_pm_name in $pm_names ; do
 done
 
 dnl <_OSU_MVAPICH_>
-AC_ARG_WITH([hwloc],
-            [AS_HELP_STRING([--with-hwloc],
-                            [use hwloc for process binding])
-            ],
-            [],
-            [with_hwloc=yes])
-
-AS_IF([test "x$with_hwloc" != xno],
-      [AC_CHECKING([for any suitable hwloc installation])
-       AC_CHECK_LIB([hwloc], [hwloc_bitmap_alloc],
-                    [AC_CHECK_HEADER([hwloc.h], [LIBS="-lhwloc $LIBS"], [])],
-                    [])
-      ])
-
 AC_ARG_ENABLE([3dtorus-support],
               [AS_HELP_STRING([--enable-3dtorus-support],
                               [Enable support for 3D torus networks])
@@ -2002,11 +1968,11 @@ save_IFS="$IFS"
 IFS=","
 for var in $enable_mpit_pvars ; do
     AS_CASE(["$var"],
-            [mv2],[enable_pvar_mv2=yes],
+            [mv2|yes],[enable_pvar_mv2=yes],
             [nem],[enable_pvar_nem=yes],
             [recvq],[enable_pvar_recvq=yes],
             [rma],[enable_pvar_rma=yes],
-            [all|yes],
+            [all],
             [enable_pvar_mv2=yes
              enable_pvar_nem=yes
              enable_pvar_recvq=yes
@@ -6112,7 +6078,7 @@ AC_SUBST(MPICPP_NAME)
 PAC_GET_EXENAME("mpicxx", MPICXX_NAME)
 PAC_GET_EXENAME("mpic++", MPICPP_NAME)
 
-AC_CONFIG_SUBDIRS([test/mpi])
+AC_CONFIG_SUBDIRS([test/mpi contrib/hwloc])
 dnl
 dnl Generate the Makefiles from Makefile.in
 dnl Also generate mpi.h from mpi.h.in so that we can eliminate all ifdefs

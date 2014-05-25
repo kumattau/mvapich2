@@ -191,5 +191,3 @@ src/mpid/ch3/channels/nemesis/netmod/none/none.c : initialization from incompati
 src/mpid/ch3/channels/nemesis/netmod/none/none.c : (near initialization for 'MPIDI_nem_none_funcs.get_business_card')
 src/mpid/ch3/channels/nemesis/netmod/none/none.c : initialization from incompatible pointer type
 src/mpid/ch3/channels/nemesis/netmod/none/none.c : (near initialization for 'MPIDI_nem_none_funcs.connect_to_root')
-src/mpid/ch3/channels/mrail/src/udapl/rdma_udapl_init.c : format '%ld' expects argument of type 'long int', but argument 4 has type 'DAT_RMR_CONTEXT'
-src/mpid/ch3/channels/mrail/src/udapl/rdma_udapl_init.c : format '%ld' expects argument of type 'long int', but argument 4 has type 'DAT_RMR_CONTEXT'
