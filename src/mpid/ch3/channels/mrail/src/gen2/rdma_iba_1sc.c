@@ -667,7 +667,8 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
 
     MPIDI_Comm_get_vc(comm_ptr, target_rank, &vc);
 
-    if (SMP_INIT && vc->smp.local_nodes != -1) {
+    if (SMP_INIT && vc->smp.local_nodes != -1
+        && !mv2_MPIDI_CH3I_RDMA_Process.force_ib_atomic) {
         goto fn_exit;
     }
 
@@ -741,7 +742,93 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 complete = 1;
                 break;
             }
-        default:
+       case MPIDI_RMA_FETCH_AND_OP:
+            {
+                MPID_Datatype_get_size_macro(origin_datatype, origin_type_size);
+                uint64_t *fetch_addr;
+                uint64_t add_value;
+                int aligned;
+
+                add_value = *((uint64_t *) origin_addr);
+
+                remote_addr = (char *) win_ptr->base_addrs[target_rank] +
+                    win_ptr->disp_units[target_rank] * target_disp;
+                aligned = !((intptr_t)remote_addr % 8);
+
+                if (aligned && origin_type_size == 8) {
+                    ++win_ptr->rma_issued;
+                    v = get_vbuf();
+                    l_key = v->region->mem_handle[0]->lkey;
+                    r_key = win_ptr->win_rkeys[target_rank *
+                        rdma_num_hcas + rail];
+
+                    v->vc = (void *) vc;
+
+                    ++(win_ptr->put_get_list_size_per_process[target_rank]);
+
+                    v->result_addr = result_addr;
+                    v->target_rank = target_rank;
+                    v->list = (void *) win_ptr;
+
+                    if(size<=rdma_max_inline_size){
+                        v->desc.u.sr.send_flags |= IBV_SEND_INLINE;
+                    }
+                    fetch_addr = (uint64_t *)v->buffer;
+                    *fetch_addr = 0;
+                    vbuf_init_rma_fetch_and_add(v, (void *) fetch_addr, l_key, remote_addr, r_key, add_value, rail);
+                    ONESIDED_RDMA_POST(vc, NULL, rail);
+
+                    complete = 1;
+                }
+                else 
+                    complete = 0;
+                break;
+            }
+       case MPIDI_RMA_COMPARE_AND_SWAP:
+            {
+                MPID_Datatype_get_size_macro(origin_datatype, origin_type_size);
+                char *return_addr;
+                uint64_t compare_value, swap_value;
+                int aligned;
+
+                swap_value = *((uint64_t *) origin_addr);
+                compare_value = *((uint64_t *) compare_addr);
+
+                remote_addr = (char *) win_ptr->base_addrs[target_rank] +
+                    win_ptr->disp_units[target_rank] * target_disp;
+                aligned = !((intptr_t)remote_addr % 8);
+
+                if (aligned && origin_type_size == 8) {
+                    ++win_ptr->rma_issued;
+                    v = get_vbuf();
+                    l_key = v->region->mem_handle[0]->lkey;
+                    r_key = win_ptr->win_rkeys[target_rank *
+                        rdma_num_hcas + rail];
+
+                    v->vc = (void *) vc;
+
+                    ++(win_ptr->put_get_list_size_per_process[target_rank]);
+
+                    v->result_addr = result_addr;
+                    v->target_rank = target_rank;
+                    v->list = (void *) win_ptr;
+
+                    if(size<=rdma_max_inline_size){
+                        v->desc.u.sr.send_flags |= IBV_SEND_INLINE;
+                    }
+                    return_addr = (char *)v->buffer;
+                    *((uint64_t *)return_addr) = 0;
+                    vbuf_init_rma_compare_and_swap(v, return_addr, l_key, remote_addr, r_key, compare_value, swap_value, rail);
+                    ONESIDED_RDMA_POST(vc, NULL, rail);
+
+                    complete = 1;
+                }
+                else 
+                    complete = 0;
+                break;
+
+            }
+       default:
             DEBUG_PRINT("Unknown ONE SIDED OP\n");
             ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
             break;
@@ -833,7 +920,11 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
      if (SMP_INIT) {
         MPIDI_Comm_get_vc(comm_ptr, curr_ptr->target_rank, &vc);
 
-        if (vc->smp.local_nodes != -1)  {
+        if (vc->smp.local_nodes != -1 
+            && (!mv2_MPIDI_CH3I_RDMA_Process.force_ib_atomic
+             || curr_ptr->type != MPIDI_RMA_FETCH_AND_OP)
+            && (!mv2_MPIDI_CH3I_RDMA_Process.force_ib_atomic
+             || curr_ptr->type != MPIDI_RMA_FETCH_AND_OP)) {
             curr_ptr = curr_ptr->next;
             continue;
         }
@@ -1951,6 +2042,20 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
                     if ( v->tmp_dreg != NULL) {
                         dreg_unregister((dreg_entry *) v->tmp_dreg);
                     }
+                    --(list_win_ptr->rma_issued);
+                    --(list_win_ptr->put_get_list_size_per_process[v->target_rank]);
+                    break;
+                }
+            case (IBV_WR_ATOMIC_FETCH_AND_ADD):
+                {
+                    *((uint64_t *) v->result_addr) = *((uint64_t *) v->buffer);
+                    --(list_win_ptr->rma_issued);
+                    --(list_win_ptr->put_get_list_size_per_process[v->target_rank]);
+                    break;
+                }
+            case (IBV_WR_ATOMIC_CMP_AND_SWP):
+                {
+                    *((uint64_t *) v->result_addr) = *((uint64_t *) v->buffer);
                     --(list_win_ptr->rma_issued);
                     --(list_win_ptr->put_get_list_size_per_process[v->target_rank]);
                     break;

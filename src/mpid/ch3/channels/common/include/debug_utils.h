@@ -16,7 +16,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
-
+#include <infiniband/verbs.h>
 
 // Define a prefix to distinguish output from different processes
 // - prefix: string
@@ -25,6 +25,8 @@ extern void set_output_prefix( char* prefix );
 // Get the output prefix
 extern const char *get_output_prefix();
 
+// Dump device capabilities
+extern inline void dump_device_cap(struct ibv_device_attr dev_attr);
 
 // Common print function
 #define _COMMON_PRINT_( FMT, args... ) \
@@ -146,6 +148,9 @@ extern int DEBUG_SHM_verbose;
 
 // Verbosity level for Channel manager
 extern int DEBUG_CHM_verbose;
+
+// Verbosity level for Init phase
+extern int DEBUG_INIT_verbose;
 
 // Initialize the verbosity level of the above variables
 extern int initialize_debug_variables();

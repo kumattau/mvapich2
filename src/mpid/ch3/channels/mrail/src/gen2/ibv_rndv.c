@@ -358,7 +358,7 @@ void MRAILI_RDMA_Get_finish(MPIDI_VC_t * vc,
                     "Cannot send rput through send/recv path");
         }
 
-        buf->sreq = (void *) rreq;
+        MPIDI_CH3_Rendezvous_rget_recv_finish(vc, rreq);
         DEBUG_PRINT("VBUF ASSOCIATED: %p, %08x\n", buf, buf->desc.u.sr.wr_id);
     }
 

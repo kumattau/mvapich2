@@ -44,6 +44,13 @@ AC_CHECK_LIB(psm_infinipath, psm_init, , [
     AC_MSG_ERROR(['psm_infinipath library not found.  Did you specify --with-psm= or --with-psm-lib=?'])
 ])
 
+AC_CHECK_HEADER([infiniband/verbs.h],, [
+    AC_MSG_ERROR(['infiniband/verbs.h not found. Did you specify --with-ib-include=?'])
+])
+AC_CHECK_LIB([ibverbs], [ibv_open_device],, [
+    AC_MSG_ERROR(['libibverbs not found. Did you specify --with-ib-libpath=?'])
+])
+
 #which shared memory primitives to use
 AC_ARG_WITH(shared-memory, [--with-shared-memory[=auto|sysv|mmap] - create shared memory using sysv or mmap (default is auto)],,
     with_shared_memory=auto)

@@ -21,7 +21,7 @@ mv2_iallreduce_tuning_table *mv2_iallreduce_thresholds_table = NULL;
 
 int MV2_set_iallreduce_tuning_table(int heterogeneity)
 {
-#if defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM) && !defined (DAPL_DEFAULT_PROVIDER)
+#if defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM)
     if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 		MV2_ARCH_AMD_OPTERON_6136_32, MV2_HCA_MLX_CX_QDR) && !heterogeneity) {
       
@@ -216,157 +216,8 @@ int MV2_set_iallreduce_tuning_table(int heterogeneity)
     
       MPIU_Memcpy(mv2_iallreduce_thresholds_table, mv2_tmp_iallreduce_thresholds_table,
 		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
-    }
-#else  /* defined (DAPL_DEFAULT_PROVIDER) || defined(CHANNEL_PSM) */
-#if defined(DAPL_DEFAULT_PROVIDER)
-    if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
-		MV2_ARCH_AMD_OPTERON_6136_32, MV2_HCA_MLX_CX_QDR) && !heterogeneity) {
-        
-        /*Trestles*/
-	mv2_size_iallreduce_tuning_table = 5;
-	mv2_iallreduce_thresholds_table = MPIU_Malloc(mv2_size_iallreduce_tuning_table *
-						  sizeof (mv2_iallreduce_tuning_table));
-	mv2_iallreduce_tuning_table mv2_tmp_iallreduce_thresholds_table[] = {
-	    {8,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_naive, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {16,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_naive, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {32,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_naive, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {64,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_naive, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {128,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_naive, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    }
-      };
-    
-      MPIU_Memcpy(mv2_iallreduce_thresholds_table, mv2_tmp_iallreduce_thresholds_table,
-		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
-    } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
-		MV2_ARCH_INTEL_XEON_E5_2670_16, MV2_HCA_MLX_CX_FDR) && !heterogeneity) {
-
-	/*Gordon Table*/
-	mv2_size_iallreduce_tuning_table = 5;
-	mv2_iallreduce_thresholds_table = MPIU_Malloc(mv2_size_iallreduce_tuning_table *
-						  sizeof (mv2_iallreduce_tuning_table));
-	mv2_iallreduce_tuning_table mv2_tmp_iallreduce_thresholds_table[] = {
-	    {8,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_naive, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {16,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_naive, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {32,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_naive, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {64,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_naive, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {128,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_naive, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    }
-      };
-    
-      MPIU_Memcpy(mv2_iallreduce_thresholds_table, mv2_tmp_iallreduce_thresholds_table,
-		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
-    } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
-				    MV2_ARCH_INTEL_XEON_E5_2680_16, MV2_HCA_MLX_CX_FDR) && !heterogeneity) {
-        
-        /*Stampede*/
-	mv2_size_iallreduce_tuning_table = 8;
-	mv2_iallreduce_thresholds_table = MPIU_Malloc(mv2_size_iallreduce_tuning_table *
-						  sizeof (mv2_iallreduce_tuning_table));
-	mv2_iallreduce_tuning_table mv2_tmp_iallreduce_thresholds_table[] = {
-	    {8,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_rec_dbl, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {16,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_rec_dbl, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {32,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_rec_dbl, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {64,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_rec_dbl, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {128,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_rec_dbl, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {256,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_rec_dbl, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {512,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_rec_dbl, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {1024,
-	     8192, 4, 4,
-	     {0},
-	     1, {{0, -1, &MPIR_Iallreduce_rec_dbl, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    }
-      };
-    
-      MPIU_Memcpy(mv2_iallreduce_thresholds_table, mv2_tmp_iallreduce_thresholds_table,
-		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
-    } else 
-
-#endif /* defined(DAPL_DEFAULT_PROVIDER) */
-    {
+    } 
+#else /* defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM) */
         
 	/*RI*/
 	mv2_size_iallreduce_tuning_table = 7;
@@ -413,7 +264,6 @@ int MV2_set_iallreduce_tuning_table(int heterogeneity)
     
       MPIU_Memcpy(mv2_iallreduce_thresholds_table, mv2_tmp_iallreduce_thresholds_table,
 		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
-    }
 #endif
     return MPI_SUCCESS;
 }

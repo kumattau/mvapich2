@@ -21,7 +21,7 @@
 #include "mpl_utlist.h"
 #include "mpidi_ch3_impl.h"
 
-#if defined(CHANNEL_MRAIL) && !defined(_DAPL_DEFAULT_PROVIDER_)
+#if defined(CHANNEL_MRAIL)
 #define MPIDI_CH3I_SHM_win_mutex_lock(win, rank) pthread_mutex_lock(&win->shm_win_mutex[rank]);
 #define MPIDI_CH3I_SHM_win_mutex_unlock(win, rank) pthread_mutex_unlock(&win->shm_win_mutex[rank]);
 #endif

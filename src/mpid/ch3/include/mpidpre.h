@@ -59,7 +59,7 @@ typedef int MPIDI_CH3_PktHandler_Fcn(struct MPIDI_VC *vc, union MPIDI_CH3_Pkt *p
    file (mpidpre.h) or the file it includes (mpiimpl.h) can be defined. */
 #include "mpidi_ch3_pre.h"
 
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_SMP_LIMIC_)
 #   include <limic.h>
 #endif
 

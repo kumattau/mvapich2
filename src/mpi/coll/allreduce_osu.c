@@ -24,6 +24,14 @@
 #include <cr.h>
 #endif
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_shm_rd);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_shm_rs);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_shm_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_intra_p2p);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_2lvl);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_shmem);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_mcast);
+
 int (*MV2_Allreduce_function)(const void *sendbuf,
                              void *recvbuf,
                              int count,
@@ -116,6 +124,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_shm_rd, 1);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -380,6 +389,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_shm_rs, 1);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -1212,6 +1222,7 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_shm_intra, 1);
     int mpi_errno = MPI_SUCCESS;
     int i = 0, is_commutative = 0;
     MPI_Aint true_lb, true_extent, extent;
@@ -1350,6 +1361,7 @@ int MPIR_Allreduce_reduce_p2p_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_intra_p2p, 1);
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     MPI_Aint true_lb, true_extent;
@@ -1425,6 +1437,7 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_2lvl, 1);
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int total_size = 0;
@@ -1549,6 +1562,7 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_shmem, 1);
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int i = 0, is_commutative = 0;
@@ -1757,6 +1771,7 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_mcast, 1);
     MPI_Aint true_lb, true_extent;
    /*We use reduce (at rank =0) followed by mcst-bcast to implement the 
     * allreduce operation */
@@ -2110,13 +2125,13 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     }
     if(rdma_enable_cuda && recv_mem_type){
         if(recv_host_buf){
-            free(recv_host_buf);
+            MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
     if(rdma_enable_cuda && send_mem_type){
         if(send_host_buf){
-            free(send_host_buf);
+            MPIU_Free(send_host_buf);
             send_host_buf = NULL;
         }
     }
@@ -2179,7 +2194,6 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
     int rank = 0, comm_size = 0;
     MPI_Aint sendtype_size = 0;
     int nbytes = 0;
-    int range = 0, range_threshold = 0, range_threshold_intra = 0;
     int is_two_level = 0;
     int is_commutative = 0;
     MPI_Aint true_lb, true_extent;
@@ -2453,13 +2467,13 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
     }
     if(rdma_enable_cuda && recv_mem_type){
         if(recv_host_buf){
-            free(recv_host_buf);
+            MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
     if(rdma_enable_cuda && send_mem_type){
         if(send_host_buf){
-            free(send_host_buf);
+            MPIU_Free(send_host_buf);
             send_host_buf = NULL;
         }
     }
@@ -2593,13 +2607,13 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
     }
     if(rdma_enable_cuda && recv_mem_type){
         if(recv_host_buf){
-            free(recv_host_buf);
+            MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
     if(rdma_enable_cuda && send_mem_type){
         if(send_host_buf){
-            free(send_host_buf);
+            MPIU_Free(send_host_buf);
             send_host_buf = NULL;
         }
     }

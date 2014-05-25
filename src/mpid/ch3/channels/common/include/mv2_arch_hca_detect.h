@@ -13,7 +13,11 @@
 #ifndef MV2_ARCH_HCA_DETECT_H
 #define MV2_ARCH_HCA_DETECT_H
 
+#include <stdint.h>
+
+#if defined(HAVE_LIBIBVERBS)
 #include <infiniband/verbs.h>
+#endif
 
 /* HCA Types */
 #define MV2_HCA_UNKWN   0
@@ -113,6 +117,8 @@
 #define MV2_ARCH_INTEL_XEON_E5_2670_16  10
 #define MV2_ARCH_INTEL_XEON_E5_2680_16  11
 #define MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20 12
+#define MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12 13
+#define MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20 14
 #define MV2_ARCH_INTEL_END              1000
 
 /* AMD Architectures */
@@ -141,6 +147,13 @@ typedef uint32_t mv2_hca_type;
 #define MV2_GET_ARCH(_arch_hca) ((_arch_hca) >> NUM_HCA_BITS)
 #define MV2_GET_HCA(_arch_hca) (UINT32_MAX & (_arch_hca))
 
+/* CPU Family */
+typedef enum{
+    MV2_CPU_FAMILY_NONE=0,
+    MV2_CPU_FAMILY_INTEL,
+    MV2_CPU_FAMILY_AMD,
+}mv2_cpu_family_type;
+
 /* Multi-rail info */
 typedef enum{
     mv2_num_rail_unknown = 0,
@@ -160,26 +173,41 @@ typedef enum{
 int mv2_is_arch_hca_type(mv2_arch_hca_type arch_hca_type, 
         mv2_arch_type arch_type, mv2_hca_type hca_type);
 
-/* API to get architecture-hca type */
-mv2_arch_hca_type mv2_get_arch_hca_type ( struct ibv_device *dev );
+/* Get architecture-hca type */
+#if defined(HAVE_LIBIBVERBS)
+mv2_arch_hca_type mv2_get_arch_hca_type (struct ibv_device *dev);
+#else
+mv2_arch_hca_type mv2_get_arch_hca_type (void *dev);
+#endif
 
-/* API to check if the host has multiple rails or not */
+/* Check if the host has multiple rails or not */
 mv2_multirail_info_type mv2_get_multirail_info(void);
 
-/* API for getting architecture type */
+/* Get architecture type */
 mv2_arch_type mv2_get_arch_type(void);
 
-/* API for getting the card type */
-mv2_hca_type mv2_get_hca_type( struct ibv_device *dev );
+/* Get card type */
+#if defined(HAVE_LIBIBVERBS)
+mv2_hca_type mv2_get_hca_type(struct ibv_device *dev);
+#else
+mv2_hca_type mv2_get_hca_type(void *dev);
+#endif
 
-/* API for getting the number of cpus */
+/* Get number of cpus */
 int mv2_get_num_cpus(void);
+
+/* Get the CPU model */
+int mv2_get_cpu_model(void);
+
+/* Get CPU family */
+mv2_cpu_family_type mv2_get_cpu_family(void);
 
 /* Log arch-hca type */
 void mv2_log_arch_hca_type(mv2_arch_hca_type arch_hca);
 
 char* mv2_get_hca_name(mv2_hca_type hca_type);
 char* mv2_get_arch_name(mv2_arch_type arch_type);
+char *mv2_get_cpu_family_name(mv2_cpu_family_type cpu_family_type);
 
 #if defined(_SMP_LIMIC_)
 /*Detecting number of cores in a socket, and number of sockets*/

@@ -953,7 +953,6 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FCNAME)
 
-#ifndef DAPL_DEFAULT_PROVIDER
 int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
 {
     MPIDI_STATE_DECL(MPID_STATE_CM_SENDING_PENDING_1SC_MSG);
@@ -1003,13 +1002,6 @@ int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
     MPIDI_FUNC_EXIT(MPID_STATE_CM_SENDING_PENDING_1SC_MSG);
     return mpi_errno;
 }
-#else
-/* We do not do this for the uDAPL channel */
-int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
-{
-    return 0;
-}
-#endif
 
 #undef FUNCNAME
 #define FUNCNAME cm_handle_pending_send
@@ -1222,7 +1214,12 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
             {
 		/* This case is needed only for multi-rail with rdma_cm */
 		vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
-		vc->state = MPIDI_VC_STATE_ACTIVE;
+                if (vc->state < MPIDI_VC_STATE_ACTIVE) {
+                    PRINT_DEBUG(DEBUG_CM_verbose>0, "%s: Current state (%s) State of %d to active\n", __func__, MPIDI_VC_GetStateString(vc->state), vc->pg_rank);
+		    vc->state = MPIDI_VC_STATE_ACTIVE;
+                } else {
+                    PRINT_DEBUG(DEBUG_CM_verbose>0, "%s: Current state of %d is %s. Not moving to active\n", __func__, vc->pg_rank, MPIDI_VC_GetStateString(vc->state));
+                }
 		MPIDI_CH3I_Process.new_conn_complete = 1;
                 DEBUG_PRINT("NOOP Received, RDMA CM is setting the proper status on the client side for multirail.\n");
 	    }
@@ -1236,7 +1233,12 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
                     && rdma_cm_connect_count[vc->pg_rank] >= rdma_num_rails)
                 {
                     vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
-		    vc->state = MPIDI_VC_STATE_ACTIVE;
+                    if (vc->state < MPIDI_VC_STATE_ACTIVE) {
+                        PRINT_DEBUG(DEBUG_CM_verbose>0, "%s: Current state (%s) State of %d to active\n", __func__, MPIDI_VC_GetStateString(vc->state), vc->pg_rank);
+    		        vc->state = MPIDI_VC_STATE_ACTIVE;
+                    } else {
+                        PRINT_DEBUG(DEBUG_CM_verbose>0, "%s: Current state of %d is %s. Not moving to active\n", __func__, vc->pg_rank, MPIDI_VC_GetStateString(vc->state));
+                    }
                     MPIDI_CH3I_Process.new_conn_complete = 1;
 		    MRAILI_Send_noop(vc, 0);
                 }

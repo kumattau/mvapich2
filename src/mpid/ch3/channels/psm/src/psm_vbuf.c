@@ -28,6 +28,8 @@
 
 #define _GNU_SOURCE
 
+#include "mpidimpl.h"
+
 #include "psmpriv.h"
 #include "psm_vbuf.h"
 #include <sys/types.h>
@@ -69,6 +71,25 @@ int psm_init_vbuf_lock()
     return mpi_errno;
 }
 
+void free_1sc_req (struct vbuf* vbuf_head)
+{
+    struct vbuf* v = vbuf_head;
+    MPID_Request * req;
+
+    while (v) {
+        if (v->req != NULL) {
+            req = (MPID_Request*) v->req;
+            /* Set the psm_flags to 0 so that we don't deadlock in a recursive call */
+            req->psm_flags = 0;
+            MPIDI_CH3_Request_destroy(req);
+            v->req = NULL;
+        }
+        v = v->next;
+    }
+
+    return;
+}
+
 void psm_deallocate_vbuf()
 {
     vbuf_region *r = vbuf_region_head;
@@ -78,8 +99,8 @@ void psm_deallocate_vbuf()
     while (r)
     {
         next = r->next;
-        free(r->malloc_start);
-        free(r->malloc_buf_start);
+        MPIU_Memalign_Free(r->malloc_start);
+        MPIU_Memalign_Free(r->malloc_buf_start);
         MPIU_Free(r);
         r = next;
     }
@@ -134,6 +155,7 @@ static int allocate_vbuf_region(int nvbufs)
         cur->region = reg;
         cur->buffer = (unsigned char *) ((char *)vbuf_dma_buffer
             + i * PSM_VBUFSZ);
+        cur->req = NULL;
     }
 
     /* last one needs to be set to NULL */
@@ -181,6 +203,7 @@ vbuf* psm_get_vbuf()
     }
 
     v = free_vbuf_head;
+    v->req = NULL;
     --num_free_vbuf;
     ++num_vbuf_get;
 
@@ -196,10 +219,21 @@ mem_err:
 
 void psm_release_vbuf(vbuf* v)
 {
+    MPID_Request * req;
+
     pthread_spin_lock(&vbuf_lock);
 
     MPIU_Assert(v != free_vbuf_head);
     v->next = free_vbuf_head;
+
+    if (v->req != NULL) {
+        req = (MPID_Request*) v->req;
+        MPIU_Assert(MPIU_Object_get_ref(req) == 0);
+        if(!(req->psm_flags & (PSM_1SIDED_PUTREQ | PSM_CONTROL_PKTREQ))) {
+            MPIDI_CH3_Request_destroy(req);
+        }
+        v->req = NULL;
+    }
 
     free_vbuf_head = v;
     ++num_free_vbuf;

@@ -1536,6 +1536,7 @@ void MPIDI_CH3I_set_smp_only()
 
     if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
         rdma_use_blocking = !!atoi(value);
+        rdma_use_smp = 0;
     }
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
@@ -1600,7 +1601,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     /* Set SMP params based on architecture */
     rdma_set_smp_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
-
+    
     if(rdma_use_blocking) {
         /* blocking is enabled, so
          * automatically disable

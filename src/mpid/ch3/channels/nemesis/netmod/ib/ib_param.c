@@ -525,6 +525,28 @@ int MPID_nem_ib_set_default_params()
     }
 
     else if(MV2_IS_ARCH_HCA_TYPE(process_info.arch_hca_type,
+                MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12, MV2_HCA_MLX_CX_CONNIB)){
+
+        rdma_vbuf_total_size = 20 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc           = 4 * 1024;
+        rdma_put_fallback_threshold  = 8 * 1024;
+        rdma_get_fallback_threshold  = 0; 
+    }
+
+    else if(MV2_IS_ARCH_HCA_TYPE(process_info.arch_hca_type,
+                MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20, MV2_HCA_MLX_CX_CONNIB)){
+
+        rdma_vbuf_total_size = 64 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc           = 4 * 1024;
+        rdma_put_fallback_threshold  = 8 * 1024;
+        rdma_get_fallback_threshold  = 0; 
+    }
+
+    else if(MV2_IS_ARCH_HCA_TYPE(process_info.arch_hca_type,
                 MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20, MV2_HCA_MLX_CX_FDR)){
 
         rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
@@ -1198,11 +1220,16 @@ void mv2_print_env_info()
 {
     mv2_arch_type arch_type = MV2_GET_ARCH(process_info.arch_hca_type);
     mv2_hca_type hca_type = MV2_GET_HCA(process_info.arch_hca_type);
+    mv2_cpu_family_type family_type = mv2_get_cpu_family();
     
     fprintf(stderr, "\n MVAPICH2-%s Parameters\n", MPIR_Version_string);
     fprintf(stderr, "---------------------------------------------------------------------\n");
     fprintf(stderr, "\tPROCESSOR ARCH NAME            : %s\n", 
                             mv2_get_arch_name(arch_type));
+    fprintf(stderr, "\tPROCESSOR FAMILY NAME          : %s\n",
+            mv2_get_cpu_family_name(family_type));
+    fprintf(stderr, "\tPROCESSOR MODEL NUMBER         : %d\n",
+            mv2_get_cpu_model());
     fprintf(stderr, "\tHCA NAME                       : %s\n",
                             mv2_get_hca_name(hca_type));
     fprintf(stderr, "\tHETEROGENEOUS HCA              : %s\n",

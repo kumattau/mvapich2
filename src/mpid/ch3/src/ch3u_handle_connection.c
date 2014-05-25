@@ -125,6 +125,7 @@ int MPIDI_CH3U_Handle_connection(MPIDI_VC_t * vc, MPIDI_VC_Event_t event)
 
                     
                 case MPIDI_VC_STATE_ACTIVE:
+                case MPIDI_VC_STATE_LOCAL_ACTIVE:
                 case MPIDI_VC_STATE_REMOTE_CLOSE:
                     /* This is a premature termination.  This process
                        has not started the close protocol.  There may
@@ -276,24 +277,27 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
 #ifdef _ENABLE_XRC_
 #ifdef _ENABLE_UD_
     MPIU_Assert( vc->state == MPIDI_VC_STATE_ACTIVE || 
+		 vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE ||
 		 vc->state == MPIDI_VC_STATE_REMOTE_CLOSE ||
          (VC_XST_ISSET (vc, (XF_SEND_IDLE | XF_SEND_CONNECTING))
          && VC_XST_ISSET (vc, XF_RECV_IDLE)) || rdma_enable_hybrid);
 #else
     MPIU_Assert( vc->state == MPIDI_VC_STATE_ACTIVE || 
+		 vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE ||
 		 vc->state == MPIDI_VC_STATE_REMOTE_CLOSE ||
          (VC_XST_ISSET (vc, (XF_SEND_IDLE | XF_SEND_CONNECTING))
          && VC_XST_ISSET (vc, XF_RECV_IDLE)));
 #endif
 #else
     MPIU_Assert( vc->state == MPIDI_VC_STATE_ACTIVE ||
+		 vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE ||
 		 vc->state == MPIDI_VC_STATE_REMOTE_CLOSE );
 #endif
     MPIDI_Pkt_init(close_pkt, MPIDI_CH3_PKT_CLOSE);
 #ifdef _ENABLE_XRC_
-    close_pkt->ack = (vc->state == MPIDI_VC_STATE_ACTIVE || (USE_XRC && vc->state == MPIDI_VC_STATE_INACTIVE)) ? FALSE : TRUE;
+    close_pkt->ack = (vc->state == MPIDI_VC_STATE_ACTIVE || vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE || (USE_XRC && vc->state == MPIDI_VC_STATE_INACTIVE)) ? FALSE : TRUE;
 #else
-    close_pkt->ack = (vc->state == MPIDI_VC_STATE_ACTIVE) ? FALSE : TRUE;
+    close_pkt->ack = (vc->state == MPIDI_VC_STATE_ACTIVE || vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE) ? FALSE : TRUE;
 #endif
 
 #if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
@@ -323,14 +327,14 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
 #ifdef _ENABLE_XRC_
     PRINT_DEBUG(DEBUG_XRC_verbose>0, "close_ops: %d\n", MPIDI_Outstanding_close_ops);
 
-    if (vc->state == MPIDI_VC_STATE_ACTIVE || VC_XST_ISSET (vc, XF_SEND_CONNECTING)) {
+    if (vc->state == MPIDI_VC_STATE_ACTIVE || vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE || VC_XST_ISSET (vc, XF_SEND_CONNECTING))
 #else
-    if (vc->state == MPIDI_VC_STATE_ACTIVE) {
+    if (vc->state == MPIDI_VC_STATE_ACTIVE || vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE)
 #endif
+    {
         MPIDI_CHANGE_VC_STATE(vc, LOCAL_CLOSE);
-    }
-    else {
-	MPIU_Assert( vc->state == MPIDI_VC_STATE_REMOTE_CLOSE );
+    } else {
+        MPIU_Assert(vc->state == MPIDI_VC_STATE_REMOTE_CLOSE);
         MPIDI_CHANGE_VC_STATE(vc, CLOSE_ACKED);
     }
 		
@@ -339,9 +343,9 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
     MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|send_close_ack");
     
     if (sreq != NULL) {
-	/* There is still another reference being held by the channel.  It
-	   will not be released until the pkt is actually sent. */
-	MPID_Request_release(sreq);
+        /* There is still another reference being held by the channel.  It
+        will not be released until the pkt is actually sent. */
+        MPID_Request_release(sreq);
     }
 
  fn_exit:
@@ -381,85 +385,78 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 
     if (vc->state == MPIDI_VC_STATE_LOCAL_CLOSE)
     {
-	MPIDI_CH3_Pkt_t upkt;
-	MPIDI_CH3_Pkt_close_t * resp_pkt = &upkt.close;
-	MPID_Request * resp_sreq;
-	
-	MPIDI_Pkt_init(resp_pkt, MPIDI_CH3_PKT_CLOSE);
-	resp_pkt->ack = TRUE;
-
+    	MPIDI_CH3_Pkt_t upkt;
+    	MPIDI_CH3_Pkt_close_t * resp_pkt = &upkt.close;
+    	MPID_Request * resp_sreq;
+    	
+    	MPIDI_Pkt_init(resp_pkt, MPIDI_CH3_PKT_CLOSE);
+    	resp_pkt->ack = TRUE;
+    
 #if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
-    MPIDI_Pkt_set_seqnum(resp_pkt, seqnum);
-    if(vc->smp.local_nodes == -1) {
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(resp_pkt, seqnum);
+        if (vc->smp.local_nodes == -1) {
             vc->pending_close_ops += 1;
-    }
-
+        }
 #endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */	
 
-	MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL,"sending close(TRUE) to %d",
-		       vc->pg_rank);
-	mpi_errno = MPIDI_CH3_iStartMsg(vc, resp_pkt, sizeof(*resp_pkt), &resp_sreq);
+    	MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL,"sending close(TRUE) to %d",
+    		       vc->pg_rank);
+    	mpi_errno = MPIDI_CH3_iStartMsg(vc, resp_pkt, sizeof(*resp_pkt), &resp_sreq);
         MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|send_close_ack");
-	
-	if (resp_sreq != NULL)
-	{
-	    /* There is still another reference being held by the channel.  It
-	       will not be released until the pkt is actually sent. */
-	    MPID_Request_release(resp_sreq);
-	}
+    	
+    	if (resp_sreq != NULL) {
+    	    /* There is still another reference being held by the channel.  It
+    	       will not be released until the pkt is actually sent. */
+    	    MPID_Request_release(resp_sreq);
+    	}
     }
     
-    if (close_pkt->ack == FALSE)
-    {
-	if (vc->state == MPIDI_VC_STATE_LOCAL_CLOSE)
-	{
-	    MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL,
-		   "received close(FALSE) from %d, moving to CLOSE_ACKED.",
-		   vc->pg_rank);
+    if (close_pkt->ack == FALSE) {
+    	if (vc->state == MPIDI_VC_STATE_LOCAL_CLOSE) {
             MPIDI_CHANGE_VC_STATE(vc, CLOSE_ACKED);
-	}
-	else /* (vc->state == MPIDI_VC_STATE_ACTIVE) */
-        {
-	    if (vc->state != MPIDI_VC_STATE_ACTIVE)
-            {
-		MPIU_DBG_MSG_FMT(CH3_DISCONNECT, TYPICAL, (MPIU_DBG_FDEST, "Unexpected state %s in vc %p (rank=%d) (expecting MPIDI_VC_STATE_ACTIVE)\n", MPIDI_VC_GetStateString(vc->state), vc, vc->pg_rank ));
-	    MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL,
-                     "received close(FALSE) from %d, moving to REMOTE_CLOSE.",
-				   vc->pg_rank);
+    	} else {
+            /* (vc->state == MPIDI_VC_STATE_ACTIVE) */
+    	    if (vc->state != MPIDI_VC_STATE_ACTIVE && vc->state != MPIDI_VC_STATE_LOCAL_ACTIVE) {
+    		    MPIU_DBG_MSG_FMT(CH3_DISCONNECT, TYPICAL, (MPIU_DBG_FDEST, "Unexpected state %s in vc %p (rank=%d) (expecting MPIDI_VC_STATE_ACTIVE || MPIDI_VC_STATE_LOCAL_ACTIVE)\n",
+                                    MPIDI_VC_GetStateString(vc->state), vc, vc->pg_rank ));
+    	        MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL, "received close(FALSE) from %d, moving to REMOTE_CLOSE.", vc->pg_rank);
             }
 #ifdef _ENABLE_XRC_
-	    MPIU_Assert(vc->state == MPIDI_VC_STATE_ACTIVE || USE_XRC);
+    	    MPIU_Assert(vc->state == MPIDI_VC_STATE_ACTIVE || vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE || USE_XRC);
 #else
-	    MPIU_Assert(vc->state == MPIDI_VC_STATE_ACTIVE);
+    	    MPIU_Assert(vc->state == MPIDI_VC_STATE_ACTIVE || vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE);
 #endif
             MPIDI_CHANGE_VC_STATE(vc, REMOTE_CLOSE);
-	}
-    }
-    else /* (close_pkt->ack == TRUE) */
-    {
-#ifdef _ENABLE_XRC_
-    if (USE_XRC && VC_XST_ISUNSET (vc, XF_DPM_INI) && 
-            VC_XST_ISSET (vc, XF_TERMINATED))
-        goto fn_fail;
-    PRINT_DEBUG(DEBUG_XRC_verbose>0, "close VC state %d\n", vc->state);
-#endif
-	MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL,
-                       "received close(TRUE) from %d, moving to CLOSED.", 
-			       vc->pg_rank);
-	MPIU_Assert (vc->state == MPIDI_VC_STATE_LOCAL_CLOSE || 
-		     vc->state == MPIDI_VC_STATE_CLOSE_ACKED);
-        MPIDI_CHANGE_VC_STATE(vc, CLOSED);
-	/* For example, with sockets, Connection_terminate will close
-	   the socket */
-#if defined(CHANNEL_MRAIL)
-    if(vc->pending_close_ops > 0) {
-       vc->disconnect = 1;
+            mpi_errno = MPIDI_CH3U_VC_SendClose(vc, vc->pg_rank);
+            if (mpi_errno) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+    	}
     } else {
-       mpi_errno = MPIDI_CH3_Connection_terminate(vc);
-    }
+        /* (close_pkt->ack == TRUE) */
+#ifdef _ENABLE_XRC_
+        if (USE_XRC && VC_XST_ISUNSET (vc, XF_DPM_INI) && VC_XST_ISSET (vc, XF_TERMINATED)) {
+            goto fn_fail;
+        }
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "close VC state %d\n", vc->state);
+#endif
+   MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL,
+                  "received close(TRUE) from %d, moving to CLOSED.",
+                  vc->pg_rank);
+    	MPIU_Assert(vc->state == MPIDI_VC_STATE_LOCAL_CLOSE || 
+    		        vc->state == MPIDI_VC_STATE_CLOSE_ACKED);
+        MPIDI_CHANGE_VC_STATE(vc, CLOSED);
+    	/* For example, with sockets, Connection_terminate will close
+    	   the socket */
+#if defined(CHANNEL_MRAIL)
+        if(vc->pending_close_ops > 0) {
+           vc->disconnect = 1;
+        } else {
+           mpi_errno = MPIDI_CH3_Connection_terminate(vc);
+        }
 #else
-	mpi_errno = MPIDI_CH3_Connection_terminate(vc);
+    	mpi_errno = MPIDI_CH3_Connection_terminate(vc);
 #endif /* #if defined(CHANNEL_MRAIL)  */ 
     }
     

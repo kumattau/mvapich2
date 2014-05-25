@@ -13,8 +13,6 @@
 #ifndef CH3_HWLOC_BIND_H_
 #define CH3_HWLOC_BIND_H_
 
-#if defined(HAVE_LIBHWLOC)
-
 #include <hwloc.h>
 #include <dirent.h>
 
@@ -60,7 +58,5 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology);
 int get_cpu_mapping(long N_CPUs_online);
 int smpi_setaffinity(int my_local_id);
 int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank);
-
-#endif
 
 #endif /* CH3_HWLOC_BIND_H_ */

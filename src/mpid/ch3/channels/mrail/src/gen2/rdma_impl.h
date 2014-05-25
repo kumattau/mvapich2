@@ -67,6 +67,7 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     int                         cluster_size;
     uint8_t                     heterogeneity;
     uint8_t                     enable_rma_fast_path;
+    uint8_t                     force_ib_atomic;
     uint8_t                     has_srq;
     uint8_t                     has_hsam;
     uint8_t                     has_apm;

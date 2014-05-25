@@ -24,7 +24,8 @@ int psm_istartmsgv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request **rptr
 {
     MPIDI_CH3_Pkt_t *genpkt;
     void *buf;
-    int buflen, psmerr, mpi_errno = MPI_SUCCESS;
+    int psmerr, mpi_errno = MPI_SUCCESS;
+    MPIDI_msg_sz_t buflen;
     
     assert(iov_n > 0);
     genpkt = (MPIDI_CH3_Pkt_t *) iov[0].MPID_IOV_BUF;
@@ -144,7 +145,8 @@ int psm_istartmsg(MPIDI_VC_t *vc, void *upkt, MPIDI_msg_sz_t pkt_sz, MPID_Reques
 {
     MPIDI_CH3_Pkt_t* genpkt = upkt;
     void *buf;
-    int buflen, psmerr, src, trank;
+    int psmerr, src, trank;
+    MPIDI_msg_sz_t buflen;
     int mpi_errno = MPI_SUCCESS;
 
     buf = upkt;
@@ -357,7 +359,8 @@ int psm_isendv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request *rptr)
 {
     MPIDI_CH3_Pkt_send_t *pkt;
     void *buf;
-    int buflen, psmerr, mpi_errno = MPI_SUCCESS;
+    int psmerr, mpi_errno = MPI_SUCCESS;
+    MPIDI_msg_sz_t buflen;
 
     assert(iov_n > 0);
     pkt = (MPIDI_CH3_Pkt_send_t *) iov[0].MPID_IOV_BUF;

@@ -199,6 +199,9 @@ typedef struct vbuf
 
     int32_t target_rank;
 
+    /*For fetch_and_op*/
+    void * result_addr;
+
     /* NULL shandle means not send or not complete. Non-null
      * means pointer to send handle that is now complete. Used
      * by MRAILI_Process_send

@@ -13,10 +13,54 @@
 #include "psmpriv.h"
 
 #undef FUNCNAME
+#define FUNCNAME psm_post_large_msg_irecv
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int psm_post_large_msg_irecv(void *buf, MPIDI_msg_sz_t buflen,
+            MPID_Request **request, uint64_t rtag, uint64_t rtagsel)
+{
+    psm_error_t psmerr;
+    MPID_Request *req = *request;
+    int i = 0, steps = 0, balance = 0;
+    int obj_ref = 0, cc_cnt = 0;
+
+    /* Compute the number of chunks */
+    steps = buflen / ipath_max_transfer_size;
+    balance = buflen % ipath_max_transfer_size;
+
+    /* Sanity check */
+    MPIU_Assert(steps > 0);
+
+    /* Get current object reference count and completion count */
+    cc_cnt  = *(req->cc_ptr);
+    obj_ref = MPIU_Object_get_ref(req);
+
+    /* Increment obj ref count and comp count by number of chunks */
+    cc_cnt  += steps-1;
+    obj_ref += steps-1;
+
+    /* Update object reference count and completion count */
+    MPID_cc_set(req->cc_ptr, cc_cnt);
+    MPIU_Object_set_ref(req, obj_ref);
+
+    for (i = 0; i < steps; i++) {
+        psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
+                    ipath_max_transfer_size, req, &(req->mqreq));
+        buf += ipath_max_transfer_size;
+    }
+    if (balance) {
+        psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
+                    balance, req, &(req->mqreq));
+    }
+
+    return psmerr;
+}
+
+#undef FUNCNAME
 #define FUNCNAME psm_recv
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int psm_recv(int src, int tag, int context_id, void *buf, int buflen,
+int psm_recv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
              MPI_Status *stat, MPID_Request **request)
 {
     uint64_t rtag, rtagsel;
@@ -50,8 +94,12 @@ int psm_recv(int src, int tag, int context_id, void *buf, int buflen,
 
     DBG("psm_irecv: expecting data from %d, tag = %d\n", src, tag);
     _psm_enter_;
-    psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
-            buflen, req, &(req->mqreq));
+    if ((unlikely(buflen > ipath_max_transfer_size))) {
+        psmerr = psm_post_large_msg_irecv(buf, buflen, request, rtag, rtagsel);
+    } else {
+        psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
+                    buflen, req, &(req->mqreq));
+    }
     _psm_exit_;
     if(unlikely(psmerr != PSM_OK)) {
         mpi_errno = psm_map_error(psmerr);
@@ -84,7 +132,7 @@ fn_fail:
 #define FUNCNAME psm_irecv
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int psm_irecv(int src, int tag, int context_id, void *buf, int buflen,
+int psm_irecv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
         MPID_Request *req)
 {
     uint64_t rtag, rtagsel;
@@ -106,8 +154,12 @@ int psm_irecv(int src, int tag, int context_id, void *buf, int buflen,
    
     DBG("psm_irecv: non-blocking\n");
     _psm_enter_;
-    psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
-                buflen, req, &(req->mqreq));
+    if ((unlikely(buflen > ipath_max_transfer_size))) {
+        psmerr = psm_post_large_msg_irecv(buf, buflen, &req, rtag, rtagsel);
+    } else {
+        psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
+                    buflen, req, &(req->mqreq));
+    }
     _psm_exit_;
     if(unlikely(psmerr != PSM_OK)) {
         mpi_errno = psm_map_error(psmerr);

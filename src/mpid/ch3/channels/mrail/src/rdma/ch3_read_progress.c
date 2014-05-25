@@ -20,14 +20,6 @@
 #include "mpiutil.h"
 #include <stdio.h>
 
-#ifdef DAPL_DEFAULT_PROVIDER
-#include "rdma_impl.h"
-extern mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
-extern struct smpi_var g_smpi;
-extern int od_server_thread;
-extern int cached_pg_size;
-#endif
-
 #ifdef DEBUG
 #define DEBUG_PRINT(args...) \
 do {                                                          \
@@ -49,26 +41,9 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
     static MPIDI_VC_t 	*pending_vc = NULL;
     int 	type;
     MPIDI_VC_t 	*recv_vc_ptr;
-#ifdef DAPL_DEFAULT_PROVIDER
-    static int 		local_vc_index = 0;
-#endif
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_READ_PROGRESS);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_READ_PROGRESS);
-
-#ifdef DAPL_DEFAULT_PROVIDER
-    if (od_server_thread &&
-        MPIDI_CH3I_Process.num_conn >= cached_pg_size - g_smpi.num_local_nodes) {
-	int ret;
-        ret = pthread_cancel(mv2_MPIDI_CH3I_RDMA_Process.server_thread);
-	MPIU_Assert(ret == 0);
-
-        ret = pthread_join(mv2_MPIDI_CH3I_RDMA_Process.server_thread, NULL);
-	MPIU_Assert(ret == 0);
-
-        od_server_thread = 0;
-    }
-#endif
 
     *vc_pptr = NULL;
     *v_ptr = NULL;
@@ -96,36 +71,6 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
         goto fn_exit;
     }
 
-#ifdef DAPL_DEFAULT_PROVIDER
-  int i;
-  MPIDI_PG_t 	*pg = MPIDI_Process.my_pg;
-  if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
-    for (i = 0; i < pg->size; i++) {
-        MPIDI_PG_Get_vc(MPIDI_Process.my_pg, local_vc_index,
-                         &recv_vc_ptr);
-        /* skip over the vc to myself */
-        if (MPIDI_CH3I_Process.vc == recv_vc_ptr) {
-            if (++local_vc_index == pg->size)
-                local_vc_index = 0;
-            continue;
-        }
-        type =
-            MPIDI_CH3I_MRAILI_Get_next_vbuf_local(recv_vc_ptr, v_ptr);
-        if (++local_vc_index == pg->size)
-            local_vc_index = 0;
-        if (type != T_CHANNEL_NO_ARRIVE) {
-            *vc_pptr = recv_vc_ptr;
-            DEBUG_PRINT("[read_progress] find one\n");
-            goto fn_exit;
-        }
-    }
-  } else {
-       type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr);
-       if (type != T_CHANNEL_NO_ARRIVE) {
-            goto fn_exit;
-       }
-  }
-#else
     type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr);
     if (type != T_CHANNEL_NO_ARRIVE) {
         if (rdmafp_found != NULL ) {
@@ -133,7 +78,6 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
         }
 	    goto fn_exit;
     } 
-#endif
 
     /* local polling has finished, now we need to start global subchannel polling 
      * For convenience, at this stage, we by default refer to the global polling channel 

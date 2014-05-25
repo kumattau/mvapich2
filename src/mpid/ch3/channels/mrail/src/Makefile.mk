@@ -82,46 +82,6 @@ lib_lib@MPILIBNAME@_la_SOURCES	+=					\
     src/mpid/ch3/channels/common/src/mcast/ibv_mcast.c
 endif
 
-if BUILD_MRAIL_UDAPL
-
-AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/mrail/src/udapl
-
-lib_lib@MPILIBNAME@_la_SOURCES	+=					\
-    src/mpid/ch3/channels/mrail/src/udapl/udapl_send.c			\
-    src/mpid/ch3/channels/mrail/src/udapl/udapl_recv.c			\
-    src/mpid/ch3/channels/mrail/src/udapl/rdma_udapl_init.c		\
-    src/mpid/ch3/channels/mrail/src/udapl/rdma_udapl_priv.c		\
-    src/mpid/ch3/channels/mrail/src/udapl/dreg.c			\
-    src/mpid/ch3/channels/mrail/src/udapl/udapl_param.c			\
-    src/mpid/ch3/channels/mrail/src/udapl/vbuf.c			\
-    src/mpid/ch3/channels/mrail/src/udapl/udapl_channel_manager.c	\
-    src/mpid/ch3/channels/mrail/src/udapl/udapl_rma.c			\
-    src/mpid/ch3/channels/mrail/src/udapl/rdma_udapl_1sc.c		\
-    src/mpid/ch3/channels/mrail/src/udapl/udapl_rndv.c			\
-    src/mpid/ch3/channels/common/src/detect/arch/mv2_arch_detect.c 	\
-    src/mpid/ch3/channels/common/src/memory/mem_hooks.c			\
-    src/mpid/ch3/channels/mrail/src/udapl/avl.c				\
-    src/mpid/ch3/channels/common/src/memory/ptmalloc2/mvapich_malloc.c
-endif
-
-if BUILD_MRAIL_HWLOC
-
-ACLOCAL_AMFLAGS += -I $(top_srcdir)/src/mpid/ch3/channels/mrail/src/hwloc/config
-
-SUBDIRS += src/mpid/ch3/channels/mrail/src/hwloc
-DIST_SUBDIRS += src/mpid/ch3/channels/mrail/src/hwloc
-
-AM_CFLAGS = $(HWLOC_EMBEDDED_CFLAGS)
-
-AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/mrail/src/hwloc/include 	\
-			  -I$(top_builddir)/src/mpid/ch3/channels/mrail/src/hwloc/include	\
-			  $(HWLOC_EMBEDDED_CPPFLAGS)
-
-
-lib_lib@MPILIBNAME@_la_LDFLAGS += -L$(top_builddir)/src/mpid/ch3/channels/mrail/src/hwloc/src
-lib_lib@MPILIBNAME@_la_LIBADD += $(top_builddir)/src/mpid/ch3/channels/mrail/src/hwloc/src/libhwloc_embedded.la
-endif
-
 if BUILD_MRAIL_CUDA_KERNELS
 include $(top_srcdir)/src/mpid/ch3/channels/mrail/src/cuda/Makefile.mk
 endif

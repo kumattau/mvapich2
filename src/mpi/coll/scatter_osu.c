@@ -1447,7 +1447,7 @@ int MPIR_Scatter_index_tuned_intra_MV2(const void *sendbuf,
      */
     table_min_comm_size = mv2_scatter_indexed_thresholds_table[conf_index][0].numproc;
     table_max_comm_size =
-	mv2_scatter_indexed_thresholds_table[conf_index][mv2_size_bcast_indexed_tuning_table[conf_index] - 1].numproc;
+	mv2_scatter_indexed_thresholds_table[conf_index][mv2_size_scatter_indexed_tuning_table[conf_index] - 1].numproc;
     
     if (comm_size < table_min_comm_size) {
 	/* Comm size smaller than smallest configuration in table: use smallest available */

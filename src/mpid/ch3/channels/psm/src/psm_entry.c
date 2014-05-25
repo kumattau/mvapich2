@@ -14,6 +14,7 @@
 #include "psm_vbuf.h"
 #include <dirent.h>
 #include "coll_shmem.h"
+#include <mv2_arch_hca_detect.h>
 
 volatile unsigned int MPIDI_CH3I_progress_completion_count = 0; //ODOT: what is this ?
 volatile int MPIDI_CH3I_progress_blocked = FALSE;
@@ -27,6 +28,9 @@ uint8_t                 ipath_debug_enable;
 uint32_t                ipath_dump_frequency;
 uint8_t                 ipath_enable_func_lock;
 uint32_t                ipath_progress_yield_count;
+size_t                  ipath_max_transfer_size = DEFAULT_IPATH_MAX_TRANSFER_SIZE;
+int g_mv2_show_env_info = 0;
+mv2_arch_hca_type g_mv2_arch_hca_type = 0;
 
 static char    scratch[WRBUFSZ];
 static char             *kvsid;
@@ -122,6 +126,63 @@ static MPID_CommOps comm_fns = {
     split_type
 };
 
+void mv2_print_env_info(void)
+{
+    mv2_arch_type arch_type = MV2_GET_ARCH(g_mv2_arch_hca_type);
+    mv2_hca_type hca_type = MV2_GET_HCA(g_mv2_arch_hca_type);
+    mv2_cpu_family_type family_type = mv2_get_cpu_family();
+
+    fprintf(stderr, "\n MVAPICH2-%s Parameters\n", MPIR_Version_string);
+    fprintf(stderr,
+            "---------------------------------------------------------------------\n");
+    fprintf(stderr, "\tPROCESSOR ARCH NAME            : %s\n",
+            mv2_get_arch_name(arch_type));
+    fprintf(stderr, "\tPROCESSOR FAMILY NAME          : %s\n",
+            mv2_get_cpu_family_name(family_type));
+    fprintf(stderr, "\tPROCESSOR MODEL NUMBER         : %d\n",
+            mv2_get_cpu_model());
+    fprintf(stderr, "\tHCA NAME                       : %s\n",
+            mv2_get_hca_name(hca_type));
+    fprintf(stderr,
+            "---------------------------------------------------------------------\n");
+    fprintf(stderr,
+            "---------------------------------------------------------------------\n");
+}
+
+#undef FUNCNAME
+#define FUNCNAME MV2_get_arch_hca_type
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+mv2_arch_hca_type MV2_get_arch_hca_type(void)
+{
+    if(g_mv2_arch_hca_type)
+        return g_mv2_arch_hca_type;
+
+#if defined(HAVE_LIBIBVERBS)
+    int num_devices = 0, i;
+    struct ibv_device **dev_list = NULL;
+    mv2_arch_type arch_type = mv2_get_arch_type();
+    mv2_hca_type hca_type = 0;
+    dev_list = ibv_get_device_list(&num_devices);
+
+    for(i=0; i<num_devices; i++){
+        hca_type = mv2_get_hca_type(dev_list[i]);
+        if(MV2_IS_QLE_CARD(hca_type))
+            break;
+    }
+
+    if(i == num_devices)
+        hca_type = MV2_HCA_ANY;
+
+    g_mv2_arch_hca_type = (uint64_t)arch_type << 32 | hca_type;
+    ibv_free_device_list(dev_list);
+#else
+    g_mv2_arch_hca_type = mv2_get_arch_hca_type(NULL);
+#endif
+    return g_mv2_arch_hca_type;
+}
+
+
 #undef FUNCNAME
 #define FUNCNAME psm_doinit
 #undef FCNAME
@@ -145,6 +206,9 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
 
     mpi_errno = MPIDI_CH3U_Comm_register_create_hook(MPIDI_CH3I_comm_create, NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    /* detect architecture and hca type */
+    g_mv2_arch_hca_type = MV2_get_arch_hca_type();
     
     /* initialize tuning-table for collectives. 
      * Its ok to pass heterogeneity as 0. We anyway fall-back to the 
@@ -232,6 +296,10 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     /* initialize VC state, eager size value, queues etc */
     psm_other_init(pg);
 
+    if(0==pg_rank && g_mv2_show_env_info){
+        mv2_print_env_info();
+    }
+
     mpi_errno = MPIDI_CH3U_Comm_register_destroy_hook(MPIDI_CH3I_comm_destroy, NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -294,9 +362,9 @@ static void psm_preinit(int pg_size)
         for(i = 0; i < n; i++) {
             if(0 == strcmp(scratch, fls[i]->d_name))
                 id = i;
-            free(fls[i]);
+            MPIU_Memalign_Free(fls[i]);
         }   
-        free(fls);
+        MPIU_Memalign_Free(fls);
 
         PMI_Barrier();
         DBG("localid %d localranks %d\n", id, n);
@@ -453,6 +521,31 @@ fn_fail:
     return MPI_ERR_INTERN;
 }
 
+static void psm_read_user_params(void)
+{
+    char *flag;
+    ipath_debug_enable = 0;
+    if((flag = getenv("MV2_PSM_DEBUG")) != NULL) {
+        ipath_debug_enable = !!atoi(flag);
+    }
+    ipath_dump_frequency = 10;
+    if((flag = getenv("MV2_PSM_DUMP_FREQUENCY")) != NULL) {
+        ipath_dump_frequency = atoi(flag);
+    }
+    ipath_enable_func_lock = 1;
+    if((flag = getenv("MV2_PSM_ENABLE_FUNC_LOCK")) != NULL) {
+        ipath_enable_func_lock = atoi(flag);
+    }
+    ipath_progress_yield_count = 3;
+    if((flag = getenv("MV2_PSM_YIELD_COUNT")) != NULL) {
+        ipath_progress_yield_count = atoi(flag);
+    }
+
+    if ((flag = getenv("MV2_SHOW_ENV_INFO")) != NULL) {
+        g_mv2_show_env_info = atoi(flag);
+    }
+}
+
 /* Ch3 expects channel to initialize VC fields.
    force_eager is used because psm internally manages eager/rndv so
    we can just force one code-path for all message sizes */
@@ -461,7 +554,6 @@ static void psm_other_init(MPIDI_PG_t *pg)
 {
     MPIDI_VC_t *vc;
     int i;
-    char *flag;
 
     for(i = 0; i < MPIDI_PG_Get_size(pg); i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
@@ -480,23 +572,8 @@ static void psm_other_init(MPIDI_PG_t *pg)
     if(i < ipath_rndv_thresh)
         ipath_rndv_thresh = i;
     DBG("blocking threshold %d\n", ipath_rndv_thresh);
-    ipath_debug_enable = 0;
-    if((flag = getenv("MV2_PSM_DEBUG")) != NULL) {
-        ipath_debug_enable = !!atoi(flag);
-    }
-    ipath_dump_frequency = 10;
-    if((flag = getenv("MV2_PSM_DUMP_FREQUENCY")) != NULL) {
-        ipath_dump_frequency = atoi(flag);
-    }
-    ipath_enable_func_lock = 1;
-    if((flag = getenv("MV2_PSM_ENABLE_FUNC_LOCK")) != NULL) {
-        ipath_enable_func_lock = atoi(flag);
-    }
-    ipath_progress_yield_count = 3;
-    if((flag = getenv("MV2_PSM_YIELD_COUNT")) != NULL) {
-        ipath_progress_yield_count = atoi(flag);
-    }
 
+    psm_read_user_params();
     psm_queue_init();
     psm_init_vbuf_lock();
     psm_allocate_vbufs(PSM_INITIAL_POOL_SZ);

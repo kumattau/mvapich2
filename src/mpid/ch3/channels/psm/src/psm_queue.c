@@ -47,6 +47,8 @@ void psm_queue_init()
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 void psm_complete_req(MPID_Request *req, psm_mq_status_t psmstat)
 {
+    int count = 0;
+
     if(MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) {
         pthread_spin_lock(&reqlock);
     }
@@ -65,8 +67,7 @@ void psm_complete_req(MPID_Request *req, psm_mq_status_t psmstat)
     if((&req->status) != MPI_STATUS_IGNORE) {
         psm_update_mpistatus(&(req->status), psmstat);
     }
-    MPID_cc_set(req->cc_ptr, 0);         //TODO: should i set to 0 or decrement ?
-    MPID_Request_release(req);
+    MPID_cc_decr(req->cc_ptr, &count);
 //    MPIU_Object_release_ref(req, &inuse);
 }
 
@@ -150,6 +151,7 @@ int psm_process_completion(MPID_Request *req, psm_mq_status_t gblstatus)
     /* request is a RNDV send */
     if(req->psm_flags & PSM_RNDVSEND_REQ) {
         psm_complete_req(req, gblstatus);
+        MPID_Request_release(req);
         goto fn_exit;
     }
 
@@ -169,6 +171,7 @@ int psm_process_completion(MPID_Request *req, psm_mq_status_t gblstatus)
     }
 
     psm_complete_req(req, gblstatus);
+    MPID_Request_release(req);
 
 fn_exit:
 fn_fail:    

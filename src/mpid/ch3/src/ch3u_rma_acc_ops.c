@@ -15,7 +15,9 @@
  */
 
 #include "mpidrma.h"
-
+#if defined(CHANNEL_MRAIL)  
+#include "rdma_impl.h"
+#endif
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_rmaqueue_alloc);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_rmaqueue_set);
 extern void MPIDI_CH3_RMA_Init_Pvars(void);
@@ -75,8 +77,12 @@ int MPIDI_Get_accumulate(const void *origin_addr, int origin_count,
     }
 
     /* Do =! rank first (most likely branch?) */
-    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
-        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))
+    if (target_rank == rank || (
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+        (win_ptr->use_direct_shm == 1) &&
+#endif
+        (win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
+        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))))
     {
         mpi_errno = MPIDI_CH3I_Shm_get_acc_op(origin_addr, origin_count, origin_datatype,
                                               result_addr, result_count, result_datatype,
@@ -152,6 +158,10 @@ int MPIDI_Compare_and_swap(const void *origin_addr, const void *compare_addr,
     int rank;
     MPIDI_VC_t *orig_vc, *target_vc;
 
+#if defined(CHANNEL_MRAIL)  
+    int transfer_complete = 0;
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_COMPARE_AND_SWAP);
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_COMPARE_AND_SWAP);
 
@@ -188,14 +198,41 @@ int MPIDI_Compare_and_swap(const void *origin_addr, const void *compare_addr,
 
     /* FIXME: For shared memory windows, we should provide an implementation
      * that uses a processor atomic operation. */
-    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
-        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))
+    if (
+#if defined(CHANNEL_MRAIL)
+        !mv2_MPIDI_CH3I_RDMA_Process.force_ib_atomic && 
+#endif
+        (target_rank == rank || (
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+        (win_ptr->use_direct_shm == 1) &&
+#endif
+        (win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
+        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id)))))
     {
         mpi_errno = MPIDI_CH3I_Shm_cas_op(origin_addr, compare_addr, result_addr,
                                           datatype, target_rank, target_disp, win_ptr);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
     else {
+#if defined(CHANNEL_MRAIL)
+        if ( win_ptr->fall_back != 1 && win_ptr->enable_fast_path == 1
+             && win_ptr->use_rdma_path == 1
+#if defined(RDMA_CM)
+             && !mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode
+#endif
+             && mv2_MPIDI_CH3I_RDMA_Process.hca_type != MV2_HCA_MLX_CX_CONNIB
+             && ((win_ptr->is_active && win_ptr->post_flag[target_rank] == 1)
+             || (!win_ptr->is_active && win_ptr->using_lock == 0)))
+        {
+            transfer_complete = MPIDI_CH3I_RDMA_try_rma_op_fast(MPIDI_RMA_COMPARE_AND_SWAP, (void *)origin_addr,
+                    0, datatype, target_rank, target_disp,
+                    0, datatype, (void *) compare_addr, result_addr, win_ptr);
+        }
+        if (transfer_complete) {
+            goto fn_exit;
+        }
+        else {
+#endif
         MPIDI_RMA_Ops_list_t *ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
         MPIDI_RMA_Op_t *new_ptr = NULL;
 
@@ -223,6 +260,7 @@ int MPIDI_Compare_and_swap(const void *origin_addr, const void *compare_addr,
         MPIR_T_PVAR_TIMER_END(RMA, rma_rmaqueue_set);
 
 #if defined(CHANNEL_MRAIL)
+        }
         if (win_ptr->fall_back != 1 && win_ptr->using_lock != 1) {
             MPIDI_CH3I_RDMA_try_rma(win_ptr, target_rank);
         }
@@ -250,6 +288,10 @@ int MPIDI_Fetch_and_op(const void *origin_addr, void *result_addr,
     int mpi_errno = MPI_SUCCESS;
     int rank;
     MPIDI_VC_t *orig_vc, *target_vc;
+
+#if defined(CHANNEL_MRAIL)
+    int transfer_complete = 0;
+#endif
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_FETCH_AND_OP);
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_FETCH_AND_OP);
@@ -286,14 +328,44 @@ int MPIDI_Fetch_and_op(const void *origin_addr, void *result_addr,
 
     /* FIXME: For shared memory windows, we should provide an implementation
      * that uses a processor atomic operation. */
-    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
-        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))
+    if ( 
+#if defined(CHANNEL_MRAIL)
+        !mv2_MPIDI_CH3I_RDMA_Process.force_ib_atomic && 
+#endif  
+        (target_rank == rank || (
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+        (win_ptr->use_direct_shm == 1) &&
+#endif
+        (win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
+        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id)))))
     {
         mpi_errno = MPIDI_CH3I_Shm_fop_op(origin_addr, result_addr, datatype,
                                           target_rank, target_disp, op, win_ptr);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
     else {
+#if defined(CHANNEL_MRAIL)
+        if ( win_ptr->fall_back != 1 && win_ptr->enable_fast_path == 1
+             && win_ptr->use_rdma_path == 1
+             && op == MPI_SUM
+#if defined(RDMA_CM)
+             && !mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode
+#endif
+             && mv2_MPIDI_CH3I_RDMA_Process.hca_type != MV2_HCA_MLX_CX_CONNIB
+             && datatype != MPI_DOUBLE
+             && ((win_ptr->is_active && win_ptr->post_flag[target_rank] == 1)
+             || (!win_ptr->is_active && win_ptr->using_lock == 0)))
+        {
+            transfer_complete = MPIDI_CH3I_RDMA_try_rma_op_fast(MPIDI_RMA_FETCH_AND_OP, (void *)origin_addr,
+                    0, datatype, target_rank, target_disp,
+                    0, datatype, 0, (void *)result_addr, win_ptr);
+        }
+        if (transfer_complete) {
+            goto fn_exit;
+        }
+        else
+#endif
+    {
         MPIDI_RMA_Ops_list_t *ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
         MPIDI_RMA_Op_t *new_ptr = NULL;
 
@@ -317,6 +389,7 @@ int MPIDI_Fetch_and_op(const void *origin_addr, void *result_addr,
         new_ptr->result_datatype = datatype;
         new_ptr->op = op;
         MPIR_T_PVAR_TIMER_END(RMA, rma_rmaqueue_set);
+    }
 
 #if defined(CHANNEL_MRAIL)
         if (win_ptr->fall_back != 1 && op == MPI_SUM 

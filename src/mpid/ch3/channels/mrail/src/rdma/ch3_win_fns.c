@@ -22,6 +22,7 @@
 #include "mpidrma.h"
 
 #include "coll_shmem.h"
+#include "bcast_tuning.h"
 
 /* FIXME: get this from OS */
 #define MPIDI_CH3_PAGESIZE ((MPI_Aint)4096)
@@ -336,7 +337,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
         mpi_errno = MPIU_SHMW_Hnd_get_serialized_by_ref((*win_ptr)->shm_segment_handle, &serialized_hnd_ptr);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-        mpi_errno = MPIR_Shmem_Bcast_MV2(serialized_hnd_ptr, MPIU_SHMW_GHND_SZ, MPI_BYTE, 0, node_comm_ptr, errflag);
+        mpi_errno = MPIR_Shmem_Bcast_MV2(serialized_hnd_ptr, MPIU_SHMW_GHND_SZ, MPI_BYTE, 0, node_comm_ptr, &errflag);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
@@ -512,6 +513,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     (*win_ptr)->RMAFns.Win_shared_query = MPIDI_CH3_SHM_Win_shared_query;
     (*win_ptr)->RMAFns.Win_free         = MPIDI_CH3_SHM_Win_free;
 
+    (*win_ptr)->use_direct_shm = 1;
 fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WIN_ALLOCATE_SHM);

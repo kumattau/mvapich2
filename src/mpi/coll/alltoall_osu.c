@@ -22,6 +22,12 @@
 #include "coll_shmem.h"
 #include "alltoall_tuning.h"
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoall_mv2_inplace);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoall_mv2_bruck);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoall_mv2_rd);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoall_mv2_sd);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoall_mv2_pw);
+
 /* This is the default implementation of alltoall. The algorithm is:
    
    Algorithm: MPI_Alltoall
@@ -82,6 +88,7 @@ int MPIR_Alltoall_inplace_MV2(
     MPID_Comm *comm_ptr,
     int *errflag )
 {
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoall_mv2_inplace, 1);
     int          comm_size, i, j;
     MPI_Aint     recvtype_extent;
     int mpi_errno=MPI_SUCCESS;
@@ -176,7 +183,7 @@ int MPIR_Alltoall_bruck_MV2(
                             MPID_Comm *comm_ptr,
                             int *errflag )
 {
-
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoall_mv2_bruck, 1);
     int          comm_size, i, pof2;
     MPI_Aint     sendtype_extent, recvtype_extent;
     MPI_Aint recvtype_true_extent, recvbuf_extent, recvtype_true_lb;
@@ -370,6 +377,7 @@ int MPIR_Alltoall_RD_MV2(
                             MPID_Comm *comm_ptr,
                             int *errflag )
 {
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoall_mv2_rd, 1);
     int          comm_size, i, j;
     MPI_Aint     sendtype_extent, recvtype_extent;
     int mpi_errno=MPI_SUCCESS;
@@ -568,7 +576,7 @@ int MPIR_Alltoall_Scatter_dest_MV2(
                             MPID_Comm *comm_ptr,
                             int *errflag )
 {
-    
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoall_mv2_sd, 1);
     int          comm_size, i, j;
     MPI_Aint     sendtype_extent = 0, recvtype_extent = 0;
     int mpi_errno=MPI_SUCCESS;
@@ -686,7 +694,7 @@ int MPIR_Alltoall_pairwise_MV2(
                             MPID_Comm *comm_ptr,
                             int *errflag )
 {
-    
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoall_mv2_pw, 1);
     int          comm_size, i, pof2;
     MPI_Aint     sendtype_extent, recvtype_extent;
     int mpi_errno=MPI_SUCCESS;

@@ -15,11 +15,7 @@
 
 #include "coll_shmem.h"
 #if defined(CHANNEL_MRAIL)
-#ifndef DAPL_DEFAULT_PROVIDER
 #include "ibv_param.h"
-#else
-#include "udapl_param.h"
-#endif
 #endif /* #if defined(CHANNEL_MRAIL) */
 #define MV2_DEFAULT_SHMEM_BCAST_LEADERS    4096
 #define MV2_GATHER_DIRECT_SYSTEM_SIZE_SMALL      384

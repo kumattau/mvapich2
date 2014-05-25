@@ -331,6 +331,7 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model,
     (*win_ptr)->fall_back           = 1;
     (*win_ptr)->outstanding_rma     = 0;
     (*win_ptr)->use_rdma_path       = 0;
+    (*win_ptr)->use_direct_shm      = 0;
 #endif /* defined(CHANNEL_MRAIL) */
 #if defined (CHANNEL_PSM)
     (*win_ptr)->outstanding_rma     = 0;
@@ -339,6 +340,7 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model,
         MPIU_ERR_SET(mpi_errno, MPI_ERR_NO_MEM, "**nomem");
         goto fn_fail;
     }
+    (*win_ptr)->use_direct_shm      = 0;
 #endif
 
     MPID_WIN_FTABLE_SET_DEFAULTS(win_ptr);

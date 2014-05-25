@@ -15,11 +15,7 @@
 
 #include "coll_shmem.h"
 #if defined(CHANNEL_MRAIL)
-#ifndef DAPL_DEFAULT_PROVIDER
 #include "ibv_param.h"
-#else
-#include "udapl_param.h"
-#endif
 #endif                          /* #if defined(CHANNEL_MRAIL) */
 
 #define NMATCH (3+1)

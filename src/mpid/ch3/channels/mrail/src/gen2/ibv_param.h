@@ -35,7 +35,9 @@ extern uint32_t rdma_default_max_sg_list;
 extern uint16_t rdma_default_pkey_ix;
 extern uint16_t rdma_default_pkey;
 extern uint8_t rdma_default_qp_ous_rd_atom;
+extern uint8_t rdma_supported_max_qp_ous_rd_atom;
 extern uint8_t rdma_default_max_rdma_dst_ops;
+extern uint8_t rdma_supported_max_rdma_dst_ops;
 extern enum ibv_mtu rdma_default_mtu;
 extern uint32_t rdma_default_psn;
 extern uint8_t rdma_default_min_rnr_timer;
@@ -727,6 +729,7 @@ typedef struct mv2_env_param_list {
 extern mv2_env_param_list_t param_list[];
 void mv2_show_all_params();
 void mv2_show_runlog_info(int level);
+void rdma_set_rdma_fast_path_params(int num_proc);
 
 mv2_arch_hca_type MV2_get_arch_hca_type();
 

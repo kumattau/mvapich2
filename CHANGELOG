@@ -3,6 +3,34 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-2.0rc2 (05/25/2014)
+
+* Features and Enhancements (since 2.0rc1):
+    - CMA support is now enabled by default
+    - Optimization of collectives with CMA support
+    - RMA optimizations for shared memory and atomic operations
+    - Tuning RGET and Atomics operations
+    - Tuning RDMA FP-based communication  
+    - MPI-T support for additional performance and control variables
+    - The --enable-mpit-pvars=yes configuration option will now 
+      enable only MVAPICH2 specific variables
+    - Large message transfer support for PSM interface
+    - Optimization of collectives for PSM interface 
+    - Updated to hwloc v1.9
+
+* Bug-Fixes (since 2.0rc1):
+    - Fix multicast hang when there is a single process on one node 
+      and more than one process on other nodes
+    - Fix non-power-of-two usage of scatter-doubling-allgather algorithm 
+    - Fix for bcastzero type hang during finalize
+    - Enhanced handling of failures in RDMA_CM based 
+      connection establishment
+    - Fix for a hang in finalize when using RDMA_CM
+    - Finish receive request when RDMA READ completes in RGET protocol
+    - Always use direct RDMA when flush is used
+    - Fix compilation error with --enable-g=all in PSM interface 
+    - Fix warnings and memory leaks
+
 MVAPICH2-2.0rc1 (03/24/2014)
 
 * Features and Enhancements (since 2.0b):

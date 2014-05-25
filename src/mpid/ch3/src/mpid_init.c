@@ -536,7 +536,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
             }
         }
 
-#ifdef HAVE_LIBHWLOC
         int affinity_env = 1;
         int show_cpu_binding = 0;
 
@@ -556,7 +555,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
         if (show_cpu_binding) {
             mv2_show_cpu_affinity(pg);
         }
-#endif /* HAVE_LIBHWLOC */
 #endif /* defined(CHANNEL_MRAIL) */
 
     }

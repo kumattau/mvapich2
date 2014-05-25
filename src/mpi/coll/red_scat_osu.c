@@ -1430,13 +1430,13 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
     }
     if (rdma_enable_cuda && recv_mem_type) {
         if (recv_host_buf) {
-            free(recv_host_buf);
+            MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
     if (rdma_enable_cuda && send_mem_type) {
         if (send_host_buf) {
-            free(send_host_buf);
+            MPIU_Free(send_host_buf);
             send_host_buf = NULL;
         }
     }

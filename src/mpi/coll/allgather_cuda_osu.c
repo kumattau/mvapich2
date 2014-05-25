@@ -78,7 +78,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
     if (mv2_cuda_allgather_store_buf_size < max_size || !mv2_cuda_allgather_store_buf){
         if(mv2_cuda_allgather_store_buf){
             ibv_cuda_unregister(mv2_cuda_allgather_store_buf);
-            free (mv2_cuda_allgather_store_buf);
+            MPIU_Memalign_Free(mv2_cuda_allgather_store_buf);
         } 
         result = MPIU_Memalign(&mv2_cuda_allgather_store_buf, page_size, max_size);
         if ((result!=0) || (NULL == mv2_cuda_allgather_store_buf)) {

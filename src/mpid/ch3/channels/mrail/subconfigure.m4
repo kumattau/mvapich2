@@ -93,11 +93,11 @@ AS_IF([test x$with_scr != xno],
         ])
 
 AC_ARG_WITH([cma],
-    [AS_HELP_STRING([--with-cma],
-        [Enable use of CMA for intra-node communication])
+    [AS_HELP_STRING([--without-cma],
+        [Disable use of CMA for intra-node communication])
     ],
     [],
-    [with_cma=no])
+    [with_cma=yes])
 
 AC_ARG_WITH([limic2],
     [AS_HELP_STRING([--with-limic2=@<:@LiMIC2 installation path@:>@],
@@ -319,45 +319,6 @@ AS_CASE([$enable_cuda],
 AS_IF([test x$build_mrail_cuda_kernels = xyes],
         [AC_DEFINE([USE_GPU_KERNEL], [1], [Define to enable cuda kernel functions])])
 
- AC_ARG_WITH([hwloc],
-             [AS_HELP_STRING([--with-hwloc],
-                             [use hwloc for process binding])
-             ],
-             [],
-             [with_hwloc=yes])
- 
- use_internal_hwloc=no
- AS_IF([test "x$with_hwloc" != xno],
-       [AC_CHECKING([for any suitable hwloc installation])
-        AC_CHECK_LIB([hwloc], [hwloc_bitmap_alloc],
-                     [AC_CHECK_HEADER([hwloc.h],
-                                      [LIBS="-lhwloc $LIBS"
-                                       AC_DEFINE([HAVE_LIBHWLOC], [],
-                                                 [Define if hwloc library is available])
-                                      ],
-                                      [use_internal_hwloc=yes])
-                     ],
-                     [use_internal_hwloc=yes])
-       ])
- 
- dnl This should only be executed if hwloc isn't explicitly disabled and no
- dnl suitable version is already installed on the system.
- dnl m4_include([src/mpid/ch3/channels/mrail/src/hwloc/config/hwloc.m4])
- dnl hwloc_happy=no
- AS_IF([test "$use_internal_hwloc" = "yes"],
-       [AC_MSG_NOTICE([No suitable hwloc installed, using internal version])
-        AC_DEFINE([HAVE_LIBHWLOC], [1], [Define if hwloc library is available])
-        build_mrail_hwloc=yes
-        dnl other_subdirs="hwloc $other_subdirs"
-        dnl HWLOC_SETUP_CORE([src/mpid/ch3/channels/mrail/src/hwloc],[hwloc_happy=yes],[hwloc_happy=no],[1])
-        dnl AS_CASE([$hwloc_happy], [no], [AC_MSG_ERROR([HWLOC_SETUP_CORE failed])])
-        ac_configure_args="${ac_configure_args} --enable-embedded-mode"
-        AC_CONFIG_SUBDIRS(src/mpid/ch3/channels/mrail/src/hwloc)
-        AC_CHECK_HEADERS([numaif.h],
-                         [AC_SEARCH_LIBS([set_mempolicy], [numa])
-                         ])
-        ])
- 
 AS_IF([test "x$enable_3dtorus_support" != xno],
       [AC_DEFINE([ENABLE_3DTORUS_SUPPORT], [1],
                  [Define to enable 3D Torus support])])
@@ -536,7 +497,7 @@ if test "$with_rdma" = "gen2"; then
             [])
 
     AC_SEARCH_LIBS(dlopen, dl,,[AC_MSG_ERROR(['libdl not found'])])
-    AC_SEARCH_LIBS(ibv_open_device, ibverbs,,[AC_MSG_ERROR(['libibverbs not found. Did you specify --with-ib-libpath=?'])],)
+    AC_SEARCH_LIBS(ibv_open_device, ibverbs,[AC_DEFINE([HAVE_LIBIBVERBS], [1])],[AC_MSG_ERROR(['libibverbs not found. Did you specify --with-ib-libpath=?'])],)
     AC_CHECK_HEADER([infiniband/verbs.h],,[AC_MSG_ERROR(['infiniband/verbs.h not found. Did you specify --with-ib-include=?'])])
 
     AC_CHECKING([checking for infiniband umad installation])
@@ -759,13 +720,11 @@ AS_CASE([$with_rdma],
     dnl automake conditionals should not appear in conditional blocks as this
     dnl can cause confusion in the makefiles
     AM_CONDITIONAL([BUILD_MRAIL_GEN2], [test X$with_rdma = Xgen2])
-    AM_CONDITIONAL([BUILD_MRAIL_UDAPL], [false])
     AM_CONDITIONAL([BUILD_MRAIL_OPENACC],
             [test X$ac_cv_header_openacc_h = Xyes -a X$build_mrail_cuda = Xyes])
     AM_CONDITIONAL([BUILD_MRAIL_CUDA], [test X$build_mrail_cuda = Xyes])
     AM_CONDITIONAL([BUILD_MRAIL_CUDA_KERNELS],
             [test X$build_mrail_cuda_kernels = Xyes])
-    AM_CONDITIONAL([BUILD_MRAIL_HWLOC], [test X$build_mrail_hwloc = Xyes])
     AM_CONDITIONAL([BUILD_LIB_CH3AFFINITY], [test X$build_mrail = Xyes])
     AM_CONDITIONAL([BUILD_LIB_SCR], [test X$with_scr = Xyes])
 ])dnl end _BODY

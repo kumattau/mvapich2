@@ -18,6 +18,8 @@
 #include "mpiimpl.h"
 #include "coll_shmem.h"
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoallv_mv2_pw);
+
 /* This is the default implementation of alltoallv. The algorithm is:
    
    Algorithm: MPI_Alltoallv
@@ -55,6 +57,7 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
                              MPI_Datatype recvtype,
                              MPID_Comm * comm_ptr, int *errflag)
 {
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoallv_mv2_pw, 1);
     int comm_size, i, j;
     MPI_Aint send_extent, recv_extent;
     int mpi_errno = MPI_SUCCESS;

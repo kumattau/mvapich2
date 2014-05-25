@@ -41,7 +41,9 @@ int qp_required(MPIDI_VC_t * vc, int my_rank, int dst_rank)
 {
     int qp_reqd = 1;
 
-    if ((my_rank == dst_rank) || (rdma_use_smp && (vc->smp.local_rank != -1))) {
+    if ((my_rank == dst_rank) || (
+        !mv2_MPIDI_CH3I_RDMA_Process.force_ib_atomic 
+        && rdma_use_smp && (vc->smp.local_rank != -1))) {
         /* Process is local */
         qp_reqd = 0;
     }
@@ -650,6 +652,9 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                                       "**fail %s",
                                       "Error getting HCA attributes\n");
         }
+        /* Identify the maximum number of atomic operations supported by the HCA */
+        rdma_supported_max_rdma_dst_ops   = dev_attr.max_qp_rd_atom;
+        rdma_supported_max_qp_ous_rd_atom = dev_attr.max_qp_rd_atom;
 
         g_atomics_support = (dev_attr.atomic_cap != IBV_ATOMIC_NONE);
 
@@ -838,6 +843,9 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                                           "**fail %s",
                                           "Error getting HCA attributes");
             }
+            /* Identify the maximum number of atomic operations supported by the HCA */
+            rdma_supported_max_rdma_dst_ops   = dev_attr.max_qp_rd_atom;
+            rdma_supported_max_qp_ous_rd_atom = dev_attr.max_qp_rd_atom;
 
             g_atomics_support = (dev_attr.atomic_cap != IBV_ATOMIC_NONE);
 
@@ -1250,7 +1258,17 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     MPIU_Memset(&qp_attr, 0, sizeof qp_attr);
     qp_attr.qp_state = IBV_QPS_RTR;
     qp_attr.rq_psn = rdma_default_psn;
-    qp_attr.max_dest_rd_atomic = rdma_default_max_rdma_dst_ops;
+#ifdef _ENABLE_XRC_
+    if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity || USE_XRC)
+#else
+    if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity)
+#endif
+    {
+        qp_attr.max_dest_rd_atomic = rdma_default_max_rdma_dst_ops;
+    } else {
+        qp_attr.max_dest_rd_atomic = rdma_supported_max_rdma_dst_ops;
+    }
+
     qp_attr.min_rnr_timer = rdma_default_min_rnr_timer;
     if (rdma_use_qos) {
         qp_attr.ah_attr.sl = rdma_qos_sl;
@@ -1349,7 +1367,16 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     qp_attr.timeout = rdma_default_time_out;
     qp_attr.retry_cnt = rdma_default_retry_count;
     qp_attr.rnr_retry = rdma_default_rnr_retry;
-    qp_attr.max_rd_atomic = rdma_default_qp_ous_rd_atom;
+#ifdef _ENABLE_XRC_
+    if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity || USE_XRC)
+#else
+    if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity)
+#endif
+    {
+        qp_attr.max_rd_atomic = rdma_default_qp_ous_rd_atom;
+    } else {
+        qp_attr.max_rd_atomic = rdma_supported_max_qp_ous_rd_atom;
+    }
 
     qp_attr_mask = 0;
     qp_attr_mask = IBV_QP_STATE |
@@ -1900,7 +1927,16 @@ int cm_qp_move_to_rtr(MPIDI_VC_t * vc, uint16_t * lids, union ibv_gid *gids,
         MPIU_Memset(&qp_attr, 0, sizeof qp_attr);
         qp_attr.qp_state = IBV_QPS_RTR;
         qp_attr.rq_psn = rdma_default_psn;
-        qp_attr.max_dest_rd_atomic = rdma_default_max_rdma_dst_ops;
+#ifdef _ENABLE_XRC_
+        if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity || USE_XRC)
+#else
+        if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity)
+#endif
+        {
+            qp_attr.max_dest_rd_atomic = rdma_default_max_rdma_dst_ops;
+        } else {
+            qp_attr.max_dest_rd_atomic = rdma_supported_max_rdma_dst_ops;
+        }
         qp_attr.min_rnr_timer = rdma_default_min_rnr_timer;
         if (rdma_use_qos) {
             qp_attr.ah_attr.sl = rdma_qos_sl;
@@ -2014,7 +2050,16 @@ int cm_qp_move_to_rts(MPIDI_VC_t * vc)
         qp_attr.timeout = rdma_default_time_out;
         qp_attr.retry_cnt = rdma_default_retry_count;
         qp_attr.rnr_retry = rdma_default_rnr_retry;
-        qp_attr.max_rd_atomic = rdma_default_qp_ous_rd_atom;
+#ifdef _ENABLE_XRC_
+        if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity || USE_XRC)
+#else
+        if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity)
+#endif
+        {
+            qp_attr.max_rd_atomic = rdma_default_qp_ous_rd_atom;
+        } else {
+            qp_attr.max_rd_atomic = rdma_supported_max_qp_ous_rd_atom;
+        }
 
         qp_attr_mask = 0;
         qp_attr_mask = IBV_QP_STATE |

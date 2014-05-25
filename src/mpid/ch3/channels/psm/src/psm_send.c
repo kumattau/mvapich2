@@ -21,11 +21,55 @@
 */
 
 #undef FUNCNAME
+#define FUNCNAME psm_large_msg_isend_pkt
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+psm_error_t psm_large_msg_isend_pkt(MPID_Request **rptr, int dest, void *buf,
+                        MPIDI_msg_sz_t buflen, uint64_t stag, uint32_t flags)
+{
+    psm_error_t psmerr;
+    MPID_Request *req = *rptr;
+    int i = 0, steps = 0, balance = 0;
+    int obj_ref = 0, cc_cnt = 0;
+
+    /* Compute the number of chunks */
+    steps = buflen / ipath_max_transfer_size;
+    balance = buflen % ipath_max_transfer_size;
+
+    /* Sanity check */
+    MPIU_Assert(steps > 0);
+
+    /* Get current object reference count and completion count */
+    cc_cnt  = *(req->cc_ptr);
+    obj_ref = MPIU_Object_get_ref(req);
+
+    /* Increment obj ref count and comp count by number of chunks */
+    cc_cnt  += steps-1;
+    obj_ref += steps-1;
+
+    /* Update object reference count and completion count */
+    MPID_cc_set(req->cc_ptr, cc_cnt);
+    MPIU_Object_set_ref(req, obj_ref);
+
+    for (i = 0; i < steps; i++) {
+        psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
+                    flags, stag, buf, ipath_max_transfer_size, req, &(req->mqreq));
+        buf += ipath_max_transfer_size;
+    }
+    if (balance) {
+        psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
+                    flags, stag, buf, balance, req, &(req->mqreq));
+    }
+
+    return psmerr;
+}
+
+#undef FUNCNAME
 #define FUNCNAME psm_send_pkt
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m, 
-                 int dest, void *buf, int buflen)
+                 int dest, void *buf, MPIDI_msg_sz_t buflen)
 {
     psm_error_t psmerr;
     uint64_t stag = 0;
@@ -66,8 +110,13 @@ psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
         req->psm_flags |= PSM_NON_BLOCKING_SEND;
         DBG("nb send posted for blocking mpi_send\n");
         _psm_enter_;
-        psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
-                flags, stag, buf, buflen, req, &(req->mqreq));
+        if ((unlikely(buflen > ipath_max_transfer_size))) {
+            psmerr = psm_large_msg_isend_pkt(rptr, dest, buf, buflen,
+                        stag, flags);
+        } else {
+            psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
+                        flags, stag, buf, buflen, req, &(req->mqreq));
+        }
         _psm_exit_;
         ++psm_tot_sends;
     }
@@ -81,12 +130,12 @@ psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
 */
 
 psm_error_t psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m, 
-                  int dest, void *buf, int buflen)
+                  int dest, void *buf, MPIDI_msg_sz_t buflen)
 {
     uint64_t stag = 0;
     uint32_t flags = MQ_FLAGS_NONE;
     psm_error_t psmerr;
-    
+
     MAKE_PSM_SELECTOR(stag, m.parts.context_id, m.parts.tag, m.parts.rank);
     assert(req);
     if(req->psm_flags & PSM_SYNC_SEND) {
@@ -99,8 +148,13 @@ psm_error_t psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m,
     DBG("psm_mq_isend: dst = %d src = %d\n", dest, m.rank);
 
     _psm_enter_;
-    psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest], 
-            flags, stag, buf, buflen, req, &(req->mqreq));
+    if ((unlikely(buflen > ipath_max_transfer_size))) {
+        psmerr = psm_large_msg_isend_pkt(&req, dest, buf, buflen,
+                    stag, flags);
+    } else {
+        psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest], 
+                    flags, stag, buf, buflen, req, &(req->mqreq));
+    }
     _psm_exit_;
     ++psm_tot_sends;
     return psmerr;

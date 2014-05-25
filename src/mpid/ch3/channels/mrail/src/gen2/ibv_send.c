@@ -1576,8 +1576,6 @@ int MRAILI_Process_send(void *vbuf_addr)
 
     case MPIDI_CH3_PKT_RGET_FINISH:
 
-        MPIDI_CH3_Rendezvous_rget_recv_finish(vc, (MPID_Request *) v->sreq);
-
         if (v->padding == NORMAL_VBUF_FLAG) {
             MRAILI_Release_vbuf(v);
         } else {

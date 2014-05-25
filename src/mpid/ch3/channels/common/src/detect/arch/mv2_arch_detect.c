@@ -16,10 +16,8 @@
 
 #include <mpichconf.h>
 
-#ifdef HAVE_LIBHWLOC
 #include <hwloc.h>
 #include <dirent.h>
-#endif /* #ifdef HAVE_LIBHWLOC */
 
 #include "mv2_arch_hca_detect.h"
 
@@ -38,6 +36,9 @@ static int numcores_persocket[SOCKETS]={0};
 
 static mv2_arch_type g_mv2_arch_type = MV2_ARCH_UNKWN;
 static int g_mv2_num_cpus = -1;
+static int g_mv2_cpu_model = -1;
+static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
+
 
 #define CONFIG_FILE         "/proc/cpuinfo"
 #define MAX_LINE_LENGTH     512
@@ -61,32 +62,8 @@ static int g_mv2_num_cpus = -1;
 #define INTEL_E5_2670_MODEL_NAME    "Intel(R) Xeon(R) CPU E5-2670 0 @ 2.60GHz"
 #define INTEL_E5_2680_MODEL_NAME    "Intel(R) Xeon(R) CPU E5-2680 0 @ 2.70GHz"
 #define INTEL_E5_2670_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2670 v2 @ 2.50GHz"
-
-#ifndef HAVE_LIBHWLOC
-
-#define MAX_NUM_CPUS 256
-int INTEL_XEON_DUAL_MAPPING[]      = {0,1,0,1};
-int INTEL_CLOVERTOWN_MAPPING[]     = {0,0,1,1,0,0,1,1};                  /*        ((0,1),(4,5))((2,3),(6,7))             */
-int INTEL_HARPERTOWN_LEG_MAPPING[] = {0,1,0,1,0,1,0,1};                  /* legacy ((0,2),(4,6))((1,3),(5,7))             */
-int INTEL_HARPERTOWN_COM_MAPPING[] = {0,0,0,0,1,1,1,1};                  /* common ((0,1),(2,3))((4,5),(6,7))             */
-int INTEL_NEHALEM_LEG_MAPPING[]    = {0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1};  /* legacy (0,2,4,6)(1,3,5,7) with hyperthreading */
-int INTEL_NEHALEM_COM_MAPPING[]    = {0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1};  /* common (0,1,2,3)(4,5,6,7) with hyperthreading */
-int AMD_OPTERON_DUAL_MAPPING[]     = {0,0,1,1};
-int INTEL_E2_2670_MAPPING[]	   = {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1};
-int AMD_BARCELONA_MAPPING[]        = {0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3};
-int AMD_MAGNY_CRS_MAPPING[]        = {1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2};
-int AMD_OPTERON_32_MAPPING[]       = {1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4};
-int AMD_OPTERON_64_MAPPING[]	   = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3};
-int AMD_BULLDOZER_4274HE_16_MAPPING[] = {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1};
-
-#endif /* #ifndef HAVE_LIBHWLOC */
-
-/* CPU Family */
-typedef enum{
-    CPU_FAMILY_NONE=0,
-    CPU_FAMILY_INTEL,
-    CPU_FAMILY_AMD,
-} mv2_cpu_type;
+#define INTEL_E5_2630_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2630 v2 @ 2.60GHz"
+#define INTEL_E5_2690_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2690 v2 @ 3.00GHz"
 
 typedef struct _mv2_arch_types_log_t{
     uint64_t arch_type;
@@ -108,6 +85,8 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_XEON_E5_2670_16,"MV2_ARCH_INTEL_XEON_E5_2670_16"},
     {MV2_ARCH_INTEL_XEON_E5_2680_16,"MV2_ARCH_INTEL_XEON_E5_2680_16"},
     {MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20,"MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20"},
+    {MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12,"MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12"},
+    {MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20,"MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20"},
 
     /* AMD Architectures */
     {MV2_ARCH_AMD_GENERIC,          "MV2_ARCH_AMD_GENERIC"},
@@ -126,6 +105,23 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_LAST_ENTRY,           "MV2_ARCH_LAST_ENTRY"},
 };
 
+typedef struct _mv2_cpu_family_types_log_t{
+    mv2_cpu_family_type family_type;
+    char *cpu_family_name;
+}mv2_cpu_family_types_log_t;
+
+static mv2_cpu_family_types_log_t mv2_cpu_family_types_log[] = 
+{
+    {MV2_CPU_FAMILY_NONE,  "MV2_CPU_FAMILY_NONE"},
+    {MV2_CPU_FAMILY_INTEL, "MV2_CPU_FAMILY_INTEL"},
+    {MV2_CPU_FAMILY_AMD,   "MV2_CPU_FAMILY_AMD"},
+};
+
+char *mv2_get_cpu_family_name(mv2_cpu_family_type cpu_family_type)
+{
+    return mv2_cpu_family_types_log[cpu_family_type].cpu_family_name;
+}
+
 char*  mv2_get_arch_name(mv2_arch_type arch_type)
 {
     int i=0;
@@ -141,19 +137,17 @@ char*  mv2_get_arch_name(mv2_arch_type arch_type)
 
 
 /* Identify architecture type */
-#ifdef HAVE_LIBHWLOC
 mv2_arch_type mv2_get_arch_type()
 {
     if ( MV2_ARCH_UNKWN == g_mv2_arch_type ) {
         FILE *fp;
-        int num_sockets = 0, cpu_model = 0, num_cpus = 0, ret;
+        int num_sockets = 0, num_cpus = 0, ret;
         int model_name_set=0;
         unsigned topodepth = -1, depth = -1;
         char line[MAX_LINE_LENGTH], *tmp, *key;
         char model_name[MAX_NAME_LENGTH]={0};
 
         mv2_arch_type arch_type = MV2_ARCH_UNKWN;
-        mv2_cpu_type cpu_type = CPU_FAMILY_NONE;
         hwloc_topology_t topology;
 
         /* Initialize hw_loc */
@@ -215,20 +209,20 @@ mv2_arch_type mv2_get_arch_type()
 
                     if (! strncmp(tmp, MV2_STR_AUTH_AMD, strlen( MV2_STR_AUTH_AMD
                                     ))) {
-                        cpu_type = CPU_FAMILY_AMD;
+                        g_mv2_cpu_family_type = MV2_CPU_FAMILY_AMD;
 
                     } else {
-                        cpu_type = CPU_FAMILY_INTEL;
+                        g_mv2_cpu_family_type = MV2_CPU_FAMILY_INTEL;
                     }
                     continue;
                 }
 
-                if( !cpu_model ) {
+                if( -1 == g_mv2_cpu_model ) {
 
                     if(! strcmp(key, MV2_STR_MODEL)) {
                         strtok(NULL, MV2_STR_WS);
                         tmp = strtok(NULL, MV2_STR_WS);
-                        sscanf(tmp, "%d", &cpu_model);
+                        sscanf(tmp, "%d", &g_mv2_cpu_model);
                         continue;
                     }
                 }
@@ -244,7 +238,7 @@ mv2_arch_type mv2_get_arch_type()
             }
             fclose(fp);
 
-            if( CPU_FAMILY_INTEL == cpu_type ) {
+            if( MV2_CPU_FAMILY_INTEL == g_mv2_cpu_family_type ) {
                 arch_type = MV2_ARCH_INTEL_GENERIC;
 
                 if(2 == num_sockets ) {
@@ -254,30 +248,34 @@ mv2_arch_type mv2_get_arch_type()
 
                     } else if(8 == num_cpus) {
 
-                        if(CLOVERTOWN_MODEL == cpu_model) {
+                        if(CLOVERTOWN_MODEL == g_mv2_cpu_model) {
                             arch_type = MV2_ARCH_INTEL_CLOVERTOWN_8;
 
-                        } else if(HARPERTOWN_MODEL == cpu_model) {
+                        } else if(HARPERTOWN_MODEL == g_mv2_cpu_model) {
                             arch_type = MV2_ARCH_INTEL_HARPERTOWN_8;
 
-                        } else if(NEHALEM_MODEL == cpu_model) {
+                        } else if(NEHALEM_MODEL == g_mv2_cpu_model) {
                             arch_type = MV2_ARCH_INTEL_NEHALEM_8;
                         
-                        } else if(INTEL_E5630_MODEL == cpu_model){
+                        } else if(INTEL_E5630_MODEL == g_mv2_cpu_model){
                             arch_type = MV2_ARCH_INTEL_XEON_E5630_8;
                         } 
 
                     } else if(12 == num_cpus) {
-                        if(INTEL_X5650_MODEL == cpu_model) {  
+                        if(INTEL_X5650_MODEL == g_mv2_cpu_model) {  
                             /* Westmere EP model, Lonestar */
                             arch_type = MV2_ARCH_INTEL_XEON_X5650_12;
+                        } else if (INTEL_XEON_E5_2670_V2_MODEL == g_mv2_cpu_model) {
+                            if(NULL != strstr(model_name, INTEL_E5_2630_V2_MODEL_NAME)){
+                                arch_type = MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12;
+                            }
                         }
                     } else if(16 == num_cpus) {
 
-                        if(NEHALEM_MODEL == cpu_model) {  /* nehalem with smt on */
+                        if(NEHALEM_MODEL == g_mv2_cpu_model) {  /* nehalem with smt on */
                             arch_type = MV2_ARCH_INTEL_NEHALEM_16;
                         
-			}else if(INTEL_E5_2670_MODEL == cpu_model) {
+			}else if(INTEL_E5_2670_MODEL == g_mv2_cpu_model) {
                             if(strncmp(model_name, INTEL_E5_2670_MODEL_NAME, 
                                         strlen(INTEL_E5_2670_MODEL_NAME)) == 0){
                                 arch_type = MV2_ARCH_INTEL_XEON_E5_2670_16;
@@ -291,13 +289,18 @@ mv2_arch_type mv2_get_arch_type()
                             }
                         }
 		    } else if(20 == num_cpus){
-		        if(INTEL_XEON_E5_2670_V2_MODEL == cpu_model) {
-			    arch_type = MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20;
+		        if(INTEL_XEON_E5_2670_V2_MODEL == g_mv2_cpu_model) {
+			  
+                            if(NULL != strstr(model_name, INTEL_E5_2670_V2_MODEL_NAME)){
+                                arch_type = MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20;
+                            }else if(NULL != strstr(model_name, INTEL_E5_2690_V2_MODEL_NAME)){
+                                arch_type = MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20;
+                            }
 			}
 		    }
 		}
 
-            } else if(CPU_FAMILY_AMD == cpu_type) {
+            } else if(MV2_CPU_FAMILY_AMD == g_mv2_cpu_family_type) {
                 arch_type = MV2_ARCH_AMD_GENERIC;
 
                 if(2 == num_sockets) {
@@ -336,182 +339,6 @@ mv2_arch_type mv2_get_arch_type()
 
 }
 
-#else
-
-mv2_arch_type mv2_get_arch_type()
-{
-    if ( MV2_ARCH_UNKWN == g_mv2_arch_type ) {
-        char line[MAX_LINE_LENGTH];
-        char input[MAX_NAME_LENGTH];
-        char bogus1[MAX_NAME_LENGTH];
-        char bogus2[MAX_NAME_LENGTH];
-        char bogus3[MAX_NAME_LENGTH];
-        char model_name[MAX_NAME_LENGTH] = {0};
-
-        int physical_id;
-        int core_mapping[MAX_NUM_CPUS];
-        int core_index = 0, num_cpus;
-        int model;
-        int vendor_set=0, model_set=0, model_name_set=0;
-
-        mv2_cpu_type cpu_type = CPU_FAMILY_NONE;
-        mv2_arch_type arch_type = MV2_ARCH_UNKWN;
-
-        FILE* fp=fopen(CONFIG_FILE,"r");
-        if (fp == NULL){
-            fprintf( stderr, "Cannot open cpuinfo file\n");
-            return arch_type;
-        }
-        memset(core_mapping, 0, sizeof(int) * MAX_NUM_CPUS);
-
-        while(!feof(fp)){
-            memset(line,0,MAX_LINE_LENGTH);
-            fgets(line, MAX_LINE_LENGTH, fp);
-
-            memset(input, 0, MAX_NAME_LENGTH);
-            sscanf(line, "%s", input);
-
-            if (!vendor_set) {
-                if (strcmp(input, MV2_STR_VENDOR_ID) == 0) {
-                    memset(input, 0, MAX_NAME_LENGTH);
-                    sscanf(line,"%s%s%s",bogus1, bogus2, input);
-                    if (strcmp(input, MV2_STR_AUTH_AMD ) == 0) {
-                        cpu_type = CPU_FAMILY_AMD;
-                        arch_type = MV2_ARCH_AMD_GENERIC;
-                    } else {
-                        cpu_type = CPU_FAMILY_INTEL;
-                        arch_type = MV2_ARCH_INTEL_GENERIC;
-                    }
-                    vendor_set = 1;
-                }
-            }
-
-            if (!model_set){
-                if (strcmp(input, MV2_STR_MODEL) == 0) {
-                    sscanf(line, "%s%s%d", bogus1, bogus2, &model);
-                    model_set = 1;
-                }
-            }
-           
-            if (!model_name_set){
-                if (strncmp(line, MV2_STR_MODEL_NAME, strlen(MV2_STR_MODEL_NAME)) == 0) {
-                    sscanf(line, "%s%s%[^\n]\n", bogus1, bogus2, model_name);
-                    model_name_set = 1;
-                }
-            }
-
-            if (strcmp(input, MV2_STR_PHYSICAL ) == 0) {
-                sscanf(line, "%s%s%s%d", bogus1, bogus2, bogus3, &physical_id);
-                core_mapping[core_index++] = physical_id;
-            }
-        }
-	
-        /* Set the number of cores per node */
-        g_mv2_num_cpus = num_cpus = core_index;
-        if ( 4 == num_cpus ) {
-            if((memcmp(INTEL_XEON_DUAL_MAPPING,core_mapping,
-                            sizeof(int)*num_cpus) == 0)
-                    && ( CPU_FAMILY_INTEL == cpu_type )){
-                arch_type = MV2_ARCH_INTEL_XEON_DUAL_4;
-            } else
-                if((memcmp(AMD_OPTERON_DUAL_MAPPING,core_mapping,sizeof(int)*num_cpus)
-                            == 0)
-                        && ( CPU_FAMILY_AMD == cpu_type )){
-                    arch_type = MV2_ARCH_AMD_OPTERON_DUAL_4;
-                }
-        } else if ( 8 == num_cpus ) {
-            if( CPU_FAMILY_INTEL == cpu_type ) {
-                if( CLOVERTOWN_MODEL == model ) {
-                    arch_type = MV2_ARCH_INTEL_CLOVERTOWN_8;
-                }
-                else if( HARPERTOWN_MODEL == model ) {
-                    arch_type = MV2_ARCH_INTEL_HARPERTOWN_8;
-                }
-                else if( NEHALEM_MODEL == model ) {
-                    arch_type = MV2_ARCH_INTEL_NEHALEM_8;
-                }
-                else if( INTEL_E5630_MODEL == model ) {
-                    arch_type = MV2_ARCH_INTEL_XEON_E5630_8;
-                }
-            }
-        } else if ( 12 == num_cpus ) {
-            if( CPU_FAMILY_INTEL == cpu_type ) {
-                if(INTEL_X5650_MODEL == model) { 
-                     /* Westmere EP model, Lonestar */
-                     arch_type = MV2_ARCH_INTEL_XEON_X5650_12;
-                }
-            } 
-        } else if ( 16 == num_cpus ) {
-
-            if( CPU_FAMILY_INTEL == cpu_type ) {
-                if( NEHALEM_MODEL == model ) {
-                    arch_type = MV2_ARCH_INTEL_NEHALEM_16;
-
-                } else if((0 == memcmp(INTEL_E2_2670_MAPPING, core_mapping,
-                                sizeof(int)*num_cpus)) && INTEL_E5_2670_MODEL == model) {
-
-                    if(strstr(model_name, INTEL_E5_2670_MODEL_NAME) != NULL){
-                        arch_type = MV2_ARCH_INTEL_XEON_E5_2670_16;
-                        
-                    } else if(strstr(model_name, INTEL_E5_2680_MODEL_NAME) != NULL){
-                        arch_type = MV2_ARCH_INTEL_XEON_E5_2680_16;
-
-                    } else {
-                        arch_type = MV2_ARCH_INTEL_GENERIC;
-                    }
-                }
-            
-	    } else if( CPU_FAMILY_AMD == cpu_type ) {
-                if(0 == memcmp(AMD_BARCELONA_MAPPING,core_mapping,
-                            sizeof(int)*num_cpus) ) {
-                    arch_type = MV2_ARCH_AMD_BARCELONA_16;
-                
-                } else if(0 == memcmp(AMD_BULLDOZER_4274HE_16_MAPPING, core_mapping,
-                            sizeof(int)*num_cpus)){
-                    arch_type = MV2_ARCH_AMD_BULLDOZER_4274HE_16;
-                }
-            }
-        } else if  (20 == num_cpus){
-            if ( CPU_FAMILY_INTEL == cpu_type ){
-	        if(NULL != strstr(model_name, INTEL_E5_2670_V2_MODEL_NAME)){
-		    arch_type = MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20;
-		} 
-            }
-        } else if  ( 24 == num_cpus ){
-            if ( CPU_FAMILY_AMD == cpu_type ){
-                if (0 == memcmp(AMD_MAGNY_CRS_MAPPING,core_mapping,
-                            sizeof(int)*num_cpus) ) {
-                    arch_type = MV2_ARCH_AMD_MAGNY_COURS_24;
-                }
-            }
-        } else if  ( 32 == num_cpus ){
-            if ( CPU_FAMILY_AMD == cpu_type ){
-                if (0 == memcmp(AMD_OPTERON_32_MAPPING, core_mapping,
-                            sizeof(int)*num_cpus) ) {
-                    arch_type = MV2_ARCH_AMD_OPTERON_6136_32;
-                }
-            }
-        } else if  ( 64 == num_cpus ){
-            if ( CPU_FAMILY_AMD == cpu_type ){
-                if (0 == memcmp(AMD_OPTERON_64_MAPPING, core_mapping,
-                            sizeof(int)*num_cpus) ) {
-                    arch_type = MV2_ARCH_AMD_OPTERON_6276_64;
-                }
-            }
-        }
-
-        fclose(fp);
-        g_mv2_arch_type = arch_type;
-        return arch_type;
-
-    }else {
-        return g_mv2_arch_type;
-    }
-}
-
-
-#endif
-
 /* API for getting the number of cpus */
 int mv2_get_num_cpus()
 {
@@ -520,6 +347,26 @@ int mv2_get_num_cpus()
         g_mv2_arch_type = mv2_get_arch_type();
     }
     return g_mv2_num_cpus;
+}
+
+/* API for getting the CPU model */
+int mv2_get_cpu_model()
+{
+    /* Check if cpu model is already identified */
+    if (-1 == g_mv2_cpu_model){
+        g_mv2_arch_type = mv2_get_arch_type();
+    }
+    return g_mv2_cpu_model;
+}
+
+/* Get CPU family */
+mv2_cpu_family_type mv2_get_cpu_family()
+{
+    /* Check if cpu family is already identified */
+    if (MV2_CPU_FAMILY_NONE == g_mv2_cpu_family_type){
+        g_mv2_arch_type = mv2_get_arch_type();
+    }
+    return g_mv2_cpu_family_type;
 }
 
 /* Check arch-hca type */
@@ -548,7 +395,7 @@ int mv2_is_arch_hca_type(mv2_arch_hca_type arch_hca_type,
     }
     return ret;
 }
-#if defined(_SMP_LIMIC_) && defined(HAVE_LIBHWLOC)
+#if defined(_SMP_LIMIC_)
 void hwlocSocketDetection(int print_details)
 {
     int depth;

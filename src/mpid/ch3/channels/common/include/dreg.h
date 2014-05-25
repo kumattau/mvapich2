@@ -40,12 +40,7 @@
 #include <ib_errors.h>
 #else
 #include "mpichconf.h"
-#ifdef DAPL_DEFAULT_PROVIDER
-#include "udapl_param.h"
-#include "udapl_header.h"
-#else
 #include "ibv_param.h"
-#endif
 #endif
 
 
@@ -67,11 +62,7 @@ extern unsigned long dreg_stat_cache_hit;
 extern unsigned long dreg_stat_cache_miss;
 struct dreg_entry {
     unsigned long pagenum;
-#ifdef DAPL_DEFAULT_PROVIDER
-    VIP_MEM_HANDLE memhandle;
-#else
     struct ibv_mr *memhandle[MAX_NUM_HCAS];
-#endif
 
     int refcount;
 
@@ -273,12 +264,6 @@ void flush_dereg_mrs_external(void);
 
 #ifndef DISABLE_PTMALLOC
 void find_and_free_dregs_inside(void *buf, size_t len);
-#endif
-
-#ifdef DAPL_DEFAULT_PROVIDER
-int register_memory(void *buf, int len, int hca_num, dreg_entry *d);
-
-int deregister_memory(VIP_MEM_HANDLE * mr);
 #endif
 
 #if defined(CKPT) ||  defined(ENABLE_CHECKPOINTING)

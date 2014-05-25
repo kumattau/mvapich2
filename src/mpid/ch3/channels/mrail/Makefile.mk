@@ -29,11 +29,6 @@ AM_CPPFLAGS += -I$(top_builddir)/src/mpid/ch3/channels/mrail/src/gen2	\
 	       -I$(top_srcdir)/src/mpid/ch3/channels/mrail/src/gen2
 endif
 
-if BUILD_MRAIL_UDAPL
-AM_CPPFLAGS += -I$(top_builddir)/src/mpid/ch3/channels/mrail/src/udapl	\
-	       -I$(top_srcdir)/src/mpid/ch3/channels/mrail/src/udapl
-endif
-
 include $(top_srcdir)/src/mpid/ch3/channels/mrail/src/Makefile.mk
 
 endif

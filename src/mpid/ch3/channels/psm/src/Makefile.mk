@@ -18,6 +18,9 @@ if BUILD_CH3_PSM
 AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/psm/include
 
 lib_lib@MPILIBNAME@_la_SOURCES +=   \
+    src/mpid/ch3/channels/common/src/util/debug_utils.c			\
+    src/mpid/ch3/channels/common/src/detect/arch/mv2_arch_detect.c 	\
+    src/mpid/ch3/channels/common/src/detect/hca/mv2_hca_detect.c	\
     src/mpid/ch3/channels/psm/src/mpidi_calls.c  \
     src/mpid/ch3/channels/psm/src/psm_entry.c    \
     src/mpid/ch3/channels/psm/src/psm_exit.c     \

@@ -72,6 +72,9 @@ int DEBUG_SHM_verbose;
 // Verbosity level for Channel manager
 int DEBUG_CHM_verbose;
 
+// Verbosity level for Init phase
+int DEBUG_INIT_verbose;
+
 static inline int env2int (char *name)
 {
     char* env_str = getenv( name );
@@ -99,6 +102,7 @@ int initialize_debug_variables() {
     DEBUG_MCST_verbose = env2int( "MV2_DEBUG_MCST_VERBOSE" );
     DEBUG_SHM_verbose = env2int( "MV2_DEBUG_SHM_VERBOSE" );
     DEBUG_CHM_verbose = env2int( "MV2_DEBUG_CHM_VERBOSE" );
+    DEBUG_INIT_verbose = env2int( "MV2_DEBUG_INIT_VERBOSE" );
     return 0;
 }
 
@@ -124,4 +128,37 @@ void mv2_print_mem_usage()
     } else {
         PRINT_INFO(DEBUG_MEM_verbose, "Status file could not be opened \n");
     }
+}
+
+inline void dump_device_cap(struct ibv_device_attr dev_attr)
+{
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of supported QPs                                                               : %6d\n", dev_attr.max_qp);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of outstanding WR on any work queue                                            : %6d\n", dev_attr.max_qp_wr);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of s/g per WR for non-RD QPs                                                   : %6d\n", dev_attr.max_sge);
+    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of s/g per WR for RD QPs                                                       : %6d\n", dev_attr.max_sge_rd);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of supported CQs                                                               : %6d\n", dev_attr.max_cq);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of CQE capacity per CQ                                                         : %6d\n", dev_attr.max_cqe);
+    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of supported MRs                                                               : %6d\n", dev_attr.max_mr);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of supported PDs                                                               : %6d\n", dev_attr.max_pd);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of RDMA Read & Atomic operations that can be outstanding per QP                : %6d\n", dev_attr.max_qp_rd_atom);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of RDMA Read & Atomic operations that can be outstanding per EEC               : %6d\n", dev_attr.max_ee_rd_atom);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of resources used for RDMA Read & Atomic operations by this HCA as the Target  : %6d\n", dev_attr.max_res_rd_atom);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum depth per QP for initiation of RDMA Read & Atomic operations                          : %6d\n", dev_attr.max_qp_init_rd_atom);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum depth per EEC for initiation of RDMA Read & Atomic operations                         : %6d\n", dev_attr.max_ee_init_rd_atom);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Atomic operations support level                                                               : %6d\n", dev_attr.atomic_cap);
+    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of supported EE contexts                                                       : %6d\n", dev_attr.max_ee);
+    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of supported RD domains                                                        : %6d\n", dev_attr.max_rdd);
+    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of supported MWs                                                               : %6d\n", dev_attr.max_mw);
+    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of supported raw IPv6 datagram QPs                                             : %6d\n", dev_attr.max_raw_ipv6_qp);
+    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of supported Ethertype datagram QPs                                            : %6d\n", dev_attr.max_raw_ethy_qp);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of supported multicast groups                                                  : %6d\n", dev_attr.max_mcast_grp);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of QPs per multicast group which can be attached                               : %6d\n", dev_attr.max_mcast_qp_attach);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of supported address handles                                                   : %6d\n", dev_attr.max_ah);
+    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of supported FMRs                                                              : %6d\n", dev_attr.max_fmr);
+    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of (re)maps per FMR before an unmap operation in required                      : %6d\n", dev_attr.max_map_per_fmr);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of supported SRQs                                                              : %6d\n", dev_attr.max_srq);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of WRs per SRQ                                                                 : %6d\n", dev_attr.max_srq_wr);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of s/g per SRQ                                                                 : %6d\n", dev_attr.max_srq_sge);
+    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of partitions                                                                  : %6d\n", dev_attr.max_pkeys);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of QPs which can be attached to multicast groups                               : %6d\n", dev_attr.max_total_mcast_qp_attach);
 }

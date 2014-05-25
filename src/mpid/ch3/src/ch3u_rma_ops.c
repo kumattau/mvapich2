@@ -219,8 +219,12 @@ int MPIDI_Put(const void *origin_addr, int origin_count, MPI_Datatype
     }
 
     /* If the put is a local operation, do it here */
-    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
-        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))
+    if (target_rank == rank || (
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+        (win_ptr->use_direct_shm == 1) && 
+#endif
+        (win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
+        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))))
     {
         mpi_errno = MPIDI_CH3I_Shm_put_op(origin_addr, origin_count, origin_datatype, target_rank,
                                           target_disp, target_count, target_datatype, win_ptr);
@@ -366,8 +370,12 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
     }
     
     /* If the get is a local operation, do it here */
-    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
-        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))
+    if (target_rank == rank || (
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+        (win_ptr->use_direct_shm == 1) &&
+#endif
+        (win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
+        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))))
     {
         mpi_errno = MPIDI_CH3I_Shm_get_op(origin_addr, origin_count, origin_datatype, target_rank,
                                           target_disp, target_count, target_datatype, win_ptr);
@@ -505,8 +513,12 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
     }
 
     /* Do =! rank first (most likely branch?) */
-    if (target_rank == rank || win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
-        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))
+    if (target_rank == rank || (
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+        (win_ptr->use_direct_shm == 1) &&
+#endif
+        (win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
+        (win_ptr->shm_allocated == TRUE && orig_vc->node_id == target_vc->node_id))))
     {
 	mpi_errno = MPIDI_CH3I_Shm_acc_op(origin_addr, origin_count, origin_datatype,
 					  target_rank, target_disp, target_count, target_datatype,
@@ -594,7 +606,7 @@ void *MPIDI_Alloc_mem( size_t size, MPID_Info *info_ptr )
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_ALLOC_MEM);
 
-#if defined (CHANNEL_MRAIL) && !defined (DAPL_DEFAULT_PROVIDER)
+#if defined (CHANNEL_MRAIL)
     ap = MPIDI_CH3I_Alloc_mem(size, info_ptr);
 #else
     ap = MPIU_Malloc(size);
@@ -616,7 +628,7 @@ int MPIDI_Free_mem( void *ptr )
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_FREE_MEM);
 
-#if defined(CHANNEL_MRAIL) && !defined (DAPL_DEFAULT_PROVIDER)
+#if defined(CHANNEL_MRAIL)
     MPIDI_CH3I_Free_mem(ptr);
 #else
     MPIU_Free(ptr);

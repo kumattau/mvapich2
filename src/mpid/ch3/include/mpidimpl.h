@@ -723,6 +723,7 @@ int MPIDI_PG_Create_from_string(const char * str, MPIDI_PG_t ** pg_pptr,
 typedef enum MPIDI_VC_State
 {
     MPIDI_VC_STATE_INACTIVE=1,      /* Comm either hasn't started or has completed. */
+    MPIDI_VC_STATE_LOCAL_ACTIVE,    /* Local process has initiated connection, but remote process has not ack'ed */
     MPIDI_VC_STATE_ACTIVE,          /* Comm has started and hasn't completed */
     MPIDI_VC_STATE_LOCAL_CLOSE,     /* Local side has initiated close protocol */
     MPIDI_VC_STATE_REMOTE_CLOSE,    /* Remote side has initiated close protocol */

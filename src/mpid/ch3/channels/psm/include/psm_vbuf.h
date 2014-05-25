@@ -40,6 +40,7 @@ typedef struct vbuf
 {
     struct vbuf_region* region;
     unsigned char* buffer;
+    void *req;
     void *next;
 } vbuf;
 

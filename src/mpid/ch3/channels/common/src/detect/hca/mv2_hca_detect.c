@@ -126,6 +126,7 @@ static const float get_link_speed(uint8_t speed)
 
 #endif
 
+#if defined(HAVE_LIBIBVERBS)
 mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 {
     int rate=0;
@@ -257,14 +258,30 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
     }    
     return hca_type;
 }
+#else
+mv2_hca_type mv2_get_hca_type(void *dev)
+{
+    return MV2_HCA_UNKWN;
+}
+#endif
 
-mv2_arch_hca_type mv2_get_arch_hca_type ( struct ibv_device *dev )
+#if defined(HAVE_LIBIBVERBS)
+mv2_arch_hca_type mv2_get_arch_hca_type (struct ibv_device *dev)
 {
     mv2_arch_hca_type arch_hca = mv2_get_arch_type();
     arch_hca = arch_hca << 32 | mv2_get_hca_type(dev);
     return arch_hca;
 }
+#else 
+mv2_arch_hca_type mv2_get_arch_hca_type (void *dev)
+{
+    mv2_arch_hca_type arch_hca = mv2_get_arch_type();
+    arch_hca = arch_hca << 32 | mv2_get_hca_type(dev);
+    return arch_hca;
+}
+#endif
 
+#if defined(HAVE_LIBIBVERBS)
 mv2_multirail_info_type mv2_get_multirail_info()
 {
     if ( mv2_num_rail_unknown == g_mv2_multirail_info ) {
@@ -295,4 +312,11 @@ mv2_multirail_info_type mv2_get_multirail_info()
     }
     return g_mv2_multirail_info;
 }
+#else
+mv2_multirail_info_type mv2_get_multirail_info()
+{
+    return mv2_num_rail_unknown;
+}
+
+#endif
 

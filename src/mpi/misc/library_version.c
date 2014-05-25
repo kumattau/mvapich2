@@ -79,14 +79,14 @@ int MPI_Get_library_version(char *version, int *resultlen)
     /* ... body of routine ...  */
 
     MPL_snprintf(version, MPI_MAX_LIBRARY_VERSION_STRING,
-                 "MVAPICH2 Version:\t%s\n"
-                 "MVAPICH2 Release date:\t%s\n"
-                 "MVAPICH2 Device:\t%s\n"
-                 "MVAPICH2 configure:\t%s\n"
-                 "MVAPICH2 CC:\t%s\n"
-                 "MVAPICH2 CXX:\t%s\n"
-                 "MVAPICH2 F77:\t%s\n"
-                 "MVAPICH2 FC:\t%s\n",
+                 "MVAPICH2 Version      :\t%s\n"
+                 "MVAPICH2 Release date :\t%s\n"
+                 "MVAPICH2 Device       :\t%s\n"
+                 "MVAPICH2 configure    :\t%s\n"
+                 "MVAPICH2 CC           :\t%s\n"
+                 "MVAPICH2 CXX          :\t%s\n"
+                 "MVAPICH2 F77          :\t%s\n"
+                 "MVAPICH2 FC           :\t%s\n",
                  MPIR_Version_string, MPIR_Version_date, MPIR_Version_device,
                  MPIR_Version_configure, MPIR_Version_CC, MPIR_Version_CXX,
                  MPIR_Version_F77, MPIR_Version_FC);

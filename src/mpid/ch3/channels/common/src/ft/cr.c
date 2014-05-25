@@ -51,9 +51,7 @@
 #include "error_handling.h"
 #include "debug_utils.h"
 
-#if defined(HAVE_LIBHWLOC)
 #include "hwloc_bind.h"
-#endif
 
 #ifdef ENABLE_SCR
 #include "scr.h"
@@ -1484,11 +1482,9 @@ int CR_IBU_Release_network()
             return (-1);
         }
     }
-#if defined(HAVE_LIBHWLOC)
     if(mv2_enable_affinity == 1) { 
        hwloc_topology_destroy(topology);
     } 
-#endif
 
     return 0;
 }
@@ -2035,7 +2031,6 @@ int CR_IBU_Reactivate_channels()
         }
     }
 
-#if defined(HAVE_LIBHWLOC)
     int pg_rank;
     PMI_Get_rank(&pg_rank);
     retval = MPIDI_CH3I_set_affinity(MPICR_pg, pg_rank);
@@ -2044,7 +2039,7 @@ int CR_IBU_Reactivate_channels()
                                           __FILE__, __LINE__, retval);
         return (retval);
     }
-#endif
+
     /* Reinitialize the SMP channel */
     PRINT_DEBUG(DEBUG_CR_verbose, "MPIDI_CH3I_SMP_init()\n");
     retval = MPIDI_CH3I_SMP_init(MPICR_pg);

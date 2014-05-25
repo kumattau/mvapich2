@@ -907,7 +907,6 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
     int table_min_inter_size = 0;
     int table_max_inter_size = 0;
     int last_inter;
-    int last_intra;
     int lp2ltn; // largest power of 2 less than n
     MPI_Comm shmem_comm;
     MPID_Comm *shmem_commptr=NULL;

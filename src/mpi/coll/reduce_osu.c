@@ -1870,13 +1870,13 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
     }
     if(rdma_enable_cuda && recv_mem_type){
         if(recv_host_buf){
-            free(recv_host_buf);
+            MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
     if(rdma_enable_cuda && send_mem_type){
         if(send_host_buf){
-            free(send_host_buf);
+            MPIU_Free(send_host_buf);
             send_host_buf = NULL;
         }
     }
@@ -2085,13 +2085,13 @@ int MPIR_Reduce_MV2(const void *sendbuf,
     }
     if(rdma_enable_cuda && recv_mem_type){
         if(recv_host_buf){
-            free(recv_host_buf);
+            MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
     if(rdma_enable_cuda && send_mem_type){
         if(send_host_buf){
-            free(send_host_buf);
+            MPIU_Free(send_host_buf);
             send_host_buf = NULL;
         }
     }

@@ -13,9 +13,7 @@
 #include "ibv_param.h"
 #include "coll_shmem_internal.h"
 #include "gather_tuning.h"
-#if defined(HAVE_LIBHWLOC)
 #include "hwloc_bind.h"
-#endif
 
 /* List of all runtime environment variables.
 ** Format of the parameter info
@@ -1453,7 +1451,6 @@ mv2_env_param_list_t  param_list[] = {
     NULL,
     1,
     NULL    },
-#if defined(HAVE_LIBHWLOC)
 {
     MV2_ENABLE_AFFINITY,
     MV2_PARAM_TYPE_INT,
@@ -1470,7 +1467,6 @@ mv2_env_param_list_t  param_list[] = {
     &mv2_enable_leastload,
     0,
     NULL    },
-#endif
 #if defined(_SMP_LIMIC_)
 {
     MV2_LIMIC_GET_THRESHOLD,

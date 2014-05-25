@@ -2274,7 +2274,7 @@ int cuda_stage_alloc(void **send_buf, int sendsize,
             if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
                 ibv_cuda_unregister(mv2_cuda_host_send_buf);
             }
-            free(mv2_cuda_host_send_buf);
+            MPIU_Memalign_Free(mv2_cuda_host_send_buf);
         }
         mv2_cuda_host_sendbuf_size =
             sendsize < rdma_cuda_block_size ? rdma_cuda_block_size : sendsize;
@@ -2294,7 +2294,7 @@ int cuda_stage_alloc(void **send_buf, int sendsize,
             if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
                 ibv_cuda_unregister(mv2_cuda_host_recv_buf);
             }
-            free(mv2_cuda_host_recv_buf);
+            MPIU_Memalign_Free(mv2_cuda_host_recv_buf);
         }
         mv2_cuda_host_recvbuf_size =
             recvsize < rdma_cuda_block_size ? rdma_cuda_block_size : recvsize;
@@ -2434,7 +2434,7 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
                 if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
                     ibv_cuda_unregister(mv2_cuda_host_send_buf);
                 }
-                free(mv2_cuda_host_send_buf);
+                MPIU_Memalign_Free(mv2_cuda_host_send_buf);
             }
             mv2_cuda_host_sendbuf_size = total_send_size < rdma_cuda_block_size ?
                 rdma_cuda_block_size : total_send_size;
@@ -2470,7 +2470,7 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
                 if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
                     ibv_cuda_unregister(mv2_cuda_host_recv_buf);
                 }
-                free(mv2_cuda_host_recv_buf);
+                MPIU_Memalign_Free(mv2_cuda_host_recv_buf);
             }
             mv2_cuda_host_recvbuf_size = total_recv_size < rdma_cuda_block_size ?
                 rdma_cuda_block_size : total_recv_size;
@@ -2591,20 +2591,20 @@ void CUDA_COLL_Finalize()
         if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
             ibv_cuda_unregister(mv2_cuda_host_recv_buf);
         }
-        free(mv2_cuda_host_recv_buf);
+        MPIU_Memalign_Free(mv2_cuda_host_recv_buf);
         mv2_cuda_host_recv_buf = NULL;
     }
     if (mv2_cuda_host_send_buf) {
         if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
             ibv_cuda_unregister(mv2_cuda_host_send_buf);
         }
-        free(mv2_cuda_host_send_buf);
+        MPIU_Memalign_Free(mv2_cuda_host_send_buf);
         mv2_cuda_host_send_buf = NULL;
     }
 
     if (mv2_cuda_allgather_store_buf) {
         ibv_cuda_unregister(mv2_cuda_allgather_store_buf);
-        free(mv2_cuda_allgather_store_buf);
+        MPIU_Memalign_Free(mv2_cuda_allgather_store_buf);
         mv2_cuda_allgather_store_buf = NULL;
     }
 
@@ -4098,15 +4098,15 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
 
 void mv2_shm_coll_cleanup(shmem_info_t * shmem)
 {
-    int k;
+    int k, local_size;
     PRINT_DEBUG(DEBUG_SHM_verbose > 0, " Cleanup shmem file:%s fd:%d size:%d\n",
                 shmem->file_name, shmem->file_fd, shmem->size);
-    for (k = 0; k < shmem->local_size; k++) {
-        if (&(shmem->queue[k]) != NULL) {
-	    MPIU_Free(shmem->queue[k].shm_slots);
-        }
+    local_size = shmem->size / ((mv2_shm_slot_len + sizeof (shm_slot_t) + sizeof(volatile uint32_t)) * mv2_shm_window_size);
+    for (k = 0; k < local_size; k++) {
+        MPIU_Free(shmem->queue[k].shm_slots);
     }
-    if (shmem->queue != NULL) MPIU_Free(shmem->queue);
+    
+    MPIU_Free(shmem->queue);
 #if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
     int mpi_errno = MPI_SUCCESS;
     MPI_Status status;

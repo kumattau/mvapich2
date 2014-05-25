@@ -30,7 +30,6 @@
 #include "mpiutil.h"
 #include "hwloc_bind.h"
 
-#if defined(HAVE_LIBHWLOC)
 /* CPU Mapping related definitions */
 
 #define CONFIG_FILE "/proc/cpuinfo"
@@ -1875,5 +1874,3 @@ void mv2_show_cpu_affinity(MPIDI_PG_t * pg)
     }
     MPIU_Free(allproc_cpu_set);
 }
-
-#endif /* defined(HAVE_LIBHWLOC) */

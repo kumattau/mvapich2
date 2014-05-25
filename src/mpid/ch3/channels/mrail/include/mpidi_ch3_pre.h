@@ -343,6 +343,7 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
     int ** remote_post_flags;                                                    \
                                                                                  \
     int using_start;                                                             \
+    int use_direct_shm;                                                          \
     /*for get/put queue*/                                                        \
     MPIDI_CH3I_RDMA_put_get_list * put_get_list;                                 \
     int put_get_list_size;                                                       \

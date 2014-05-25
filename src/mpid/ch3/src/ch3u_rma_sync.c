@@ -21,10 +21,10 @@
 #include "dreg.h"
 #endif
 
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_SMP_LIMIC_)
 #include "mpiimpl.h"
 #include <limic.h>
-#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
+#endif /* _SMP_LIMIC_ */
 
 #if defined(CHANNEL_MRAIL)
 #include "rdma_impl.h"
@@ -795,9 +795,9 @@ static MPIR_T_pvar_timer_t *list_complete_timer;  /* outer */
 static unsigned long long *list_complete_counter;
 static MPIR_T_pvar_timer_t *list_block_timer;     /* Inner; while waiting */
 
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_SMP_LIMIC_)
 extern int limic_fd;
-#endif /*_SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
+#endif /*_SMP_LIMIC_ */
 
 /*
  * These routines provide a default implementation of the MPI RMA operations
@@ -3799,7 +3799,7 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win *win_ptr)
     target_state = &win_ptr->targets[dest];
 
     /* Check if a lock has already been issued (in the ops list or already issued) */
-#if defined(CHANNEL_MRAIL) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(CHANNEL_MRAIL)
     /* MPIDI_Win_unlock can grant the lock after relesing the self.
     ** Hence removed (tr->targets[dest].remote_lock_state != MPIDI_CH3_WIN_LOCK_NONE) 
     ** from error check */
@@ -4045,6 +4045,7 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
     
 #if defined(CHANNEL_MRAIL)
     win_ptr->using_lock = 0;
+    win_ptr->use_rdma_path = 0;
 #endif /* defined(CHANNEL_MRAIL) */
 
     MPIU_Assert(MPIDI_CH3I_RMA_Ops_isempty(&win_ptr->targets[dest].rma_ops_list));
@@ -4157,6 +4158,7 @@ int MPIDI_Win_flush(int rank, MPID_Win *win_ptr)
     rma_op = MPIDI_CH3I_RMA_Ops_head(&win_ptr->targets[rank].rma_ops_list);
 
 #if defined(CHANNEL_MRAIL_GEN2)
+    win_ptr->use_rdma_path = 1;
     if (win_ptr->rma_issued != 0 && win_ptr->enable_fast_path == 1) {
         mpi_errno = MPIDI_CH3I_RDMA_finish_rma_target(win_ptr, rank);
     }
@@ -4202,7 +4204,7 @@ int MPIDI_Win_flush(int rank, MPID_Win *win_ptr)
         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
     }
 
-#if defined (CHANNEL_MRAIL) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (CHANNEL_MRAIL)
     win_ptr->using_lock = 0;
     if (win_ptr->fall_back != 1){
         MPIDI_CH3I_RDMA_try_rma(win_ptr, rank);
@@ -6595,8 +6597,6 @@ int MPIDI_CH3_PktHandler_Get_AccumResp( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #if defined(CHANNEL_MRAIL) 
     MPID_Request_get_ptr(get_accum_resp_pkt->request_handle, req);
 
-    MPID_Datatype *result_dtp = NULL;
-    MPID_Datatype_get_ptr(req->dev.datatype, result_dtp);
     MPID_Datatype_get_size_macro(req->dev.datatype, type_size);
 
     data_len = type_size * req->dev.user_count; 

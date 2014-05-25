@@ -124,10 +124,19 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                 break;
             }
 
-            ret = rdma_resolve_route(cma_id, rdma_cm_arp_timeout);
+            do {
+                ret = rdma_resolve_route(cma_id, rdma_cm_arp_timeout*exp_factor);
+                if (ret) {
+                    connect_attempts++;
+                    exp_factor *= 2;
+                    PRINT_DEBUG(DEBUG_CM_verbose>0, "connect_attempts = %d, exp_factor=%d, ret = %d,"
+                        "wait_time = %d ms\n", connect_attempts, exp_factor, ret,
+                        (rdma_cm_arp_timeout*exp_factor));
+                }
+            } while (ret && (connect_attempts < max_rdma_connect_attempts));
             if (ret) {
-            ibv_va_error_abort(IBV_RETURN_ERR,
-                "rdma_resolve_route error %d\n", ret);
+                ibv_va_error_abort(IBV_RETURN_ERR,
+                        "rdma_resolve_route error %d\n", ret);
             }
 
         break;
@@ -264,6 +273,9 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             else
                 vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_SRV;
 
+            PRINT_DEBUG(DEBUG_CM_verbose>0, "Current state of %d is %s, moving to LOCAL_ACTIVE.\n",  vc->pg_rank, MPIDI_VC_GetStateString(vc->state));
+            vc->state = MPIDI_VC_STATE_LOCAL_ACTIVE;
+
             vc->mrail.rails[rail_index].cm_ids = cma_id;
         
             /* Create qp */
@@ -374,11 +386,17 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             ibv_va_error_abort(IBV_RETURN_ERR,
                 "RDMA CM Address error: rdma cma event %d, error %d\n", 
                     event->event, event->status);
+        break;
         case RDMA_CM_EVENT_ROUTE_ERROR:
-            ibv_va_error_abort(IBV_RETURN_ERR,
+            PRINT_DEBUG(DEBUG_CM_verbose>0,
                 "RDMA CM Route error: rdma cma event %d, error %d\n", 
                     event->event, event->status);
+        break;
         case RDMA_CM_EVENT_CONNECT_ERROR:
+            PRINT_DEBUG(DEBUG_CM_verbose>0,
+                "RDMA CM Connect error: rdma cma event %d, error %d\n", 
+                    event->event, event->status);
+        break;
         case RDMA_CM_EVENT_UNREACHABLE:
         ibv_va_error_abort(IBV_RETURN_ERR,
             "rdma cma event %d, error %d\n", event->event, 
@@ -739,6 +757,8 @@ int rdma_cm_connect_all(int *hosts, int pg_rank, MPIDI_PG_t *pg)
 
                 MPIDI_PG_Get_vc(pg, i, &vc);
                 vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_CLI;
+                vc->state = MPIDI_VC_STATE_LOCAL_ACTIVE;
+                PRINT_DEBUG(DEBUG_CM_verbose>0, "Current state of %d is %s.\n",  vc->pg_rank, MPIDI_VC_GetStateString(vc->state));
 
                 /* Initiate all needed qp connections */
                 for (j = 0; j < rdma_num_hcas*rdma_num_ports; j++){

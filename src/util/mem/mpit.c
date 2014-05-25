@@ -49,6 +49,13 @@
 
 MPIR_T_PVAR_ULONG2_LEVEL_DECL_STATIC(MV2, mem_allocated);
 MPIR_T_PVAR_ULONG2_HIGHWATERMARK_DECL_STATIC(MV2, mem_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_STATIC(MV2, num_malloc_calls);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_STATIC(MV2, num_calloc_calls);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_STATIC(MV2, num_memalign_calls);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_STATIC(MV2, num_strdup_calls);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_STATIC(MV2, num_realloc_calls);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_STATIC(MV2, num_free_calls);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_STATIC(MV2, num_memalign_free_calls)
 
 typedef struct {
     void * addr;
@@ -61,9 +68,131 @@ static void * oracle = NULL;
  * This variable is used to count memory before MPIT is initialized
  */
 static size_t unaccounted = 0;
+static size_t unaccounted_malloc = 0;
+static size_t unaccounted_calloc = 0;
+static size_t unaccounted_memalign = 0;
+static size_t unaccounted_strdup = 0;
+static size_t unaccounted_realloc = 0;
+static size_t unaccounted_free = 0;
+static size_t unaccounted_memalign_free = 0;
+
 static int initialized = 0;
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t oracle_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+
+static inline void
+increment_malloc_counter (void)
+{
+    pthread_mutex_lock(&mutex);
+
+    if (initialized) {
+        MPIR_T_PVAR_COUNTER_INC(MV2, num_malloc_calls, 1);
+    }
+
+    else {
+        unaccounted_malloc++;
+    }
+
+    pthread_mutex_unlock(&mutex);
+}
+
+static inline void
+increment_calloc_counter (void)
+{
+    pthread_mutex_lock(&mutex);
+
+    if (initialized) {
+        MPIR_T_PVAR_COUNTER_INC(MV2, num_calloc_calls, 1);
+    }
+
+    else {
+        unaccounted_calloc++;
+    }
+
+    pthread_mutex_unlock(&mutex);
+}
+
+static inline void
+increment_realloc_counter (void)
+{
+    pthread_mutex_lock(&mutex);
+
+    if (initialized) {
+        MPIR_T_PVAR_COUNTER_INC(MV2, num_realloc_calls, 1);
+    }
+
+    else {
+        unaccounted_realloc++;
+    }
+
+    pthread_mutex_unlock(&mutex);
+}
+
+static inline void
+increment_free_counter (void)
+{
+    pthread_mutex_lock(&mutex);
+
+    if (initialized) {
+        MPIR_T_PVAR_COUNTER_INC(MV2, num_free_calls, 1);
+    }
+
+    else {
+        unaccounted_free++;
+    }
+
+    pthread_mutex_unlock(&mutex);
+}
+
+static inline void
+increment_memalign_counter (void)
+{
+    pthread_mutex_lock(&mutex);
+
+    if (initialized) {
+        MPIR_T_PVAR_COUNTER_INC(MV2, num_memalign_calls, 1);
+    }
+
+    else {
+        unaccounted_memalign++;
+    }
+
+    pthread_mutex_unlock(&mutex);
+}
+
+static inline void
+increment_memalign_free_counter (void)
+{
+    pthread_mutex_lock(&mutex);
+
+    if (initialized) {
+        MPIR_T_PVAR_COUNTER_INC(MV2, num_memalign_free_calls, 1);
+    }
+
+    else {
+        unaccounted_memalign_free++;
+    }
+
+    pthread_mutex_unlock(&mutex);
+}
+
+static inline void
+increment_strdup_counter (void)
+{
+    pthread_mutex_lock(&mutex);
+
+    if (initialized) {
+        MPIR_T_PVAR_COUNTER_INC(MV2, num_strdup_calls, 1);
+    }
+
+    else {
+        unaccounted_strdup++;
+    }
+
+    pthread_mutex_unlock(&mutex);
+}
+
 
 static int
 ptr_cmp (const void * mptr1, const void * mptr2)
@@ -197,17 +326,97 @@ MPIT_MEM_REGISTER_PVARS (void)
             "CH3", /* category name */
             "Maximum level of memory ever allocated within the MPI library");
 
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            num_malloc_calls,
+            MPI_T_VERBOSITY_TUNER_DETAIL,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "MEM", /* category name */
+            "Number of MPIT_malloc calls");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            num_calloc_calls,
+            MPI_T_VERBOSITY_TUNER_DETAIL,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "MEM", /* category name */
+            "Number of MPIT_calloc calls");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            num_memalign_calls,
+            MPI_T_VERBOSITY_TUNER_DETAIL,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "MEM", /* category name */
+            "Number of MPIT_memalign calls");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            num_strdup_calls,
+            MPI_T_VERBOSITY_TUNER_DETAIL,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "MEM", /* category name */
+            "Number of MPIT_strdup calls");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            num_realloc_calls,
+            MPI_T_VERBOSITY_TUNER_DETAIL,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "MEM", /* category name */
+            "Number of MPIT_realloc calls");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            num_free_calls,
+            MPI_T_VERBOSITY_TUNER_DETAIL,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "MEM", /* category name */
+            "Number of MPIT_free calls");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            num_memalign_free_calls,
+            MPI_T_VERBOSITY_TUNER_DETAIL,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "MEM", /* category name */
+            "Number of MPIT_memalign_free calls");
+
     pthread_mutex_lock(&mutex);
     initialized = 1;
     MPIR_T_PVAR_LEVEL_INC(MV2, mem_allocated, unaccounted);
     MPIR_T_PVAR_ULONG2_HIGHWATERMARK_UPDATE(MV2, mem_allocated,
             PVAR_LEVEL_mem_allocated);
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, num_malloc_calls, unaccounted_malloc);
+    MPIR_T_PVAR_COUNTER_INC(MV2, num_calloc_calls, unaccounted_calloc);
+    MPIR_T_PVAR_COUNTER_INC(MV2, num_memalign_calls, unaccounted_memalign);
+    MPIR_T_PVAR_COUNTER_INC(MV2, num_strdup_calls, unaccounted_strdup);
+    MPIR_T_PVAR_COUNTER_INC(MV2, num_realloc_calls, unaccounted_realloc);
+    MPIR_T_PVAR_COUNTER_INC(MV2, num_free_calls, unaccounted_free);
+    MPIR_T_PVAR_COUNTER_INC(MV2, num_memalign_free_calls,
+            unaccounted_memalign_free);
+
     pthread_mutex_unlock(&mutex);
 }
 
 void *
 MPIT_malloc (size_t size, int lineno, char const * filename)
 {
+    increment_malloc_counter();
     void * ptr = mpit_malloc(size, lineno, filename);
 
     if (ptr) {
@@ -222,6 +431,7 @@ void *
 MPIT_calloc (size_t nelements, size_t elementSize, int lineno, char const *
         filename)
 {
+    increment_calloc_counter();
     void * ptr = mpit_calloc(nelements, elementSize, lineno, filename);
     size_t size = nelements * elementSize;
 
@@ -237,6 +447,7 @@ int
 MPIT_memalign (void ** ptr, size_t alignment, size_t size, int lineno, char
         const * filename)
 {
+    increment_memalign_counter();
     int rv = mpit_memalign(ptr, alignment, size, lineno, filename);
 
     if (!rv) {
@@ -250,6 +461,7 @@ MPIT_memalign (void ** ptr, size_t alignment, size_t size, int lineno, char
 char *
 MPIT_strdup (const char * s, int lineno, char const * filename)
 {
+    increment_strdup_counter();
     char * ptr = mpit_strdup(s, lineno, filename);
     size_t size = strlen(s);
 
@@ -264,6 +476,7 @@ MPIT_strdup (const char * s, int lineno, char const * filename)
 void *
 MPIT_realloc (void * ptr, size_t size, int lineno, char const * filename)
 {
+    increment_realloc_counter();
     if (ptr) {
         MPIT_MEMORY_T * mptr = oracle_find(ptr);
         size_t oldsize;
@@ -298,6 +511,7 @@ MPIT_realloc (void * ptr, size_t size, int lineno, char const * filename)
 void
 MPIT_free (void * ptr, int lineno, char const * filename)
 {
+    increment_free_counter();
     size_t oldsize = 0;
 
     if (ptr) {
@@ -316,6 +530,7 @@ MPIT_free (void * ptr, int lineno, char const * filename)
 void
 MPIT_memalign_free (void * ptr, int lineno, char const * filename)
 {
+    increment_memalign_free_counter();
     size_t oldsize = 0;
 
     if (ptr) {

@@ -1225,43 +1225,46 @@ int MPIDI_PG_Close_VCs( void )
 #ifdef _ENABLE_XRC_
         if ((!USE_XRC || VC_XST_ISSET (vc, XF_SMP_VC | XF_DPM_INI)) ? 
                 (vc->state == MPIDI_VC_STATE_ACTIVE || 
-                vc->state == MPIDI_VC_STATE_REMOTE_CLOSE
-            ):(VC_XST_ISUNSET (vc, XF_TERMINATED) &&
+                 vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE ||
+                 vc->state == MPIDI_VC_STATE_REMOTE_CLOSE):
+                (VC_XST_ISUNSET (vc, XF_TERMINATED) &&
                 VC_XST_ISSET (vc, (XF_SEND_IDLE | XF_SEND_CONNECTING))
 #ifdef _ENABLE_UD_ 
                 && VC_XST_ISSET (vc, XF_UD_CONNECTED)
 #endif
-            )) {
+            )) 
+    {
 #else
-
 	    if (vc->state == MPIDI_VC_STATE_ACTIVE ||
-		vc->state == MPIDI_VC_STATE_REMOTE_CLOSE) {
+	        vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE ||
+		    vc->state == MPIDI_VC_STATE_REMOTE_CLOSE) {
 #endif
 #ifdef _ENABLE_XRC_
-        PRINT_DEBUG(DEBUG_XRC_verbose>0, "SendClose %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "SendClose %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags,
                 vc->ch.state);
 #endif
-		mpi_errno = MPIDI_CH3U_VC_SendClose( vc, i );
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+		    mpi_errno = MPIDI_CH3U_VC_SendClose( vc, i );
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 	    } else if (vc->state == MPIDI_VC_STATE_INACTIVE ||
-                       vc->state == MPIDI_VC_STATE_MORIBUND) {
-                /* XXX DJG FIXME-MT should we be checking this? */
-                if (MPIU_Object_get_ref(vc) != 0) {
+            vc->state == MPIDI_VC_STATE_MORIBUND) {
+            /* XXX DJG FIXME-MT should we be checking this? */
+            if (MPIU_Object_get_ref(vc) != 0) {
 		    /* FIXME: If the reference count for the vc is not 0,
 		       something is wrong */
-                    MPIDI_PG_release_ref(pg, &inuse);
-                }
-                /* Inactive connections need to be marked
-                   INACTIVE_CLOSED, so that if a connection request
-                   comes in during the close protocol, we know to
-                   reject it. */
-                if (vc->state == MPIDI_VC_STATE_INACTIVE)
-                    MPIDI_CHANGE_VC_STATE(vc, INACTIVE_CLOSED);
+               MPIDI_PG_release_ref(pg, &inuse);
+            }
+            /* Inactive connections need to be marked
+               INACTIVE_CLOSED, so that if a connection request
+               comes in during the close protocol, we know to
+               reject it. */
+            if (vc->state == MPIDI_VC_STATE_INACTIVE) {
+                MPIDI_CHANGE_VC_STATE(vc, INACTIVE_CLOSED);
             } else {
-		MPIU_DBG_MSG_FMT(CH3_DISCONNECT,VERBOSE,(MPIU_DBG_FDEST,
-		     "vc=%p: not sending a close to %d, vc in state %s", vc,i,
-		     MPIDI_VC_GetStateString(vc->state)));
-	    }
+		        MPIU_DBG_MSG_FMT(CH3_DISCONNECT,VERBOSE,(MPIU_DBG_FDEST,
+        		     "vc=%p: not sending a close to %d, vc in state %s", vc,i,
+	        	     MPIDI_VC_GetStateString(vc->state)));
+	        }
+        }
 	}
 	pg = pg->next;
     }

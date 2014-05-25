@@ -12,17 +12,12 @@
 
 enum OSU_INTERFACE_TYPE {
     OSU_GEN2,
-    OSU_UDAPL,
     OSU_PSM,
     OSU_NEMESIS_IB,
 };
 
 #ifdef CHANNEL_MRAIL_GEN2
 #   define OSU_INTERFACE OSU_GEN2
-#endif
-
-#ifdef CHANNEL_MRAIL_UDAPL
-#   define OSU_INTERFACE OSU_UDAPL
 #endif
 
 #ifdef CHANNEL_PSM

@@ -15,9 +15,7 @@
 #include "rdma_impl.h"
 #include "mem_hooks.h"
 #include "coll_shmem.h"
-#if defined(HAVE_LIBHWLOC)
 #include "hwloc_bind.h"
-#endif
 #if defined(_MCST_SUPPORT_)
 #include "ibv_mcast.h"
 #endif
@@ -29,7 +27,6 @@ int (*check_cq_overflow) (MPIDI_VC_t *c, int rail);
 int (*perform_blocking_progress) (int hca_num, int num_cqs);
 void (*handle_multiple_cqs) (int num_cqs, int cq_choice, int is_send_completion);
 
-#if defined(HAVE_LIBHWLOC)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_set_affinity
 #undef FCNAME
@@ -121,7 +118,6 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
   fn_fail:
     goto fn_exit;
 }
-#endif /* defined(HAVE_LIBHWLOC) */
 
 #undef FUNCNAME
 #define FUNCNAME split_type
@@ -170,6 +166,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_INIT);
+
+    /* Explicitly initializing RDMA_FP to 0 */
+    mv2_MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path = 0;
 
     if (MPIDI_CH3_Pkt_size_index[MPIDI_CH3_PKT_CLOSE] !=
         sizeof(MPIDI_CH3_Pkt_close_t)) {
@@ -370,6 +369,8 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
                 }
                 break;
         }
+        /* Read RDMA FAST Path related params */
+        rdma_set_rdma_fast_path_params(pg_size);
     }
 #if defined(CKPT)
 #if defined(DISABLE_PTMALLOC)
@@ -395,11 +396,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     MV2_collectives_arch_init(mv2_MPIDI_CH3I_RDMA_Process.heterogeneity);
 
-#if defined(HAVE_LIBHWLOC)
     if (MPIDI_CH3I_set_affinity(pg, pg_rank) != MPI_SUCCESS) {
         MPIU_ERR_POP(mpi_errno);
     }
-#endif
 
     /* Initialize the smp channel */
     if ((mpi_errno = MPIDI_CH3I_SMP_init(pg))) {
@@ -434,14 +433,12 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         vc->eager_max_msg_sz = MPIDI_CH3_EAGER_MAX_MSG_SIZE(vc);
     }
 
-#ifndef DAPL_DEFAULT_PROVIDER
     if ((value = getenv("MV2_SHOW_ENV_INFO")) != NULL) {
         mv2_show_env_info = atoi(value);
     }
     if (pg_rank == 0 && mv2_show_env_info) {
         mv2_print_env_info(&mv2_MPIDI_CH3I_RDMA_Process);
     }
-#endif
 
 #if defined(_MCST_SUPPORT_) || defined(_ENABLE_UD_)
     mv2_init_timers();
@@ -495,11 +492,9 @@ int MPIDI_CH3_VC_Init(MPIDI_VC_t * vc)
     vc->smp.recv_active = NULL;
     vc->smp.send_active = NULL;
     vc->ch.req = NULL;
-#ifndef DAPL_DEFAULT_PROVIDER
     vc->mrail.rails = NULL;
     vc->mrail.srp.credits = NULL;
     vc->mrail.cmanager.msg_channels = NULL;
-#endif /* #ifndef DAPL_DEFAULT_PROVIDER */
 #endif /* #if !defined (CHANNEL_PSM) */
     vc->ch.sendq_head = NULL;
     vc->ch.sendq_tail = NULL;
@@ -744,7 +739,6 @@ int MPIDI_CH3_VC_Destroy(struct MPIDI_VC *vc)
     if (vc->ch.req != NULL) {
         MPIU_Free(vc->ch.req);
     }
-#ifndef DAPL_DEFAULT_PROVIDER
     if (vc->mrail.cmanager.msg_channels != NULL) {
         MPIU_Free(vc->mrail.cmanager.msg_channels);
     }
@@ -754,7 +748,6 @@ int MPIDI_CH3_VC_Destroy(struct MPIDI_VC *vc)
     if (vc->mrail.rails != NULL) {
         MPIU_Free(vc->mrail.rails);
     }
-#endif /* #ifndef DAPL_DEFAULT_PROVIDER */
 #endif /* #if !defined (CHANNEL_PSM) */
 
 

@@ -270,12 +270,14 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
 #ifdef _ENABLE_XRC_
         if ((!USE_XRC || VC_XST_ISSET (vc, (XF_SMP_VC | XF_DPM_INI)))?
                 (vc->state == MPIDI_VC_STATE_ACTIVE || 
+                vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE ||
                 vc->state == MPIDI_VC_STATE_REMOTE_CLOSE) : 
                 (VC_XST_ISUNSET (vc, XF_TERMINATED) && 
                  VC_XST_ISSET (vc, (XF_SEND_IDLE 
                                     | XF_SEND_CONNECTING))))
 #else
 		if (vc->state == MPIDI_VC_STATE_ACTIVE ||
+            vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE ||
 		    vc->state == MPIDI_VC_STATE_REMOTE_CLOSE)
 #endif
 		{

@@ -496,6 +496,7 @@ for (i = 0; i < node_size; i++) node_sizes[i] = 0;
 
         *base_pp = (*win_ptr)->base;
 
+        (*win_ptr)->use_direct_shm  = 1;
         /* Provide operation overrides for this window flavor */
         (*win_ptr)->RMAFns.Win_shared_query = MPIDI_CH3_SHM_Win_shared_query;
         (*win_ptr)->RMAFns.Win_free         = MPIDI_CH3_SHM_Win_free;

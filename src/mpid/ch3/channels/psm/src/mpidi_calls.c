@@ -254,7 +254,7 @@ inline int MPIDI_CH3_Progress_poke()
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 
-inline int MPIDI_CH3_Recv(int rank, int tag, int cid, void *buf, int buflen,
+inline int MPIDI_CH3_Recv(int rank, int tag, int cid, void *buf, MPIDI_msg_sz_t buflen,
                           MPI_Status *stat, MPID_Request **req)
 {
     return (psm_recv(rank, tag, cid, buf, buflen, stat, req));
@@ -265,7 +265,7 @@ inline int MPIDI_CH3_Recv(int rank, int tag, int cid, void *buf, int buflen,
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 
-inline int MPIDI_CH3_iRecv(int rank, int tag, int cid, void *buf, int buflen,
+inline int MPIDI_CH3_iRecv(int rank, int tag, int cid, void *buf, MPIDI_msg_sz_t buflen,
         MPID_Request *req)
 {
     return (psm_irecv(rank, tag, cid, buf, buflen, req));

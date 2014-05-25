@@ -13,11 +13,7 @@
 #include "mpichconf.h"
 
 #ifndef NEMESIS_BUILD
-#ifndef DAPL_DEFAULT_PROVIDER
 #include "ibv_param.h"
-#else
-#include "udapl_param.h"
-#endif
 #else
 #define _GNU_SOURCE 1
 #include "ib_param.h"

@@ -23,9 +23,7 @@
 #include "debug_utils.h"
 #include "pmi.h"
 #include "coll_shmem.h"
-#if defined(HAVE_LIBHWLOC)
 #include "hwloc_bind.h"
-#endif
 #if defined(_MCST_SUPPORT_)
 #include "ibv_mcast.h"
 #endif
@@ -108,11 +106,11 @@ int MPIDI_CH3_Finalize()
         mpi_errno = MPIDI_CH3I_SMP_finalize();
         if(mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
-#if defined(HAVE_LIBHWLOC)
+
     if(mv2_enable_affinity == 1) { 
        hwloc_topology_destroy(topology);
     } 
-#endif
+
 fn_exit:
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
     MPIDI_FUNC_EXIT(MPIDI_CH3_FINALIZE);

@@ -24,12 +24,9 @@
 #define INTRA_NODE_ROOT 0
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_bcast_mv2_binomial);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2,
-        mpit_bcast_mv2_scatter_doubling_allgather);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2,
-        mpit_bcast_mv2_scatter_ring_allgather);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2,
-        mpit_bcast_mv2_scatter_ring_allgather_shm);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_bcast_mv2_scatter_doubling_allgather);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_bcast_mv2_scatter_ring_allgather);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_bcast_mv2_scatter_ring_allgather_shm);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_bcast_mv2_shmem);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_bcast_mv2_knomial_internode);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_bcast_mv2_knomial_intranode);
@@ -438,6 +435,11 @@ int MPIR_Bcast_scatter_doubling_allgather_MV2(void *buffer,
     }
 
     nbytes = (MPIDI_msg_sz_t) (count) * type_size;
+
+    if (nbytes < comm_size && !comm_ptr->ch.is_pof2) {
+	mpi_errno = MPIR_Bcast_scatter_ring_allgather_MV2(buffer, count, datatype, root, comm_ptr,  errflag);
+        goto fn_exit;
+    }
 
     if (is_contig && is_homogeneous) {
         /* contiguous and homogeneous. no need to pack. */
@@ -1446,7 +1448,6 @@ int MPIR_Mcast_inter_node_MV2(void *buffer,
     MPIDI_msg_sz_t nbytes;
     MPI_Comm shmem_comm, leader_comm;
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
-    int local_size;
     int leader_rank, leader_comm_rank, leader_of_root;
     bcast_info_t *bcast_info;
     void *buf;
@@ -1459,7 +1460,6 @@ int MPIR_Mcast_inter_node_MV2(void *buffer,
 
     shmem_comm = comm_ptr->ch.shmem_comm;
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
-    local_size = shmem_commptr->local_size;
 
     leader_comm = comm_ptr->ch.leader_comm;
     MPID_Comm_get_ptr(leader_comm, leader_commptr);
@@ -1479,7 +1479,7 @@ int MPIR_Mcast_inter_node_MV2(void *buffer,
         len = MIN(nbytes - pos, MAX_MCAST_FRAGMENT_SIZE);
 
         if (leader_rank == leader_of_root) {
-            if (local_size > 1 && mv2_use_mcast_pipeline_shm) {
+            if (mv2_use_mcast_pipeline_shm) {
                 mpi_errno = MPIR_Shmem_Bcast_MV2((char *) buf, len,
                                                  MPI_BYTE, 0, shmem_commptr, errflag);
             }
@@ -1505,7 +1505,7 @@ int MPIR_Mcast_inter_node_MV2(void *buffer,
             }
         }
 
-        if (local_size > 1 && mv2_use_mcast_pipeline_shm && leader_rank != leader_of_root) {
+        if (mv2_use_mcast_pipeline_shm && leader_rank != leader_of_root) {
             mpi_errno = MPIR_Shmem_Bcast_MV2((char *) buf, len,
                                              MPI_BYTE, 0, shmem_commptr, errflag);
         }

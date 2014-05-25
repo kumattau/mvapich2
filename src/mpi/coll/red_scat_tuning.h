@@ -22,10 +22,6 @@
 #   include "ibv_param.h"
 #endif
 
-#ifdef CHANNEL_MRAIL_UDAPL
-#   include "udapl_param.h"
-#endif
-
 #define NMATCH (3+1)
 
 /* Red_scat tuning flags 
