@@ -27,6 +27,7 @@
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_Finalize(void)
 {
+    extern int finalize_coll_comm;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_FINALIZE);
 
@@ -39,7 +40,7 @@ int MPIDI_CH3_Finalize(void)
     if (mpi_errno) MPIU_ERR_POP (mpi_errno);
 
 #ifdef _OSU_MVAPICH_
-    if (mv2_enable_shmem_collectives) {
+    if (mv2_enable_shmem_collectives || finalize_coll_comm == 1) {
         /* Freeing up shared memory collective resources*/
         mpi_errno = MPIDI_CH3I_SHMEM_COLL_finalize(MPID_nem_mem_region.local_rank,
                         MPID_nem_mem_region.num_local);

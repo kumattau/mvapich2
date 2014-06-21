@@ -182,6 +182,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     MPI_Aint *tmp_buf;
     int errflag = FALSE;
     int noncontig = FALSE;
+    MPIDI_VC_t *vc = NULL;
     MPIU_CHKPMEM_DECL(6);
     MPIU_CHKLMEM_DECL(3);
     MPI_Comm shmem_comm;
@@ -222,6 +223,44 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
 
     /* This node comm only works with hydra, it doesn't work when using mpirun_rsh, so call this
      * function to create shm comm */
+   
+    if (!mv2_enable_shmem_collectives && (*win_ptr)->shm_coll_comm_ref == -1) {
+        MPIDI_PG_Get_vc(MPIDI_Process.my_pg, MPIDI_Process.my_pg_rank, &vc);
+        /* Shared memory for collectives */
+        mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(MPIDI_Process.my_pg,
+                vc->smp.local_rank);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        /* local barrier */
+        mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        /* Memory Mapping shared files for collectives*/
+        mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_Process.my_pg,
+                vc->smp.local_rank);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        /* local barrier */
+        mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        /* Unlink mapped files so that they get cleaned up when
+         * process exits */
+        MPIDI_CH3I_SHMEM_COLL_Unlink();
+        (*win_ptr)->shm_coll_comm_ref == 1;
+    } else if ((*win_ptr)->shm_coll_comm_ref > 0) {
+        (*win_ptr)->shm_coll_comm_ref++;
+    }
+
+
     if((*win_ptr)->comm_ptr->ch.shmem_coll_ok == 0)
         mpi_errno = create_2level_comm((*win_ptr)->comm_ptr->handle, (*win_ptr)->comm_ptr->local_size, (*win_ptr)->comm_ptr->rank);
     if(mpi_errno) {

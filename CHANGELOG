@@ -3,6 +3,16 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-2.0 (06/20/2014)
+
+* Features and Enhancements (since 2.0rc2):
+    - Consider CMA in collective tuning framework
+
+* Bug-Fixes (since 2.0rc2):
+    - Fix bug when disabling registration cache
+    - Fix shared memory window bug when shared memory collectives are disabled
+    - Fix mpirun_rsh bug when running mpmd programs with no arguments
+
 MVAPICH2-2.0rc2 (05/25/2014)
 
 * Features and Enhancements (since 2.0rc1):

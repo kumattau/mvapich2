@@ -96,6 +96,11 @@ int mv2_knomial_2level_bcast_system_size_threshold = 64;
 int mv2_enable_zcpy_bcast=1; 
 int mv2_enable_zcpy_reduce=1; 
 
+int mv2_init_call_once = 0;
+int mv2_mmap_coll_once = 0;
+int mv2_unlink_call_once = 0;
+int finalize_coll_comm = 0;
+
 int mv2_shmem_coll_size = 0;
 char *mv2_shmem_coll_file = NULL;
 
@@ -133,20 +138,20 @@ struct allgatherv_tuning mv2_allgatherv_mv2_tuning_table[] = {
 
 int mv2_enable_shmem_collectives = 1;
 int mv2_allgather_ranking = 1;
-int mv2_disable_shmem_allreduce = 0;
+int mv2_enable_shmem_allreduce = 1;
 int shmem_coll_count_threshold=16; 
 #if defined(_MCST_SUPPORT_)
 int mv2_use_mcast_allreduce = 1;
 int mv2_mcast_allreduce_small_msg_size = 1024;
 int mv2_mcast_allreduce_large_msg_size = 128 * 1024;
 #endif                          /*   #if defined(_MCST_SUPPORT_)  */
-int mv2_disable_shmem_reduce = 0;
+int mv2_enable_shmem_reduce = 1;
 int mv2_use_knomial_reduce = 1;
 int mv2_reduce_inter_knomial_factor = -1;
 int mv2_reduce_zcopy_inter_knomial_factor = 4;
 int mv2_reduce_intra_knomial_factor = -1;
 int mv2_reduce_zcopy_max_inter_knomial_factor = 4; 
-int mv2_disable_shmem_barrier = 0;
+int mv2_enable_shmem_barrier = 1;
 int mv2_use_two_level_gather = 1;
 int mv2_use_direct_gather = 1;
 int mv2_use_two_level_scatter = 1;
@@ -377,26 +382,29 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_shmem_coll_calls);
 void MV2_collectives_arch_init(int heterogeneity)
 {
     MV2_Read_env_vars();
-    MV2_set_gather_tuning_table(heterogeneity);
-    MV2_set_igather_tuning_table(heterogeneity);
-    MV2_set_bcast_tuning_table(heterogeneity);
-    MV2_set_ibcast_tuning_table(heterogeneity);
-    MV2_set_alltoall_tuning_table(heterogeneity);
-    MV2_set_ialltoall_tuning_table(heterogeneity);
-    MV2_set_ialltoallv_tuning_table(heterogeneity);
-    MV2_set_scatter_tuning_table(heterogeneity);
-    MV2_set_iscatter_tuning_table(heterogeneity);
-    MV2_set_allreduce_tuning_table(heterogeneity);
-    MV2_set_iallreduce_tuning_table(heterogeneity);
-    MV2_set_reduce_tuning_table(heterogeneity);
-    MV2_set_ireduce_tuning_table(heterogeneity);
-    MV2_set_allgather_tuning_table(heterogeneity);
-    MV2_set_iallgather_tuning_table(heterogeneity);
-    MV2_set_red_scat_tuning_table(heterogeneity);
-    MV2_set_ireduce_scatter_tuning_table(heterogeneity);
-    MV2_set_allgatherv_tuning_table(heterogeneity);
-    MV2_set_iallgatherv_tuning_table(heterogeneity);
-    MV2_set_ibarrier_tuning_table(heterogeneity);
+    
+    if (mv2_use_osu_collectives) {
+      MV2_set_gather_tuning_table(heterogeneity);
+      MV2_set_igather_tuning_table(heterogeneity);
+      MV2_set_bcast_tuning_table(heterogeneity);
+      MV2_set_ibcast_tuning_table(heterogeneity);
+      MV2_set_alltoall_tuning_table(heterogeneity);
+      MV2_set_ialltoall_tuning_table(heterogeneity);
+      MV2_set_ialltoallv_tuning_table(heterogeneity);
+      MV2_set_scatter_tuning_table(heterogeneity);
+      MV2_set_iscatter_tuning_table(heterogeneity);
+      MV2_set_allreduce_tuning_table(heterogeneity);
+      MV2_set_iallreduce_tuning_table(heterogeneity);
+      MV2_set_reduce_tuning_table(heterogeneity);
+      MV2_set_ireduce_tuning_table(heterogeneity);
+      MV2_set_allgather_tuning_table(heterogeneity);
+      MV2_set_iallgather_tuning_table(heterogeneity);
+      MV2_set_red_scat_tuning_table(heterogeneity);
+      MV2_set_ireduce_scatter_tuning_table(heterogeneity);
+      MV2_set_allgatherv_tuning_table(heterogeneity);
+      MV2_set_iallgatherv_tuning_table(heterogeneity);
+      MV2_set_ibarrier_tuning_table(heterogeneity);
+    }
 }
 
 /* Change the values set inside the array by the one define by the user */
@@ -659,6 +667,8 @@ static int tuning_runtime_init()
 
 void MV2_collectives_arch_finalize()
 {
+  
+  if (mv2_use_osu_collectives) {
     MV2_cleanup_gather_tuning_table();
     MV2_cleanup_igather_tuning_table();
     MV2_cleanup_bcast_tuning_table();
@@ -679,6 +689,7 @@ void MV2_collectives_arch_finalize()
     MV2_cleanup_allgatherv_tuning_table();
     MV2_cleanup_iallgatherv_tuning_table();
     MV2_cleanup_ibarrier_tuning_table();
+  }
 }
 
 void MPIDI_CH3I_SHMEM_COLL_Cleanup()
@@ -703,6 +714,13 @@ void MPIDI_CH3I_SHMEM_COLL_Cleanup()
 
 void MPIDI_CH3I_SHMEM_COLL_Unlink()
 {
+    if (mv2_unlink_call_once == 1)
+        return;
+
+    mv2_unlink_call_once = 1;
+    if (mv2_init_call_once == 1 && mv2_mmap_coll_once == 1)
+        finalize_coll_comm =1;
+
     if (mv2_shmem_coll_obj.fd != -1) {
         unlink(mv2_shmem_coll_file);
     }
@@ -723,6 +741,12 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
     int mpi_errno = MPI_SUCCESS;
     char *value;
     MPIDI_VC_t *vc = NULL;
+
+    if (mv2_init_call_once == 1)
+        return mpi_errno;
+
+    mv2_init_call_once = 1;
+
 #if defined(SOLARIS)
     char *setdir = "/tmp";
 #else
@@ -858,6 +882,11 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
     MPIDI_VC_t *vc = NULL;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLLMMAP);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLLMMAP);
+
+    if (mv2_mmap_coll_once)
+        return mpi_errno;
+
+    mv2_mmap_coll_once = 1;
 
     MPIDI_PG_Get_vc(pg, mv2_my_rank, &vc);
 
@@ -1581,11 +1610,7 @@ void MV2_Read_env_vars(void)
             mv2_enable_shmem_collectives = 0;
     }
     if ((value = getenv("MV2_USE_SHMEM_ALLREDUCE")) != NULL) {
-        flag = (int) atoi(value);
-        if (flag > 0)
-            mv2_disable_shmem_allreduce = 0;
-        else
-            mv2_disable_shmem_allreduce = 1;
+        mv2_enable_shmem_allreduce = !!atoi(value);
     }
 #if defined(_MCST_SUPPORT_)
     if ((value = getenv("MV2_USE_MCAST_ALLREDUCE")) != NULL) {
@@ -1607,11 +1632,7 @@ void MV2_Read_env_vars(void)
     }
 #endif                          /* #if defined(_MCST_SUPPORT_) */
     if ((value = getenv("MV2_USE_SHMEM_REDUCE")) != NULL) {
-        flag = (int) atoi(value);
-        if (flag > 0)
-            mv2_disable_shmem_reduce = 0;
-        else
-            mv2_disable_shmem_reduce = 1;
+        mv2_enable_shmem_reduce = !!atoi(value);
     }
     if ((value = getenv("MV2_USE_KNOMIAL_REDUCE")) != NULL) {
         flag = (int) atoi(value);
@@ -1636,11 +1657,7 @@ void MV2_Read_env_vars(void)
             mv2_reduce_intra_knomial_factor = flag;
     }
     if ((value = getenv("MV2_USE_SHMEM_BARRIER")) != NULL) {
-        flag = (int) atoi(value);
-        if (flag > 0)
-            mv2_disable_shmem_barrier = 0;
-        else
-            mv2_disable_shmem_barrier = 1;
+        mv2_enable_shmem_barrier = !!atoi(value);
     }
     if ((value = getenv("MV2_SHMEM_COLL_NUM_COMM")) != NULL) {
         flag = (int) atoi(value);
@@ -3948,6 +3965,10 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     char s_hostname[SHMEM_COLL_HOSTNAME_LEN];
     struct stat file_status;
     shmem_info_t *shmem = NULL;
+    int errflag = 0, max_local_size = 0;
+    MPID_Comm *shmem_ptr = NULL;
+ 
+    MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_ptr);
 
     shmem = MPIU_Malloc(sizeof (shmem_info_t));
     MPIU_Assert(shmem != NULL);
@@ -3971,11 +3992,23 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     mpi_errno = mv2_reduce_knomial_trace(root, mv2_reduce_zcopy_max_inter_knomial_factor,
                              comm_ptr, &expected_max_send_count,
                              &expected_max_recv_count); 
-    if(local_size < expected_max_recv_count) { 
-         local_size = expected_max_recv_count;
+    if (local_size < expected_max_recv_count) { 
+        local_size = expected_max_recv_count;
     } 
 
-    size = (shmem->count) * slot_len * local_size;
+    /* Initialize max_local_size to local_size so that non-leader processes
+     * get right value */
+    max_local_size = local_size;
+
+    if (!comm_ptr->ch.is_blocked) {
+        mpi_errno = MPIR_Reduce_impl(&local_size, &max_local_size, 1, MPI_INT,
+                                        MPI_MAX, 0, shmem_ptr, &errflag);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+    }
+
+    size = (shmem->count) * slot_len * max_local_size;
 
     MV2_SHM_ALIGN_LEN(size, MV2_SHM_ALIGN);
 
@@ -4036,8 +4069,8 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
 
     ptr = shmem->buffer;
     shmem->queue = (shm_queue_t *) MPIU_Malloc(sizeof (shm_queue_t *)
-            * local_size);
-    for (k = 0; k < local_size; k++) {
+            * max_local_size);
+    for (k = 0; k < max_local_size; k++) {
         shmem->queue[k].shm_slots = (shm_slot_t **)
             MPIU_Malloc(mv2_shm_window_size * sizeof (shm_slot_t *));
         for (i = 0; i < mv2_shm_window_size; i++) {

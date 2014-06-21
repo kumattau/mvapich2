@@ -332,9 +332,11 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model,
     (*win_ptr)->outstanding_rma     = 0;
     (*win_ptr)->use_rdma_path       = 0;
     (*win_ptr)->use_direct_shm      = 0;
+    (*win_ptr)->shm_coll_comm_ref   = -1;
 #endif /* defined(CHANNEL_MRAIL) */
 #if defined (CHANNEL_PSM)
     (*win_ptr)->outstanding_rma     = 0;
+    (*win_ptr)->shm_coll_comm_ref   = -1;
     (*win_ptr)->rank_mapping        = MPIU_Malloc(comm_ptr->local_size * sizeof(uint32_t));
     if((*win_ptr)->rank_mapping == NULL) {
         MPIU_ERR_SET(mpi_errno, MPI_ERR_NO_MEM, "**nomem");

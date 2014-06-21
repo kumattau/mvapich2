@@ -64,6 +64,8 @@ static int is_fair_polling = 0;
 int g_smp_polling_th = 200;
 int g_smp_priority_polling = 1;
 
+extern int finalize_coll_comm;
+
 #define ENQUEUE_p(x) \
     if(!polling_set_p_head) { \
         polling_set_p_head = x; \
@@ -2564,7 +2566,7 @@ int MPIDI_CH3I_SMP_finalize()
         MPIU_Free(s_sh_buf_pool.tail);
     }
 
-    if (mv2_enable_shmem_collectives){
+    if (mv2_enable_shmem_collectives || finalize_coll_comm == 1){
         /* Freeing up shared memory collective resources*/
         MPIDI_CH3I_SHMEM_COLL_finalize( g_smpi.my_local_id, g_smpi.num_local_nodes);
     }

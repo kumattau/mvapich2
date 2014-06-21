@@ -749,6 +749,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 uint64_t add_value;
                 int aligned;
 
+                size = origin_type_size;
                 add_value = *((uint64_t *) origin_addr);
 
                 remote_addr = (char *) win_ptr->base_addrs[target_rank] +
@@ -790,7 +791,8 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 char *return_addr;
                 uint64_t compare_value, swap_value;
                 int aligned;
-
+                
+                size = origin_type_size;
                 swap_value = *((uint64_t *) origin_addr);
                 compare_value = *((uint64_t *) compare_addr);
 

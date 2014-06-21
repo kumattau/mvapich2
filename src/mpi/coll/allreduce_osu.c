@@ -2099,7 +2099,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
             { 
                 /* check if shm is ready, if not use other algorithm first */
                 if ((comm_ptr->ch.shmem_coll_ok == 1)
-                    && (mv2_disable_shmem_allreduce == 0)
+                    && (mv2_enable_shmem_allreduce)
                     && (is_commutative)
                     && (mv2_enable_shmem_collectives)) {
                     mpi_errno = MPIR_Allreduce_two_level_MV2(sendbuf, recvbuf, count,
@@ -2441,7 +2441,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
 		    { 
 			/* check if shm is ready, if not use other algorithm first */
 			if ((comm_ptr->ch.shmem_coll_ok == 1)
-			    && (mv2_disable_shmem_allreduce == 0)
+			    && (mv2_enable_shmem_allreduce)
 			    && (is_commutative)
 			    && (mv2_enable_shmem_collectives)) {
 			    mpi_errno = MPIR_Allreduce_two_level_MV2(sendbuf, recvbuf, count,
@@ -2583,7 +2583,7 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
     {
         if ((comm_ptr->ch.shmem_coll_ok == 1)
             && (stride < mv2_coll_param.allreduce_2level_threshold)
-            && (mv2_disable_shmem_allreduce == 0)
+            && (mv2_enable_shmem_allreduce)
             && (is_commutative)
             && (mv2_enable_shmem_collectives)) {
             mpi_errno = MPIR_Allreduce_shmem_MV2(sendbuf, recvbuf, count, datatype,

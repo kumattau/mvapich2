@@ -361,6 +361,7 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
     int16_t outstanding_rma;                                                     \
     volatile int poll_flag; /* flag to indicate if polling for one sided completions is needed */ \
     void *shm_base_addr;        /* base address of shared memory region */              \
+    int shm_coll_comm_ref;                                                              \
     MPI_Aint shm_segment_len;   /* size of shared memory region */                      \
     MPIU_SHMW_Hnd_t shm_segment_handle; /* handle to shared memory region */            \
     MPIDI_CH3I_SHM_MUTEX *shm_mutex;    /* shared memory windows -- lock for            \

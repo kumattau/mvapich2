@@ -16,6 +16,7 @@
  */
 
 #include "mpidrma.h"
+#include "coll_shmem.h"
 
 static int enableShortACC=1;
 

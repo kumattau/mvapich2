@@ -14,6 +14,8 @@
 #include "coll_shmem.h"
 #include "psm_vbuf.h"
 
+extern int finalize_coll_comm;
+
 #undef FUNCNAME
 #define FUNCNAME psm_dofinalize
 #undef FCNAME
@@ -48,7 +50,7 @@ int psm_dofinalize()
 
     MV2_collectives_arch_finalize();
 
-    if (mv2_enable_shmem_collectives){
+    if (mv2_enable_shmem_collectives || finalize_coll_comm == 1){
         MPIDI_PG_Get_vc(MPIDI_Process.my_pg, MPIDI_Process.my_pg_rank, &vc);
 	    /* Freeing up shared memory collective resources*/
      	MPIDI_CH3I_SHMEM_COLL_finalize(vc->smp.local_rank, MPIDI_Process.my_pg->ch.num_local_processes);

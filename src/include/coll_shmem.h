@@ -221,7 +221,7 @@ extern int mv2_user_allgather_two_level;
 extern int mv2_reduce_zcopy_inter_knomial_factor;
 
 /* Use inside allreduce_osu.c*/
-extern int mv2_disable_shmem_allreduce;
+extern int mv2_enable_shmem_allreduce;
 extern int mv2_user_allreduce_two_level;
 #if defined(_MCST_SUPPORT_)
 extern int mv2_use_mcast_allreduce; 
@@ -236,7 +236,7 @@ extern char *mv2_user_bcast_intra;
 extern char *mv2_user_bcast_inter;
 
 /* Use inside barrier_osu.c*/
-extern int mv2_disable_shmem_barrier;
+extern int mv2_enable_shmem_barrier;
 extern void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int, int, int);
 extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
 
@@ -274,7 +274,7 @@ extern int mv2_enable_zcpy_bcast;
 extern int mv2_enable_zcpy_reduce; 
 
 /* Used inside reduce_osu.c */
-extern int mv2_disable_shmem_reduce;
+extern int mv2_enable_shmem_reduce;
 extern int mv2_use_knomial_reduce;
 extern int mv2_reduce_inter_knomial_factor;
 extern int mv2_reduce_intra_knomial_factor;

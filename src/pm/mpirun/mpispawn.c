@@ -472,8 +472,8 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
 
             if (num_args[j] > 1) {
                 char *arg_tmp = NULL;
+                args_exe[j] = NULL;
                 k = 0;
-
                 while (k < num_args[j] - 1) {
                     if (k == 0) {
                         arg_tmp = strtok(NULL, ":");
@@ -485,8 +485,8 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
 
                     k++;
                 }
-
-                args_exe[j] = strdup(arg_tmp);
+                if(arg_tmp)
+                    args_exe[j] = strdup(arg_tmp);
             }
         }
     }
@@ -503,8 +503,6 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
          * we have read in the host_list.
          */
         if (mpmd_on) {
-            char **tmp_arg = tokenize(args_exe[target[i]], ":");
-
             /*
              * We need to add MPISPAWN_ARGV
              */
@@ -512,10 +510,12 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
                     num_args[target[i]]);
             mpispawn_env = mkstr("%s MPISPAWN_ARGV_0=%s", mpispawn_env,
                     exe[target[i]]);
-
-            for (j = 0; j < num_args[target[i]] - 1; j++) {
-                mpispawn_env = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env,
-                        j + 1, tmp_arg[j]);
+            if(num_args[target[i]] && args_exe[target[i]]) {
+                char **tmp_arg = tokenize(args_exe[target[i]], ":");
+                for (j = 0; j < num_args[target[i]] - 1; j++) {
+                    mpispawn_env = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env,
+                            j + 1, tmp_arg[j]);
+                }
             }
         }
 

@@ -1310,7 +1310,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
         /* First handle the case where there is only one node */
         if (comm_ptr->ch.shmem_coll_ok == 1 &&
             stride <= mv2_coll_param.shmem_intra_reduce_msg &&
-            mv2_disable_shmem_reduce == 0 && is_commutative == 1) {
+            mv2_enable_shmem_reduce && is_commutative == 1) {
             if (local_rank == 0 ) {
                 MPIU_CHKLMEM_MALLOC(tmp_buf, void *, count *
                                     (MPIR_MAX(extent, true_extent)),
@@ -1385,7 +1385,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
     if(mv2_enable_zcpy_reduce == 1 && 
        stride <= mv2_shm_slot_len && 
        comm_ptr->ch.shmem_coll_ok == 1 &&
-       mv2_disable_shmem_reduce == 0 && is_commutative == 1){ 
+       mv2_enable_shmem_reduce && is_commutative == 1){ 
         mpi_errno = MPIR_Reduce_Zcpy_MV2(sendbuf, recvbuf, count,
                                          datatype, op,
                                          root, comm_ptr,
@@ -1434,7 +1434,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
         if (MV2_Reduce_intra_function == & MPIR_Reduce_shmem_MV2)
         {
             if (comm_ptr->ch.shmem_coll_ok == 1 &&
-                mv2_disable_shmem_reduce == 0 && is_commutative == 1
+                mv2_enable_shmem_reduce && is_commutative == 1
 		&& (count * (MPIR_MAX(extent, true_extent)) < SHMEM_COLL_BLOCK_SIZE)) {
                     mpi_errno = MV2_Reduce_intra_function(in_buf, out_buf, count,
                                       datatype, op,

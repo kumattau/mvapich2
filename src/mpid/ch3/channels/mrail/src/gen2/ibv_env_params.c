@@ -619,7 +619,7 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_collective,
     "MV2_USE_SHMEM_ALLREDUCE",
-    &mv2_disable_shmem_allreduce,
+    &mv2_enable_shmem_allreduce,
     1,
     NULL    },
 {
@@ -627,7 +627,7 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_collective,
     "MV2_USE_SHMEM_BARRIER",
-    &mv2_disable_shmem_barrier,
+    &mv2_enable_shmem_barrier,
     1,
     NULL    },
 {
@@ -651,7 +651,7 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_collective,
     "MV2_USE_SHMEM_REDUCE",
-    &mv2_disable_shmem_reduce,
+    &mv2_enable_shmem_reduce,
     1,
     NULL    },
 {

@@ -163,7 +163,7 @@ int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, int *errflag)
     MPIDI_CH3I_CR_lock();
 #endif
 
-    if (mv2_enable_shmem_collectives && mv2_disable_shmem_barrier == 0
+    if (mv2_enable_shmem_collectives && mv2_enable_shmem_barrier
         && comm_ptr->ch.shmem_coll_ok == 1) {
 
         mpi_errno = MPIR_shmem_barrier_MV2(comm_ptr, errflag);

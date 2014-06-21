@@ -1,6 +1,20 @@
+/*
+ * Copyright (c) 2001-2014, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ */
+
 #include "reduce/gen2_RI_1ppn.h"
 #include "reduce/gen2_RI_2ppn.h"
 #include "reduce/gen2_RI_8ppn.h"
+#include "reduce/gen2_cma_RI_1ppn.h"
+#include "reduce/gen2_cma_RI_2ppn.h"
 #include "reduce/gen2_cma_RI_8ppn.h"
 #include "reduce/psm_RI_1ppn.h"
 #include "reduce/psm_RI_2ppn.h"
@@ -29,6 +43,9 @@
 #include "reduce/gen2_cma_INTEL_XEON_E5_2670_16_MLX_CX_FDR_1ppn.h"
 #include "reduce/gen2_cma_INTEL_XEON_E5_2670_16_MLX_CX_FDR_2ppn.h"
 #include "reduce/gen2_cma_INTEL_XEON_E5_2670_16_MLX_CX_FDR_16ppn.h"
+#include "reduce/gen2_cma_INTEL_XEON_E5_2670_16_MLX_CX_QDR_1ppn.h"
+#include "reduce/gen2_cma_INTEL_XEON_E5_2670_16_MLX_CX_QDR_2ppn.h"
+#include "reduce/gen2_cma_INTEL_XEON_E5_2670_16_MLX_CX_QDR_16ppn.h"
 #include "reduce/gen2_INTEL_XEON_E5_2680_16_MLX_CX_FDR_1ppn.h"
 #include "reduce/gen2_INTEL_XEON_E5_2680_16_MLX_CX_FDR_2ppn.h"
 #include "reduce/gen2_INTEL_XEON_E5_2680_16_MLX_CX_FDR_16ppn.h"

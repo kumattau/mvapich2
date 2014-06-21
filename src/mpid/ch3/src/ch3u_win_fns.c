@@ -271,11 +271,9 @@ int MPIDI_CH3U_Win_allocate(MPI_Aint size, int disp_unit, MPID_Info *info,
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_WIN_ALLOCATE);
 
 #if defined(CHANNEL_MRAIL)
-    if ((*win_ptr)->info_args.alloc_shm == TRUE && SMP_INIT && mv2_enable_shmem_collectives
-        && (*win_ptr)->comm_ptr->local_size > 1) {
+    if ((*win_ptr)->info_args.alloc_shm == TRUE && SMP_INIT && (*win_ptr)->comm_ptr->local_size > 1) {
 #elif defined(CHANNEL_PSM)
-    if ((*win_ptr)->info_args.alloc_shm == TRUE && mv2_enable_shmem_collectives
-        && (*win_ptr)->comm_ptr->local_size > 1) {
+    if ((*win_ptr)->info_args.alloc_shm == TRUE && (*win_ptr)->comm_ptr->local_size > 1) {
 #else
     if ((*win_ptr)->info_args.alloc_shm == TRUE) {
 #endif
