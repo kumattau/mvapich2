@@ -45,6 +45,10 @@ MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_reg_cache_misses);
  * Count progress engine polling
  */
 MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mpit_progress_poll);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mpit_smp_read_progress_poll);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mpit_smp_write_progress_poll);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mpit_smp_read_progress_poll_success);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mpit_smp_write_progress_poll_success);
 
 /*
  * Count number of shared-memory collective calls
@@ -138,6 +142,42 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG,
+            mpit_smp_read_progress_poll,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "CH3 SMP read progress engine polling count");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mpit_smp_write_progress_poll,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "CH3 SMP write progress engine polling count");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mpit_smp_read_progress_poll_success,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Unsucessful CH3 SMP read progress engine polling count");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mpit_smp_write_progress_poll_success,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Unsucessful CH3 SMP write progress engine polling count");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
             rdma_ud_retransmissions,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
@@ -151,7 +191,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 binomial bcast algorithm  was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -160,7 +200,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 scatter+double allgather bcast algorithm "
             "was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
@@ -180,7 +220,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 scatter+ring allgather shm bcast "
             "algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
@@ -190,7 +230,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 shmem bcast algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -199,7 +239,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 knomial internode bcast algorithm "
             "was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
@@ -209,7 +249,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 knomial intranode bcast algorithm "
             "was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
@@ -219,7 +259,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 mcast internode bcast algorithm "
             "was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
@@ -229,7 +269,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 pipelined bcast algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -238,7 +278,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 in-place alltoall algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -247,7 +287,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 brucks alltoall algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -256,7 +296,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 recursive-doubling alltoall algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -265,7 +305,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 scatter-destination alltoall algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -274,7 +314,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 pairwise alltoall algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -283,7 +323,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 pairwise alltoallv algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -292,7 +332,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 shm rd allreduce algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -301,7 +341,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 shm rs allreduce algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -310,7 +350,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 shm intra allreduce algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -319,7 +359,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 intra p2p allreduce algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -328,7 +368,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 two-level allreduce algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -337,7 +377,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 shmem allreduce algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
@@ -346,7 +386,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
-            "CH3", /* category name */
+            "COLLECTIVE", /* category name */
             "Number of times MV2 multicast-based allreduce algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,

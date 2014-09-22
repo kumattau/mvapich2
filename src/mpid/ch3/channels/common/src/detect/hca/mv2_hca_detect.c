@@ -25,6 +25,7 @@
 
 static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
 
+#define MV2_STR_MLX          "mlx"
 #define MV2_STR_MLX4         "mlx4"
 #define MV2_STR_MLX5         "mlx5"
 #define MV2_STR_MTHCA        "mthca"
@@ -89,6 +90,15 @@ char* mv2_get_hca_name(mv2_hca_type hca_type)
 static int get_rate(umad_ca_t *umad_ca)
 {
     int i;
+    char *value;
+
+    if ((value = getenv("MV2_DEFAULT_PORT")) != NULL) {
+        int default_port = atoi(value);
+        
+        if(default_port <= umad_ca->numports){
+            return umad_ca->ports[default_port]->rate;
+        }
+    }
 
     for (i = 1; i <= umad_ca->numports; i++) {
         if (IBV_PORT_ACTIVE == umad_ca->ports[i]->state) {
@@ -97,7 +107,8 @@ static int get_rate(umad_ca_t *umad_ca)
     }    
     return 0;
 }
-#else
+#endif
+
 static const int get_link_width(uint8_t width)
 {
     switch (width) {
@@ -124,9 +135,97 @@ static const float get_link_speed(uint8_t speed)
     }   
 }
 
-#endif
-
 #if defined(HAVE_LIBIBVERBS)
+mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
+                                    struct ibv_device *ib_dev)
+{
+    int rate=0;
+    char *dev_name = NULL;
+    mv2_hca_type hca_type = MV2_HCA_UNKWN;
+
+    dev_name = (char*) ibv_get_device_name( ib_dev );
+
+    if (!dev_name) {
+        return MV2_HCA_UNKWN;
+    }
+
+    if (!strncmp(dev_name, MV2_STR_MLX, 3)
+        || !strncmp(dev_name, MV2_STR_MTHCA, 5)) {
+
+        hca_type = MV2_HCA_MLX_PCI_X;
+
+        int query_port = 1;
+        char *value;
+        struct ibv_port_attr port_attr;
+
+        /* honor MV2_DEFAULT_PORT, if set */
+        if ((value = getenv("MV2_DEFAULT_PORT")) != NULL) {
+
+            int max_ports = 1;
+            struct ibv_device_attr device_attr;
+            int default_port = atoi(value);
+            
+            memset(&device_attr, 0, sizeof(struct ibv_device_attr));
+            if(!ibv_query_device(ctx, &device_attr)){
+                max_ports = device_attr.phys_port_cnt;
+            }
+            query_port = (default_port <= max_ports) ? default_port : 1;
+        }
+        
+        if (!ibv_query_port(ctx, query_port, &port_attr)) {
+            rate = (int) (get_link_width(port_attr.active_width)
+                    * get_link_speed(port_attr.active_speed));
+            PRINT_DEBUG(0, "rate : %d\n", rate);
+        }
+        /* mlx4, mlx5 */ 
+        switch(rate) {
+            case 56:
+                hca_type = MV2_HCA_MLX_CX_FDR;
+                break;
+
+            case 40:
+                hca_type = MV2_HCA_MLX_CX_QDR;
+                break;
+
+            case 20:
+                hca_type = MV2_HCA_MLX_CX_DDR;
+                break;
+
+            case 10:
+                hca_type = MV2_HCA_MLX_CX_SDR;
+                break;
+
+            default:
+                hca_type = MV2_HCA_MLX_CX_FDR;
+                break;
+        }
+        if (!strncmp(dev_name, MV2_STR_MLX5, 4) && rate == 56)
+                hca_type = MV2_HCA_MLX_CX_CONNIB; 
+    } else if(!strncmp(dev_name, MV2_STR_IPATH, 5)) {
+        hca_type = MV2_HCA_QLGIC_PATH_HT;
+
+    } else if(!strncmp(dev_name, MV2_STR_QIB, 3)) {
+        hca_type = MV2_HCA_QLGIC_QIB;
+
+    } else if(!strncmp(dev_name, MV2_STR_EHCA, 4)) {
+        hca_type = MV2_HCA_IBM_EHCA;
+
+    } else if (!strncmp(dev_name, MV2_STR_CXGB3, 5)) {
+        hca_type = MV2_HCA_CHELSIO_T3;
+
+    } else if (!strncmp(dev_name, MV2_STR_CXGB4, 5)) {
+        hca_type = MV2_HCA_CHELSIO_T4;
+
+    } else if (!strncmp(dev_name, MV2_STR_NES0, 4)) {
+        hca_type = MV2_HCA_INTEL_NE020;
+
+    } else {
+        hca_type = MV2_HCA_UNKWN;
+    }    
+
+    return hca_type;
+}
+
 mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 {
     int rate=0;
@@ -145,15 +244,32 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 
         hca_type = MV2_HCA_MLX_PCI_X;
 #if !defined(HAVE_LIBIBUMAD)
+        int query_port = 1;
+        char *value;
         struct ibv_context *ctx= NULL;
         struct ibv_port_attr port_attr;
+
 
         ctx = ibv_open_device(dev);
         if (!ctx) {
             return MV2_HCA_UNKWN;
         }
 
-        if (!ibv_query_port(ctx, 1, &port_attr)) {
+        /* honor MV2_DEFAULT_PORT, if set */
+        if ((value = getenv("MV2_DEFAULT_PORT")) != NULL) {
+
+            int max_ports = 1;
+            struct ibv_device_attr device_attr;
+            int default_port = atoi(value);
+            
+            memset(&device_attr, 0, sizeof(struct ibv_device_attr));
+            if(!ibv_query_device(ctx, &device_attr)){
+                max_ports = device_attr.phys_port_cnt;
+            }
+            query_port = (default_port <= max_ports) ? default_port : 1;
+        }
+        
+        if (!ibv_query_port(ctx, query_port, &port_attr)) {
             rate = (int) (get_link_width( port_attr.active_width)
                     * get_link_speed( port_attr.active_speed));
             PRINT_DEBUG(0, "rate : %d\n", rate);
@@ -266,6 +382,14 @@ mv2_hca_type mv2_get_hca_type(void *dev)
 #endif
 
 #if defined(HAVE_LIBIBVERBS)
+mv2_arch_hca_type mv2_new_get_arch_hca_type (struct ibv_context *ctx,
+                                    struct ibv_device *ib_dev)
+{
+    mv2_arch_hca_type arch_hca = mv2_get_arch_type();
+    arch_hca = arch_hca << 32 | mv2_new_get_hca_type(ctx, ib_dev);
+    return arch_hca;
+}
+
 mv2_arch_hca_type mv2_get_arch_hca_type (struct ibv_device *dev)
 {
     mv2_arch_hca_type arch_hca = mv2_get_arch_type();

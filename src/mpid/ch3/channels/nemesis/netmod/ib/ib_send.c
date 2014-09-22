@@ -19,7 +19,7 @@
 #define _GNU_SOURCE
 #include "mpiimpl.h"
 #include "mpidimpl.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "mpid_nem_impl.h"
 
 #include "ib_device.h"

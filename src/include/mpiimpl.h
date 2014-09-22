@@ -3415,7 +3415,7 @@ int MPID_Win_unlock(int dest, MPID_Win *win_ptr);
 int MPID_Win_allocate(MPI_Aint size, int disp_unit, MPID_Info *info,
                       MPID_Comm *comm, void *baseptr, MPID_Win **win);
 int MPID_Win_allocate_shared(MPI_Aint size, int disp_unit, MPID_Info *info_ptr, MPID_Comm *comm_ptr,
-                             void **base_ptr, MPID_Win **win_ptr);
+                             void *base_ptr, MPID_Win **win_ptr);
 int MPID_Win_shared_query(MPID_Win *win, int rank, MPI_Aint *size, int *disp_unit,
                           void *baseptr);
 int MPID_Win_create_dynamic(MPID_Info *info, MPID_Comm *comm, MPID_Win **win);
@@ -3921,7 +3921,6 @@ int MPIR_Localcopy(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    void *recvbuf, int recvcount, MPI_Datatype recvtype);
 #ifdef _ENABLE_CUDA_
 void cuda_init_thread_context();
-int enable_device_ptr_checks;
 int is_device_buffer(const void *buffer);
 int cuda_stage_alloc_v (void **, int *, MPI_Datatype, int **, int,
             void **, int *, MPI_Datatype, int **, int,
@@ -4037,6 +4036,10 @@ int MPIR_Scatter_MV2(const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                  int root, MPID_Comm *comm_ptr, int *errflag );
 int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvcnts, 
                               MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, int *errflag);
+int MPIR_Scan_MV2(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+              MPI_Op op, MPID_Comm *comm_ptr, int *errflag);
+int MPIR_Exscan_MV2(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+                MPI_Op op, MPID_Comm *comm_ptr, int *errflag);
 int MPIR_Barrier_MV2( MPID_Comm *comm_ptr, int *errflag);
 int MPIR_Ibcast_MV2(void *buffer, int count, MPI_Datatype datatype, int root,
                     MPID_Comm *comm_ptr, MPID_Sched_t s);
@@ -4401,7 +4404,7 @@ int MPIR_Ialltoallw_inter(const void *sendbuf, const int *sendcounts, const int 
 /* begin impl functions for MPI_T (MPI_T_ right now) */
 int MPIR_T_cvar_handle_alloc_impl(int cvar_index, void *obj_handle, MPI_T_cvar_handle *handle, int *count);
 int MPIR_T_cvar_read_impl(MPI_T_cvar_handle handle, void *buf);
-int MPIR_T_cvar_write_impl(MPI_T_cvar_handle handle, void *buf);
+int MPIR_T_cvar_write_impl(MPI_T_cvar_handle handle, const void *buf);
 int MPIR_T_pvar_session_create_impl(MPI_T_pvar_session *session);
 int MPIR_T_pvar_session_free_impl(MPI_T_pvar_session *session);
 int MPIR_T_pvar_handle_alloc_impl(MPI_T_pvar_session session, int pvar_index, void *obj_handle, MPI_T_pvar_handle *handle, int *count);
@@ -4409,7 +4412,7 @@ int MPIR_T_pvar_handle_free_impl(MPI_T_pvar_session session, MPI_T_pvar_handle *
 int MPIR_T_pvar_start_impl(MPI_T_pvar_session session, MPI_T_pvar_handle handle);
 int MPIR_T_pvar_stop_impl(MPI_T_pvar_session session, MPI_T_pvar_handle handle);
 int MPIR_T_pvar_read_impl(MPI_T_pvar_session session, MPI_T_pvar_handle handle, void *buf);
-int MPIR_T_pvar_write_impl(MPI_T_pvar_session session, MPI_T_pvar_handle handle, void *buf);
+int MPIR_T_pvar_write_impl(MPI_T_pvar_session session, MPI_T_pvar_handle handle, const void *buf);
 int MPIR_T_pvar_reset_impl(MPI_T_pvar_session session, MPI_T_pvar_handle handle);
 int MPIR_T_pvar_readreset_impl(MPI_T_pvar_session session, MPI_T_pvar_handle handle, void *buf);
 int MPIR_T_category_get_cvars_impl(int cat_index, int len, int indices[]);

@@ -10,7 +10,7 @@
  *
  */
 
-#include "pmi.h"
+#include "upmi.h"
 
 #include "mpid_nem_impl.h"
 #include "ib_lmt.h"
@@ -395,7 +395,7 @@ int MPIDI_NEM_Prepare_ib_lmt_r_cookie(MPIDI_VC_t * vc,
     case MV2_LMT_PROTOCOL_RGET:
         {
             int rank;
-            PMI_Get_rank(&rank);
+            UPMI_GET_RANK(&rank);
             fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);
             fprintf(stderr, "RGET preparing CTS?\n");
             mpi_errno = -1;
@@ -406,7 +406,7 @@ int MPIDI_NEM_Prepare_ib_lmt_r_cookie(MPIDI_VC_t * vc,
     default:
         {
             int rank;
-            PMI_Get_rank(&rank);
+            UPMI_GET_RANK(&rank);
             fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);
             fprintf(stderr,
                     "Unknown protocol %d type from rndv req to send\n",
@@ -562,7 +562,7 @@ int MPIDI_nem_ib_lmt_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
     if (!(MV2_LMT_PROTOCOL_R3 == REQ_FIELD(rreq, protocol) ||
           MV2_LMT_PROTOCOL_RPUT == REQ_FIELD(rreq, protocol))) {
         int rank;
-        PMI_Get_rank(&rank);
+        UPMI_GET_RANK(&rank);
         
        DEBUG_PRINT( "[rank %d]get wrong req protocol, req %p, protocol %d\n", rank,
             rreq, REQ_FIELD(rreq, protocol));

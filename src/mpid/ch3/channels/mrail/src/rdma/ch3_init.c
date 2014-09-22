@@ -16,6 +16,7 @@
 #include "mem_hooks.h"
 #include "coll_shmem.h"
 #include "hwloc_bind.h"
+#include "cm.h"
 #if defined(_MCST_SUPPORT_)
 #include "ibv_mcast.h"
 #endif
@@ -179,6 +180,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     pg_size = MPIDI_PG_Get_size(pg);
 
+    /* Allocate PMI Key Value Pair */
+    mv2_allocate_pmi_keyval();
+
     mpi_errno = MPIDI_CH3U_Comm_register_create_hook(MPIDI_CH3I_comm_create, NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     
@@ -202,18 +206,20 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     value = getenv("MV2_USE_XRC");
     if (value) {
-        if (atoi(value)) {
 #ifdef _ENABLE_XRC_
-            USE_XRC = atoi(value);
+        USE_XRC = !!atoi(value);
+        if (atoi(value)) {
             /* Enable on-demand */
             threshold = 1;
+        }
 #else
+        if (atoi(value)) {
             MPIU_Error_printf
                 ("XRC support is not configured. Please retry with "
                  "MV2_USE_XRC=0 (or) Reconfigure MVAPICH2 library without --disable-xrc.\n");
             MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
-#endif
         }
+#endif
     }
 
     if ((value = getenv("MV2_USE_CUDA")) != NULL) {
@@ -231,6 +237,12 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         }
     }
 #ifdef _ENABLE_UD_
+    int i = 0;
+    for (i = 0; i < MAX_NUM_HCAS; ++i) {
+        mv2_MPIDI_CH3I_RDMA_Process.ud_rails[i] = NULL;
+    }
+    mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info = NULL;
+
     if ((value = getenv("MV2_HYBRID_ENABLE_THRESHOLD")) != NULL) {
         rdma_hybrid_enable_threshold = atoi(value);
     }
@@ -259,29 +271,41 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     } 
 #endif
 
-    if (pg_size > threshold || dpm
-#ifdef _ENABLE_XRC_
-        || USE_XRC
-#endif /* _ENABLE_XRC_ */
-#ifdef _ENABLE_UD_
-        || rdma_enable_hybrid
-#endif
-) {
-        MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
-        MPIDI_CH3I_Process.num_conn = 0;
-    } else {
-        MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
-    }
-
 #if defined(RDMA_CM)
     if (((value = getenv("MV2_USE_RDMA_CM")) != NULL
          || (value = getenv("MV2_USE_IWARP_MODE")) != NULL)
         && atoi(value) && !dpm) {
         MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+#ifdef _ENABLE_XRC_
+        USE_XRC = 0;
+        value = getenv("MV2_USE_XRC");
+        if (value && (pg_rank == 0)) {
+            if (atoi(value)) {
+                MPIU_Error_printf("Error: XRC does not work with RDMA CM. "
+                                  "Proceeding without XRC support.\n");
+            }
+        }
+#endif
     } else {
         rdma_cm_get_hca_type(&mv2_MPIDI_CH3I_RDMA_Process);
     }
 #endif /* defined(RDMA_CM) */
+
+    if (MPIDI_CH3I_Process.cm_type != MPIDI_CH3I_CM_RDMA_CM) {
+        if (pg_size > threshold || dpm
+#ifdef _ENABLE_XRC_
+            || USE_XRC
+#endif /* _ENABLE_XRC_ */
+#ifdef _ENABLE_UD_
+            || rdma_enable_hybrid
+#endif
+    ) {
+            MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
+            MPIDI_CH3I_Process.num_conn = 0;
+        } else {
+            MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
+        }
+    }
 
     MPIDI_PG_GetConnKVSname(&pg->ch.kvs_name);
 
@@ -346,10 +370,15 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
         switch (MPIDI_CH3I_Process.cm_type) {
                 /* allocate rmda memory and set up the queues */
-            case MPIDI_CH3I_CM_ON_DEMAND:
 #if defined(RDMA_CM)
             case MPIDI_CH3I_CM_RDMA_CM:
+                mpi_errno = MPIDI_CH3I_RDMA_CM_Init(pg, pg_rank, &conn_info);
+                if (mpi_errno != MPI_SUCCESS) {
+                    MPIU_ERR_POP(mpi_errno);
+                }
+                break;
 #endif /* defined(RDMA_CM) */
+            case MPIDI_CH3I_CM_ON_DEMAND:
                 mpi_errno = MPIDI_CH3I_CM_Init(pg, pg_rank, &conn_info);
                 if (mpi_errno != MPI_SUCCESS) {
                     MPIU_ERR_POP(mpi_errno);
@@ -465,7 +494,6 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     mpi_errno = MPIDI_CH3U_Comm_register_destroy_hook(MPIDI_CH3I_comm_destroy, NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-
 
 
   fn_exit:

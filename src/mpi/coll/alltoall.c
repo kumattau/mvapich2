@@ -62,6 +62,10 @@ cvars:
 #pragma _HP_SECONDARY_DEF PMPI_Alltoall  MPI_Alltoall
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Alltoall as PMPI_Alltoall
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Alltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+                 int recvcount, MPI_Datatype recvtype, MPI_Comm comm)
+                 __attribute__((weak,alias("PMPI_Alltoall")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -747,15 +751,6 @@ int MPIR_Alltoall_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtype
 {
     int mpi_errno = MPI_SUCCESS;
 
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        if (is_device_buffer(sendbuf)
-            || is_device_buffer(recvbuf)) {
-            enable_device_ptr_checks = 1;
-        }
-    }
-#endif
-
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Alltoall != NULL) {
 	/* --BEGIN USEREXTENSION-- */
 	mpi_errno = comm_ptr->coll_fns->Alltoall(sendbuf, sendcount, sendtype,
@@ -771,11 +766,6 @@ int MPIR_Alltoall_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     }
     
  fn_exit:
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        enable_device_ptr_checks = 0;
-    }
-#endif
     return mpi_errno;
  fn_fail:
     goto fn_exit;
@@ -860,6 +850,13 @@ int MPI_Alltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                     MPID_Datatype_committed_ptr( sendtype_ptr, mpi_errno );
                     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
                 }
+
+                if (comm_ptr->comm_kind == MPID_INTRACOMM &&
+                        sendbuf != MPI_IN_PLACE &&
+                        sendcount == recvcount &&
+                        sendtype == recvtype &&
+                        sendcount != 0)
+                    MPIR_ERRTEST_ALIAS_COLL(sendbuf,recvbuf,mpi_errno);
             }
 
 	    MPIR_ERRTEST_COUNT(recvcount, mpi_errno);

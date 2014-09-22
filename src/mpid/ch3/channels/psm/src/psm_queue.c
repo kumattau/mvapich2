@@ -372,7 +372,7 @@ static void psm_dump_debug()
     
     if((last - timedump) < ipath_dump_frequency) 
         return;
-    PMI_Get_rank(&rank);
+    UPMI_GET_RANK(&rank);
 
     fprintf(stderr, "[%d]------- PSM COUNTERS---------\n", rank);
     fprintf(stderr, "[%d] Total SENDS\t\t%d\n", rank, psm_tot_sends);

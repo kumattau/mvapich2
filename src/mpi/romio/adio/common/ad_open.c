@@ -95,6 +95,12 @@ MPI_File ADIO_Open(MPI_Comm orig_comm,
 	if (*error_code != MPI_SUCCESS)
 	    goto fn_exit;
     }
+    ADIOI_Info_set(fd->info, "romio_filesystem_type", fd->fns->fsname);
+
+    /* Instead of repeatedly allocating this buffer in collective read/write,
+     * allocating up-front might make memory management on small platforms
+     * (e.g. Blue Gene) more efficent */
+    fd->io_buf = ADIOI_Malloc(fd->hints->cb_buffer_size);
 
      /* deferred open: 
      * we can only do this optimization if 'fd->hints->deferred_open' is set
@@ -120,7 +126,12 @@ MPI_File ADIO_Open(MPI_Comm orig_comm,
 	if (*error_code != MPI_SUCCESS) 
 	    goto fn_exit;
     }
-    
+    /* for debugging, it can be helpful to see the hints selected */
+    char *p = getenv("ROMIO_PRINT_HINTS");
+    if (rank == 0 && p != NULL ) {
+	ADIOI_Info_print_keyvals(fd->info);
+    }
+
      /* deferred open: if we are an aggregator, create a new communicator.
       * we'll use this aggregator communicator for opens and closes.
       * otherwise, we have a NULL communicator until we try to do independent
@@ -175,6 +186,7 @@ MPI_File ADIO_Open(MPI_Comm orig_comm,
 	if (fd->hints->cb_config_list) ADIOI_Free(fd->hints->cb_config_list);
 	if (fd->hints) ADIOI_Free(fd->hints);
 	if (fd->info != MPI_INFO_NULL) MPI_Info_free(&(fd->info));
+	if (fd->io_buf) ADIOI_Free(fd->io_buf);
 	ADIOI_Free(fd);
         fd = ADIO_FILE_NULL;
 	if (*error_code == MPI_SUCCESS)

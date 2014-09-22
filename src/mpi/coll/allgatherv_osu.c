@@ -768,7 +768,7 @@ int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
      * on the default stream (0) but subsequent MPI_Isend/Irecv calls access
      * GPU buffers using non-default streams which don't wait for the initial
      * local copy to complete*/
-    if (rdma_enable_cuda && cuda_initialized && enable_device_ptr_checks
+    if (rdma_enable_cuda && cuda_initialized
         && rdma_cuda_nonblocking_streams) {
             CUDA_CHECK(cudaEventRecord(cuda_nbstream_sync_event, 0));
             CUDA_CHECK(cudaStreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 0));

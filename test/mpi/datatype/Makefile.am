@@ -34,6 +34,7 @@ noinst_PROGRAMS =           \
     hindexed-zeros          \
     hindexed_block          \
     hindexed_block_contents \
+    hvecblklen              \
     indexed-misc            \
     large-count             \
     large_type              \
@@ -59,6 +60,7 @@ noinst_PROGRAMS =           \
     struct-ezhov            \
     struct-no-real-types    \
     struct-pack             \
+    structpack2             \
     struct-verydeep         \
     struct-zero-count       \
     subarray                \
@@ -75,8 +77,10 @@ noinst_PROGRAMS =           \
     typename                \
     unpack                  \
     unusual-noncontigs      \
+    vecblklen               \
     zeroblks                \
-    zeroparms
+    zeroparms               \
+    get-struct
 
 # Some of the tests use a more comprehensive set of datatype tests.
 # These must specify a different LDADD that includes the object file

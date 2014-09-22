@@ -99,11 +99,13 @@ int MPIDI_CH3I_comm_create (MPID_Comm *comm)
         comm->coll_fns->Reduce = MPIR_Reduce_MV2; 
         comm->coll_fns->Allreduce = MPIR_Allreduce_MV2;
         comm->coll_fns->Reduce_scatter = MPIR_Reduce_scatter_MV2;
-        comm->coll_fns->Scan = MPIR_Scan;
+        comm->coll_fns->Scan = MPIR_Scan_MV2;
+        comm->coll_fns->Exscan = MPIR_Exscan_MV2;
 
     }
     
-    if (mv2_use_osu_nb_collectives == 1) {
+    if (mv2_use_osu_nb_collectives == 1 &&
+        comm->comm_kind == MPID_INTRACOMM)  { 
       init_MV2_collops(comm);
     }
     MPIR_pof2_comm(comm, comm->local_size, comm->rank);

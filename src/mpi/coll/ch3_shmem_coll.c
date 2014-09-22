@@ -32,7 +32,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <string.h>
-#include "pmi.h"
+#include "upmi.h"
 
 #include <sched.h>
 
@@ -385,23 +385,25 @@ void MV2_collectives_arch_init(int heterogeneity)
     
     if (mv2_use_osu_collectives) {
       MV2_set_gather_tuning_table(heterogeneity);
-      MV2_set_igather_tuning_table(heterogeneity);
       MV2_set_bcast_tuning_table(heterogeneity);
-      MV2_set_ibcast_tuning_table(heterogeneity);
       MV2_set_alltoall_tuning_table(heterogeneity);
+      MV2_set_scatter_tuning_table(heterogeneity);
+      MV2_set_allreduce_tuning_table(heterogeneity);
+      MV2_set_reduce_tuning_table(heterogeneity);
+      MV2_set_allgather_tuning_table(heterogeneity);
+      MV2_set_red_scat_tuning_table(heterogeneity);
+      MV2_set_allgatherv_tuning_table(heterogeneity);
+    }
+    if (mv2_use_osu_nb_collectives) {
+      MV2_set_igather_tuning_table(heterogeneity);
+      MV2_set_ibcast_tuning_table(heterogeneity);
       MV2_set_ialltoall_tuning_table(heterogeneity);
       MV2_set_ialltoallv_tuning_table(heterogeneity);
-      MV2_set_scatter_tuning_table(heterogeneity);
       MV2_set_iscatter_tuning_table(heterogeneity);
-      MV2_set_allreduce_tuning_table(heterogeneity);
       MV2_set_iallreduce_tuning_table(heterogeneity);
-      MV2_set_reduce_tuning_table(heterogeneity);
       MV2_set_ireduce_tuning_table(heterogeneity);
-      MV2_set_allgather_tuning_table(heterogeneity);
-      MV2_set_iallgather_tuning_table(heterogeneity);
-      MV2_set_red_scat_tuning_table(heterogeneity);
       MV2_set_ireduce_scatter_tuning_table(heterogeneity);
-      MV2_set_allgatherv_tuning_table(heterogeneity);
+      MV2_set_iallgather_tuning_table(heterogeneity);
       MV2_set_iallgatherv_tuning_table(heterogeneity);
       MV2_set_ibarrier_tuning_table(heterogeneity);
     }
@@ -670,23 +672,25 @@ void MV2_collectives_arch_finalize()
   
   if (mv2_use_osu_collectives) {
     MV2_cleanup_gather_tuning_table();
-    MV2_cleanup_igather_tuning_table();
     MV2_cleanup_bcast_tuning_table();
-    MV2_cleanup_ibcast_tuning_table();
     MV2_cleanup_alltoall_tuning_table();
-    MV2_cleanup_ialltoall_tuning_table();
-    MV2_cleanup_ialltoallv_tuning_table();
     MV2_cleanup_scatter_tuning_table();
-    MV2_cleanup_iscatter_tuning_table();
     MV2_cleanup_allreduce_tuning_table();
-    MV2_cleanup_iallreduce_tuning_table();
     MV2_cleanup_reduce_tuning_table();
-    MV2_cleanup_ireduce_tuning_table();
-    MV2_cleanup_ireduce_scatter_tuning_table();
     MV2_cleanup_allgather_tuning_table();
-    MV2_cleanup_iallgather_tuning_table();
     MV2_cleanup_red_scat_tuning_table();
     MV2_cleanup_allgatherv_tuning_table();
+  }
+  if (mv2_use_osu_nb_collectives) {
+    MV2_cleanup_igather_tuning_table();
+    MV2_cleanup_ibcast_tuning_table();
+    MV2_cleanup_ialltoall_tuning_table();
+    MV2_cleanup_ialltoallv_tuning_table();
+    MV2_cleanup_iscatter_tuning_table();
+    MV2_cleanup_iallreduce_tuning_table();
+    MV2_cleanup_ireduce_tuning_table();
+    MV2_cleanup_ireduce_scatter_tuning_table();
+    MV2_cleanup_iallgather_tuning_table();
     MV2_cleanup_iallgatherv_tuning_table();
     MV2_cleanup_ibarrier_tuning_table();
   }
@@ -771,7 +775,7 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
                                   "gethostname", strerror(errno));
     }
 
-    PMI_Get_rank(&mv2_my_rank);
+    UPMI_GET_RANK(&mv2_my_rank);
     MPIDI_PG_Get_vc(pg, mv2_my_rank, &vc);
 
     /* add pid for unique file name */
@@ -3984,6 +3988,7 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     shmem->local_rank = local_rank;
     shmem->local_size = local_size; 
     shmem->comm   = comm_ptr->handle; 
+    shmem->max_local_size = 0;
 
     slot_len = mv2_shm_slot_len + sizeof (shm_slot_t) + sizeof(volatile uint32_t);
                                 
@@ -3999,13 +4004,10 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     /* Initialize max_local_size to local_size so that non-leader processes
      * get right value */
     max_local_size = local_size;
-
-    if (!comm_ptr->ch.is_blocked) {
-        mpi_errno = MPIR_Reduce_impl(&local_size, &max_local_size, 1, MPI_INT,
-                                        MPI_MAX, 0, shmem_ptr, &errflag);
-        if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
-        }
+    mpi_errno = MPIR_Reduce_impl(&local_size, &max_local_size, 1, MPI_INT,
+				 MPI_MAX, 0, shmem_ptr, &errflag);
+    if (mpi_errno) {
+      MPIU_ERR_POP(mpi_errno);
     }
 
     size = (shmem->count) * slot_len * max_local_size;
@@ -4070,6 +4072,7 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     ptr = shmem->buffer;
     shmem->queue = (shm_queue_t *) MPIU_Malloc(sizeof (shm_queue_t *)
             * max_local_size);
+    shmem->max_local_size = max_local_size;
     for (k = 0; k < max_local_size; k++) {
         shmem->queue[k].shm_slots = (shm_slot_t **)
             MPIU_Malloc(mv2_shm_window_size * sizeof (shm_slot_t *));
@@ -4128,14 +4131,12 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
 
 }
 
-
 void mv2_shm_coll_cleanup(shmem_info_t * shmem)
 {
-    int k, local_size;
+    int k;
     PRINT_DEBUG(DEBUG_SHM_verbose > 0, " Cleanup shmem file:%s fd:%d size:%d\n",
                 shmem->file_name, shmem->file_fd, shmem->size);
-    local_size = shmem->size / ((mv2_shm_slot_len + sizeof (shm_slot_t) + sizeof(volatile uint32_t)) * mv2_shm_window_size);
-    for (k = 0; k < local_size; k++) {
+    for (k = 0; k < shmem->max_local_size; k++) {
         MPIU_Free(shmem->queue[k].shm_slots);
     }
     

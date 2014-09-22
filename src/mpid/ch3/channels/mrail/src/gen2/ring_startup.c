@@ -17,7 +17,8 @@
 #include <string.h>
 
 #include "rdma_impl.h"
-#include "pmi.h"
+#include "upmi.h"
+#include "cm.h"
 #include "ibv_param.h"
 
 #define MPD_WINDOW 10
@@ -105,51 +106,35 @@ static int _rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
                                        void *localaddr, int addrlen, 
                                        void *alladdrs)
 {
-    int     ret, i, j, lhs, rhs, len_local, len_remote, key_max_sz, val_max_sz;
+    int     ret, i, j, lhs, rhs, len_local, len_remote;
     char    attr_buff[IBA_PMI_ATTRLEN];
     char    val_buff[IBA_PMI_VALLEN];
     char    *temp_localaddr = (char *) localaddr;
     char    *temp_alladdrs = (char *) alladdrs;
-    char    *key, *val;
     char    *kvsname = NULL;
 
-    /* Allocate space for pmi keys and values */
-    ret = PMI_KVS_Get_key_length_max(&key_max_sz);
-    CHECK_UNEXP((ret != PMI_SUCCESS), "Could not get KVS key length");
-
-    key_max_sz++;
-    key = MPIU_Malloc(key_max_sz);
-    CHECK_UNEXP((key == NULL), "Could not get key \n");
-
-    ret = PMI_KVS_Get_value_length_max(&val_max_sz);
-    CHECK_UNEXP((ret != PMI_SUCCESS), "Could not get KVS value length");
-    val_max_sz++;
-
-    val = MPIU_Malloc(val_max_sz);
-    CHECK_UNEXP((val == NULL), "Could not get val \n");
     len_local = strlen(temp_localaddr);
-
     /* TODO: Double check the value of value */
-    CHECK_UNEXP((len_local > val_max_sz), "local address length is larger then string length");
+    CHECK_UNEXP((len_local > mv2_pmi_max_vallen), "local address length is larger then string length");
 
     /* Be sure to use different keys for different processes */
     MPIU_Memset(attr_buff, 0, IBA_PMI_ATTRLEN * sizeof(char));
     snprintf(attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2_%04d", pg_rank);
 
     /* put the kvs into PMI */
-    MPIU_Strncpy(key, attr_buff, key_max_sz);
-    MPIU_Strncpy(val, temp_localaddr, val_max_sz);
+    MPIU_Strncpy(mv2_pmi_key, attr_buff, mv2_pmi_max_keylen);
+    MPIU_Strncpy(mv2_pmi_val, temp_localaddr, mv2_pmi_max_vallen);
     MPIDI_PG_GetConnKVSname( &kvsname );
-    ret = PMI_KVS_Put(kvsname, key, val);
+    ret = UPMI_KVS_PUT(kvsname, mv2_pmi_key, mv2_pmi_val);
 
-    CHECK_UNEXP((ret != 0), "PMI_KVS_Put error \n");
+    CHECK_UNEXP((ret != 0), "UPMI_KVS_PUT error \n");
 
-    ret = PMI_KVS_Commit(kvsname);
-    CHECK_UNEXP((ret != 0), "PMI_KVS_Commit error \n");
+    ret = UPMI_KVS_COMMIT(kvsname);
+    CHECK_UNEXP((ret != 0), "UPMI_KVS_COMMIT error \n");
 
     /* Wait until all processes done the same */
-    ret = PMI_Barrier();
-    CHECK_UNEXP((ret != 0), "PMI_Barrier error \n");
+    ret = UPMI_BARRIER();
+    CHECK_UNEXP((ret != 0), "UPMI_BARRIER error \n");
     lhs = (pg_rank + pg_size - 1) % pg_size;
     rhs = (pg_rank + 1) % pg_size;
 
@@ -160,11 +145,11 @@ static int _rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
         MPIU_Memset(attr_buff, 0, IBA_PMI_ATTRLEN * sizeof(char));
         MPIU_Memset(val_buff, 0, IBA_PMI_VALLEN * sizeof(char));
         snprintf(attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2_%04d", j);
-        MPIU_Strncpy(key, attr_buff, key_max_sz);
+        MPIU_Strncpy(mv2_pmi_key, attr_buff, mv2_pmi_max_keylen);
 
-        ret = PMI_KVS_Get(kvsname, key, val, val_max_sz);
-        CHECK_UNEXP((ret != 0), "PMI_KVS_Get error \n");
-        MPIU_Strncpy(val_buff, val, val_max_sz);
+        ret = UPMI_KVS_GET(kvsname, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
+        CHECK_UNEXP((ret != 0), "UPMI_KVS_GET error \n");
+        MPIU_Strncpy(val_buff, mv2_pmi_val, mv2_pmi_max_vallen);
 
         /* Simple sanity check before stashing it to the alladdrs */
         len_remote = strlen(val_buff);
@@ -173,14 +158,10 @@ static int _rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
         temp_alladdrs += len_local;
     }
 
-    /* Free the key-val pair */
-    MPIU_Free(key);
-    MPIU_Free(val);
-
     /* this barrier is to prevent some process from overwriting values that
        has not been get yet */
-    ret = PMI_Barrier();
-    CHECK_UNEXP((ret != 0), "PMI_Barrier error \n");
+    ret = UPMI_BARRIER();
+    CHECK_UNEXP((ret != 0), "UPMI_BARRIER error \n");
     return 0;
 }
 
@@ -369,6 +350,19 @@ fn_fail:
 }
 
 #undef FUNCNAME
+#define FUNCNAME ring_rdma_get_hca_context
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static inline int ring_rdma_get_hca_context(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    proc->boot_ptag     = proc->ptag[0];
+    proc->boot_device   = proc->ib_dev[0];
+    proc->boot_context  = proc->nic_context[0];
+
+    return 1;
+}
+
+#undef FUNCNAME
 #define FUNCNAME rdma_setup_startup_ring
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -384,9 +378,9 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
     int port;
     char *value = NULL;
 
-    if (!ring_rdma_open_hca(proc)) {
+    if (!ring_rdma_get_hca_context(proc)) {
         MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out,
-                "**fail", "**fail %s", "cannot open hca device");
+                "**fail", "**fail %s", "cannot retrieve hca device");
     }
         
     if ((value = getenv("MV2_DEFAULT_PORT")) != NULL) {
@@ -496,7 +490,7 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
     }
 
     mpi_errno = _setup_ib_boot_ring(neighbor_addr, proc, port);
-    PMI_Barrier();
+    UPMI_BARRIER();
 
 out:
     return mpi_errno;
@@ -511,7 +505,7 @@ int rdma_cleanup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int mpi_errno = MPI_SUCCESS;
 
-    PMI_Barrier();
+    UPMI_BARRIER();
     
     if(ibv_destroy_qp(proc->boot_qp_hndl[0])) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -607,7 +601,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
             recv_post_index = round_left(recv_post_index,pg_size);
         }
 
-        PMI_Barrier();
+        UPMI_BARRIER();
 
         /* sending and receiving*/
         while ((recv_comp_index != (pg_rank+1)%pg_size) ||
@@ -797,7 +791,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
     DEBUG_PRINT("rails: %d\n", rdma_num_rails);
 
-    PMI_Barrier();
+    UPMI_BARRIER();
 
     for(rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
 
@@ -811,7 +805,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
         for(i = 0; i < pg_size; i++) {
             MPIDI_PG_Get_vc(pg, i, &vc); 
-			if (!qp_required(vc, pg_rank, i)) {
+            if (!qp_required(vc, pg_rank, i)) {
                 send_packet->val[i].sr_qp_num = -1;
                 info->arch_hca_type[i] = mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type;
             } else {

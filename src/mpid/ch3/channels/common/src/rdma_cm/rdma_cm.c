@@ -19,7 +19,7 @@
 #include "mpichconf.h"
 #include <mpimem.h>
 #include "rdma_impl.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "vbuf.h"
 #include "dreg.h"
 #include "rdma_cm.h"
@@ -32,7 +32,7 @@
 #define DEBUG_PRINT(args...)                                      \
 do {                                                              \
     int __rank;                                                   \
-    PMI_Get_rank(&__rank);                                        \
+    UPMI_GET_RANK(&__rank);                                        \
     fprintf(stderr, "[%d][%s:%d] ", __rank, __FILE__, __LINE__);  \
     fprintf(stderr, args);                                        \
     fflush(stderr);                                               \
@@ -112,8 +112,8 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
     MPIDI_STATE_DECL(MPIDI_STATE_IB_CMA_EVENT_HANDLER);
     MPIDI_FUNC_ENTER(MPIDI_STATE_IB_CMA_EVENT_HANDLER);
 
-    PMI_Get_rank(&pg_rank);
-    PMI_Get_size(&pg_size);
+    UPMI_GET_RANK(&pg_rank);
+    UPMI_GET_SIZE(&pg_size);
 
     switch (event->event) {
 
@@ -918,10 +918,6 @@ int rdma_cm_exchange_hostid(MPIDI_PG_t *pg, int pg_rank, int pg_size)
 {
     int *hostid_all;
     int error, i;
-    int key_max_sz;
-    int val_max_sz;
-    char *key;
-    char *val;
 
     MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_EXCHANGE_HOSTID);
     MPIDI_FUNC_ENTER(MPID_STATE_RDMA_CM_EXCHANGE_HOSTID);
@@ -931,35 +927,26 @@ int rdma_cm_exchange_hostid(MPIDI_PG_t *pg, int pg_rank, int pg_size)
         ibv_error_abort(IBV_RETURN_ERR, "Memory allocation error\n");
     }
     
-    error = PMI_KVS_Get_key_length_max(&key_max_sz);
-    key = MPIU_Malloc(key_max_sz+1);
-    PMI_KVS_Get_value_length_max(&val_max_sz);
-    val = MPIU_Malloc(val_max_sz+1);
-
-    if (key == NULL || val == NULL) {
-       ibv_error_abort(GEN_EXIT_ERR, "Error allocating memory\n");
-    }
-
-    memset(key, 0, key_max_sz);
-    MPIU_Snprintf(key, key_max_sz, "HOST-%d", pg_rank);
+    memset(mv2_pmi_key, 0, mv2_pmi_max_keylen);
+    MPIU_Snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "HOST-%d", pg_rank);
 
     hostid_all[pg_rank] = gethostid();
-    sprintf(val, "%d", hostid_all[pg_rank] );
+    sprintf(mv2_pmi_val, "%d", hostid_all[pg_rank] );
 
-    error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
+    error = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
     if (error != 0) {
         ibv_error_abort(IBV_RETURN_ERR,
             "PMI put failed\n");
     }
 
-    error = PMI_KVS_Commit(pg->ch.kvs_name);
+    error = UPMI_KVS_COMMIT(pg->ch.kvs_name);
     if (error != 0) {
         ibv_error_abort(IBV_RETURN_ERR,
                         "PMI put failed\n");
     }
 
     {
-        error = PMI_Barrier();
+        error = UPMI_BARRIER();
         if (error != 0) {
             ibv_error_abort(IBV_RETURN_ERR,
                             "PMI Barrier failed\n");
@@ -968,21 +955,19 @@ int rdma_cm_exchange_hostid(MPIDI_PG_t *pg, int pg_rank, int pg_size)
 
     for (i = 0; i < pg_size; i++){    
         if(i != pg_rank) {
-            MPIU_Snprintf(key, key_max_sz, "HOST-%d", i);
-            error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+            MPIU_Snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "HOST-%d", i);
+            error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
              if (error != 0) {
                  ibv_error_abort(IBV_RETURN_ERR,
                      "PMI Lookup name failed\n");
              }
             
-             sscanf(val, "%d", &hostid_all[i]);
+             sscanf(mv2_pmi_val, "%d", &hostid_all[i]);
          }
     }
 
     rdma_process_hostid(pg, hostid_all, pg_rank, pg_size);
 
-    MPIU_Free(val);
-    MPIU_Free(key);
     MPIU_Free(hostid_all);
 
     MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_GET_HOSTNAMES);
@@ -1001,10 +986,6 @@ int *rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
     int length = 32*rdma_num_hcas*rdma_num_ports;
     char rank[16];
     char buffer[length];
-    int key_max_sz;
-    int val_max_sz;
-    char *key;
-    char *val;
     int pg_size = MPIDI_PG_Get_size(pg);
     int max_num_ips = rdma_num_hcas * rdma_num_ports; 
     MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_GET_HOSTNAMES);
@@ -1026,31 +1007,22 @@ int *rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
 
     DEBUG_PRINT("[%d] message to be sent: %s\n", pg_rank, buffer);
 
-    error = PMI_KVS_Get_key_length_max(&key_max_sz);
-    key = MPIU_Malloc(key_max_sz+1);
-    PMI_KVS_Get_value_length_max(&val_max_sz);
-    val = MPIU_Malloc(val_max_sz+1);
-
-    if (key == NULL || val == NULL) {
-       ibv_error_abort(GEN_EXIT_ERR, "Error allocating memory\n");
-    }
-
-    MPIU_Strncpy(key, rank, 16);
-    MPIU_Strncpy(val, buffer, length);
-    error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
+    MPIU_Strncpy(mv2_pmi_key, rank, 16);
+    MPIU_Strncpy(mv2_pmi_val, buffer, length);
+    error = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
     if (error != 0) {
         ibv_error_abort(IBV_RETURN_ERR,
             "PMI put failed\n");
     }
 
-    error = PMI_KVS_Commit(pg->ch.kvs_name);
+    error = UPMI_KVS_COMMIT(pg->ch.kvs_name);
     if (error != 0) {
         ibv_error_abort(IBV_RETURN_ERR,
                         "PMI put failed\n");
     }
 
     {
-        error = PMI_Barrier();
+        error = UPMI_BARRIER();
         if (error != 0) {
             ibv_error_abort(IBV_RETURN_ERR,
                             "PMI Barrier failed\n");
@@ -1060,13 +1032,13 @@ int *rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
     for (i = 0; i < pg_size; i++){    
         if(i != pg_rank) {
             sprintf(rank, "ip%d", i);
-             MPIU_Strncpy(key, rank, 16);
-             error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+             MPIU_Strncpy(mv2_pmi_key, rank, 16);
+             error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
              if (error != 0) {
                  ibv_error_abort(IBV_RETURN_ERR,
                      "PMI Lookup name failed\n");
              }
-             MPIU_Strncpy(buffer, val, length);
+             MPIU_Strncpy(buffer, mv2_pmi_val, length);
 
              sscanf(buffer, "%d", &rdma_base_listen_port[i]);
              temp = buffer;
@@ -1089,9 +1061,6 @@ int *rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
     }
     DEBUG_PRINT("Number of SMP peers for %d is %d\n", pg_rank, 
         g_num_smp_peers);
-
-    MPIU_Free(val);
-    MPIU_Free(key);
 
     MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_GET_HOSTNAMES);
     return hosts;
@@ -1186,7 +1155,7 @@ int rdma_cm_init_pd_cq()
     int i = 0;
     int pg_rank;
 
-    PMI_Get_rank(&pg_rank);
+    UPMI_GET_RANK(&pg_rank);
     rdma_cm_get_contexts();
 
     for (; i < rdma_num_hcas; ++i)
@@ -1386,8 +1355,8 @@ int get_remote_rail(struct rdma_cm_id *cmid)
     int pg_size, pg_rank, i, rail_index = 0;
     MPIDI_VC_t  *vc = (MPIDI_VC_t *) cmid->context;
 
-    PMI_Get_size(&pg_size);
-    PMI_Get_rank(&pg_rank);
+    UPMI_GET_SIZE(&pg_size);
+    UPMI_GET_RANK(&pg_rank);
 
     for (i = 0; i < pg_size; i++){
         if ( pg_rank == i)

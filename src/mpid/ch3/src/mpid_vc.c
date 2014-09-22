@@ -18,11 +18,7 @@
 #include "mpidimpl.h"
 /* #include "mpidi_ch3_post.h" */
 
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
+#include "upmi.h"
 #if defined(HAVE_LIMITS_H)
 #include <limits.h>
 #endif
@@ -919,7 +915,7 @@ static int publish_node_id(MPIDI_PG_t *pg, int our_pg_rank)
     MPIU_hostname[MAX_HOSTNAME_LEN-1] = '\0';
 
     /* Allocate space for pmi key */
-    pmi_errno = PMI_KVS_Get_key_length_max(&key_max_sz);
+    pmi_errno = UPMI_KVS_GET_KEY_LENGTH_MAX(&key_max_sz);
     MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
 
     MPIU_CHKLMEM_MALLOC(key, char *, key_max_sz, mpi_errno, "key");
@@ -933,14 +929,14 @@ static int publish_node_id(MPIDI_PG_t *pg, int our_pg_rank)
         memset(key, 0, key_max_sz);
         MPIU_Snprintf(key, key_max_sz, "hostname[%d]", our_pg_rank);
 
-        pmi_errno = PMI_KVS_Put(kvs_name, key, MPIU_hostname);
-        MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
+        pmi_errno = UPMI_KVS_PUT(kvs_name, key, MPIU_hostname);
+        MPIU_ERR_CHKANDJUMP1(pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
 
-        pmi_errno = PMI_KVS_Commit(kvs_name);
-        MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit", "**pmi_kvs_commit %d", pmi_errno);
+        pmi_errno = UPMI_KVS_COMMIT(kvs_name);
+        MPIU_ERR_CHKANDJUMP1(pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit", "**pmi_kvs_commit %d", pmi_errno);
 
-        pmi_errno = PMI_Barrier();
-        MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
+        pmi_errno = UPMI_BARRIER();
+        MPIU_ERR_CHKANDJUMP1(pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
     }
     
 fn_exit:
@@ -1279,7 +1275,7 @@ static int publish_host_id(MPIDI_PG_t *pg, int our_pg_rank)
     sprintf(val, "%08ld", host_id);
 
     /* Allocate space for pmi key */
-    pmi_errno = PMI_KVS_Get_key_length_max(&key_max_sz);
+    pmi_errno = UPMI_KVS_GET_KEY_LENGTH_MAX(&key_max_sz);
     MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
 
     MPIU_CHKLMEM_MALLOC(key, char *, key_max_sz, mpi_errno, "key");
@@ -1293,14 +1289,14 @@ static int publish_host_id(MPIDI_PG_t *pg, int our_pg_rank)
         memset(key, 0, key_max_sz);
         MPIU_Snprintf(key, key_max_sz, "hostname[%d]", our_pg_rank);
 
-        pmi_errno = PMI_KVS_Put(kvs_name, key, val);
-        MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
+        pmi_errno = UPMI_KVS_PUT(kvs_name, key, val);
+        MPIU_ERR_CHKANDJUMP1(pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
 
-        pmi_errno = PMI_KVS_Commit(kvs_name);
-        MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit", "**pmi_kvs_commit %d", pmi_errno);
+        pmi_errno = UPMI_KVS_COMMIT(kvs_name);
+        MPIU_ERR_CHKANDJUMP1(pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit", "**pmi_kvs_commit %d", pmi_errno);
 
-        pmi_errno = PMI_Barrier();
-        MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
+        pmi_errno = UPMI_BARRIER();
+        MPIU_ERR_CHKANDJUMP1(pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
     }
     
 fn_exit:
@@ -1380,6 +1376,7 @@ int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
     int key_max_sz;
     MPIDI_VC_t* vc = NULL;
 
+    g_num_nodes = 0;
     pg->ch.local_process_id = 0;
     pg->ch.num_local_processes = 0;
 
@@ -1393,10 +1390,10 @@ int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
     host_ids = (long *) MPIU_Malloc(pg->size * sizeof(long));
     unique_host_ids = (long *) MPIU_Malloc(pg->size * sizeof(long));
 
-    pmi_errno = PMI_KVS_Get_key_length_max(&key_max_sz);
+    pmi_errno = UPMI_KVS_GET_KEY_LENGTH_MAX(&key_max_sz);
     MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
 
-    pmi_errno = PMI_KVS_Get_value_length_max(&val_max_sz);
+    pmi_errno = UPMI_KVS_GET_VALUE_LENGTH_MAX(&val_max_sz);
     MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
 
     val = (char *) MPIU_Malloc(val_max_sz);
@@ -1413,8 +1410,8 @@ int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
         if (i == our_pg_rank) {
             host_ids[i] = my_host_id;
         } else {
-            pmi_errno = PMI_KVS_Get(kvs_name, key, val, key_max_sz);
-            MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
+            pmi_errno = UPMI_KVS_GET(kvs_name, key, val, key_max_sz);
+            MPIU_ERR_CHKANDJUMP1(pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
 
             host_ids[i] = atol(val);
 		}
@@ -1439,7 +1436,7 @@ int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
             }
         }
 
-        if (j == g_num_nodes) {
+        if (j == g_num_nodes && g_num_nodes < pg->size) {
             unique_host_ids[g_num_nodes] = host_ids[i];
             ++g_num_nodes;
         }
@@ -1480,7 +1477,7 @@ void MPIDI_Get_local_host_mapping(MPIDI_PG_t *pg, int our_pg_rank)
 }
 #endif  /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
 /* Fills in the node_id info from PMI info.  Adapted from MPIU_Get_local_procs.
-   This function is collective over the entire PG because PMI_Barrier is called.
+   This function is collective over the entire PG because UPMI_BARRIER is called.
 
    our_pg_rank should be set to -1 if this is not the current process' PG.  This
    is currently not supported due to PMI limitations.
@@ -1515,11 +1512,17 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     int no_local = 0;
     int odd_even_cliques = 0;
     int pmi_version = MPIU_DEFAULT_PMI_VERSION, pmi_subversion = MPIU_DEFAULT_PMI_SUBVERSION;
+    char *using_slurm = getenv("SLURM_NPROCS");
     MPIU_CHKLMEM_DECL(4);
 
     /* See if the user wants to override our default values */
     MPL_env2int("PMI_VERSION", &pmi_version);
     MPL_env2int("PMI_SUBVERSION", &pmi_subversion);
+
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+    pg->ch.local_process_id = -1;
+    pg->ch.num_local_processes = -1;
+#endif
 
     if (pg->size == 1) {
         pg->vct[0].node_id = g_num_nodes++;
@@ -1568,7 +1571,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         int did_map = 0;
         int num_nodes = 0;
 
-        mpi_errno = PMI2_Info_GetJobAttr("PMI_process_mapping", process_mapping, sizeof(process_mapping), &found);
+        mpi_errno = UPMI_GET_JOB_ATTR("PMI_process_mapping", process_mapping, sizeof(process_mapping), &found);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         MPIU_ERR_CHKINTERNAL(!found, mpi_errno, "PMI_process_mapping attribute not found");
         /* this code currently assumes pg is comm_world */
@@ -1577,7 +1580,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
         /* We can relay on Hydra proccess mapping info on signle node case.*/
 #if defined(CHANNEL_MRAIL) 
-        if (g_num_nodes == 1) 
+        if (g_num_nodes == 1 || using_slurm != NULL) 
 #endif  
 		{
             MPIDI_Get_local_host_mapping(pg, our_pg_rank);
@@ -1594,11 +1597,11 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     }
 
     /* Allocate space for pmi key and value */
-    pmi_errno = PMI_KVS_Get_key_length_max(&key_max_sz);
+    pmi_errno = UPMI_KVS_GET_KEY_LENGTH_MAX(&key_max_sz);
     MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
     MPIU_CHKLMEM_MALLOC(key, char *, key_max_sz, mpi_errno, "key");
 
-    pmi_errno = PMI_KVS_Get_value_length_max(&val_max_sz);
+    pmi_errno = UPMI_KVS_GET_VALUE_LENGTH_MAX(&val_max_sz);
     MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
     MPIU_CHKLMEM_MALLOC(value, char *, val_max_sz, mpi_errno, "value");
 
@@ -1609,12 +1612,11 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     /* See if process manager supports PMI_process_mapping keyval */
     /* Check if the user have used MPIRUN_RSH */
     char *str = getenv("MPIRUN_RSH_LAUNCH");
-    char *my_slurm_str = getenv("SLURM_NPROCS");
-    if ((str == NULL || (atoi(str) != 1)) && (my_slurm_str == NULL))
+    if ((str == NULL || (atoi(str) != 1)) && (using_slurm == NULL))
     {
 
     if (pmi_version == 1 && pmi_subversion == 1) {
-        pmi_errno = PMI_KVS_Get(kvs_name, "PMI_process_mapping", value, val_max_sz);
+        pmi_errno = UPMI_KVS_GET(kvs_name, "PMI_process_mapping", value, val_max_sz);
         if (pmi_errno == 0) {
             int did_map = 0;
             int num_nodes = 0;
@@ -1625,19 +1627,19 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
             /* We can relay on Hydra proccess mapping info on signle node case. */
 #if defined(CHANNEL_MRAIL) 
-            if (g_num_nodes == 1) 
+            if (g_num_nodes == 1 || using_slurm != NULL) 
 #endif            
 		    {
                 MPIDI_Get_local_host_mapping(pg, our_pg_rank);
             }
 #endif
             if (did_map) {
-                goto fn_exit;
+                goto odd_even_cliques;
             }
             else {
                 MPIU_DBG_MSG_S(CH3_OTHER,TERSE,"did_map==0, unable to populate node ids from mapping=%s",value);
             }
-            /* else fall through to O(N^2) PMI_KVS_Gets version */
+            /* else fall through to O(N^2) UPMI_KVS_GETs version */
         }
         else {
             MPIU_DBG_MSG(CH3_OTHER,TERSE,"unable to obtain the 'PMI_process_mapping' PMI key");
@@ -1698,8 +1700,8 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
             memset(key, 0, key_max_sz);
             MPIU_Snprintf(key, key_max_sz, "hostname[%d]", i);
 
-            pmi_errno = PMI_KVS_Get(kvs_name, key, node_names[g_num_nodes], key_max_sz);
-            MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
+            pmi_errno = UPMI_KVS_GET(kvs_name, key, node_names[g_num_nodes], key_max_sz);
+            MPIU_ERR_CHKANDJUMP1(pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
         }
 
         /* Find the node_id for this process, or create a new one */
@@ -1717,6 +1719,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     }
 #endif /* !defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM) */
 
+odd_even_cliques:
     if (odd_even_cliques)
     {
         /* Create new processes for all odd numbered processes. This

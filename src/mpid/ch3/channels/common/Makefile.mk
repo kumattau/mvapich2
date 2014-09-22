@@ -108,7 +108,7 @@ libscr_la_SOURCES = \
         src/mpid/ch3/channels/common/src/scr/scr.c \
         src/mpid/ch3/channels/common/src/scr/scrf.c
 
-lib_lib@MPILIBNAME@_la_LIBADD += libscr_base.la libscr.la
+mpi_convenience_libs += libscr_base.la libscr.la
 
 edit = sed \
        -e 's|@bindir[@]|$(bindir)|g' \

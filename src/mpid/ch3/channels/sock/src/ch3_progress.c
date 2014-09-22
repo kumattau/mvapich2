@@ -5,7 +5,7 @@
  */
 
 #include "mpidi_ch3_impl.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "mpidu_sock.h"
 
 #ifdef HAVE_STRING_H

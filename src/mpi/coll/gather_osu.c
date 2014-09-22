@@ -1816,7 +1816,7 @@ int MPIR_Gather_index_tuned_intra_MV2(const void *sendbuf,
 	}
 	else {
 	    lp2ltn = pow(2, (int)log2(comm_size));
-	    comm_size_index = log2( lp2ltn / table_min_comm_size );
+	    comm_size_index = (lp2ltn < table_min_comm_size) ? 0 : log2( lp2ltn / table_min_comm_size );
 	}
     }
 
@@ -1842,7 +1842,7 @@ int MPIR_Gather_index_tuned_intra_MV2(const void *sendbuf,
 	}
 	else {
 	    lp2ltn = pow(2, (int)log2(nbytes));
-	    inter_node_algo_index = log2( lp2ltn / table_min_inter_size );
+	    inter_node_algo_index = (lp2ltn < table_min_inter_size) ? 0 : log2( lp2ltn / table_min_inter_size );
 	}
     }
     
@@ -1861,7 +1861,7 @@ int MPIR_Gather_index_tuned_intra_MV2(const void *sendbuf,
 	}
 	else {
 	    lp2ltn = pow(2, (int)log2(nbytes));
-	    intra_node_algo_index = log2(lp2ltn / table_min_intra_size );
+	    intra_node_algo_index = (lp2ltn < table_min_intra_size) ? 0 : log2(lp2ltn / table_min_intra_size );
 	}
     }
     

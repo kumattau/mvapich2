@@ -11,7 +11,7 @@
  */
 
 #include "rdma_impl.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "mpiutil.h"
 #include "cm.h"
 #ifdef _ENABLE_UD_
@@ -35,7 +35,7 @@
 #define DEBUG_PRINT(args...) \
 do {                                                          \
     int rank;                                                 \
-    PMI_Get_rank(&rank);                                      \
+    UPMI_GET_RANK(&rank);                                      \
     fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);\
     fprintf(stderr, args);  fflush(stderr);                   \
 } while (0)
@@ -73,7 +73,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     crc = update_crc(1, (void *)((uintptr_t)header+sizeof *header),
                      v->content_size - sizeof *header);
     if (crc != header->crc) {
-	int rank; PMI_Get_rank(&rank);
+	int rank; UPMI_GET_RANK(&rank);
 	MPIU_Error_printf(stderr, "CRC mismatch, get %lx, should be %lx "
 		"type %d, ocntent size %d\n", 
 		crc, header->crc, header->type, v->content_size);
@@ -598,13 +598,13 @@ int MPIDI_CH3I_MRAILI_Recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
 	    }
         /* deallocate recv RDMA buffers */
 	    if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
-	        MPIU_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
+	        MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
             vc->mrail.rfp.RDMA_recv_buf_DMA = NULL;
         }
 
         /* deallocate vbuf struct buffers */
 	    if (vc->mrail.rfp.RDMA_recv_buf) {
-	        MPIU_Free(vc->mrail.rfp.RDMA_recv_buf);
+	        MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
             vc->mrail.rfp.RDMA_recv_buf = NULL;
         }
         

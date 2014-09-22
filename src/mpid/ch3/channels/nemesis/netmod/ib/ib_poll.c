@@ -10,7 +10,7 @@
  *
  */
 
-#include "pmi.h"
+#include "upmi.h"
 
 #define _GNU_SOURCE
 #include "ib_vbuf.h"

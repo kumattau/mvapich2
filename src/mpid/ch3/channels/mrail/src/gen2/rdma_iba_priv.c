@@ -12,7 +12,7 @@
 
 #include "rdma_impl.h"
 #include "mpichconf.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "vbuf.h"
 #include "ibv_param.h"
 #include "rdma_cm.h"
@@ -26,7 +26,7 @@
 #define DEBUG_PRINT(args...) \
 do {                                                          \
     int rank;                                                 \
-    PMI_Get_rank(&rank);                                      \
+    UPMI_GET_RANK(&rank);                                      \
     fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);\
     fprintf(stderr, args);                                    \
 } while (0)
@@ -248,26 +248,28 @@ int rdma_find_active_port(struct ibv_context *context,
     const char *dev_name = NULL;
     struct ibv_port_attr port_attr;
 
-    if (NULL == ib_dev) {
-        return ERROR;
-    } else {
-        dev_name = ibv_get_device_name(ib_dev);
-    }
-
     for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; ++j) {
-        if ((!ibv_query_port(context, j, &port_attr)) &&
-            port_attr.state == IBV_PORT_ACTIVE) {
-            if (!strncmp(dev_name, "cxgb3", 5) || !strncmp(dev_name, "cxgb4", 5)
-                || port_attr.lid || (!port_attr.lid && use_iboeth)) {
-                /* Chelsio RNIC's don't get LID's as they're not IB devices.
-                 * So dont do this check for them. LID on RoCE will be zero.
-                 */
+        if ((!ibv_query_port(context, j, &port_attr)) && port_attr.state == IBV_PORT_ACTIVE) {
+            if (likely(port_attr.lid || use_iboeth)) {
                 DEBUG_PRINT("Active port number = %d, state = %s, lid = %d\r\n",
                             j,
                             (port_attr.state ==
                              IBV_PORT_ACTIVE) ? "Active" : "Not Active",
                             port_attr.lid);
                 return j;
+            } else {
+			    if (NULL == ib_dev) {
+			        return ERROR;
+			    } else {
+			        dev_name = ibv_get_device_name(ib_dev);
+			    }
+
+                if (!strncmp(dev_name, "cxgb", 4)) {
+                /* Chelsio RNIC's don't get LID's as they're not IB devices.
+                 * So dont do this check for them. LID on RoCE will be zero.
+                 */
+                    return j;
+                }
             }
         }
     }
@@ -497,6 +499,7 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
     dev_list = ibv_get_device_list(&num_devices);
 
+#ifdef RDMA_CM
     network_type = rdma_find_network_type(dev_list, num_devices,
                                           &num_usable_hcas);
 
@@ -514,12 +517,17 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                                       "**fail %s", "No IB device found");
         }
     }
+#else
+    num_usable_hcas = num_devices;
+#endif /*RDMA_CM*/
 
     for (i = 0; i < num_devices; i++) {
+#ifdef RDMA_CM
         if (rdma_skip_network_card(network_type, dev_list[i])) {
             /* Skip HCA's that don't match with network type */
             continue;
         }
+#endif /*RDMA_CM*/
 
         if (rdma_multirail_usage_policy == MV2_MRAIL_BINDING) {
             /* Bind a process to a HCA */
@@ -563,6 +571,13 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                                       rdma_num_hcas);
         }
 
+        if (ERROR == rdma_find_active_port(proc->nic_context[rdma_num_hcas],
+                                            proc->ib_dev[rdma_num_hcas])) {
+            /* No active port, skip HCA */
+            ibv_close_device(proc->nic_context[rdma_num_hcas]);
+            continue;
+        }
+
         proc->ptag[rdma_num_hcas] =
             ibv_alloc_pd(proc->nic_context[rdma_num_hcas]);
         if (!proc->ptag[rdma_num_hcas]) {
@@ -583,38 +598,11 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         }
     }
 
-    if (!strncmp(rdma_iba_hcas[0], RDMA_IBA_NULL_HCA, 32) &&
-        (1 == rdma_num_hcas) && (num_devices > 1) &&
-        (ERROR ==
-         rdma_find_active_port(proc->nic_context[0], proc->ib_dev[0]))) {
-        /* Trac #376 - There are multiple rdma capable devices (num_devices) in
-         * the system. The user has asked us to use ANY (!strncmp) ONE device
-         * (rdma_num_hcas), and the first device does not have an active port. So
-         * try to find some other device with an active port.
-         */
-        for (j = 0; dev_list[j]; j++) {
-            ib_dev = dev_list[j];
-            if (ib_dev) {
-                proc->nic_context[0] = ibv_open_device(ib_dev);
-                if (!proc->nic_context[0]) {
-                    /* Go to next device */
-                    continue;
-                }
-                if (ERROR !=
-                    rdma_find_active_port(proc->nic_context[0], ib_dev)) {
-                    proc->ib_dev[0] = ib_dev;
-                    proc->ptag[0] = ibv_alloc_pd(proc->nic_context[0]);
-                    if (!proc->ptag[0]) {
-                        /* Clean up before exit */
-                        ibv_free_device_list(dev_list);
-                        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
-                                                  "**fail", "%s%d",
-                                                  "Failed to alloc pd number ",
-                                                  i);
-                    }
-                }
-            }
-        }
+    if (unlikely(rdma_num_hcas == 0)) {
+        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+                                  "**fail", "%s %d",
+                                  "No active HCAs found on the system!!!",
+                                  rdma_num_hcas);
     }
 
   fn_exit:
@@ -1461,7 +1449,7 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
     }
 #endif
 
-    PMI_Get_size(&pg_size);
+    UPMI_GET_SIZE(&pg_size);
 
     vc->mrail.rfp.phead_RDMA_send = 0;
     vc->mrail.rfp.ptail_RDMA_send = 0;
@@ -1602,6 +1590,7 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid && !(vc->mrail.state & MRAILI_UD_CONNECTED)) {
 
+        vc->mrail.ud = NULL;
         vc->mrail.rely.total_messages = 0;
         vc->mrail.rely.ack_pending = 0;
 
@@ -2204,7 +2193,6 @@ int rdma_init_ud(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         ud_ctx->hca_num = hca_index;
         ud_ctx->num_recvs_posted = 0;
         ud_ctx->credit_preserve = (rdma_default_max_ud_recv_wqe / 4);
-        ud_ctx->num_recvs_posted += mv2_post_ud_recv_buffers((rdma_default_max_ud_recv_wqe - ud_ctx->num_recvs_posted), ud_ctx);
 
         proc->ud_rails[hca_index] = ud_ctx;
         proc->rc_connections = 0;
@@ -2215,17 +2203,35 @@ int rdma_init_ud(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     return mpi_errno;
 }
 
+int rdma_ud_post_buffers(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    int hca_index = 0;
+    int mpi_errno = MPI_SUCCESS;
+    mv2_ud_ctx_t *ud_ctx = NULL;
+
+    if (rdma_use_ud_zcopy) {
+        proc->zcopy_info.grh_mr =
+            (void *) dreg_register(proc->zcopy_info.grh_buf, MV2_UD_GRH_LEN);
+    }
+
+    for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+        ud_ctx = proc->ud_rails[hca_index];
+        ud_ctx->num_recvs_posted += mv2_post_ud_recv_buffers((rdma_default_max_ud_recv_wqe - ud_ctx->num_recvs_posted), ud_ctx);
+    }
+    PRINT_DEBUG(DEBUG_UD_verbose > 0, "Finish posting UD buffers\n");
+
+    return mpi_errno;
+}
+
 int mv2_ud_get_remote_info(MPIDI_PG_t * pg, int pg_rank, int pg_size)
 {
     int error, mpi_errno = MPI_SUCCESS, i;
-    char *key, *val;
     /* Width of one "lid:qpn:" entry (8 + 1 + 8 + 1 = 18) */
     int offset    = 18;
     int hca_index = 0;
     char *ptr     = NULL;
     char temp1[512];
     char temp2[32];
-    int key_max_sz, val_max_sz;
     mv2_ud_exch_info_t my_info, **all_info;
 
     all_info = (mv2_ud_exch_info_t **) MPIU_Malloc(pg_size *
@@ -2235,40 +2241,8 @@ int mv2_ud_get_remote_info(MPIDI_PG_t * pg, int pg_rank, int pg_size)
                                            sizeof(mv2_ud_exch_info_t));
     }
 
-    error = PMI_KVS_Get_key_length_max(&key_max_sz);
-    if (error != PMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s", "Error getting max key length");
-    }
-
-    ++key_max_sz;
-    key = MPIU_Malloc(key_max_sz);
-    if (key == NULL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                                  "**nomem %s", "PMI key");
-    }
-
-    error = PMI_KVS_Get_value_length_max(&val_max_sz);
-    if (error != PMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s",
-                                  "Error getting max value length");
-    }
-
-    ++val_max_sz;
-    val = MPIU_Malloc(val_max_sz);
-    if (val == NULL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                                  "**nomem %s", "PMI value");
-    }
-
-    if (key_max_sz < 20 || val_max_sz < 30) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                  "**fail", "**fail %s", "PMI value too small");
-    }
-
     /*Just put lid for default port and ud_qpn is sufficient */
-    MPIU_Snprintf(key, key_max_sz, "ud_%08d", pg_rank);
+    MPIU_Snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "ud_%08d", pg_rank);
 
     memset(temp1, 0, sizeof(temp1));
     memset(temp2, 0, sizeof(temp2));
@@ -2286,23 +2260,23 @@ int mv2_ud_get_remote_info(MPIDI_PG_t * pg, int pg_rank, int pg_size)
         PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d Put lids: %d ud_qp: %d\n",
                     pg_rank, my_info.lid, my_info.qpn);
     }
-    MPIU_Strncpy(val, temp1, val_max_sz);
+    MPIU_Strncpy(mv2_pmi_val, temp1, mv2_pmi_max_vallen);
 
-    error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
-    if (error != PMI_SUCCESS) {
+    error = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
+    if (error != UPMI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                   "**pmi_kvs_put", "**pmi_kvs_put %d", error);
     }
 
-    error = PMI_KVS_Commit(pg->ch.kvs_name);
-    if (error != PMI_SUCCESS) {
+    error = UPMI_KVS_COMMIT(pg->ch.kvs_name);
+    if (error != UPMI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                   "**pmi_kvs_commit", "**pmi_kvs_commit %d",
                                   error);
     }
 
-    error = PMI_Barrier();
-    if (error != PMI_SUCCESS) {
+    error = UPMI_BARRIER();
+    if (error != UPMI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                   "**pmi_barrier", "**pmi_barrier %d", error);
     }
@@ -2312,25 +2286,23 @@ int mv2_ud_get_remote_info(MPIDI_PG_t * pg, int pg_rank, int pg_size)
             continue;
         }
 
-        MPIU_Snprintf(key, key_max_sz, "ud_%08d", i);
+        MPIU_Snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "ud_%08d", i);
 
-        error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
-        if (error != PMI_SUCCESS) {
+        error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
+        if (error != UPMI_SUCCESS) {
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                       "**pmi_kvs_get", "**pmi_kvs_get %d",
                                       error);
         }
 
         for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-            ptr = (char*) val + (hca_index * offset);
+            ptr = (char*) mv2_pmi_val + (hca_index * offset);
             sscanf(ptr, "%08hx:%08x", &(all_info[i][hca_index].lid), &(all_info[i][hca_index].qpn));
             PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d, hca:%d Get lid:%d ud_qpn:%d\n", i, hca_index,
                         all_info[i][hca_index].lid, all_info[i][hca_index].qpn);
         }
     }
     mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info = all_info;
-    MPIU_Free(key);
-    MPIU_Free(val);
 
   fn_exit:
     return mpi_errno;
@@ -2339,36 +2311,51 @@ int mv2_ud_get_remote_info(MPIDI_PG_t * pg, int pg_rank, int pg_size)
 
 }
 
+int MPIDI_CH3I_UD_Generate_addr_handle_for_rank(MPIDI_PG_t * pg, int tgt_rank)
+{
+    int hca_index   = 0;
+    MPIDI_VC_t *vc  = NULL;
+
+    MPIDI_PG_Get_vc(pg, tgt_rank, &vc);
+
+    vc->mrail.ud = MPIU_Malloc(sizeof(mv2_ud_vc_info_t) * rdma_num_hcas);
+
+    for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+        mv2_ud_set_vc_info(&vc->mrail.ud[hca_index],
+                           &mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[tgt_rank][hca_index],
+                           mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_index],
+                           mv2_MPIDI_CH3I_RDMA_Process.ports[hca_index][0]);
+    }
+
+#ifdef _ENABLE_XRC_
+    VC_XST_SET(vc, XF_UD_CONNECTED);
+#endif
+    vc->state = MPIDI_VC_STATE_ACTIVE;
+
+    PRINT_DEBUG(DEBUG_UD_verbose > 0, "Created UD Address handle for rank %d\n", tgt_rank);
+
+    return MPI_SUCCESS;
+}
+
 int MPIDI_CH3I_UD_Generate_addr_handles(MPIDI_PG_t * pg, int pg_rank,
                                         int pg_size)
 {
     int i = 0;
-    MPIDI_VC_t *vc = NULL;
-    int hca_index = 0;
+    MPIDI_VC_t *vc  = NULL;
 
     for (i = 0; i < pg_size; i++) {
-        MPIDI_PG_Get_vc(pg, i, &vc);
         if (i == pg_rank) {
             continue;
         }
+        MPIDI_PG_Get_vc(pg, i, &vc);
 
-        vc->mrail.ud = MPIU_Malloc(sizeof(mv2_ud_vc_info_t) * rdma_num_hcas);
-
-        for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-            mv2_ud_set_vc_info(&vc->mrail.ud[hca_index],
-                               &mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[i][hca_index],
-                               mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_index],
-                               mv2_MPIDI_CH3I_RDMA_Process.ports[hca_index][0]);
-        }
-
-        /* Change vc state to avoid UD CM connection establishment */
         MRAILI_Init_vc(vc);
+        /* Change vc state to avoid UD CM connection establishment */
         vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
 #ifdef _ENABLE_XRC_
         VC_XST_SET(vc, XF_SEND_IDLE);
 #endif
         vc->mrail.state |= MRAILI_UD_CONNECTED;
-
     }
 
     PRINT_DEBUG(DEBUG_UD_verbose > 0, "Created UD Address handles \n");
@@ -2429,8 +2416,6 @@ int mv2_ud_setup_zcopy_rndv(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
     /* allocate and register GRH buffer */
     zcopy_info->grh_buf = MPIU_Malloc(MV2_UD_GRH_LEN);
-    zcopy_info->grh_mr =
-        (void *) dreg_register(zcopy_info->grh_buf, MV2_UD_GRH_LEN);
     zcopy_info->no_free_rndv_qp = 0;
 
     /* Setup QP for sending zcopy rndv messages */

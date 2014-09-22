@@ -421,11 +421,12 @@ typedef struct shm_info_t {
     int file_fd;
     int size;
     int count;
-    int write;
-    int read;
+    unsigned long long int write;
+    unsigned long long int read;
     int tail;
     shm_queue_t *queue;
     MPI_Comm comm; 
+    int max_local_size;
 #if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
     int buffer_registered; 
     /* zcpy bcast */

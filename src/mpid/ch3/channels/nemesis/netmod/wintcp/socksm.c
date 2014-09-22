@@ -1455,7 +1455,7 @@ int MPID_nem_newtcp_module_connect (struct MPIDI_VC *const vc)
             int pmi_errno;
             int val_max_sz;
             
-            pmi_errno = PMI_KVS_Get_value_length_max(&val_max_sz);
+            pmi_errno = UPMI_KVS_GET_VALUE_LENGTH_MAX(&val_max_sz);
             MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
             MPIU_CHKLMEM_MALLOC(bc, char *, val_max_sz, mpi_errno, "bc");
 

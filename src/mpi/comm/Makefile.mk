@@ -36,7 +36,7 @@ mpi_sources +=                       \
     src/mpi/comm/create_2level_comm.c
 endif
 
-lib_lib@MPILIBNAME@_la_SOURCES += \
+mpi_core_sources += \
     src/mpi/comm/commutil.c
 
 noinst_HEADERS += src/mpi/comm/mpicomm.h

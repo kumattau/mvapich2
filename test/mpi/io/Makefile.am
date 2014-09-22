@@ -22,7 +22,9 @@ noinst_PROGRAMS = \
     async         \
     async_any     \
     userioerr     \
-    resized
+    resized       \
+    resized2      \
+    bigtype
 
 clean-local:
 	-rm -f testfile testfile.*

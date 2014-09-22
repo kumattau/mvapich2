@@ -21,7 +21,7 @@
 #define DEBUG_PRINT(args...)                                      \
 do {                                                              \
     int __rank;                                                   \
-    PMI_Get_rank(&__rank);                                        \
+    UPMI_GET_RANK(&__rank);                                        \
     fprintf(stderr, "[%d][%s:%d] ", __rank, __FILE__, __LINE__);  \
     fprintf(stderr, args);                                        \
     fflush(stderr);                                               \

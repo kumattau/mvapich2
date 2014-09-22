@@ -18,7 +18,7 @@
 
 #define _GNU_SOURCE
 #include "mpidimpl.h"
-#include "pmi.h"
+#include "upmi.h"
 
 #include "ib_device.h"
 #include "ib_cm.h"
@@ -241,7 +241,7 @@ static int check_hsam_parameters()
     int size;
 
     /* Get the number of processes */
-    PMI_Get_size(&size);
+    UPMI_GET_SIZE(&size);
 
     /* If the number of processes is less than 64, we can afford * to
      * have more RC QPs and hence a value of 4 is chosen, for * other
@@ -291,10 +291,10 @@ int MPID_nem_ib_get_control_params_after_hcainit()
     int mpi_errno = MPI_SUCCESS;
     int my_rank = -1;
 
-    PMI_Get_rank(&my_rank);
+    UPMI_GET_RANK(&my_rank);
 
     int size;
-    PMI_Get_size(&size);
+    UPMI_GET_SIZE(&size);
     process_info.has_srq = (value = getenv("MV2_USE_SRQ")) != NULL ? !!atoi(value) : 1;
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
@@ -548,6 +548,17 @@ int MPID_nem_ib_set_default_params()
 
     else if(MV2_IS_ARCH_HCA_TYPE(process_info.arch_hca_type,
                 MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20, MV2_HCA_MLX_CX_CONNIB)){
+
+        rdma_vbuf_total_size = 64 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc           = 4 * 1024;
+        rdma_put_fallback_threshold  = 8 * 1024;
+        rdma_get_fallback_threshold  = 0; 
+    }
+
+    else if(MV2_IS_ARCH_HCA_TYPE(process_info.arch_hca_type,
+                MV2_ARCH_INTEL_XEON_E5_2680_V2_2S_20, MV2_HCA_MLX_CX_CONNIB)){
 
         rdma_vbuf_total_size = 64 * 1024 + EAGER_THRESHOLD_ADJUST;
         rdma_fp_buffer_size = 5 * 1024;
@@ -842,7 +853,7 @@ int MPID_nem_ib_get_user_params()
 
     char *value;
     int pg_size;
-    PMI_Get_size(&pg_size);
+    UPMI_GET_SIZE(&pg_size);
 
 
     if ((value = getenv("MV2_DEFAULT_MTU")) != NULL) {
@@ -1109,7 +1120,7 @@ int MPID_nem_ib_get_control_params()
     char* value = NULL;
     int my_rank = -1;
 
-    PMI_Get_rank(&my_rank);
+    UPMI_GET_RANK(&my_rank);
     get_hca_user_parameters();
     
     if ((value = getenv("MV2_LOG_ARCH_HCA_TYPE")) != NULL) {
@@ -1212,8 +1223,8 @@ int MPID_nem_ib_get_control_params()
             threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
         }
 
-        PMI_Get_size(&pg_size);
-        PMI_Get_rank(&rank);
+        UPMI_GET_SIZE(&pg_size);
+        UPMI_GET_RANK(&rank);
 
         if ((value = getenv("MV2_ON_DEMAND_THRESHOLD")) != NULL){
             threshold = atoi(value);

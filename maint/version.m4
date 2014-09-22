@@ -14,11 +14,11 @@
 # changing this by playing with diversions, but then we would probably be
 # playing with autotools-fire.
 
-m4_define([MPICH_VERSION_m4],[3.1])dnl
+m4_define([MPICH_VERSION_m4],[3.1.2])dnl
 m4_define([MPICH_RELEASE_DATE_m4],[unreleased development copy])dnl
 
-m4_define([MVAPICH2_VERSION_m4],[2.0])dnl
-m4_define([MVAPICH2_RELEASE_DATE_m4],[Fri Jun 20 20:00:00 EDT 2014])dnl
+m4_define([MVAPICH2_VERSION_m4],[2.1a])dnl
+m4_define([MVAPICH2_RELEASE_DATE_m4],[Sun Sep 21 12:00:00 EDT 2014])dnl
 
 # For libtool ABI versioning rules see:
 # http://www.gnu.org/software/libtool/manual/libtool.html#Updating-version-info
@@ -35,9 +35,9 @@ m4_define([MVAPICH2_RELEASE_DATE_m4],[Fri Jun 20 20:00:00 EDT 2014])dnl
 #     4. If any interfaces have been removed since the last public
 #     release, then set age to 0.
 
-# libmpich so version only includes functionality defined in the MPI
+# libmpi so version only includes functionality defined in the MPI
 # standard, and does not include MPIX_ functions and C++ bindings.
 
-m4_define([libmpich_so_version_m4],[12:0:0])dnl
+m4_define([libmpi_so_version_m4],[12:2:0])dnl
 
 [#] end of __file__

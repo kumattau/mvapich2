@@ -11,7 +11,7 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  */
 
-void enable_send_environ (void);
+void enable_send_environ (int overwrite);
 int send_environ (int socket);
 int recv_environ (int socket);
 

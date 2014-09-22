@@ -224,7 +224,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
             goto cleanup_files;
         }
 
-        PMI_Barrier();
+        UPMI_BARRIER();
 
         /* Memory Mapping shared files for collectives*/
         if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap(pg, pg->ch.local_process_id)) != MPI_SUCCESS)
@@ -356,7 +356,7 @@ static void psm_preinit(int pg_size)
         if(fp == NULL) {
             goto skip;
         }
-        PMI_Barrier();
+        UPMI_BARRIER();
         n = scandir("/dev/shm", &fls, filter, NULL);  
         sprintf(scratch, "mpi_%s_%d", kvsid, getpid());
         for(i = 0; i < n; i++) {
@@ -366,7 +366,7 @@ static void psm_preinit(int pg_size)
         }   
         MPIU_Memalign_Free(fls);
 
-        PMI_Barrier();
+        UPMI_BARRIER();
         DBG("localid %d localranks %d\n", id, n);
         snprintf(scratch, sizeof(scratch), "%d", n);
 	setenv("MPI_LOCALNRANKS", scratch, 1);
@@ -429,33 +429,33 @@ static int psm_allgather_epid(psm_epid_t *list, int pg_size, int pg_rank)
     if(pg_size == 1)
         return MPI_SUCCESS;
 
-    PMI_KVS_Get_key_length_max(&kvslen);
+    UPMI_KVS_GET_KEY_LENGTH_MAX(&kvslen);
     kvskey = (char *) MPIU_Malloc (kvslen);
 
     DBG("[%d] my epid = %d\n", pg_rank, list[pg_rank]);
     MPIDI_PG_GetConnKVSname(&kvs_name);
     MPIU_Snprintf(kvskey, kvslen, "pmi_epidkey_%d", pg_rank);
     MPIU_Snprintf(scratch, WRBUFSZ, "%lu", list[pg_rank]);
-    if(PMI_KVS_Put(kvs_name, kvskey, scratch) != PMI_SUCCESS) {
+    if(UPMI_KVS_PUT(kvs_name, kvskey, scratch) != UPMI_SUCCESS) {
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_putfailed");
     }
-    if(PMI_KVS_Commit(kvs_name) != PMI_SUCCESS) {
+    if(UPMI_KVS_COMMIT(kvs_name) != UPMI_SUCCESS) {
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_putcommit");
     }
-    PMI_Barrier();
+    UPMI_BARRIER();
 
     for(i = 0; i < pg_size; i++) {
         if(i == pg_rank)
             continue;
 
         MPIU_Snprintf(kvskey, kvslen, "pmi_epidkey_%d", i);
-        if(PMI_KVS_Get(kvs_name, kvskey, scratch, WRBUFSZ) != PMI_SUCCESS) {
+        if(UPMI_KVS_GET(kvs_name, kvskey, scratch, WRBUFSZ) != UPMI_SUCCESS) {
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_getfailed");
         }
         sscanf(scratch, "%lu", &(list[i]));
         DBG("[%d] got epid %llu\n", pg_rank, list[i]);
     }
-    PMI_Barrier();
+    UPMI_BARRIER();
     MPIU_Free(kvskey);
     DBG("epid collected from all\n");
     return MPI_SUCCESS;
@@ -479,8 +479,8 @@ static int psm_bcast_uuid(int pg_size, int pg_rank)
     if(pg_size == 1)
         return MPI_SUCCESS;
 
-    PMI_KVS_Get_key_length_max(&kvslen);
-    PMI_KVS_Get_value_length_max(&valen);
+    UPMI_KVS_GET_KEY_LENGTH_MAX(&kvslen);
+    UPMI_KVS_GET_VALUE_LENGTH_MAX(&valen);
     kvskey = (char *) MPIU_Malloc (kvslen);
     MPIDI_PG_GetConnKVSname(&kvs_name);
     snprintf(kvskey, kvslen, MPID_PSM_UUID"_%d_%s", pg_rank, kvs_name);
@@ -492,17 +492,17 @@ static int psm_bcast_uuid(int pg_size, int pg_rank)
         strcpy(scratch, "dummy-entry");
     }
     
-    if(PMI_KVS_Put(kvs_name, kvskey, scratch) != PMI_SUCCESS) {
+    if(UPMI_KVS_PUT(kvs_name, kvskey, scratch) != UPMI_SUCCESS) {
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmiputuuid");
     }
-    if(PMI_KVS_Commit(kvs_name) != PMI_SUCCESS) {
+    if(UPMI_KVS_COMMIT(kvs_name) != UPMI_SUCCESS) {
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmicommituuid");
     }
 
-    PMI_Barrier();
+    UPMI_BARRIER();
     if(pg_rank != ROOT) {
         snprintf(kvskey, kvslen, MPID_PSM_UUID"_0_%s", kvs_name);
-        if(PMI_KVS_Get(kvs_name, kvskey, scratch, WRBUFSZ) != PMI_SUCCESS) {
+        if(UPMI_KVS_GET(kvs_name, kvskey, scratch, WRBUFSZ) != UPMI_SUCCESS) {
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmigetuuid");
         }
         strcat(scratch, "==");
@@ -512,7 +512,7 @@ static int psm_bcast_uuid(int pg_size, int pg_rank)
             goto fn_fail;
         }
     }
-    PMI_Barrier();
+    UPMI_BARRIER();
     MPIU_Free(kvskey);
     return MPI_SUCCESS;
 

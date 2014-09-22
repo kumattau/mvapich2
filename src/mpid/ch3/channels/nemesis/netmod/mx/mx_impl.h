@@ -12,11 +12,7 @@
 
 #ifndef MX_MODULE_IMPL_H
 #define MX_MODULE_IMPL_H
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
+#include "upmi.h"
 #include <myriexpress.h>
 #include "mx_extensions.h"
 #include "mpid_nem_impl.h"

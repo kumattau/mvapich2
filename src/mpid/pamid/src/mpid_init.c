@@ -27,6 +27,8 @@
 #include "mpidi_platform.h"
 #include "onesided/mpidi_onesided.h"
 
+#include "mpidi_util.h"
+
 #ifdef DYNAMIC_TASKING
 #define PAMIX_CLIENT_DYNAMIC_TASKING 1032
 #define PAMIX_CLIENT_WORLD_TASKS     1033
@@ -125,7 +127,7 @@ MPIDI_Process_t  MPIDI_Process = {
     .subcomms            = 1,
     .select_colls        = 2,
     .memory              = 0,
-    .num_requests        = 1,
+    .num_requests        = 16,
   },
 
   .mpir_nbc              = 1,
@@ -324,6 +326,39 @@ static struct
 #endif
 };
 
+
+#undef FUNCNAME
+#define FUNCNAME split_type
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int split_type(MPID_Comm * comm_ptr, int stype, int key,
+                      MPID_Info *info_ptr, MPID_Comm ** newcomm_ptr)
+{
+    MPID_Node_id_t id;
+    int nid;
+    int mpi_errno = MPI_SUCCESS;
+
+    mpi_errno = MPID_Get_node_id(comm_ptr, comm_ptr->rank, &id);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    nid = (stype == MPI_COMM_TYPE_SHARED) ? id : MPI_UNDEFINED;
+    mpi_errno = MPIR_Comm_split_impl(comm_ptr, nid, key, newcomm_ptr);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+  fn_exit:
+    return mpi_errno;
+
+    /* --BEGIN ERROR HANDLING-- */
+  fn_fail:
+    goto fn_exit;
+    /* --END ERROR HANDLING-- */
+}
+
+static MPID_CommOps comm_fns = {
+    split_type
+};
+
+
 /* ------------------------------ */
 /* Collective selection extension */
 /* ------------------------------ */
@@ -441,7 +476,7 @@ MPIDI_PAMI_client_init(int* rank, int* size, int* mpidi_dynamic_tasking, char **
     char * env = getenv("PAMID_DISABLE_INTERNAL_EAGER_TASK_LIMIT");
     if (env != NULL)
       {
-        size_t i, n = strlen(env);
+        size_t n = strlen(env);
         char * tmp = (char *) MPIU_Malloc(n+1);
         strncpy(tmp,env,n);
         if (n>0) tmp[n]=0;
@@ -628,8 +663,10 @@ void MPIDI_Collsel_table_generate()
 static void
 MPIDI_PAMI_context_init(int* threading, int *size)
 {
+#ifdef TRACE_ON
   int requested_thread_level;
   requested_thread_level = *threading;
+#endif
   int  numTasks;
 
 #if (MPIU_THREAD_GRANULARITY == MPIU_THREAD_GRANULARITY_PER_OBJECT)
@@ -1064,8 +1101,8 @@ MPIDI_VCRT_init(int rank, int size, char *world_tasks, MPIDI_PG_t *pg)
 {
   int i, rc;
   MPID_Comm * comm;
-  int p, mpi_errno=0;
 #ifdef DYNAMIC_TASKING
+  int p, mpi_errno=0;
   char *world_tasks_save,*cp;
   char *pg_id;
 #endif
@@ -1190,6 +1227,8 @@ int MPID_Init(int * argc,
   char *world_tasks;
   pami_result_t rc;
 
+  /* Override split_type */
+  MPID_Comm_fns = &comm_fns;
 
   /* ------------------------------------------------------------------------------- */
   /*  Initialize the pami client to get the process rank; needed for env var output. */
@@ -1246,9 +1285,6 @@ int MPID_Init(int * argc,
                                 * for getting the business card
                                 */
     MPIDI_Process.my_pg_rank = pg_rank;
-    /* FIXME: Why do we add a ref to pg here? */
-    TRACE_ERR("Adding ref pg=%x\n", pg);
-    MPIDI_PG_add_ref(pg);
 
   }
 #endif
@@ -1535,58 +1571,44 @@ int MPIDI_InitPG( int *argc, char ***argv,
 	 * and get rank and size information about our process group
 	 */
 
-#ifdef USE_PMI2_API
-	TRACE_ERR("Calling PMI2_Init\n");
-        mpi_errno = PMI2_Init(has_parent, &pg_size, &pg_rank, &appnum);
-	TRACE_ERR("PMI2_Init - pg_size=%d pg_rank=%d\n", pg_size, pg_rank);
-        /*if (mpi_errno) MPIU_ERR_POP(mpi_errno);*/
-#else
 	TRACE_ERR("Calling PMI_Init\n");
-	pmi_errno = PMI_Init(has_parent);
-	if (pmi_errno != PMI_SUCCESS) {
+	pmi_errno = UPMI_INIT(has_parent);
+	if (pmi_errno != UPMI_SUCCESS) {
 	/*    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_init",
 			     "**pmi_init %d", pmi_errno); */
 	}
 
-	pmi_errno = PMI_Get_rank(&pg_rank);
-	if (pmi_errno != PMI_SUCCESS) {
+	pmi_errno = UPMI_GET_RANK(&pg_rank);
+	if (pmi_errno != UPMI_SUCCESS) {
 	    /*MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_rank",
 			     "**pmi_get_rank %d", pmi_errno); */
 	}
 
-	pmi_errno = PMI_Get_size(&pg_size);
+	pmi_errno = UPMI_GET_SIZE(&pg_size);
 	if (pmi_errno != 0) {
 	/*MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_size",
 			     "**pmi_get_size %d", pmi_errno);*/
 	}
 
-	pmi_errno = PMI_Get_appnum(&appnum);
-	if (pmi_errno != PMI_SUCCESS) {
+	pmi_errno = UPMI_GET_APPNUM(&appnum);
+	if (pmi_errno != UPMI_SUCCESS) {
 /*	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_appnum",
 				 "**pmi_get_appnum %d", pmi_errno); */
 	}
-#endif
+
 	/* Note that if pmi is not availble, the value of MPI_APPNUM is
 	   not set */
 	if (appnum != -1) {
 	    MPIR_Process.attrs.appnum = appnum;
 	}
 
-#ifdef USE_PMI2_API
-
-        /* This memory will be freed by the PG_Destroy if there is an error */
-	pg_id = MPIU_Malloc(MAX_JOBID_LEN);
-
-        mpi_errno = PMI2_Job_GetId(pg_id, MAX_JOBID_LEN);
-	TRACE_ERR("PMI2_Job_GetId - pg_id=%s\n", pg_id);
-#else
 	/* Now, initialize the process group information with PMI calls */
 	/*
 	 * Get the process group id
 	 */
-	pmi_errno = PMI_KVS_Get_name_length_max(&pg_id_sz);
-	if (pmi_errno != PMI_SUCCESS) {
-          TRACE_ERR("PMI_KVS_Get_name_length_max returned with pmi_errno=%d\n", pmi_errno);
+	pmi_errno = UPMI_KVS_GET_NAME_LENGTH_MAX(&pg_id_sz);
+	if (pmi_errno != UPMI_SUCCESS) {
+          TRACE_ERR("UPMI_KVS_GET_NAME_LENGTH_MAX returned with pmi_errno=%d\n", pmi_errno);
 	}
 
 	/* This memory will be freed by the PG_Destroy if there is an error */
@@ -1595,11 +1617,10 @@ int MPIDI_InitPG( int *argc, char ***argv,
 	/* Note in the singleton init case, the pg_id is a dummy.
 	   We'll want to replace this value if we join an
 	   Process manager */
-	pmi_errno = PMI_KVS_Get_my_name(pg_id, pg_id_sz);
-	if (pmi_errno != PMI_SUCCESS) {
-          TRACE_ERR("PMI_KVS_Get_my_name returned with pmi_errno=%d\n", pmi_errno);
+	pmi_errno = UPMI_KVS_GET_MY_NAME(pg_id, pg_id_sz);
+	if (pmi_errno != UPMI_SUCCESS) {
+          TRACE_ERR("UPMI_KVS_GET_MY_NAME returned with pmi_errno=%d\n", pmi_errno);
 	}
-#endif
     }
     else {
 	/* Create a default pg id */

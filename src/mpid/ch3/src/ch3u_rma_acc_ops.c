@@ -20,7 +20,6 @@
 #endif
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_rmaqueue_alloc);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_rmaqueue_set);
-extern void MPIDI_CH3_RMA_Init_Pvars(void);
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_Get_accumulate
@@ -37,7 +36,7 @@ int MPIDI_Get_accumulate(const void *origin_addr, int origin_count,
     int dt_contig ATTRIBUTE((unused));
     MPI_Aint dt_true_lb ATTRIBUTE((unused));
     MPID_Datatype *dtp;
-    MPIDI_VC_t *orig_vc, *target_vc;
+    MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_GET_ACCUMULATE);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_GET_ACCUMULATE);
@@ -156,7 +155,7 @@ int MPIDI_Compare_and_swap(const void *origin_addr, const void *compare_addr,
 {
     int mpi_errno = MPI_SUCCESS;
     int rank;
-    MPIDI_VC_t *orig_vc, *target_vc;
+    MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
 
 #if defined(CHANNEL_MRAIL)  
     int transfer_complete = 0;
@@ -287,7 +286,7 @@ int MPIDI_Fetch_and_op(const void *origin_addr, void *result_addr,
 {
     int mpi_errno = MPI_SUCCESS;
     int rank;
-    MPIDI_VC_t *orig_vc, *target_vc;
+    MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
 
 #if defined(CHANNEL_MRAIL)
     int transfer_complete = 0;

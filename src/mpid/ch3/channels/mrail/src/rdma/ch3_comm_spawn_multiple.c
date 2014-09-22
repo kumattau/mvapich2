@@ -11,7 +11,7 @@
  */
 
 #include "mpidi_ch3_impl.h"
-#include "pmi.h"
+#include "upmi.h"
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Comm_spawn_multiple
@@ -54,16 +54,19 @@ int MPIDI_CH3_Comm_spawn_multiple(int count, char **commands,
         preput_keyval_vector.key = "PARENT_ROOT_PORT_NAME";
         preput_keyval_vector.val = port_name;
 
-        if ((mpi_errno = PMI_Spawn_multiple(
+        if ((mpi_errno = UPMI_JOB_SPAWN(
             count,
             (const char**) commands,
+            NULL,
             (const char***) argvs,
             maxprocs,
             info_keyval_sizes,
-            (const PMI_keyval_t**) info_keyval_vectors,
+            (const void**) info_keyval_vectors,
             1,
-            &preput_keyval_vector,
-            errcodes)) != PMI_SUCCESS)
+            (const void**) &preput_keyval_vector,
+            NULL,
+            0,
+            errcodes)) != UPMI_SUCCESS)
         {
 #ifdef HAVE_ERROR_CHECKING
             mpi_errno = MPIR_Err_create_code(

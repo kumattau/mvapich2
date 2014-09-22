@@ -4,6 +4,12 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* style:allow:snprintf:9 sig:0 */
+/* style:allow:strncpy:3 sig:0 */
+/* style:allow:fprintf:26 sig:0 */
+/* style:allow:free:3 sig:0 */
+/* style:allow:malloc:3 sig:0 */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -106,7 +112,7 @@ int PrintControlVars( FILE *fp )
 {
     int          i, num_cvar, nameLen, verbosity, descLen, binding, scope;
     int          hasValue;
-    char         name[MAX_NAME_LEN], desc[MAX_DESC_LEN], varValue[21];
+    char         name[MAX_NAME_LEN], desc[MAX_DESC_LEN], varValue[512];
     MPI_T_enum   enumtype;
     MPI_Datatype datatype;
 
@@ -160,7 +166,7 @@ int PrintPerfVars( FILE *fp )
 {
     int          i, numPvar, nameLen, descLen, verbosity, varClass;
     int          binding, isReadonly, isContinuous, isAtomic;
-    char         name[MAX_NAME_LEN], desc[MAX_DESC_LEN], varValue[21];
+    char         name[MAX_NAME_LEN], desc[MAX_DESC_LEN], varValue[512];
     MPI_T_enum   enumtype;
     MPI_Datatype datatype;
 

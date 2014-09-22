@@ -13,7 +13,7 @@
 #ifndef IB_ERRORS_H
 #define IB_ERRORS_H
 
-#include "pmi.h"
+#include "upmi.h"
 
 #define NEM_IB_ERR(message, args...) {                          \
     MPIU_Internal_error_printf("[%s:%d] [%s:%d] ",              \
@@ -41,7 +41,7 @@
 #define DEBUG_PRINT(args...) \
 do {                                                          \
     int rank;                                                 \
-    PMI_Get_rank(&rank);                                      \
+    UPMI_GET_RANK(&rank);                                      \
     MPIU_Error_printf("[%d][%s:%d] ", rank, __FILE__, __LINE__);\
     MPIU_Error_printf(args);                                    \
 } while (0)
@@ -52,7 +52,7 @@ do {                                                          \
 
 #define ibv_va_error_abort(code, message, args...)  {           \
     int my_rank;                                                \
-    PMI_Get_rank(&my_rank);                                     \
+    UPMI_GET_RANK(&my_rank);                                     \
     fprintf(stderr, "[%d] Abort: ", my_rank);                   \
     fprintf(stderr, message, ##args);                           \
     fprintf(stderr, " at line %d in file %s\n", __LINE__,       \

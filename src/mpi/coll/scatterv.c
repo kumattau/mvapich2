@@ -25,6 +25,11 @@
 #pragma _HP_SECONDARY_DEF PMPI_Scatterv  MPI_Scatterv
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Scatterv as PMPI_Scatterv
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Scatterv(const void *sendbuf, const int *sendcounts, const int *displs,
+                 MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype,
+                 int root, MPI_Comm comm)
+                 __attribute__((weak,alias("PMPI_Scatterv")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -213,10 +218,6 @@ int MPIR_Scatterv_impl(const void *sendbuf, const int *sendcounts, const int *di
 
         avg_size = total_size / total_msgs;
 
-        if (sendbuf_on_device || recvbuf_on_device) {
-            enable_device_ptr_checks = 1;
-        }
-
         if ((sendbuf_on_device || recvbuf_on_device) &&
              rdma_cuda_use_naive &&
              avg_size <= rdma_cuda_scatterv_naive_limit) {
@@ -297,11 +298,6 @@ int MPIR_Scatterv_impl(const void *sendbuf, const int *sendcounts, const int *di
 #endif
 
  fn_exit:
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        enable_device_ptr_checks = 0;
-    }
-#endif
     return mpi_errno;
  fn_fail:
     goto fn_exit;
@@ -412,6 +408,12 @@ int MPI_Scatterv(const void *sendbuf, const int *sendcounts, const int *displs,
                             MPIR_ERRTEST_SENDBUF_INPLACE(sendbuf, sendcounts[i], mpi_errno);
                             break;
                         }
+                    }
+                    /* catch common aliasing cases */
+                    if (recvbuf != MPI_IN_PLACE && sendtype == recvtype && sendcounts[comm_ptr->rank] != 0 && recvcount != 0) {
+                        int sendtype_size;
+                        MPID_Datatype_get_size_macro(sendtype, sendtype_size);
+                        MPIR_ERRTEST_ALIAS_COLL(recvbuf, (char*)sendbuf + displs[comm_ptr->rank]*sendtype_size, mpi_errno);
                     }
                 }
                 else 

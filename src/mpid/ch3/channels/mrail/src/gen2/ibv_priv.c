@@ -17,7 +17,7 @@
 #define DEBUG_PRINT(args...) \
 do {                                                          \
     int rank;                                                 \
-    PMI_Get_rank(&rank);                                      \
+    UPMI_GET_RANK(&rank);                                      \
     fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);\
     fprintf(stderr, args);  fflush(stderr);                   \
 } while (0)
@@ -82,26 +82,16 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 
     if (num_rdma_buffer) {
 
-#ifdef USE_MEMORY_TRACING
-        vbuf_ctrl_buf = MPIU_Malloc(sizeof(struct vbuf) * num_rdma_buffer);
-#else
 	/* allocate vbuf struct buffers */
         if(MPIU_Memalign((void **) &vbuf_ctrl_buf, 64,
             sizeof(struct vbuf) * num_rdma_buffer)) {
             DEBUG_PRINT("malloc failed: vbuf in vbuf_fast_rdma_alloc\n");
             goto fn_fail;
         }
-#endif /* USE_MEMORY_TRACING */
 
         MPIU_Memset(vbuf_ctrl_buf, 0,
                 sizeof(struct vbuf) * num_rdma_buffer);
-#ifdef USE_MEMORY_TRACING
-        vbuf_rdma_buf = MPIU_Malloc(rdma_fp_buffer_size * num_rdma_buffer);
-        if (vbuf_rdma_buf == NULL) {
-            DEBUG_PRINT("malloc failed: vbuf DMA in vbuf_fast_rdma_alloc");
-            goto fn_exit;
-        }
-#else
+
         int pagesize = getpagesize();
         /* allocate vbuf RDMA buffers */
         if(MPIU_Memalign((void **)&vbuf_rdma_buf, pagesize,
@@ -109,7 +99,6 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
             DEBUG_PRINT("malloc failed: vbuf DMA in vbuf_fast_rdma_alloc");
             goto fn_exit;
         }
-#endif /* USE_MEMORY_TRACING */
 #if defined(_ENABLE_CUDA_)
         if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
             ibv_cuda_register(vbuf_rdma_buf, num_rdma_buffer * rdma_fp_buffer_size);
@@ -175,10 +164,10 @@ fn_exit:
     return mpi_errno;
 fn_fail:
     if (vbuf_rdma_buf) {
-        MPIU_Free(vbuf_rdma_buf);
+        MPIU_Memalign_Free(vbuf_rdma_buf);
     }
     if (vbuf_ctrl_buf) {
-        MPIU_Free(vbuf_ctrl_buf);
+        MPIU_Memalign_Free(vbuf_ctrl_buf);
     }
     mpi_errno = -1;
     goto fn_exit;

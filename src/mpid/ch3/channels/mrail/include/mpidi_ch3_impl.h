@@ -330,6 +330,14 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str);
  * in initialization */
 int MPIDI_CH3I_CM_Finalize(void);
 
+/* MPIDI_CH3I_RDMA_CM_Init should replace MPIDI_CH3I_CM_init if 
+ * RDMA_CM is enabled. */
+int MPIDI_CH3I_RDMA_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str);
+
+/* MPIDI_CH3I_RDMA_CM_Finalize should be used if MPIDI_CH3I_RDMA_CM_Init is used
+ * in initialization */
+int MPIDI_CH3I_RDMA_CM_Finalize(void);
+
 /* MPIDI_CH3I_CM_Get_port_info gets the connection information in ifname */
 int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len);
 

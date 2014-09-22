@@ -107,7 +107,7 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
     crc = update_crc(1, (void *)((uintptr_t)header+sizeof *header),
                      v->content_size - sizeof *header);
     if (crc != header->mrail.crc) {
-        int rank; PMI_Get_rank(&rank);
+        int rank; UPMI_GET_RANK(&rank);
         MPIU_Error_printf(stderr, "CRC mismatch, get %lx, should be %lx "
                 "type %d, ocntent size %d\n",
                 crc, header->mrail.crc, header->type, v->content_size);

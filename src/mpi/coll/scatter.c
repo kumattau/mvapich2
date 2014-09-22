@@ -47,6 +47,10 @@ cvars:
 #pragma _HP_SECONDARY_DEF PMPI_Scatter  MPI_Scatter
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Scatter as PMPI_Scatter
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+                int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm)
+                __attribute__((weak,alias("PMPI_Scatter")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -627,15 +631,6 @@ int MPIR_Scatter_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 {
     int mpi_errno = MPI_SUCCESS;
 
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        if (is_device_buffer(sendbuf)
-            || is_device_buffer(recvbuf)) {
-            enable_device_ptr_checks = 1;
-        }
-    }
-#endif
-
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Scatter != NULL) {
 	/* --BEGIN USEREXTENSION-- */
 	mpi_errno = comm_ptr->coll_fns->Scatter(sendbuf, sendcount, sendtype,
@@ -649,11 +644,6 @@ int MPIR_Scatter_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     }
     
  fn_exit:
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        enable_device_ptr_checks = 0;
-    }
-#endif
     return mpi_errno;
  fn_fail:
 
@@ -753,10 +743,13 @@ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                     MPIR_ERRTEST_SENDBUF_INPLACE(sendbuf, sendcount, mpi_errno);
 
                     /* catch common aliasing cases */
-                    if (recvbuf != MPI_IN_PLACE && sendtype == recvtype && sendcount == recvcount && recvcount != 0)
-                        MPIR_ERRTEST_ALIAS_COLL(sendbuf,recvbuf,mpi_errno);
+                    if (recvbuf != MPI_IN_PLACE && sendtype == recvtype && sendcount == recvcount && recvcount != 0) {
+                        int sendtype_size;
+                        MPID_Datatype_get_size_macro(sendtype, sendtype_size);
+                        MPIR_ERRTEST_ALIAS_COLL(recvbuf, (char*)sendbuf + comm_ptr->rank*sendcount*sendtype_size, mpi_errno);
+                    }
                 }
-                else 
+                else
                     MPIR_ERRTEST_RECVBUF_INPLACE(recvbuf, recvcount, mpi_errno);
 
                 if (recvbuf != MPI_IN_PLACE) {
@@ -814,12 +807,12 @@ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                                   recvbuf, recvcount, recvtype, root,
                                   comm_ptr, &errflag);
 #ifdef _OSU_MVAPICH_
-    if(comm_ptr->ch.shmem_coll_ok == 0) { 
+    if (mv2_use_osu_collectives) {
         mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
-    } 
+    }
 #endif /* _OSU_MVAPICH_ */
 
     if (mpi_errno) goto fn_fail;

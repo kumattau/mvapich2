@@ -3,6 +3,32 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-2.1a (09/21/2014)
+
+* Features and Enhancements (since 2.0):
+    - Based on MPICH-3.1.2
+    - Support for PMI-2 based startup with SLURM
+    - Enhanced startup performance for Gen2/UD-Hybrid channel
+    - GPU support for MPI_Scan and MPI_Exscan collective operations
+    - Optimize creation of 2-level communicator
+    - Collective optimization for PSM-CH3 channel
+    - Tuning for IvyBridge architecture
+    - Add -export-all option to mpirun_rsh
+    - Support for additional MPI-T performance variables (PVARs)
+      in the CH3 channel
+    - Link with libstdc++ when building with GPU support
+        (required by CUDA 6.5)
+
+* Bug-Fixes (since 2.0):
+    - Fix error in large message (>2GB) transfers in CMA code path
+    - Fix memory leaks in OFA-IB-CH3 and OFA-IB-Nemesis channels
+    - Fix issues with optimizations for broadcast and reduce collectives
+    - Fix hang at finalize with Gen2-Hybrid/UD channel
+    - Fix issues for collectives with non power-of-two process counts
+          - Thanks to Evren Yurtesen for identifying the issue
+    - Make ring startup use HCA selected by user
+    - Increase counter length for shared-memory collectives
+
 MVAPICH2-2.0 (06/20/2014)
 
 * Features and Enhancements (since 2.0rc2):

@@ -5,7 +5,7 @@
 ##     See COPYRIGHT in top-level directory.
 ##
 
-lib_lib@MPILIBNAME@_la_SOURCES += \
+mpi_core_sources += \
     src/util/mem/trmem.c      \
     src/util/mem/handlemem.c  \
     src/util/mem/safestr.c    \
@@ -13,6 +13,5 @@ lib_lib@MPILIBNAME@_la_SOURCES += \
     src/util/mem/strerror.c
 
 if BUILD_OSU_MVAPICH
-lib_lib@MPILIBNAME@_la_SOURCES += src/util/mem/mpit.c
-lib_lib@MPILIBNAME@_la_SOURCES += src/util/mem/realfree.c
+mpi_core_sources += src/util/mem/mpit.c src/util/mem/realfree.c
 endif

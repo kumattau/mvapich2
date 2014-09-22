@@ -13,7 +13,7 @@
 #include <infiniband/verbs.h>
 
 #include "mpidimpl.h"
-#include "pmi.h"
+#include "upmi.h"
 
 #include "ib_channel_manager.h"
 #include "ib_errors.h"

@@ -45,6 +45,8 @@ int MPIDI_CH3_Finalize(void)
         mpi_errno = MPIDI_CH3I_SHMEM_COLL_finalize(MPID_nem_mem_region.local_rank,
                         MPID_nem_mem_region.num_local);
         if (mpi_errno) MPIU_ERR_POP (mpi_errno);
+
+        MV2_collectives_arch_finalize();
     }
 #endif
 

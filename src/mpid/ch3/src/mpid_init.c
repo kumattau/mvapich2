@@ -33,11 +33,7 @@ char *MPIDI_DBG_parent_str = "?";
 
 /* FIXME: the PMI init function should ONLY do the PMI operations, not the 
    process group or bc operations.  These should be in a separate routine */
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
+#include "upmi.h"
 
 int MPIDI_Use_pmi2_api = 0;
 
@@ -310,7 +306,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
      * Set global process attributes.  These can be overridden by the channel 
      * if necessary.
      */
-    MPIR_Process.attrs.tag_ub = MPIDI_TAG_UB; /* see also mpidpre.h:NOTE-T1 */
+    MPIR_Process.attrs.tag_ub = INT_MAX;
     MPIR_Process.attrs.io = MPI_ANY_SOURCE;
 
     /*
@@ -620,6 +616,7 @@ static int init_pg( int *argc, char ***argv,
     int usePMI=1;
     char *pg_id;
     MPIDI_PG_t *pg = 0;
+    int inited;
 
     /* See if the channel will provide the PMI values.  The channel
      is responsible for defining HAVE_CH3_PRE_INIT and providing 
@@ -651,60 +648,42 @@ static int init_pg( int *argc, char ***argv,
 	 * and get rank and size information about our process group
 	 */
 
-#ifdef USE_PMI2_API
-        mpi_errno = PMI2_Init(has_parent, &pg_size, &pg_rank, &appnum);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-#else
-	pmi_errno = PMI_Init(has_parent);
-	if (pmi_errno != PMI_SUCCESS) {
+	pmi_errno = UPMI_INIT(has_parent);
+	if (pmi_errno != UPMI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_init",
 			     "**pmi_init %d", pmi_errno);
 	}
 
-	pmi_errno = PMI_Get_rank(&pg_rank);
-	if (pmi_errno != PMI_SUCCESS) {
+	pmi_errno = UPMI_GET_RANK(&pg_rank);
+	if (pmi_errno != UPMI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_rank",
 			     "**pmi_get_rank %d", pmi_errno);
 	}
 
-	pmi_errno = PMI_Get_size(&pg_size);
+	pmi_errno = UPMI_GET_SIZE(&pg_size);
 	if (pmi_errno != 0) {
 	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_size",
 			     "**pmi_get_size %d", pmi_errno);
 	}
 	
-	pmi_errno = PMI_Get_appnum(&appnum);
-	if (pmi_errno != PMI_SUCCESS) {
+	pmi_errno = UPMI_GET_APPNUM(&appnum);
+	if (pmi_errno != UPMI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_appnum",
 				 "**pmi_get_appnum %d", pmi_errno);
 	}
-#endif
+
 	/* Note that if pmi is not availble, the value of MPI_APPNUM is 
 	   not set */
 	if (appnum != -1) {
 	    MPIR_Process.attrs.appnum = appnum;
 	}
 
-#ifdef USE_PMI2_API
-        
-        /* This memory will be freed by the PG_Destroy if there is an error */
-	pg_id = MPIU_Malloc(MAX_JOBID_LEN);
-	if (pg_id == NULL) {
-	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
-				 MAX_JOBID_LEN);
-	}
-
-        mpi_errno = PMI2_Job_GetId(pg_id, MAX_JOBID_LEN);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-        
-
-#else
 	/* Now, initialize the process group information with PMI calls */
 	/*
 	 * Get the process group id
 	 */
-	pmi_errno = PMI_KVS_Get_name_length_max(&pg_id_sz);
-	if (pmi_errno != PMI_SUCCESS) {
+	pmi_errno = UPMI_KVS_GET_NAME_LENGTH_MAX(&pg_id_sz);
+	if (pmi_errno != UPMI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,
 				 "**pmi_get_id_length_max", 
 				 "**pmi_get_id_length_max %d", pmi_errno);
@@ -720,12 +699,11 @@ static int init_pg( int *argc, char ***argv,
 	/* Note in the singleton init case, the pg_id is a dummy.
 	   We'll want to replace this value if we join an 
 	   Process manager */
-	pmi_errno = PMI_KVS_Get_my_name(pg_id, pg_id_sz);
-	if (pmi_errno != PMI_SUCCESS) {
+	pmi_errno = UPMI_KVS_GET_MY_NAME(pg_id, pg_id_sz);
+	if (pmi_errno != UPMI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_id",
 				 "**pmi_get_id %d", pmi_errno);
 	}
-#endif
     }
     else {
 	/* Create a default pg id */
@@ -798,17 +776,14 @@ int MPIDI_CH3I_BCInit( char **bc_val_p, int *val_max_sz_p )
 {
     int pmi_errno;
     int mpi_errno = MPI_SUCCESS;
-#ifdef USE_PMI2_API
-    *val_max_sz_p = PMI2_MAX_VALLEN;
-#else
-    pmi_errno = PMI_KVS_Get_value_length_max(val_max_sz_p);
-    if (pmi_errno != PMI_SUCCESS)
+
+    pmi_errno = UPMI_KVS_GET_VALUE_LENGTH_MAX(val_max_sz_p);
+    if (pmi_errno != UPMI_SUCCESS)
     {
         MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,
                              "**pmi_kvs_get_value_length_max",
                              "**pmi_kvs_get_value_length_max %d", pmi_errno);
     }
-#endif
     /* This memroy is returned by this routine */
     *bc_val_p = MPIU_Malloc(*val_max_sz_p);
     if (*bc_val_p == NULL) {

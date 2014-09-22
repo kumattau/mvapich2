@@ -16,11 +16,7 @@
  */
 
 #include "mpidimpl.h"
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
+#include "upmi.h"
 #undef utarray_oom
 #define utarray_oom() do { goto fn_oom; } while (0)
 #include "mpiu_utarray.h"
@@ -338,6 +334,10 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
         MPIDI_CHANGE_VC_STATE(vc, CLOSE_ACKED);
     }
 		
+#if defined(CHANNEL_MRAIL)
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "Send close to %d, state %s, ack: %s\n",
+                vc->pg_rank, MPIDI_VC_GetStateString(vc->state), (close_pkt->ack)?"TRUE":"FALSE");
+#endif /* defined(CHANNEL_MRAIL) */
     mpi_errno = MPIDI_CH3_iStartMsg(vc, close_pkt, 
 					      sizeof(*close_pkt), &sreq);
     MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|send_close_ack");
@@ -369,6 +369,19 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPIDI_CH3_Pkt_close_t * close_pkt = &pkt->close;
     int mpi_errno = MPI_SUCCESS;
 
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid && unlikely(vc->mrail.ud == NULL)) {
+        if (likely(vc->pg->ch.mrail.cm_lid[vc->pg_rank] == 0)) {
+            MPICM_lock();
+            PRINT_DEBUG(DEBUG_CM_verbose>0, "Calling MPIDI_CH3I_PMI_Get_Init_Info for %d\n", vc->pg_rank);
+            MPIDI_CH3I_PMI_Get_Init_Info(vc->pg, vc->pg_rank, NULL);
+            MPICM_unlock();
+        }
+        PRINT_DEBUG(DEBUG_CM_verbose>0, "Calling MPIDI_CH3I_UD_Generate_addr_handle_for_rank %d\n", vc->pg_rank);
+        MPIDI_CH3I_UD_Generate_addr_handle_for_rank(vc->pg, vc->pg_rank);
+    }
+#endif /*_ENABLE_UD_*/
+
 #if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
@@ -383,6 +396,10 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #endif 
    
 
+#if defined(CHANNEL_MRAIL)
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "Received close from %d, state %s, ack: %s\n",
+                vc->pg_rank, MPIDI_VC_GetStateString(vc->state), (close_pkt->ack)?"TRUE":"FALSE");
+#endif /* defined(CHANNEL_MRAIL) */
     if (vc->state == MPIDI_VC_STATE_LOCAL_CLOSE)
     {
     	MPIDI_CH3_Pkt_t upkt;
@@ -422,6 +439,9 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
                                     MPIDI_VC_GetStateString(vc->state), vc, vc->pg_rank ));
     	        MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL, "received close(FALSE) from %d, moving to REMOTE_CLOSE.", vc->pg_rank);
             }
+#if defined(CHANNEL_MRAIL)
+            PRINT_DEBUG(DEBUG_CM_verbose>0, "ACK FALSE. Received close from %d, state %s\n", vc->pg_rank, MPIDI_VC_GetStateString(vc->state));
+#endif /* defined(CHANNEL_MRAIL) */
 #ifdef _ENABLE_XRC_
     	    MPIU_Assert(vc->state == MPIDI_VC_STATE_ACTIVE || vc->state == MPIDI_VC_STATE_LOCAL_ACTIVE || USE_XRC);
 #else
@@ -444,6 +464,9 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
    MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL,
                   "received close(TRUE) from %d, moving to CLOSED.",
                   vc->pg_rank);
+#if defined(CHANNEL_MRAIL)
+        PRINT_DEBUG(DEBUG_CM_verbose>0, "ACK: TRUE. Received close from %d, state %s\n", vc->pg_rank, MPIDI_VC_GetStateString(vc->state));
+#endif /* defined(CHANNEL_MRAIL) */
     	MPIU_Assert(vc->state == MPIDI_VC_STATE_LOCAL_CLOSE || 
     		        vc->state == MPIDI_VC_STATE_CLOSE_ACKED);
         MPIDI_CHANGE_VC_STATE(vc, CLOSED);
@@ -580,20 +603,11 @@ int MPIDI_CH3U_Check_for_failed_procs(void)
        something bigger than comm_world. */
     mpi_errno = MPIDI_PG_GetConnKVSname(&kvsname);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-#ifdef USE_PMI2_API
-    {
-        int vallen = 0;
-        MPIU_CHKLMEM_MALLOC(val, char *, PMI2_MAX_VALLEN, mpi_errno, "val");
-        pmi_errno = PMI2_KVS_Get(kvsname, PMI2_ID_NULL, "PMI_dead_processes", val, PMI2_MAX_VALLEN, &vallen);
-        MPIU_ERR_CHKANDJUMP(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get");
-    }
-#else
-    pmi_errno = PMI_KVS_Get_value_length_max(&len);
+    pmi_errno = UPMI_KVS_GET_VALUE_LENGTH_MAX(&len);
     MPIU_ERR_CHKANDJUMP(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get_value_length_max");
     MPIU_CHKLMEM_MALLOC(val, char *, len, mpi_errno, "val");
-    pmi_errno = PMI_KVS_Get(kvsname, "PMI_dead_processes", val, len);
+    pmi_errno = UPMI_KVS_GET(kvsname, "PMI_dead_processes", val, len);
     MPIU_ERR_CHKANDJUMP(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get");
-#endif
     
     MPIU_DBG_MSG_S(CH3_DISCONNECT, TYPICAL, "Received proc fail notification: %s", val);
     

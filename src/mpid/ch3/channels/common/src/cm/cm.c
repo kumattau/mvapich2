@@ -17,6 +17,7 @@
 #include "cm.h"
 #include "rdma_cm.h"
 #include "mpiutil.h"
+#include "upmi.h"
 
 #define CM_MSG_TYPE_REQ     0
 #define CM_MSG_TYPE_REP     1
@@ -110,8 +111,13 @@ int page_size;
 
 extern int *rdma_cm_host_list;
 
+int mv2_pmi_max_keylen=0;
+int mv2_pmi_max_vallen=0;
+char *mv2_pmi_key=NULL;
+char *mv2_pmi_val=NULL;
+
 #define CM_ERR_ABORT(args...) do {                                           \
-    int _rank; PMI_Get_rank(&_rank);  \
+    int _rank; UPMI_GET_RANK(&_rank);  \
     fprintf(stderr, "[Rank %d][%s: line %d]", _rank ,__FILE__, __LINE__);    \
     fprintf(stderr, args);                                                   \
     fprintf(stderr, "\n");                                                   \
@@ -555,99 +561,73 @@ static int cm_get_conn_info(MPIDI_PG_t * pg, int peer)
     int hostid = 0;
     int pg_rank = -1;
     mv2_arch_hca_type hca_type = 0;
-    char *key = NULL;
-    char *val = NULL;
-    int error = PMI_SUCCESS;
+    int error = UPMI_SUCCESS;
     int mpi_errno = MPI_SUCCESS;
-    int key_max_sz = 0;
-    int val_max_sz = 0;
 
-    PMI_Get_rank(&pg_rank);
+    UPMI_GET_RANK(&pg_rank);
 
     PRINT_DEBUG(DEBUG_CM_verbose > 0, "[%d]: Exchanging conn info with %d\n",
                 pg_rank, peer);
 
-    /* Allocate memory and initialize it */
-    error = PMI_KVS_Get_key_length_max(&key_max_sz);
-    if (error != PMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s", "Error getting max key length");
-    }
-
-    ++key_max_sz;
-    key = MPIU_Malloc(key_max_sz);
-    if (key == NULL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                                  "**nomem %s", "PMI key");
-    }
-
-    error = PMI_KVS_Get_value_length_max(&val_max_sz);
-    if (error != PMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s",
-                                  "Error getting max value length");
-    }
-
-    ++val_max_sz;
-    val = MPIU_Malloc(val_max_sz);
-    if (val == NULL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                                  "**nomem %s", "PMI value");
-    }
-
-    if (key_max_sz < 20 || val_max_sz < 30) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                  "**fail", "**fail %s", "PMI value too small");
-    }
-
-    /* Generate key */
-    MPIU_Snprintf(key, key_max_sz, "ud_info_%08d", peer);
+    MPIU_Snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "MV2-INIT-INFO-%08x", peer);
 
     /* Get necessary info from PMI */
     do {
-        error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
-        if (error != PMI_SUCCESS) {
+        error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
+        if (error != UPMI_SUCCESS) {
             usleep(mv2_cm_wait_time);
         }
-    } while (error != PMI_SUCCESS);
+    } while (error != UPMI_SUCCESS);
 
-    if (error != PMI_SUCCESS) {
+    if (error != UPMI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                   "**pmi_kvs_get", "**pmi_kvs_get %d", error);
     }
 
     /* Store the info locally */
     if (!use_iboeth) {
-        sscanf(val, "%08hx:%08x:%016lx:%08x",
-               (uint16_t *) & (pg->ch.mrail.cm_lid[peer]),
-               &(pg->ch.mrail.cm_ud_qpn[peer]), &hca_type, &hostid);
+#ifdef _ENABLE_XRC_
+        if (USE_XRC) {
+            if (mv2_homogeneous_cluster) {
+                sscanf(mv2_pmi_val, "%08hx:%08x:%08x",
+                    (uint16_t *) &(pg->ch.mrail.cm_lid[peer]),
+                    &(pg->ch.mrail.cm_ud_qpn[peer]), &hostid);
+            } else {
+                sscanf(mv2_pmi_val, "%08hx:%08x:%016lx:%08x",
+                    (uint16_t *) &(pg->ch.mrail.cm_lid[peer]),
+                    &(pg->ch.mrail.cm_ud_qpn[peer]), &hca_type,
+                    &hostid);
+            }
+            pg->ch.mrail.xrc_hostid[peer] = hostid;
+        } else
+#endif /* _ENABLE_XRC_ */
+        {
+            if (mv2_homogeneous_cluster) {
+                sscanf(mv2_pmi_val, "%08hx:%08x",
+                    (uint16_t *) &(pg->ch.mrail.cm_lid[peer]),
+                    &(pg->ch.mrail.cm_ud_qpn[peer]));
+            } else {
+                sscanf(mv2_pmi_val, "%08hx:%08x:%016lx",
+                    (uint16_t *) &(pg->ch.mrail.cm_lid[peer]),
+                    &(pg->ch.mrail.cm_ud_qpn[peer]), &hca_type);
+            }
+        }
+        PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %d\n",
+                    peer, pg->ch.mrail.cm_lid[peer], pg->ch.mrail.cm_ud_qpn[peer],
+                    hca_type);
     } else {
-        sscanf(val, "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016" SCNx64,
+        sscanf(mv2_pmi_val, "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016" SCNx64,
                (uint16_t *) & (pg->ch.mrail.cm_lid[peer]),
                &(pg->ch.mrail.cm_ud_qpn[peer]), &hca_type, &hostid,
                &(pg->ch.mrail.cm_gid[peer].global.subnet_prefix),
                &(pg->ch.mrail.cm_gid[peer].global.interface_id));
-    }
-
-#ifdef _ENABLE_XRC_
-    if (USE_XRC) {
-        pg->ch.mrail.xrc_hostid[peer] = hostid;
-    }
-#endif
-    if (!use_iboeth) {
-        DEBUG_PRINT("[%d<-%d]Get: lid: %08hx, qpn: %08x hca_type:%016lx"
-                    " hostid: %08x\n", pg_rank, peer, pg->ch.mrail.cm_lid[peer],
-                    pg->ch.mrail.cm_ud_qpn[peer], hca_type, hostid);
-    } else {
-        DEBUG_PRINT("[%d<-%d]Get: Gid: %016" PRIx64 ":%016" PRIx64
-                    ", qpn: %08x hca_type:%016lx" " hostid: %08x\n", pg_rank,
-                    peer, pg->ch.mrail.cm_gid[peer].global.subnet_prefix,
+        PRINT_DEBUG(DEBUG_CM_verbose > 0,"rank %d: Gid: %016" PRIx64
+                    ":%016" PRIx64 ", qpn: %08x hca_type:%016lx"
+                    " hostid: %08x\n", peer,
+                    pg->ch.mrail.cm_gid[peer].global.subnet_prefix,
                     pg->ch.mrail.cm_gid[peer].global.interface_id,
                     pg->ch.mrail.cm_ud_qpn[peer], hca_type, hostid);
     }
-
-    MPIU_Free(key);
-    MPIU_Free(val);
 
   fn_fail:
     return error;
@@ -1196,7 +1176,7 @@ static int cm_accept_nopg(MPIDI_VC_t * vc, cm_msg * msg)
     msg_send.vc_addr = (uintptr_t) vc;
     msg_send.vc_addr_bounce = msg->vc_addr;
 
-    PMI_Get_rank(&rank);
+    UPMI_GET_RANK(&rank);
     PRINT_DEBUG(DEBUG_CM_verbose > 0,
                 "[%d cm_accept_nopg] get remote ifname %s, local qpn %08x, "
                 "remote qpn %08x\n", rank, msg->ifname,
@@ -1377,7 +1357,7 @@ static int cm_enable(MPIDI_PG_t * pg, cm_msg * msg)
 static int cm_enable_nopg(MPIDI_VC_t * vc, cm_msg * msg)
 {
     int rank;
-    PMI_Get_rank(&rank);
+    UPMI_GET_RANK(&rank);
     PRINT_DEBUG(DEBUG_CM_verbose > 0, "cm_enable_nopg Enter\n");
 
     PRINT_DEBUG(DEBUG_XRC_verbose > 0, "cm_enable_nopg\n");
@@ -1425,7 +1405,7 @@ int cm_handle_msg(cm_msg * msg)
     /* FIXME: Ideally MPIDI_Process.my_pg_rank should be used here. However,
      * MPIDI_Process.my_pg_rank is initialized after the ud thread is created,
      * which may cause MPIDI_Process.my_pg_rank to be 0 */
-    PMI_Get_rank(&my_rank);
+    UPMI_GET_RANK(&my_rank);
 
     switch (msg->msg_type) {
 #ifdef _ENABLE_XRC_
@@ -1996,10 +1976,10 @@ void *cm_completion_handler(void *arg)
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPICM_Init_UD
+#define FUNCNAME MPICM_Init_UD_CM
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPICM_Init_UD(uint32_t * ud_qpn)
+int MPICM_Init_UD_CM(uint32_t * ud_qpn)
 {
     int i = 0;
     char *value;
@@ -2199,28 +2179,15 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
 #define FUNCNAME MPICM_Init_Local_UD_struct
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPICM_Init_Local_UD_struct(MPIDI_PG_t * pg, uint32_t qpn, uint16_t lid,
-                               union ibv_gid *gid, int hostid)
+int MPICM_Init_Local_UD_struct(MPIDI_PG_t * pg)
 {
-    int rank;
-    int mpi_errno = MPI_SUCCESS;
+    int rank        = -1;
+    int mpi_errno   = MPI_SUCCESS;
+
     MPIDI_STATE_DECL(MPID_GEN2_MPICM_INIT_LOCAL_UD_STRUCT);
     MPIDI_FUNC_ENTER(MPID_GEN2_MPICM_INIT_LOCAL_UD_STRUCT);
 
-    PMI_Get_rank(&rank);
-
-    /*Copy qpns and lids */
-    pg->ch.mrail.cm_lid[rank] = lid;
-    pg->ch.mrail.cm_ud_qpn[rank] = qpn;
-
-    if (use_iboeth) {
-        memcpy(&pg->ch.mrail.cm_gid[rank], gid, sizeof(union ibv_gid));
-    }
-#ifdef _ENABLE_XRC_
-    if (USE_XRC) {
-        pg->ch.mrail.xrc_hostid[rank] = hostid;
-    }
-#endif
+    UPMI_GET_RANK(&rank);
 
     /*Create address handles */
     pg->ch.mrail.cm_ah[rank] = cm_create_ah(mv2_MPIDI_CH3I_RDMA_Process.ptag[0],
@@ -2241,23 +2208,13 @@ int MPICM_Init_Local_UD_struct(MPIDI_PG_t * pg, uint32_t qpn, uint16_t lid,
 #define FUNCNAME MPICM_Init_UD_struct
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPICM_Init_UD_struct(MPIDI_PG_t * pg, uint32_t * qpns, uint16_t * lids,
-                         union ibv_gid *gids)
+int MPICM_Init_UD_struct(MPIDI_PG_t * pg)
 {
-    int i;
-    int mpi_errno = MPI_SUCCESS;
-    int rank;
-    PMI_Get_rank(&rank);
+    int i           = 0;
+    int mpi_errno   = MPI_SUCCESS;
+
     MPIDI_STATE_DECL(MPID_GEN2_MPICM_INIT_UD_STRUCT);
     MPIDI_FUNC_ENTER(MPID_GEN2_MPICM_INIT_UD_STRUCT);
-
-    /*Copy qpns and lids */
-    MPIU_Memcpy(pg->ch.mrail.cm_ud_qpn, qpns, pg->size * sizeof(uint32_t));
-    MPIU_Memcpy(pg->ch.mrail.cm_lid, lids, pg->size * sizeof(uint16_t));
-    if (use_iboeth) {
-        MPIU_Memcpy(pg->ch.mrail.cm_gid, gids,
-                    pg->size * sizeof(union ibv_gid));
-    }
 
     /*Create address handles */
     for (i = 0; i < pg->size; ++i) {
@@ -2271,6 +2228,7 @@ int MPICM_Init_UD_struct(MPIDI_PG_t * pg, uint32_t * qpns, uint16_t * lids,
                                       "**fail %s", "Failed to create AH");
         }
     }
+
   fn_fail:
     MPIDI_FUNC_EXIT(MPID_GEN2_MPICM_INIT_UD_STRUCT);
     return mpi_errno;
@@ -2707,7 +2665,7 @@ int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len)
     int mpi_errno = MPI_SUCCESS;
     int rank;
 
-    PMI_Get_rank(&rank);
+    UPMI_GET_RANK(&rank);
 
     if (max_len < 128) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -3224,5 +3182,37 @@ void MPIDI_CH3I_CM_Handle_send_completion(MPIDI_VC_t * vc,
 }
 
 #endif /* defined(CKPT) */
+
+int mv2_allocate_pmi_keyval(void)
+{
+    if (!mv2_pmi_max_keylen) {
+        UPMI_KVS_GET_KEY_LENGTH_MAX(&mv2_pmi_max_keylen);
+    }
+    if (!mv2_pmi_max_vallen) {
+        UPMI_KVS_GET_VALUE_LENGTH_MAX(&mv2_pmi_max_vallen);
+    }
+
+    mv2_pmi_key = MPIU_Malloc(mv2_pmi_max_keylen+1);
+    mv2_pmi_val = MPIU_Malloc(mv2_pmi_max_vallen+1);
+
+    if (mv2_pmi_key==NULL || mv2_pmi_val==NULL) {
+        mv2_free_pmi_keyval();
+        return -1; 
+    }
+    return 0;
+}
+
+void mv2_free_pmi_keyval(void)
+{
+    if (mv2_pmi_key!=NULL) {
+        MPIU_Free(mv2_pmi_key);
+        mv2_pmi_key = NULL;
+    }
+
+    if (mv2_pmi_val!=NULL) {
+        MPIU_Free(mv2_pmi_val);
+        mv2_pmi_val = NULL;
+    }
+}
 
 /* vi:set sw=4 tw=80: */

@@ -17,7 +17,7 @@
 
 #include "mpidimpl.h"
 #ifdef CHANNEL_MRAIL
-#include "pmi.h"
+#include "upmi.h"
 #endif
 
 #ifdef ENABLE_SCR
@@ -81,7 +81,7 @@ int MPID_Finalize(void)
       * can both close the connection.
       * 
       * Processes with no pending receives and no connections can exit, 
-      * calling PMI_Finalize to let the process manager know that they
+      * calling UPMI_FINALIZE to let the process manager know that they
       * are in a controlled exit.  
       *
       * Processes that still have open connections must then try to contact
@@ -122,7 +122,7 @@ int MPID_Finalize(void)
     MPIDI_CH3_Flush();
     xrc_rdmafp_init = 0;
     if (USE_XRC) {
-        mpi_errno = PMI_Barrier ();
+        mpi_errno = UPMI_BARRIER ();
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
 #endif 
@@ -165,7 +165,7 @@ int MPID_Finalize(void)
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
     /* Tell the process group code that we're done with the process groups.
-       This will notify PMI (with PMI_Finalize) if necessary.  It
+       This will notify PMI (with UPMI_FINALIZE) if necessary.  It
        also frees all PG structures, including the PG for COMM_WORLD, whose 
        pointer is also saved in MPIDI_Process.my_pg */
     mpi_errno = MPIDI_PG_Finalize();

@@ -76,7 +76,7 @@ int MPID_Finalize()
   mpidi_finalized = 1;
   if(mpidi_dynamic_tasking) {
     /* Tell the process group code that we're done with the process groups.
-       This will notify PMI (with PMI_Finalize) if necessary.  It
+       This will notify PMI (with UPMI_FINALIZE) if necessary.  It
        also frees all PG structures, including the PG for COMM_WORLD, whose
        pointer is also saved in MPIDI_Process.my_pg */
     mpierrno = MPIDI_PG_Finalize();
@@ -98,6 +98,13 @@ int MPID_Finalize()
   MPIDI_Recvq_finalize();
 
   PAMIX_Finalize(MPIDI_Client);
+
+#ifdef MPID_NEEDS_ICOMM_WORLD
+    MPIR_Comm_release_always(MPIR_Process.icomm_world, 0);
+#endif
+
+  MPIR_Comm_release_always(MPIR_Process.comm_self,0);
+  MPIR_Comm_release_always(MPIR_Process.comm_world,0);
 
   rc = PAMI_Context_destroyv(MPIDI_Context, MPIDI_Process.avail_contexts);
   MPID_assert_always(rc == PAMI_SUCCESS);

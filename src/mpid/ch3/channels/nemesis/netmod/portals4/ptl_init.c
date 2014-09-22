@@ -281,8 +281,7 @@ static int vc_init(MPIDI_VC_t *vc)
     vc_ch->iStartContigMsg = MPID_nem_ptl_iStartContigMsg;
     vc_ch->iSendContig     = MPID_nem_ptl_iSendContig;
 
-    if (MPIR_CVAR_COMM_OVERRIDES) /* allow feature to be disabled at runtime */
-        vc->comm_ops = &comm_ops;
+    vc->comm_ops = &comm_ops;
 
     vc_ch->next = NULL;
     vc_ch->prev = NULL;
@@ -421,7 +420,7 @@ int MPID_nem_ptl_init_id(MPIDI_VC_t *vc)
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_PTL_INIT_ID);
 
-    pmi_errno = PMI_KVS_Get_value_length_max(&val_max_sz);
+    pmi_errno = UPMI_KVS_GET_VALUE_LENGTH_MAX(&val_max_sz);
     MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
     MPIU_CHKLMEM_MALLOC(bc, char *, val_max_sz, mpi_errno, "bc");
 
@@ -432,6 +431,8 @@ int MPID_nem_ptl_init_id(MPIDI_VC_t *vc)
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     vc_ptl->id_initialized = TRUE;
+
+    MPIDI_CHANGE_VC_STATE(vc, ACTIVE);
     
  fn_exit:
     MPIU_CHKLMEM_FREEALL();

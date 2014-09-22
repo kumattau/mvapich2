@@ -29,7 +29,7 @@
 
 #include "mem_hooks.h"
 #include <infiniband/verbs.h>
-#include "pmi.h"
+#include "upmi.h"
 #include "rdma_impl.h"
 #include "vbuf.h"
 #include "dreg.h"
@@ -245,7 +245,7 @@ void deallocate_vbuf_region(void)
             curr = rdma_vbuf_pools[i].region_head;
             while (curr) {
                 next = curr->next;
-                free(curr->malloc_start);
+                MPIU_Memalign_Free(curr->malloc_start);
   
                 if (active_context != NULL && 
                     (rdma_vbuf_pools[i].index == CUDA_RNDV_BLOCK_BUF ||
@@ -257,7 +257,7 @@ void deallocate_vbuf_region(void)
                 if (rdma_enable_hugepage && curr->shmid >= 0) {
                     shmdt(curr->malloc_buf_start);
                 } else {
-                    free(curr->malloc_buf_start);
+                    MPIU_Memalign_Free(curr->malloc_buf_start);
                 }
                 MPIU_Free(curr);
                 curr = next;

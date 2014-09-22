@@ -20,7 +20,7 @@
 
 #include "ib_process.h"
 
-#include "pmi.h"
+#include "upmi.h"
 #include "mpidimpl.h"
 #include "mpid_nem_impl.h"
 #include "ib_device.h"
@@ -123,37 +123,35 @@ int MPID_nem_ib_pmi_init()
     char *pg_id;
     MPIDI_PG_t *pg = 0;
 
-
-
     assert( global_info!= NULL );
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_PMI_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_PMI_INIT);
 
     /* Initialize the Process Manager Interface */
-    pmi_errno = PMI_Init(&spawned);
-    if (pmi_errno != PMI_SUCCESS) {
+    pmi_errno = UPMI_INIT(&spawned);
+    if (pmi_errno != UPMI_SUCCESS) {
         MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_init",
                  "**pmi_init %d", pmi_errno);
     }
 
     /* Set the rank */
-    pmi_errno = PMI_Get_rank(&global_info->pg_rank);
-    if (pmi_errno != PMI_SUCCESS) {
+    pmi_errno = UPMI_GET_RANK(&global_info->pg_rank);
+    if (pmi_errno != UPMI_SUCCESS) {
         MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_get_rank",
                  "**pmi_get_rank %d", pmi_errno);
     }
 
     /* Set the progexx group size */
-    pmi_errno = PMI_Get_size(&global_info->pg_size);
+    pmi_errno = UPMI_GET_SIZE(&global_info->pg_size);
     if (pmi_errno != 0) {
         MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_get_size",
                  "**pmi_get_size %d", pmi_errno);
     }
 
     /* -------------------------------------- From InitPG in mvapich2/trunk/src/mpid/ch3/src/mpid_init.c
-	pmi_errno = PMI_Get_appnum(&appnum);
-	if (pmi_errno != PMI_SUCCESS) {
+	pmi_errno = UPMI_GET_APPNUM(&appnum);
+	if (pmi_errno != UPMI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_appnum",
 				 "**pmi_get_appnum %d", pmi_errno);
 	}
@@ -169,8 +167,8 @@ int MPID_nem_ib_pmi_init()
     /*
      * Get the process group id
      */
-    pmi_errno = PMI_KVS_Get_name_length_max(&pg_id_sz);
-    if (pmi_errno != PMI_SUCCESS) {
+    pmi_errno = UPMI_KVS_GET_NAME_LENGTH_MAX(&pg_id_sz);
+    if (pmi_errno != UPMI_SUCCESS) {
         /*
          * I don't believe that MPICH2 has updated the error message for this
          * yet.
@@ -189,8 +187,8 @@ int MPID_nem_ib_pmi_init()
     /* Note in the singleton init case, the pg_id is a dummy.
        We'll want to replace this value if we join a
        Process manager */
-    pmi_errno = PMI_KVS_Get_my_name(pg_id, pg_id_sz);
-    if (pmi_errno != PMI_SUCCESS) {
+    pmi_errno = UPMI_KVS_GET_MY_NAME(pg_id, pg_id_sz);
+    if (pmi_errno != UPMI_SUCCESS) {
         /*
          * I don't believe the MPICH2 team has updated the error message for
          * this change yet.
@@ -326,6 +324,8 @@ int MPID_nem_ib_init (MPIDI_PG_t *pg_p,
                                     "**fail %s", "Failed to init process info");
     }
 
+	/* Allocate PMI Key Value Pair */
+	mv2_allocate_pmi_keyval();
 
     mpi_errno = MPID_nem_ib_init_connection(pg_rank, pg_p->size);
     if (mpi_errno != MPI_SUCCESS) {

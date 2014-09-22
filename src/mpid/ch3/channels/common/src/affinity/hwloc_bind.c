@@ -25,10 +25,12 @@
 #include <errno.h>
 #include <string.h>
 #include <assert.h>
-#include "pmi.h"
+#include "upmi.h"
 #include "smp_smpi.h"
 #include "mpiutil.h"
 #include "hwloc_bind.h"
+#include "rdma_impl.h"
+#include <hwloc/openfabrics-verbs.h>
 
 /* CPU Mapping related definitions */
 
@@ -87,6 +89,42 @@ static char *custom_cpu_mapping = NULL;
 int s_cpu_mapping_line_max = _POSIX2_LINE_MAX;
 static int custom_cpu_mapping_line_max = _POSIX2_LINE_MAX;
 char *cpu_mapping = NULL;
+
+int ib_socket_bind = 0;
+
+int get_ib_socket(struct ibv_device * ibdev)
+{
+    hwloc_cpuset_t set = hwloc_bitmap_alloc();
+    hwloc_obj_t osdev = NULL;
+    char string[256];
+    int socket_id = 0;
+
+    if (NULL == set) {
+        goto free_and_return;
+    }
+
+    if (hwloc_ibv_get_device_cpuset(topology, ibdev, set)) {
+        goto free_and_return;
+    }
+
+    osdev = hwloc_get_obj_inside_cpuset_by_type(topology, set,
+            HWLOC_OBJ_SOCKET, 0);
+
+    if (NULL == osdev) {
+        goto free_and_return;
+    }
+
+    /*
+     * The hwloc object "string" will have the form "Socket#n" so we are
+     * looking at the 8th char to detect which socket is.
+     */
+    hwloc_obj_snprintf(string, sizeof(string), topology, osdev, "#", 1);
+    return atoi(&string[7]);
+
+free_and_return:
+    hwloc_bitmap_free(set);
+    return socket_id;
+}
 
 static int first_num_from_str(char **str)
 {
@@ -1604,6 +1642,46 @@ int get_cpu_mapping(long N_CPUs_online)
     return MPI_SUCCESS;
 }
 
+int get_socket_id (int ib_socket, int cpu_socket, int num_sockets,
+        tab_socket_t * tab_socket)
+{
+    extern int rdma_local_id, rdma_num_hcas;
+
+    int rdma_num_proc_per_hca;
+    int offset_id;
+    int j;
+    int socket_id = ib_socket;
+    int delta = cpu_socket / tab_socket[ib_socket].num_hca;
+
+    rdma_num_proc_per_hca = rdma_num_local_procs / rdma_num_hcas;
+
+    if (rdma_num_local_procs % rdma_num_hcas) {
+        rdma_num_proc_per_hca++;
+    }
+
+    offset_id = rdma_local_id % rdma_num_proc_per_hca;
+
+    if (offset_id < delta) {
+        return ib_socket;
+    }
+
+    for (j = 0; j < num_sockets - 1; j++) {
+        socket_id = tab_socket[ib_socket].closest[j];
+
+        if (tab_socket[socket_id].num_hca == 0) {
+            offset_id -= delta;
+
+            if (offset_id < delta) {
+                return socket_id;
+            }
+        }
+    }
+
+    /*
+     * Couldn't find a free socket, spread remaining processes
+     */
+    return rdma_local_id % num_sockets;
+}
 
 #undef FUNCNAME
 #define FUNCNAME smpi_setaffinity
@@ -1611,13 +1689,19 @@ int get_cpu_mapping(long N_CPUs_online)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int smpi_setaffinity(int my_local_id)
 {
+    char *value;
+    int cpu_socket;
+    int selected_ib;
+    int i, selected_socket;
     int mpi_errno = MPI_SUCCESS;
+    tab_socket_t * tab_socket;
 
     hwloc_cpuset_t cpuset;
     MPIDI_STATE_DECL(MPID_STATE_SMPI_SETAFFINITY);
     MPIDI_FUNC_ENTER(MPID_STATE_SMPI_SETAFFINITY);
 
     mpi_errno = hwloc_topology_init(&topology);
+    hwloc_topology_set_flags(topology, HWLOC_TOPOLOGY_FLAG_IO_DEVICES);
     if (mpi_errno != 0) {
         mv2_enable_affinity = 0;
     }
@@ -1638,8 +1722,8 @@ int smpi_setaffinity(int my_local_id)
             if (N_CPUs_online < 1) {
                 MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
                                           MPI_ERR_OTHER,
-                                          "**fail", "%s: %s", "sysconf", strerror(errno)
-);
+                                          "**fail", "%s: %s", "sysconf",
+                                          strerror(errno));
             }
 
             /* Call the cpu_mapping function to find out about how the
@@ -1773,20 +1857,89 @@ int smpi_setaffinity(int my_local_id)
                 hwloc_bitmap_only(cpuset, my_local_id % N_CPUs_online);
                 hwloc_set_cpubind(topology, cpuset, 0);
             } else {
-
-                char *tp = custom_cpu_mapping;
-                char *cp = NULL;
-                int j = 0;
-                int i;
-                char tp_str[custom_cpu_mapping_line_max + 1];
-
-                /* We have all the information that we need. We will bind the processes
-                 * to the cpu's now
+                /*
+                 * We have all the information that we need. We will bind the
+                 * processes to the cpu's now
                  */
                 int linelen = strlen(custom_cpu_mapping);
+                char tp_str[custom_cpu_mapping_line_max + 1];
+                char *tp = custom_cpu_mapping;
+                char *cp = NULL;
+                int i, j = 0, k;
 
-                if (linelen < custom_cpu_mapping_line_max) {
-                    custom_cpu_mapping_line_max = linelen;
+                if (!SMP_ONLY) {
+                    int num_cpus = hwloc_get_nbobjs_by_type(topology,
+                            HWLOC_OBJ_PU);
+                    int depth_sockets = hwloc_get_type_depth(topology,
+                            HWLOC_OBJ_SOCKET);
+                    int num_sockets = hwloc_get_nbobjs_by_depth(topology,
+                            depth_sockets);
+
+                    if (linelen < custom_cpu_mapping_line_max) {
+                        custom_cpu_mapping_line_max = linelen;
+                    }
+
+                    cpu_socket = num_cpus/num_sockets;
+
+                    /*
+                     * Make selected_ib global or make this section a function
+                     */
+                    if (FIXED_MAPPING == rdma_rail_sharing_policy) {
+                        selected_ib = rdma_process_binding_rail_offset /
+                            rdma_num_rails_per_hca;
+                    }
+
+                    else {
+                        selected_ib = 0;
+                    }
+
+                    tab_socket = (tab_socket_t*)MPIU_Malloc(num_sockets *
+                            sizeof(tab_socket_t));
+                    if (NULL == tab_socket) {
+                        fprintf(stderr, "could not allocate the socket "
+                                "table\n");
+                    }
+
+                    for (i = 0; i < num_sockets; i++) {
+                        tab_socket[i].num_hca = 0;
+
+                        for(k = 0; k < num_sockets; k++) {
+                            tab_socket[i].closest[k] = -1;
+                        }
+                    }
+
+                    for (i = 0; i < rdma_num_hcas; i++) {
+                        struct ibv_device * ibdev = mv2_MPIDI_CH3I_RDMA_Process.ib_dev[i];
+                        tab_socket[get_ib_socket(ibdev)].num_hca++;
+                    }
+
+                    hwloc_obj_t obj_src;
+                    hwloc_obj_t objs[num_sockets];
+                    char string[20];
+
+                    for (i = 0; i < num_sockets; i++) {
+                        obj_src = hwloc_get_obj_by_type(topology,
+                                HWLOC_OBJ_SOCKET,i);
+                        hwloc_get_closest_objs(topology, obj_src,
+                                (hwloc_obj_t *)&objs, num_sockets - 1);
+
+                        for (k = 0; k < num_sockets - 1; k++) {
+                            hwloc_obj_snprintf(string, sizeof(string),
+                                    topology, objs[k], "#", 1);
+                            tab_socket[i].closest[k] = atoi(&string[7]);
+                        }
+                    }
+
+                    /*
+                     * Make this information available globally
+                     */
+                    ib_socket_bind = get_ib_socket(
+                                mv2_MPIDI_CH3I_RDMA_Process.ib_dev[selected_ib]);
+                    i = ib_socket_bind;
+
+                    selected_socket = get_socket_id(ib_socket_bind, cpu_socket,
+                            num_sockets, tab_socket);
+                    MPIU_Free(tab_socket);
                 }
 
                 while (*tp != '\0') {
@@ -1803,9 +1956,21 @@ int smpi_setaffinity(int my_local_id)
 
                     if (j == my_local_id) {
                         if (level == LEVEL_CORE) {
-                            hwloc_bitmap_only(cpuset, atol(tp_str));
+                            if (SMP_ONLY) {
+                                hwloc_bitmap_only(cpuset, atol(tp_str));
+                            } else {
+                                hwloc_bitmap_only(cpuset,
+                                        (atol(tp_str) % cpu_socket)
+                                        + (selected_socket * cpu_socket));
+                            }
                         } else {
-                            hwloc_bitmap_from_ulong(cpuset, atol(tp_str));
+                            if (SMP_ONLY) {
+                                hwloc_bitmap_from_ulong(cpuset, atol(tp_str));
+                            } else {
+                                hwloc_bitmap_from_ulong(cpuset,
+                                        (atol(tp_str) % cpu_socket)
+                                        + (selected_socket * cpu_socket));
+                            }
                         }
                         hwloc_set_cpubind(topology, cpuset, 0);
                         break;
@@ -1820,6 +1985,7 @@ int smpi_setaffinity(int my_local_id)
                     ++j;
                 }
             }
+
             MPIU_Free(custom_cpu_mapping);
         }
     }

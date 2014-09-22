@@ -11,7 +11,7 @@
  */
 
 #include "mpidi_ch3_impl.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "error_handling.h"
 
 #undef FUNCNAME
@@ -26,7 +26,7 @@ int MPIDI_CH3_Abort(int exit_code, char *error_msg)
     /* print backtrace */
     if (show_backtrace) print_backtrace();
     
-    PMI_Abort(exit_code, error_msg);
+    UPMI_ABORT(exit_code, error_msg);
 
     /* if abort returns for some reason, exit here */
 

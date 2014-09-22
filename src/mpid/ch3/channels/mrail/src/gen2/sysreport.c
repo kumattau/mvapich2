@@ -16,7 +16,7 @@
 #include "sysreport.h"
 
 #include "rdma_impl.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "ibv_param.h"
 
 /**
@@ -124,7 +124,7 @@ int mv2_system_report(void) {
     int rank;
 
     /* Rank and hostname */
-    PMI_Get_rank(&rank);
+    UPMI_GET_RANK(&rank);
     gethostname(hostname, HOST_NAME_MAX);
     printf( "<proc rank='%d' hostname='%s' />\n", rank, hostname );
 

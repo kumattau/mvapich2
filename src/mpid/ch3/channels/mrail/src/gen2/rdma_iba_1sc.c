@@ -16,7 +16,7 @@
 #include "ibv_param.h"
 #include "infiniband/verbs.h"
 #include "mpidrma.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "mpiutil.h"
 
 #if defined(_SMP_LIMIC_)
@@ -36,7 +36,7 @@
 #define DEBUG_PRINT(args...) \
 do {                                                          \
     int rank;                                                 \
-    PMI_Get_rank(&rank);                                      \
+    UPMI_GET_RANK(&rank);                                      \
     fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);\
     fprintf(stderr, args);                                    \
 } while (0)

@@ -13,14 +13,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "pmi.h"
+#include "upmi.h"
 
 #include "ib_errors.h"
 
 void ib_internal_error_abort(int line, char *file, int code, char *message)
 {
   int my_rank;
-  PMI_Get_rank(&my_rank);
+  UPMI_GET_RANK(&my_rank);
   fprintf(stderr, "[%d] Abort: ", my_rank);
   fprintf(stderr, message);
   fprintf(stderr, " at line %d in file %s\n", line, file);

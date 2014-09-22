@@ -70,6 +70,10 @@ cvars:
 #pragma _HP_SECONDARY_DEF PMPI_Reduce  MPI_Reduce
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Reduce as PMPI_Reduce
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Reduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+               MPI_Op op, int root, MPI_Comm comm)
+               __attribute__((weak,alias("PMPI_Reduce")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -1071,16 +1075,7 @@ int MPIR_Reduce_impl(const void *sendbuf, void *recvbuf, int count, MPI_Datatype
                      MPI_Op op, int root, MPID_Comm *comm_ptr, int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
-
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        if (is_device_buffer(sendbuf)
-            || is_device_buffer(recvbuf)) {
-            enable_device_ptr_checks = 1;
-        }
-    }
-#endif       
- 
+    
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Reduce != NULL) {
 	/* --BEGIN USEREXTENSION-- */
 	mpi_errno = comm_ptr->coll_fns->Reduce(sendbuf, recvbuf, count,
@@ -1102,11 +1097,6 @@ int MPIR_Reduce_impl(const void *sendbuf, void *recvbuf, int count, MPI_Datatype
     }
 
  fn_exit:
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        enable_device_ptr_checks = 0;
-    }
-#endif
     return mpi_errno;
  fn_fail:
     goto fn_exit;
@@ -1274,12 +1264,12 @@ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     if (mpi_errno) goto fn_fail;
 
 #ifdef _OSU_MVAPICH_
-    if(comm_ptr->ch.shmem_coll_ok == 0) { 
+    if (mv2_use_osu_collectives) {
         mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
-    } 
+    }
 #endif /* _OSU_MVAPICH_ */
 
     

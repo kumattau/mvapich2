@@ -117,7 +117,7 @@ int MPIR_Localcopy(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     MPID_Datatype *sdt_ptr, *rdt_ptr;
     MPID_Datatype_get_ptr(sendtype, sdt_ptr);
     MPID_Datatype_get_ptr(recvtype, rdt_ptr);
-    if (rdma_enable_cuda && enable_device_ptr_checks) {
+    if (rdma_enable_cuda) {
         sbuf_isdev = is_device_buffer(sendbuf);
         rbuf_isdev = is_device_buffer(recvbuf);
     }
@@ -529,10 +529,9 @@ int MPIC_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     context_id = (comm_ptr->comm_kind == MPID_INTRACOMM) ?
         MPID_CONTEXT_INTRA_COLL : MPID_CONTEXT_INTER_COLL;
 
-    if (MPIR_CVAR_ENABLE_COLL_FT_RET) {
-        if (status == MPI_STATUS_IGNORE) status = &mystatus;
+    if (status == MPI_STATUS_IGNORE) status = &mystatus;
+    if (MPIR_CVAR_ENABLE_COLL_FT_RET)
         if (*errflag) MPIR_TAG_SET_ERROR_BIT(sendtag);
-    }
 
     mpi_errno = MPID_Irecv(recvbuf, recvcount, recvtype, source, recvtag,
                            comm_ptr, context_id, &recv_req_ptr);
@@ -607,10 +606,9 @@ int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
     MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
                          "**countneg", "**countneg %d", count);
 
-    if (MPIR_CVAR_ENABLE_COLL_FT_RET) {
-        if (status == MPI_STATUS_IGNORE) status = &mystatus;
+    if (status == MPI_STATUS_IGNORE) status = &mystatus;
+    if (MPIR_CVAR_ENABLE_COLL_FT_RET)
         if (*errflag) MPIR_TAG_SET_ERROR_BIT(sendtag);
-    }
 
     MPID_Comm_get_ptr(comm, comm_ptr);
     context_id_offset = (comm_ptr->comm_kind == MPID_INTRACOMM) ?

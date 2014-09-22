@@ -10,7 +10,7 @@
  *
  */
 
-#include "pmi.h"
+#include "upmi.h"
 
 #include <ib_rdma.h>
 #include <ib_errors.h>
@@ -60,36 +60,24 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 
     if (num_rdma_buffer) {
 
-#ifdef USE_MEMORY_TRACING
-        vbuf_ctrl_buf = MPIU_Malloc(sizeof(struct vbuf) * num_rdma_buffer);
-#else
     /* allocate vbuf struct buffers */
-        if(posix_memalign((void **) &vbuf_ctrl_buf, vbuf_alignment,
+        if(MPIU_Memalign((void **) &vbuf_ctrl_buf, vbuf_alignment,
             sizeof(struct vbuf) * num_rdma_buffer)) {
             DEBUG_PRINT("malloc failed: vbuf in vbuf_fast_rdma_alloc\n");
             goto fn_fail;
         }
-#endif /* USE_MEMORY_TRACING */
 
-        memset(vbuf_ctrl_buf, 0,
+        MPIU_Memset(vbuf_ctrl_buf, 0,
                 sizeof(struct vbuf) * num_rdma_buffer);
 
-#ifdef USE_MEMORY_TRACING
-        vbuf_rdma_buf = MPIU_Malloc(rdma_fp_buffer_size * num_rdma_buffer);
-        if (vbuf_rdma_buf == NULL) {
-            DEBUG_PRINT("malloc failed: vbuf DMA in vbuf_fast_rdma_alloc");
-            goto fn_exit;
-        }
-#else
         /* allocate vbuf RDMA buffers */
-        if(posix_memalign((void **)&vbuf_rdma_buf, pagesize,
+        if(MPIU_Memalign((void **)&vbuf_rdma_buf, pagesize,
             rdma_fp_buffer_size * num_rdma_buffer)) {
             DEBUG_PRINT("malloc failed: vbuf DMA in vbuf_fast_rdma_alloc");
             goto fn_exit;
         }
-#endif /* USE_MEMORY_TRACING */
 
-        memset(vbuf_rdma_buf, 0, rdma_fp_buffer_size * num_rdma_buffer);
+        MPIU_Memset(vbuf_rdma_buf, 0, rdma_fp_buffer_size * num_rdma_buffer);
 
         /* REGISTER RDMA SEND BUFFERS */
         for ( i = 0 ; i < ib_hca_num_hcas; i ++ ) {
@@ -147,10 +135,10 @@ fn_exit:
     return mpi_errno;
 fn_fail:
     if (vbuf_rdma_buf) {
-        MPIU_Free(vbuf_rdma_buf);
+        MPIU_Memalign_Free(vbuf_rdma_buf);
     }
     if (vbuf_ctrl_buf) {
-        MPIU_Free(vbuf_ctrl_buf);
+        MPIU_Memalign_Free(vbuf_ctrl_buf);
     }
     mpi_errno = -1;
     goto fn_exit;

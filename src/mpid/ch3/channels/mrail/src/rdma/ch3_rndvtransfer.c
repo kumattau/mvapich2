@@ -18,7 +18,7 @@
 
 #include "mpidi_ch3_impl.h"
 #include "vbuf.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "mpiutil.h"
 #include "rdma_impl.h"
 
@@ -33,7 +33,7 @@ MPIDI_VC_t *flowlist;
 #define DEBUG_PRINT(args...) \
 do {                                                          \
     int rank;                                                 \
-    PMI_Get_rank(&rank);                                      \
+    UPMI_GET_RANK(&rank);                                      \
     fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);\
     fprintf(stderr, args);                                    \
 } while (0)
@@ -110,7 +110,7 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
     case MV2_RNDV_PROTOCOL_RGET:
         {
             int rank;
-            PMI_Get_rank(&rank);
+            UPMI_GET_RANK(&rank);
             fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);
             fprintf(stderr, "RGET preparing CTS?\n");
             mpi_errno = -1;
@@ -134,7 +134,7 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
     default:
         {
             int rank;
-            PMI_Get_rank(&rank);
+            UPMI_GET_RANK(&rank);
             fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);
             fprintf(stderr,
                     "Unknown protocol %d type from rndv req to send\n",
@@ -832,7 +832,7 @@ int MPIDI_CH3_Rendezvouz_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
     if (!(MV2_RNDV_PROTOCOL_R3 == rreq->mrail.protocol ||
           MV2_RNDV_PROTOCOL_RPUT == rreq->mrail.protocol)) {
         int rank;
-        PMI_Get_rank(&rank);
+        UPMI_GET_RANK(&rank);
 
         DEBUG_PRINT( "[rank %d]get wrong req protocol, req %p, protocol %d\n", rank,
             rreq, rreq->mrail.protocol);

@@ -5,11 +5,7 @@
  */
 
 #include "mpidimpl.h"
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
+#include "upmi.h"
 
 #ifdef DYNAMIC_TASKING
 
@@ -276,25 +272,22 @@ int MPIDI_Comm_spawn_multiple(int count, char **commands,
 	TRACE_ERR("pmi_errno from PMI_Spawn_multiple=%d\n", pmi_errno);
 #endif
 
-        if (errcodes != MPI_ERRCODES_IGNORE) {
-	    for (i=0; i<total_num_processes; i++) {
-		/* FIXME: translate the pmi error codes here */
-		errcodes[i] = pmi_errcodes[0];
-                /* We want to accept if any of the spawns succeeded.
-                   Alternatively, this is the same as we want to NOT accept if
-                   all of them failed.  should_accept = NAND(e_0, ..., e_n)
-                   Remember, success equals false (0). */
-                should_accept = should_accept && errcodes[i];
-	    }
-            should_accept = !should_accept; /* the `N' in NAND */
-	}
+    if (errcodes != MPI_ERRCODES_IGNORE) {
+        for (i=0; i<total_num_processes; i++) {
+            /* FIXME: translate the pmi error codes here */
+            errcodes[i] = pmi_errcodes[0];
+            /* We want to accept if any of the spawns succeeded.
+               Alternatively, this is the same as we want to NOT accept if
+               all of them failed.  should_accept = NAND(e_0, ..., e_n)
+               Remember, success equals false (0). */
+            should_accept = should_accept && errcodes[i];
+        }
+        should_accept = !should_accept; /* the `N' in NAND */
+    }
 
-#ifdef USE_PMI2_API
-        if( (pmi_errno == PMI2_SUCCESS) && (tmp_ret == -1) )
-#else
-        if( (pmi_errno == PMI_SUCCESS) && (tmp_ret == -1) )
-#endif
-	  should_accept = 0;
+    if( (pmi_errno == UPMI_SUCCESS) && (tmp_ret == -1) )
+        should_accept = 0;
+
     }
 
     if (errcodes != MPI_ERRCODES_IGNORE) {
@@ -371,25 +364,13 @@ int MPIDI_GetParentPort(char ** parent_port)
     if (parent_port_name == NULL)
     {
 	char *kvsname = NULL;
-	/* We can always use PMI_KVS_Get on our own process group */
+	/* We can always use UPMI_KVS_GET on our own process group */
 	MPIDI_PG_GetConnKVSname( &kvsname );
-#ifdef USE_PMI2_API
-        {
-            int vallen = 0;
-            pmi_errno = PMI2_KVS_Get(kvsname, PMI2_ID_NULL, MPIDI_PARENT_PORT_KVSKEY, val, sizeof(val), &vallen);
-	    TRACE_ERR("PMI2_KVS_Get - val=%s\n", val);
-            if (pmi_errno)
-                TRACE_ERR("PMI2_KVS_Get returned with pmi_errno=%d\n", pmi_errno);
-        }
-#else
-	/*MPIU_THREAD_CS_ENTER(PMI,);*/
-	pmi_errno = PMI_KVS_Get( kvsname, MPIDI_PARENT_PORT_KVSKEY, val, sizeof(val));
-/*	MPIU_THREAD_CS_EXIT(PMI,);*/
+	pmi_errno = UPMI_KVS_GET( kvsname, MPIDI_PARENT_PORT_KVSKEY, val, sizeof(val));
 	if (pmi_errno) {
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**pmi_kvsget", "**pmi_kvsget %d", pmi_errno);
             goto fn_exit;
 	}
-#endif
 	parent_port_name = MPIU_Strdup(val);
     }
 

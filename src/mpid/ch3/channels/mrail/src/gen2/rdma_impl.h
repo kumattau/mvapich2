@@ -21,7 +21,7 @@
 
 #include "mpidi_ch3_impl.h"
 #include "mpidi_ch3_rdma_pre.h"
-#include "pmi.h"
+#include "upmi.h"
 
 #include <infiniband/verbs.h>
 #include "ibv_param.h"
@@ -41,7 +41,7 @@
 #define DEBUG_PRINT(args...) \
 do {                                                          \
     int rank;                                                 \
-    PMI_Get_rank(&rank);                                      \
+    UPMI_GET_RANK(&rank);                                      \
     MPIU_Error_printf("[%d][%s:%d] ", rank, __FILE__, __LINE__);\
     MPIU_Error_printf(args);                                    \
 } while (0)
@@ -91,7 +91,7 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
 
     /*record lid and port information for connection establish later*/
     int ports[MAX_NUM_HCAS][MAX_NUM_PORTS];
-    int lids[MAX_NUM_HCAS][MAX_NUM_PORTS];
+    uint16_t lids[MAX_NUM_HCAS][MAX_NUM_PORTS];
     union ibv_gid gids[MAX_NUM_HCAS][MAX_NUM_PORTS];
 
     int    (*post_send)(MPIDI_VC_t * vc, vbuf * v, int rail);
@@ -153,6 +153,15 @@ struct process_init_info {
     uint64_t    *vc_addr;
     mv2_arch_hca_type    *arch_hca_type;
 };
+
+typedef struct mv2_process_init_info {
+    int hostid;
+    uint32_t ud_cm_qpn;
+    mv2_arch_hca_type my_arch_hca_type;
+    uint32_t ud_data_qpn[MAX_NUM_HCAS];
+    uint16_t lid[MAX_NUM_HCAS][MAX_NUM_PORTS];
+    union ibv_gid gid[MAX_NUM_HCAS][MAX_NUM_PORTS];
+} mv2_process_init_info_t;
 
 typedef struct ud_addr_info {
     int hostid;

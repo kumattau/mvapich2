@@ -5,11 +5,7 @@
  */
 
 #include "mpidimpl.h"
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
+#include "upmi.h"
 
 /*
  * MPID_Get_universe_size - Get the universe size from the process manager
@@ -26,26 +22,10 @@
 int MPID_Get_universe_size(int  * universe_size)
 {
     int mpi_errno = MPI_SUCCESS;
-#ifdef USE_PMI2_API
-    char val[PMI2_MAX_VALLEN];
-    int found = 0;
-    char *endptr;
-    
-    mpi_errno = PMI2_Info_GetJobAttr("universeSize", val, sizeof(val), &found);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    int pmi_errno = UPMI_SUCCESS;
 
-    if (!found)
-	*universe_size = MPIR_UNIVERSE_SIZE_NOT_AVAILABLE;
-    else {
-        *universe_size = strtol(val, &endptr, 0);
-        MPIU_ERR_CHKINTERNAL(endptr - val != strlen(val), mpi_errno, "can't parse universe size");
-    }
-
-#else
-    int pmi_errno = PMI_SUCCESS;
-
-    pmi_errno = PMI_Get_universe_size(universe_size);
-    if (pmi_errno != PMI_SUCCESS) {
+    pmi_errno = UPMI_GET_UNIVERSE_SIZE(universe_size);
+    if (pmi_errno != UPMI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, 
 			     "**pmi_get_universe_size",
 			     "**pmi_get_universe_size %d", pmi_errno);
@@ -54,7 +34,6 @@ int MPID_Get_universe_size(int  * universe_size)
     {
 	*universe_size = MPIR_UNIVERSE_SIZE_NOT_AVAILABLE;
     }
-#endif
     
 fn_exit:
     return mpi_errno;

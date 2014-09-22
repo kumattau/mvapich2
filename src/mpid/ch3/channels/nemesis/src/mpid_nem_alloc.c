@@ -5,11 +5,7 @@
  */
 
 #include "mpid_nem_impl.h"
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
+#include "upmi.h"
 
 #include <stdlib.h>
 #ifdef HAVE_UNISTD_H
@@ -266,7 +262,7 @@ int MPIDI_CH3I_Seg_commit(MPID_nem_seg_ptr_t memory, int num_local, int local_ra
              * needs to be called by the leader and the current process before use by the
              * current process.  That is, we don't assume that this collective call is
              * synchronizing and we don't assume that it requires total external
-             * synchronization.  In PMIv2 we don't have a PMI_Barrier operation so we need
+             * synchronization.  In PMIv2 we don't have a UPMI_BARRIER operation so we need
              * this behavior. */
 #endif
 
@@ -297,8 +293,8 @@ int MPIDI_CH3I_Seg_commit(MPID_nem_seg_ptr_t memory, int num_local, int local_ra
         memory->symmetrical = 0 ;
 
         /* we still need to call barrier */
-	pmi_errno = PMI_Barrier();
-        MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
+	pmi_errno = UPMI_BARRIER();
+        MPIU_ERR_CHKANDJUMP1 (pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
 
         /* must come before barrier_init since we use OPA in that function */
 #ifdef OPA_USE_LOCK_BASED_PRIMITIVES
@@ -311,11 +307,11 @@ int MPIDI_CH3I_Seg_commit(MPID_nem_seg_ptr_t memory, int num_local, int local_ra
     }
     else{
         /* Allocate space for pmi key and val */
-        pmi_errno = PMI_KVS_Get_key_length_max(&key_max_sz);
+        pmi_errno = UPMI_KVS_GET_KEY_LENGTH_MAX(&key_max_sz);
         MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
         MPIU_CHKLMEM_MALLOC(key, char *, key_max_sz, mpi_errno, "key");
 
-        pmi_errno = PMI_KVS_Get_value_length_max(&val_max_sz);
+        pmi_errno = UPMI_KVS_GET_VALUE_LENGTH_MAX(&val_max_sz);
         MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
         MPIU_CHKLMEM_MALLOC(val, char *, val_max_sz, mpi_errno, "val");
 
@@ -333,11 +329,11 @@ int MPIDI_CH3I_Seg_commit(MPID_nem_seg_ptr_t memory, int num_local, int local_ra
             mpi_errno = MPIU_SHMW_Hnd_get_serialized_by_ref(memory->hnd, &serialized_hnd);
             if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP (mpi_errno);
 
-            pmi_errno = PMI_KVS_Put (kvs_name, key, serialized_hnd);
-            MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
+            pmi_errno = UPMI_KVS_PUT (kvs_name, key, serialized_hnd);
+            MPIU_ERR_CHKANDJUMP1 (pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
 
-            pmi_errno = PMI_KVS_Commit (kvs_name);
-            MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit", "**pmi_kvs_commit %d", pmi_errno);
+            pmi_errno = UPMI_KVS_COMMIT (kvs_name);
+            MPIU_ERR_CHKANDJUMP1 (pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit", "**pmi_kvs_commit %d", pmi_errno);
 
             /* must come before barrier_init since we use OPA in that function */
 #ifdef OPA_USE_LOCK_BASED_PRIMITIVES
@@ -349,18 +345,18 @@ int MPIDI_CH3I_Seg_commit(MPID_nem_seg_ptr_t memory, int num_local, int local_ra
             mpi_errno = MPID_nem_barrier_init((MPID_nem_barrier_t *)memory->base_addr, TRUE);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-            pmi_errno = PMI_Barrier();
-            MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
+            pmi_errno = UPMI_BARRIER();
+            MPIU_ERR_CHKANDJUMP1 (pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
         }
         else
         {
-            pmi_errno = PMI_Barrier();
-            MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
+            pmi_errno = UPMI_BARRIER();
+            MPIU_ERR_CHKANDJUMP1 (pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
 
             /* get name of shared file */
             MPIU_Snprintf (key, key_max_sz, "sharedFilename[%i]", MPID_nem_mem_region.local_procs[0]);
-            pmi_errno = PMI_KVS_Get (kvs_name, key, val, val_max_sz);
-            MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
+            pmi_errno = UPMI_KVS_GET (kvs_name, key, val, val_max_sz);
+            MPIU_ERR_CHKANDJUMP1 (pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
 
             mpi_errno = MPIU_SHMW_Hnd_deserialize(memory->hnd, val, strlen(val));
             if(mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);

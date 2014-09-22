@@ -8,12 +8,8 @@
 
 /* FIXME: Who uses/sets MPIDI_DEV_IMPLEMENTS_ABORT? */
 #ifdef MPIDI_DEV_IMPLEMENTS_ABORT
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
-static int MPIDI_CH3I_PMI_Abort(int exit_code, const char *error_msg);
+#include "upmi.h"
+static int MPIDI_CH3I_UPMI_ABORT(int exit_code, const char *error_msg);
 #endif
 
 /* FIXME: We should move this into a header file so that we don't
@@ -92,7 +88,7 @@ int MPID_Abort(MPID_Comm * comm, int mpi_errno, int exit_code,
 #ifdef MPIDI_CH3_IMPLEMENTS_ABORT
     MPIDI_CH3_Abort(exit_code, error_msg);
 #elif defined(MPIDI_DEV_IMPLEMENTS_ABORT)
-    MPIDI_CH3I_PMI_Abort(exit_code, error_msg);
+    MPIDI_CH3I_UPMI_ABORT(exit_code, error_msg);
 #else
     if (error_msg[0]) MPIU_Error_printf("%s\n", error_msg);
     fflush(stderr);
@@ -108,10 +104,10 @@ int MPID_Abort(MPID_Comm * comm, int mpi_errno, int exit_code,
 
 #ifdef MPIDI_DEV_IMPLEMENTS_ABORT
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_PMI_Abort
+#define FUNCNAME MPIDI_CH3I_UPMI_ABORT
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int MPIDI_CH3I_PMI_Abort(int exit_code, const char *error_msg)
+static int MPIDI_CH3I_UPMI_ABORT(int exit_code, const char *error_msg)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_PMI_ABORT);
     
@@ -127,16 +123,12 @@ static int MPIDI_CH3I_PMI_Abort(int exit_code, const char *error_msg)
     MPIU_Error_printf("%s\n", error_msg);
     fflush(stderr);
 
-    /* FIXME: What is the scope for PMI_Abort?  Shouldn't it be one or more
+    /* FIXME: What is the scope for UPMI_ABORT?  Shouldn't it be one or more
        process groups?  Shouldn't abort of a communicator abort either the
        process groups of the communicator or only the current process?
-       Should PMI_Abort have a parameter for which of these two cases to
+       Should UPMI_ABORT have a parameter for which of these two cases to
        perform? */
-#ifdef USE_PMI2_API
-    PMI2_Abort(TRUE, error_msg);
-#else
-    PMI_Abort(exit_code, error_msg);
-#endif
+    UPMI_ABORT(exit_code, error_msg);
 
     /* if abort returns for some reason, exit here */
     exit(exit_code);

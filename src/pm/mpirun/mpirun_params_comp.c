@@ -88,10 +88,30 @@ char *change_group = NULL;
 static int using_slurm = 0;
 static int using_pbs = 0;
 
-#define PARAM_NP    0
-#define PARAM_SG    18
-#define PARAM_N     19
-#define PARAM_ENV   20
+enum param_code {
+    PARAM_NP = 0,
+    PARAM_GDB,
+    PARAM_XTERM,
+    PARAM_F,
+    PARAM_MACHINEFILE,
+    PARAM_SHOW,
+    PARAM_RSH,
+    PARAM_SSH,
+    PARAM_HELP,
+    PARAM_V,
+    PARAM_TV,
+    PARAM_LEGACY,
+    PARAM_STARTEDBYTV,
+    PARAM_SPAWNFILE,
+    PARAM_DPM,
+    PARAM_FASTSSH,
+    PARAM_CONFIG,
+    PARAM_DPMSPAWN,
+    PARAM_SG,
+    PARAM_N,
+    PARAM_ENV,
+    PARAM_EXPORT_ALL,
+};
 
 static struct option option_table[] = {
     {"np", required_argument, 0, 0},
@@ -117,6 +137,7 @@ static struct option option_table[] = {
     {"sg", required_argument, 0, 0},
     {"n", required_argument, 0, 0},
     {"env", required_argument, 0, 0},
+    {"export-all", no_argument, 0, 0},
     {0, 0, 0, 0}
 };
 
@@ -193,15 +214,15 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
             exit(EXIT_FAILURE);
         }
         break;
-    case 1:                    /* -debug */
+    case PARAM_GDB:
         debug_on = 1;
         xterm_on = 1;
         break;
-    case 2:                    /* -xterm */
+    case PARAM_XTERM:
         xterm_on = 1;
         break;
-    case 3:                     /* -f */
-    case 4:                     /* -machinefile */
+    case PARAM_F:
+    case PARAM_MACHINEFILE:
         hostfile_on = 1;
         using_slurm = 0;
         using_pbs = 0;
@@ -209,24 +230,24 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
         if (strlen(optarg) >= HOSTFILE_LEN - 1)
             hostfile[HOSTFILE_LEN] = '\0';
         break;
-    case 5:
+    case PARAM_SHOW:
         show_on = 1;
         break;
-    case 6:
+    case PARAM_RSH:
         use_rsh = 1;
         break;
-    case 7:
+    case PARAM_SSH:
         use_rsh = 0;
         break;
-    case 8:
+    case PARAM_HELP:
         usage(argv[0]);
         exit(EXIT_SUCCESS);
         break;
-    case 9:
+    case PARAM_V:
         PRINT_MVAPICH2_VERSION();
         exit(EXIT_SUCCESS);
         break;
-    case 10:
+    case PARAM_TV:
         {
             /* -tv */
             char *tv_env;
@@ -257,31 +278,31 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
 
         }
         break;
-    case 11:
+    case PARAM_LEGACY:
         legacy_startup = 1;
         break;
-    case 12:
+    case PARAM_STARTEDBYTV:
         /* -startedByTv */
         use_totalview = 1;
         debug_on = 1;
         break;
-    case 13:                   /* spawnspec given */
+    case PARAM_SPAWNFILE:
         using_slurm = 0;
         using_pbs = 0;
         spawnfile = strdup(optarg);
         DBG(fprintf(stderr, "spawn spec file = %s\n", spawnfile));
         break;
-    case 14:
+    case PARAM_DPM:
         dpm = 1;
         break;
-    case 15:                   /* -fastssh */
+    case PARAM_FASTSSH:
 #if !defined(CR_FTB)
         /* disable hierarchical SSH if migration is enabled */
         USE_LINEAR_SSH = 0;
 #endif
         break;
         //With this option the user want to activate the mpmd
-    case 16:
+    case PARAM_CONFIG:
         configfile_on = 1;
         using_slurm = 0;
         using_pbs = 0;
@@ -289,7 +310,7 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
         if (strlen(optarg) >= CONFILE_LEN - 1)
             configfile[CONFILE_LEN] = '\0';
         break;
-    case 17:
+    case PARAM_DPMSPAWN:
         spinf.totspawns = atoi(optarg);
         break;
     case PARAM_SG:
@@ -316,9 +337,8 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
         }
         optind++;
         break;
-    case 21:
-        usage(argv[0]);
-        exit(EXIT_SUCCESS);
+    case PARAM_EXPORT_ALL:
+        enable_send_environ(1);
         break;
     default:
         fprintf(stderr, "Unknown option\n");
@@ -338,7 +358,7 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     int i;
     int c, option_index;
 
-    enable_send_environ();
+    enable_send_environ(0);
 
     if (check_for_slurm()) {
         using_slurm = 1;
@@ -467,7 +487,7 @@ void usage (char const * arg0)
 {
     char * path = strdup(arg0);
 
-    fprintf(stderr, "usage: %s [-v] [-sg group] [-rsh|-ssh] " "[-gdb] -[tv] [-xterm] [-show] [-legacy] -n N" "[-machinefile hfile | -f hfile] a.out args | -config configfile\n", basename(path));
+    fprintf(stderr, "usage: %s [-v] [-sg group] [-rsh|-ssh] " "[-gdb] -[tv] [-xterm] [-show] [-legacy] [-export-all] -n N" "[-machinefile hfile | -f hfile] a.out args | -config configfile\n", basename(path));
     fprintf(stderr, "Where:\n");
     fprintf(stderr, "\tsg         =>  execute the processes as different group ID\n");
     fprintf(stderr, "\trsh        =>  to use rsh for connecting\n");

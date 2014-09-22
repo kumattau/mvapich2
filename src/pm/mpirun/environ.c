@@ -14,6 +14,7 @@
 
 extern char **environ;
 static int enabled = 0;
+static int force = 0;
 
 static size_t
 get_num_of_environ_strings (void)
@@ -40,13 +41,14 @@ read_and_set_env (int s, size_t len)
     }
     
     name = strsep(&value, "=");
-    return setenv(name, value, 0);
+    return setenv(name, value, force);
 }
 
 void
-enable_send_environ (void)
+enable_send_environ (int overwrite)
 {
     enabled = 1;
+    force = overwrite;
 }
 
 int
@@ -60,6 +62,12 @@ send_environ (int s)
 
     if (write_socket(s, &count, sizeof(count))) {
         return -1;
+    }
+
+    if (count) {
+        if (write_socket(s, &force, sizeof(force))) {
+            return -1;
+        }
     }
 
     for (i = 0; i < count; i++) {
@@ -87,7 +95,11 @@ recv_environ (int s)
     }
 
     if (count) {
-        enable_send_environ();
+        if (read_socket(s, &force, sizeof(force))) {
+            return -1;
+        }
+
+        enable_send_environ(force);
     }
 
     while (count--) {

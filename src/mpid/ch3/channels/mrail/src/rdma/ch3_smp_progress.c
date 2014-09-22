@@ -34,7 +34,7 @@
 #include <errno.h>
 #include <string.h>
 #include <assert.h>
-#include "pmi.h"
+#include "upmi.h"
 #include "smp_smpi.h"
 #include "mpiutil.h"
 #include "mv2_arch_hca_detect.h"
@@ -49,6 +49,13 @@
 #if defined _SMP_CMA_ 
 #include <sys/types.h>
 #endif 
+
+
+
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mpit_smp_read_progress_poll);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mpit_smp_write_progress_poll);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mpit_smp_read_progress_poll_success);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mpit_smp_write_progress_poll_success);
 
 int mv2_shmem_pool_init = 0;
 int g_smp_delay_shmem_pool_init = 1;
@@ -95,7 +102,7 @@ extern int finalize_coll_comm;
 #define DEBUG_PRINT(args...) \
     do {                                                          \
 	int rank;                                                 \
-	PMI_Get_rank(&rank);                                      \
+	UPMI_GET_RANK(&rank);                                      \
 	MPIU_Error_printf("[%d][%s:%d] ", rank, __FILE__, __LINE__);\
 	MPIU_Error_printf(args);                                    \
     } while (0)
@@ -198,6 +205,7 @@ CUevent *loop_event_local;
 
 #if defined(_SMP_CMA_)
 int g_smp_use_cma = 1;
+size_t MV2_CMA_MSG_LIMIT = 1<<30;
 #ifndef HAVE_PROCESS_VM_READV
 #  if defined(i386)
 #    define __NR_process_vm_readv 347
@@ -739,6 +747,9 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
     int iov_isdev = 0;
 #endif
 
+    /* track smp write progress polling for MPIT*/
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_smp_write_progress_poll, 1);
+
     for (i=0; i < g_smpi.num_local_nodes; ++i)
     {
         MPIDI_PG_Get_vc(pg, g_smpi.l2g_rank[i], &vc);
@@ -823,6 +834,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
                                 req->dev.iov_count - req->dev.iov_offset,
                                 &nb
                             );
+
                         break;
             }
 
@@ -916,6 +928,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
                         nb));
                 break;
             }
+            MPIR_T_PVAR_COUNTER_INC(MV2, mpit_smp_write_progress_poll_success, 1);
         } /* while (vc->smp.send_active != NULL) */
     } /* for (i=0; i < g_smpi.num_local_nodes; ++i) */
 
@@ -942,6 +955,9 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
     int complete = 0;
     int i = 0;
     int index = -1;
+
+    /* track smp read progress polling for MPIT*/
+    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_smp_read_progress_poll, 1);
 
 #if defined(_SMP_LIMIC_)
     struct limic_header l_header;
@@ -995,6 +1011,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                 use_cma = 0;
                 use_limic = 0;
 
+                MPIR_T_PVAR_COUNTER_INC(MV2, mpit_smp_read_progress_poll_success, 1);
                 mpi_errno = MPIDI_CH3I_SMP_Process_header(vc, pkt_head, &index, &l_header, &c_header,
                         &use_limic, &use_cma);
 
@@ -1222,6 +1239,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                     }
                 }
             }
+            MPIR_T_PVAR_COUNTER_INC(MV2, mpit_smp_read_progress_poll_success, 1);
         }
 
         if(is_fair_polling) {
@@ -1650,7 +1668,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
 #if defined(DEBUG)
     int my_rank;
-    PMI_Get_rank(&my_rank);
+    UPMI_GET_RANK(&my_rank);
 
     if (my_rank == 0)
     {
@@ -4002,7 +4020,24 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
         msglen = cma_total_bytes;
         iov_len = iov[0].MPID_IOV_LEN;
         for (; cma_total_bytes > 0 && iov_off < iovlen; ) {
-            if (msglen == iov_len) {
+            if (unlikely(msglen > MV2_CMA_MSG_LIMIT)){
+                local_iovec[iov_off].iov_len = MV2_CMA_MSG_LIMIT;
+                cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
+                if( cerr == -1 ) 
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                            "**fail", "**fail %s",
+                            "CMA: (MPIDI_CH3I_SMP_readv_rndv) process_vm_readv fail");
+
+                local_iovec[iov_off].iov_base += MV2_CMA_MSG_LIMIT;
+                local_iovec[iov_off].iov_len = iov_len - MV2_CMA_MSG_LIMIT;
+                received_bytes += MV2_CMA_MSG_LIMIT;
+                cma_total_bytes -= MV2_CMA_MSG_LIMIT;
+                msglen -= MV2_CMA_MSG_LIMIT;
+               
+                c_header->remote[0].iov_len -= MV2_CMA_MSG_LIMIT;
+                c_header->remote[0].iov_base += MV2_CMA_MSG_LIMIT;
+
+            } else if (msglen == iov_len) {
                 local_iovec[iov_off].iov_base += buf_off;
                 cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
                 if( cerr == -1 ) 
@@ -4450,7 +4485,25 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         msglen = cma_total_bytes;
         iov_len = iov[0].MPID_IOV_LEN;
         for (; cma_total_bytes > 0 && iov_off < iovlen; ) {
-            if (msglen == iov_len) {
+            if (unlikely(msglen > MV2_CMA_MSG_LIMIT)) {
+                local_iovec[iov_off].iov_len = MV2_CMA_MSG_LIMIT;
+                cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
+                if( cerr == -1 ) 
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                            "**fail", "**fail %s",
+                            "CMA: (MPIDI_CH3I_SMP_readv_rndv) process_vm_readv fail");
+
+                local_iovec[iov_off].iov_base += MV2_CMA_MSG_LIMIT;
+                local_iovec[iov_off].iov_len = iov_len - MV2_CMA_MSG_LIMIT;
+                received_bytes += MV2_CMA_MSG_LIMIT;
+                cma_total_bytes -= MV2_CMA_MSG_LIMIT;
+                msglen -= MV2_CMA_MSG_LIMIT;
+
+                c_header->remote[0].iov_len -= MV2_CMA_MSG_LIMIT;
+                c_header->remote[0].iov_base += MV2_CMA_MSG_LIMIT;
+
+
+            } else if (msglen == iov_len) {
                 local_iovec[iov_off].iov_base += buf_off;
                 cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
                 if( cerr == -1 ) 
@@ -5095,8 +5148,8 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMPI_EXCHANGE_INFO);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMPI_EXCHANGE_INFO);
 
-    PMI_Get_rank(&pg_rank);
-    PMI_Get_size(&pg_size);
+    UPMI_GET_RANK(&pg_rank);
+    UPMI_GET_SIZE(&pg_size);
 
     g_smpi.num_local_nodes = MPIDI_Num_local_processes(pg);
 

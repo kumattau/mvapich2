@@ -45,6 +45,11 @@ cvars:
 #pragma _HP_SECONDARY_DEF PMPI_Gatherv  MPI_Gatherv
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Gatherv as PMPI_Gatherv
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+                const int *recvcounts, const int *displs, MPI_Datatype recvtype, int root,
+                MPI_Comm comm)
+                __attribute__((weak,alias("PMPI_Gatherv")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -264,10 +269,6 @@ int MPIR_Gatherv_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
         avg_size = total_size / total_msgs;
 
-        if (sendbuf_on_device || recvbuf_on_device) {
-            enable_device_ptr_checks = 1;
-        }
-
         if ((sendbuf_on_device || recvbuf_on_device) &&
              rdma_cuda_use_naive &&
              avg_size <= rdma_cuda_gatherv_naive_limit) {
@@ -347,11 +348,6 @@ int MPIR_Gatherv_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 #endif
 
  fn_exit:
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        enable_device_ptr_checks = 0;
-    }
-#endif
     return mpi_errno;
  fn_fail:
     goto fn_exit;
@@ -473,6 +469,13 @@ int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                             MPIR_ERRTEST_USERBUFFER(recvbuf,recvcounts[i],recvtype,mpi_errno);
                             break;
                         }
+                    }
+
+                    /* catch common aliasing cases */
+                    if (sendbuf != MPI_IN_PLACE && sendtype == recvtype && recvcounts[comm_ptr->rank] != 0 && sendcount != 0) {
+                        int recvtype_size;
+                        MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+                        MPIR_ERRTEST_ALIAS_COLL(sendbuf, (char*)recvbuf + displs[comm_ptr->rank]*recvtype_size, mpi_errno);
                     }
                 }
                 else

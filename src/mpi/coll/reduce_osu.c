@@ -1382,7 +1382,8 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
     }
     
 #ifdef CHANNEL_MRAIL_GEN2
-    if(mv2_enable_zcpy_reduce == 1 && 
+    if(mv2_use_slot_shmem_coll &&
+       mv2_enable_zcpy_reduce == 1 && 
        stride <= mv2_shm_slot_len && 
        comm_ptr->ch.shmem_coll_ok == 1 &&
        mv2_enable_shmem_reduce && is_commutative == 1){ 
@@ -1747,7 +1748,7 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
 	}
 	else {
 	    lp2ltn = pow(2, (int)log2(comm_size));
-	    comm_size_index = log2( lp2ltn / table_min_comm_size );
+	    comm_size_index = (lp2ltn < table_min_comm_size) ? 0 : log2( lp2ltn / table_min_comm_size );
 	}
     }
 
@@ -1773,7 +1774,7 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
 	}
 	else {
 	    lp2ltn = pow(2, (int)log2(nbytes));
-	    inter_node_algo_index = log2( lp2ltn / table_min_inter_size );
+	    inter_node_algo_index = (lp2ltn < table_min_inter_size) ? 0 : log2( lp2ltn / table_min_inter_size );
 	}
     }
     
@@ -1792,7 +1793,7 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
 	}
 	else {
 	    lp2ltn = pow(2, (int)log2(nbytes));
-	    intra_node_algo_index = log2(lp2ltn / table_min_intra_size );
+	    intra_node_algo_index = (lp2ltn < table_min_intra_size) ? 0 : log2(lp2ltn / table_min_intra_size );
 	}
     }
 
@@ -1961,6 +1962,7 @@ int MPIR_Reduce_MV2(const void *sendbuf,
     char *recv_host_buf = NULL;
     char *send_host_buf = NULL;
     char *temp_recvbuf = recvbuf;
+    const char *temp_sendbuf = sendbuf;
 
     rank = comm_ptr->rank;
 
@@ -2090,6 +2092,7 @@ int MPIR_Reduce_MV2(const void *sendbuf,
         }
     }
     if(rdma_enable_cuda && send_mem_type){
+        sendbuf = temp_sendbuf;
         if(send_host_buf){
             MPIU_Free(send_host_buf);
             send_host_buf = NULL;

@@ -21,7 +21,7 @@
 #include <fcntl.h>
 #include "rdma_impl.h"
 #include "mpichconf.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "vbuf.h"
 #include "ibv_param.h"
 #include "rdma_cm.h"
@@ -31,6 +31,8 @@
 
 /* For mv2_system_report */
 #include "sysreport.h"
+
+extern int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank);
 
 /* global rdma structure for the local process */
 mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
@@ -87,7 +89,7 @@ int MPIDI_CH3I_MRAIL_PG_Init(MPIDI_PG_t * pg)
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
                                   "**nomem %s", "xrc_hostid");
     }
-    memset(pg->ch.mrail.xrc_hostid, 0, pg->size * sizeof(uint32_t));
+    MPIU_Memset(pg->ch.mrail.xrc_hostid, 0, pg->size * sizeof(uint32_t));
 #endif
 
   fn_fail:
@@ -143,10 +145,6 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     int i = 0;
     int error;
     int rail_index;
-    char *key = NULL;
-    char *val = NULL;
-    int key_max_sz;
-    int val_max_sz;
 
     char rdmakey[512];
     char rdmavalue[512];
@@ -162,19 +160,14 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
     rdma_get_pm_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
 
-    if (pg_size > 1 && mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup) {
-        mpi_errno =
-            rdma_setup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process, pg_rank,
-                                    pg_size);
+    /* Host ids exchanges through PMI in MPIDI_Get_local_host for
+     ** mpirun_rsh. for all other launchers do it here */
+    if (pg->ch.local_process_id == -1) {
+        mpi_errno = MPIDI_Get_local_host(pg, pg_rank);
         if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                  "**fail %s", "MPIDI_Get_local_host");
         }
-        /* Host ids exchanges through PMI in MPIDI_Get_local_host for
-         ** mpirun_rsh. for all other launchers do it here */
-        if (!using_mpirun_rsh) {
-            rdma_ring_exchange_host_id(pg, pg_rank, pg_size);
-        }
-        ring_setup_done = 1;
     }
 
     rdma_local_id = MPIDI_Get_local_process_id(pg);
@@ -224,6 +217,14 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
         my_arch_hca_type = mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type;
         if (mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup) {
             mpi_errno =
+                rdma_setup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process, pg_rank,
+                                        pg_size);
+            if (mpi_errno) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            ring_setup_done = 1;
+
+            mpi_errno =
                 rdma_ring_based_allgather(&my_arch_hca_type,
                                           sizeof(my_arch_hca_type), pg_rank,
                                           init_info->arch_hca_type, pg_size,
@@ -233,37 +234,6 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                 MPIU_ERR_POP(mpi_errno);
             }
         } else {
-            /* Allocate space for pmi keys and values */
-            error = PMI_KVS_Get_key_length_max(&key_max_sz);
-            if (error != PMI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                          "**fail %s",
-                                          "Error getting max key length");
-            }
-
-            ++key_max_sz;
-            key = MPIU_Malloc(key_max_sz);
-
-            if (key == NULL) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                                          "**nomem %s", "pmi key");
-            }
-
-            error = PMI_KVS_Get_value_length_max(&val_max_sz);
-            if (error != PMI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                          "**fail %s",
-                                          "Error getting max value length");
-            }
-
-            ++val_max_sz;
-            val = MPIU_Malloc(val_max_sz);
-
-            if (val == NULL) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                                          "**nomem %s", "pmi value");
-            }
-
             /* Generate the key and value pair */
             MPIU_Snprintf(rdmakey, 512, "ARCH-HCA-%08x", pg_rank);
             buf = rdmavalue;
@@ -271,28 +241,28 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
             buf += 16;
 
             /* put the kvs into PMI */
-            MPIU_Strncpy(key, rdmakey, key_max_sz);
-            MPIU_Strncpy(val, rdmavalue, val_max_sz);
+            MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
+            MPIU_Strncpy(mv2_pmi_val, rdmavalue, mv2_pmi_max_vallen);
             DEBUG_PRINT("put: rdmavalue %s len:%lu arch_hca:%lu\n",
-                        val, strlen(val), my_arch_hca_type);
+                        mv2_pmi_val, strlen(mv2_pmi_val), my_arch_hca_type);
 
-            error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
-            if (error != PMI_SUCCESS) {
+            error = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
+            if (error != UPMI_SUCCESS) {
                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                           "**pmi_kvs_put", "**pmi_kvs_put %d",
                                           error);
             }
 
 
-            error = PMI_KVS_Commit(pg->ch.kvs_name);
-            if (error != PMI_SUCCESS) {
+            error = UPMI_KVS_COMMIT(pg->ch.kvs_name);
+            if (error != UPMI_SUCCESS) {
                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                           "**pmi_kvs_commit",
                                           "**pmi_kvs_commit %d", error);
             }
 
-            error = PMI_Barrier();
-            if (error != PMI_SUCCESS) {
+            error = UPMI_BARRIER();
+            if (error != UPMI_SUCCESS) {
                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                           "**pmi_barrier", "**pmi_barrier %d",
                                           error);
@@ -305,22 +275,22 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                 }
 
                 MPIU_Snprintf(rdmakey, 512, "ARCH-HCA-%08x", i);
-                MPIU_Strncpy(key, rdmakey, key_max_sz);
+                MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
 
-                error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
-                if (error != PMI_SUCCESS) {
+                error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
+                if (error != UPMI_SUCCESS) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**pmi_kvs_get",
                                               "**pmi_kvs_get %d", error);
                 }
 
-                MPIU_Strncpy(rdmavalue, val, val_max_sz);
+                MPIU_Strncpy(rdmavalue, mv2_pmi_val, mv2_pmi_max_vallen);
                 buf = rdmavalue;
 
                 sscanf(buf, "%016lx", &init_info->arch_hca_type[i]);
                 buf += 16;
                 DEBUG_PRINT("get: rdmavalue %s len:%lu arch_hca[%d]:%lu\n",
-                            val, strlen(val), i, init_info->arch_hca_type[i]);
+                            mv2_pmi_val, strlen(mv2_pmi_val), i, init_info->arch_hca_type[i]);
             }
         }
 
@@ -403,15 +373,15 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                 buf += 16;
                 DEBUG_PRINT("Put hca type %d, vc addr %" PRIx64 ", max val%d\n",
                             init_info->arch_hca_type[i], init_info->vc_addr[i],
-                            val_max_sz);
+                            mv2_pmi_max_vallen);
 
                 /* put the kvs into PMI */
-                MPIU_Strncpy(key, rdmakey, key_max_sz);
-                MPIU_Strncpy(val, rdmavalue, val_max_sz);
+                MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
+                MPIU_Strncpy(mv2_pmi_val, rdmavalue, mv2_pmi_max_vallen);
                 DEBUG_PRINT("rdmavalue %s len:%lu \n", val, strlen(val));
 
-                error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
-                if (error != PMI_SUCCESS) {
+                error = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
+                if (error != UPMI_SUCCESS) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**pmi_kvs_put",
                                               "**pmi_kvs_put %d", error);
@@ -419,9 +389,9 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
                 DEBUG_PRINT("after put, before barrier\n");
 
-                error = PMI_KVS_Commit(pg->ch.kvs_name);
+                error = UPMI_KVS_COMMIT(pg->ch.kvs_name);
 
-                if (error != PMI_SUCCESS) {
+                if (error != UPMI_SUCCESS) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**pmi_kvs_commit",
                                               "**pmi_kvs_commit %d", error);
@@ -432,8 +402,8 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                  ** multiple key-value pairs. otherwise this berrier is not required.
                  ** This should be moved out of this loop if PMI allows multiple pairs.
                  */
-                error = PMI_Barrier();
-                if (error != PMI_SUCCESS) {
+                error = UPMI_BARRIER();
+                if (error != UPMI_SUCCESS) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**pmi_barrier",
                                               "**pmi_barrier %d", error);
@@ -464,16 +434,16 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
                 /* Generate the key */
                 MPIU_Snprintf(rdmakey, 512, "%08x-%08x", i, pg_rank);
-                MPIU_Strncpy(key, rdmakey, key_max_sz);
+                MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
 
-                error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
-                if (error != PMI_SUCCESS) {
+                error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
+                if (error != UPMI_SUCCESS) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**pmi_kvs_get",
                                               "**pmi_kvs_get %d", error);
                 }
 
-                MPIU_Strncpy(rdmavalue, val, val_max_sz);
+                MPIU_Strncpy(rdmavalue, mv2_pmi_val, mv2_pmi_max_vallen);
                 buf = rdmavalue;
 
                 for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
@@ -512,8 +482,8 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
             /* This barrier is to prevent some process from
              * overwriting values that has not been get yet
              */
-            error = PMI_Barrier();
-            if (error != PMI_SUCCESS) {
+            error = UPMI_BARRIER();
+            if (error != UPMI_SUCCESS) {
                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                           "**pmi_barrier", "**pmi_barrier %d",
                                           error);
@@ -541,18 +511,18 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
                 DEBUG_PRINT("put rdma value %s\n", rdmavalue);
                 /* Put the kvs into PMI */
-                MPIU_Strncpy(key, rdmakey, key_max_sz);
-                MPIU_Strncpy(val, rdmavalue, val_max_sz);
+                MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
+                MPIU_Strncpy(mv2_pmi_val, rdmavalue, mv2_pmi_max_vallen);
 
-                error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
-                if (error != PMI_SUCCESS) {
+                error = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
+                if (error != UPMI_SUCCESS) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**pmi_kvs_put",
                                               "**pmi_kvs_put %d", error);
                 }
 
-                error = PMI_KVS_Commit(pg->ch.kvs_name);
-                if (error != PMI_SUCCESS) {
+                error = UPMI_KVS_COMMIT(pg->ch.kvs_name);
+                if (error != UPMI_SUCCESS) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**pmi_kvs_commit",
                                               "**pmi_kvs_commit %d", error);
@@ -564,8 +534,8 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                  ** This should be moved out of this loop if PMI allows multiple pairs.
                  */
 
-                error = PMI_Barrier();
-                if (error != PMI_SUCCESS) {
+                error = UPMI_BARRIER();
+                if (error != UPMI_SUCCESS) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**pmi_barrier",
                                               "**pmi_barrier %d", error);
@@ -581,15 +551,15 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
                 /* Generate the key */
                 MPIU_Snprintf(rdmakey, 512, "1-%08x-%08x", i, pg_rank);
-                MPIU_Strncpy(key, rdmakey, key_max_sz);
-                error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+                MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
+                error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
 
-                if (error != PMI_SUCCESS) {
+                if (error != UPMI_SUCCESS) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**pmi_kvs_get",
                                               "**pmi_kvs_get %d", error);
                 }
-                MPIU_Strncpy(rdmavalue, val, val_max_sz);
+                MPIU_Strncpy(rdmavalue, mv2_pmi_val, mv2_pmi_max_vallen);
 
                 buf = rdmavalue;
                 DEBUG_PRINT("get rdmavalue %s\n", rdmavalue);
@@ -602,18 +572,14 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                 }
             }
 
-            error = PMI_Barrier();
-            if (error != PMI_SUCCESS) {
+            error = UPMI_BARRIER();
+            if (error != UPMI_SUCCESS) {
                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                           "**pmi_barrier", "**pmi_barrier %d",
                                           error);
             }
 
             DEBUG_PRINT("After barrier\n");
-
-            MPIU_Free(key);
-            MPIU_Free(val);
-
         } else {
             /* Exchange the information about HCA_lid, qp_num, and memory,
              * With the ring-based queue pair */
@@ -647,9 +613,9 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                                 pg, init_info);
     DEBUG_PRINT("Finishing enabling connection\n");
 
-    error = PMI_Barrier();
+    error = UPMI_BARRIER();
 
-    if (error != PMI_SUCCESS) {
+    if (error != UPMI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                   "**pmi_barrier", "**pmi_barrier %d", error);
     }
@@ -672,9 +638,9 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
         MRAILI_Init_vc(vc);
     }
 
-    error = PMI_Barrier();
+    error = UPMI_BARRIER();
 
-    if (error != PMI_SUCCESS) {
+    if (error != UPMI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                   "**pmi_barrier", "**pmi_barrier %d", error);
     }
@@ -736,6 +702,15 @@ int MPIDI_CH3I_MRAILI_Flush(void)
         if (SMP_INIT && (vc->smp.local_nodes >= 0)) {
             continue;
         }
+
+#ifdef _ENABLE_UD_
+        if (rdma_enable_hybrid) {
+            if (vc->mrail.ack_need_tosend == 1) {
+                PRINT_DEBUG(DEBUG_UD_verbose > 0, "Sending explicit ack to %d\n", vc->pg_rank);
+                mv2_send_explicit_ack(vc);
+            }
+        }
+#endif
 
         if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
             continue;
@@ -804,10 +779,6 @@ int MPIDI_CH3I_RDMA_finalize(void)
         mv2_release_3d_torus_resources();
     }
 
-    if (ring_setup_done) {
-        ring_rdma_close_hca(&mv2_MPIDI_CH3I_RDMA_Process);
-    }
-
     MPIDI_CH3I_MRAILI_Flush();
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
@@ -825,9 +796,9 @@ int MPIDI_CH3I_RDMA_finalize(void)
     }
 
     /*barrier to make sure queues are initialized before continuing */
-    error = PMI_Barrier();
+    error = UPMI_BARRIER();
 
-    if (error != PMI_SUCCESS) {
+    if (error != UPMI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                   "**pmi_barrier", "**pmi_barrier %d", error);
     }
@@ -858,14 +829,18 @@ int MPIDI_CH3I_RDMA_finalize(void)
         }
 #endif
 
-        if (vc->mrail.rfp.RDMA_send_buf_DMA)
-            MPIU_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
-        if (vc->mrail.rfp.RDMA_recv_buf_DMA)
-            MPIU_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
-        if (vc->mrail.rfp.RDMA_send_buf)
-            MPIU_Free(vc->mrail.rfp.RDMA_send_buf);
-        if (vc->mrail.rfp.RDMA_recv_buf)
-            MPIU_Free(vc->mrail.rfp.RDMA_recv_buf);
+        if (vc->mrail.rfp.RDMA_send_buf_DMA) {
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
+        }
+        if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
+        }
+        if (vc->mrail.rfp.RDMA_send_buf) {
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf);
+        }
+        if (vc->mrail.rfp.RDMA_recv_buf) {
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
+        }
     }
 
     /* STEP 2: destroy all the qps, tears down all connections */
@@ -1017,11 +992,14 @@ static int mv2_xrc_init(MPIDI_PG_t * pg)
 {
     int i, mpi_errno = MPI_SUCCESS;
     char xrc_file[512];
-    PRINT_DEBUG(DEBUG_XRC_verbose > 0, "Init XRC Start\n");
-    xrc_rdmafp_init = 1;
-    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
+
     MPIDI_STATE_DECL(MPID_STATE_CH3I_MV2_XRC_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_CH3I_MV2_XRC_INIT);
+
+    PRINT_DEBUG(DEBUG_XRC_verbose > 0, "Init XRC Start\n");
+
+    xrc_rdmafp_init = 1;
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
 
     if (!MPIDI_CH3I_Process.has_dpm) {
         memset(ufile, 0, sizeof(ufile));
@@ -1055,14 +1033,6 @@ static int mv2_xrc_init(MPIDI_PG_t * pg)
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
                                       "**fail %s", "Can't open XRC domain");
         }
-        if (!MPIDI_CH3I_Process.has_dpm) {
-            if (PMI_Barrier() != PMI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          mpi_errno);
-            }
-            unlink(xrc_file);
-        }
     }
 
     PRINT_DEBUG(DEBUG_XRC_verbose > 0, "Init XRC DONE\n");
@@ -1074,7 +1044,499 @@ static int mv2_xrc_init(MPIDI_PG_t * pg)
     goto fn_exit;
 }
 
+#undef FUNCNAME
+#define FUNCNAME mv2_xrc_unlink_file
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int mv2_xrc_unlink_file(MPIDI_PG_t * pg)
+{
+    int i           = 0;
+    int mpi_errno   = MPI_SUCCESS;
+    char xrc_file[512];
+
+    MPIDI_STATE_DECL(MPID_STATE_CH3I_MV2_XRC_UNLINK_FILE);
+    MPIDI_FUNC_ENTER(MPID_STATE_CH3I_MV2_XRC_UNLINK_FILE);
+
+    PRINT_DEBUG(DEBUG_XRC_verbose > 0, "Unlink XRC Start\n");
+
+    if (!MPIDI_CH3I_Process.has_dpm) {
+        memset(ufile, 0, sizeof(ufile));
+        sprintf(ufile, "mv2_xrc_%s_%d", pg->ch.kvs_name, getuid());
+    }
+
+    if (ufile == NULL) {
+        ibv_error_abort(GEN_EXIT_ERR, "Can't get unique filename");
+    }
+
+    for (i = 0; i < rdma_num_hcas; i++) {
+        sprintf(xrc_file, "/dev/shm/%s-%d", ufile, i);
+        PRINT_DEBUG(DEBUG_XRC_verbose > 0, "Unlink XRC file: %s\n", xrc_file);
+
+        if (!MPIDI_CH3I_Process.has_dpm) {
+            unlink(xrc_file);
+        }
+    }
+
+    PRINT_DEBUG(DEBUG_XRC_verbose > 0, "Unlink XRC DONE\n");
+
+    MPIDI_FUNC_EXIT(MPID_STATE_CH3I_MV2_XRC_UNLINK_FILE);
+    return mpi_errno;
+}
+
 #endif /* _ENABLE_XRC_ */
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_Ring_Exchange_Init_Info
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_Ring_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
+                                        mv2_process_init_info_t *my_info,
+                                        mv2_arch_hca_type *arch_hca_type_all)
+{
+    int i         = 0;
+    int pg_size   = 0;
+    int mpi_errno = MPI_SUCCESS;
+    mv2_process_init_info_t *all_info = NULL;
+#ifdef _ENABLE_UD_
+    int hca_index = 0;
+    mv2_ud_exch_info_t **ud_all_info = NULL;
+#endif /* _ENABLE_UD_ */
+
+    MPIDI_STATE_DECL(MPIDI_CH3I_RING_EXCHANGE_INIT_INFO);
+    MPIDI_FUNC_ENTER(MPIDI_CH3I_RING_EXCHANGE_INIT_INFO);
+
+    pg_size = MPIDI_PG_Get_size(pg);
+
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        ud_all_info = (mv2_ud_exch_info_t **)
+                    MPIU_Malloc(pg_size * sizeof(mv2_ud_exch_info_t*));
+        for (i = 0; i < pg_size; i++) {
+            ud_all_info[i] = (mv2_ud_exch_info_t *)
+                    MPIU_Malloc(rdma_num_hcas * sizeof(mv2_ud_exch_info_t));
+        }
+    }
+#endif /* _ENABLE_UD_ */
+
+    /* Setup IB ring */
+    mpi_errno = rdma_setup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process,
+                                        pg_rank, pg_size);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    /* This is used for cleanup later */
+    ring_setup_done = 1;
+
+    all_info = (mv2_process_init_info_t*)
+                    MPIU_Malloc(sizeof(mv2_process_init_info_t) * pg_size);
+    if (NULL == all_info) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    /* Exchange data over IB ring */
+    mpi_errno = rdma_ring_based_allgather(my_info,
+                                          sizeof(mv2_process_init_info_t),
+                                          pg_rank, all_info, pg_size,
+                                          &mv2_MPIDI_CH3I_RDMA_Process);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    /* Cleanup IB ring */
+    mpi_errno = rdma_cleanup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    for (i = 0; i < pg_size; i++) {
+        pg->ch.mrail.cm_lid[i] = all_info[i].lid[0][0];
+        memcpy(&pg->ch.mrail.cm_gid[i], &all_info[i].gid[0][0],
+                sizeof(union ibv_gid));
+        arch_hca_type_all[i] = all_info[i].my_arch_hca_type;
+        pg->ch.mrail.cm_ud_qpn[i] = all_info[i].ud_cm_qpn;
+#ifdef _ENABLE_XRC_
+        if (USE_XRC) {
+            pg->ch.mrail.xrc_hostid[i] = all_info[i].hostid;
+        }
+#endif
+#ifdef _ENABLE_UD_
+        if (rdma_enable_hybrid) {
+            for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+                ud_all_info[i][hca_index].lid =
+                                            all_info[i].lid[hca_index][0];
+                ud_all_info[i][hca_index].qpn =
+                                            all_info[i].ud_data_qpn[hca_index];
+                PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d, hca:%d Get lid:%d"
+                            " ud_qpn:%d\n", i, hca_index,
+                            ud_all_info[i][hca_index].lid, ud_all_info[i][hca_index].qpn);
+            }
+        }
+#endif /* _ENABLE_UD_ */
+    }
+
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info = ud_all_info;
+    }
+#endif /* _ENABLE_UD_ */
+  fn_exit:
+    MPIU_Free(all_info);
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "Done MPIDI_CH3I_Ring_Exchange_Init_Info() \n");
+
+    MPIDI_FUNC_EXIT(MPIDI_CH3I_RING_EXCHANGE_INIT_INFO);
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+
+#ifdef _ENABLE_UD_
+static int mv2_ud_start_offset   = 0;
+#endif /*_ENABLE_UD_*/
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_PMI_Get_Init_Info
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
+                                    mv2_arch_hca_type *arch_hca_type_all)
+{
+#ifdef _ENABLE_UD_
+    char *ptr       = NULL;
+    int ud_width    = 18;
+    int hca_index   = 0;
+#endif /*_ENABLE_UD_*/
+    int hostid      = 0;
+    int mpi_errno   = MPI_SUCCESS;
+    mv2_arch_hca_type arch_hca_type;
+
+    MPIU_Assert(mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup == 0);
+
+    MPIDI_STATE_DECL(MPIDI_CH3I_PMI_GET_INIT_INFO);
+    MPIDI_FUNC_ENTER(MPIDI_CH3I_PMI_GET_INIT_INFO);
+        
+    MPIU_Snprintf(mv2_pmi_key, mv2_pmi_max_keylen,
+                    "MV2-INIT-INFO-%08x", tgt_rank);
+
+    mpi_errno = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val,
+                            mv2_pmi_max_vallen);
+    if (mpi_errno != UPMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get",
+                            "**pmi_kvs_get %d", mpi_errno);
+    }
+
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "Get from %d - %s\n", tgt_rank, mv2_pmi_val);
+    if (use_iboeth) {
+        sscanf(mv2_pmi_val,
+            "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016" SCNx64,
+            (uint16_t *) &(pg->ch.mrail.cm_lid[tgt_rank]),
+            &(pg->ch.mrail.cm_ud_qpn[tgt_rank]), &arch_hca_type,
+            &hostid, &(pg->ch.mrail.cm_gid[tgt_rank].global.subnet_prefix),
+            &(pg->ch.mrail.cm_gid[tgt_rank].global.interface_id));
+    } else {
+#ifdef _ENABLE_XRC_
+        if (USE_XRC) {
+            if (mv2_homogeneous_cluster) {
+                sscanf(mv2_pmi_val, "%08hx:%08x:%08x",
+                    (uint16_t *) &(pg->ch.mrail.cm_lid[tgt_rank]),
+                    &(pg->ch.mrail.cm_ud_qpn[tgt_rank]), &hostid);
+            } else {
+                sscanf(mv2_pmi_val, "%08hx:%08x:%016lx:%08x",
+                    (uint16_t *) &(pg->ch.mrail.cm_lid[tgt_rank]),
+                    &(pg->ch.mrail.cm_ud_qpn[tgt_rank]), &arch_hca_type,
+                    &hostid);
+            }
+            pg->ch.mrail.xrc_hostid[tgt_rank] = hostid;
+        } else
+#endif /* _ENABLE_XRC_ */
+        {
+            if (mv2_homogeneous_cluster) {
+                sscanf(mv2_pmi_val, "%08hx:%08x",
+                    (uint16_t *) &(pg->ch.mrail.cm_lid[tgt_rank]),
+                    &(pg->ch.mrail.cm_ud_qpn[tgt_rank]));
+            } else {
+                sscanf(mv2_pmi_val, "%08hx:%08x:%016lx",
+                    (uint16_t *) &(pg->ch.mrail.cm_lid[tgt_rank]),
+                    &(pg->ch.mrail.cm_ud_qpn[tgt_rank]), &arch_hca_type);
+            }
+        }
+        PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %d\n",
+                    tgt_rank, pg->ch.mrail.cm_lid[tgt_rank], pg->ch.mrail.cm_ud_qpn[tgt_rank],
+                    arch_hca_type);
+    }
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+            ptr = (char*) (mv2_pmi_val + mv2_ud_start_offset) + (hca_index * ud_width);
+            sscanf(ptr, ":%08hx:%08x",
+                    &(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[tgt_rank][hca_index].lid),
+                    &(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[tgt_rank][hca_index].qpn));
+            PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d, hca:%d Get lid:%d"
+                        " ud_qpn:%d\n", tgt_rank, hca_index,
+                        mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[tgt_rank][hca_index].lid,
+                        mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[tgt_rank][hca_index].qpn);
+        }
+    }
+#endif /* _ENABLE_UD_ */
+
+    if (arch_hca_type_all != NULL) {
+        arch_hca_type_all[tgt_rank] = arch_hca_type;
+    }
+  fn_exit:
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "Done MPIDI_CH3I_PMI_Get_Init_Info() \n");
+
+    MPIDI_FUNC_EXIT(MPIDI_CH3I_PMI_GET_INIT_INFO);
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_PMI_Exchange_Init_Info
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_PMI_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
+                                        mv2_process_init_info_t *my_info,
+                                        mv2_arch_hca_type *arch_hca_type_all)
+{
+    int i           = 0;
+    int hostid      = 0;
+    int pg_size     = 0;
+    int mpi_errno   = MPI_SUCCESS;
+#ifdef _ENABLE_UD_
+    char temp2[32];
+    char temp1[512];
+    int hca_index   = 0;
+#endif
+
+    MPIDI_STATE_DECL(MPIDI_CH3I_PMI_EXCHANGE_INIT_INFO);
+    MPIDI_FUNC_ENTER(MPIDI_CH3I_PMI_EXCHANGE_INIT_INFO);
+
+    pg_size = MPIDI_PG_Get_size(pg);
+
+    /* Generate the key and value pair */
+    MPIU_Snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "MV2-INIT-INFO-%08x", pg_rank);
+    if (use_iboeth) {
+        MPIU_Snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
+                      "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016" SCNx64,
+                      my_info->lid[0][0], my_info->ud_cm_qpn,
+                      my_info->my_arch_hca_type, my_info->hostid,
+                      my_info->gid[0][0].global.subnet_prefix,
+                      my_info->gid[0][0].global.interface_id);
+    } else {
+#ifdef _ENABLE_XRC_
+        if (USE_XRC) {
+            if (mv2_homogeneous_cluster) {
+                MPIU_Snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
+                          "%08hx:%08x::%08x",
+                          my_info->lid[0][0], my_info->ud_cm_qpn,
+                          my_info->hostid);
+            } else {
+                MPIU_Snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
+                          "%08hx:%08x:%016lx:%08x",
+                          my_info->lid[0][0], my_info->ud_cm_qpn,
+                          my_info->my_arch_hca_type, my_info->hostid);
+            }
+        } else
+#endif /* _ENABLE_XRC_ */
+        {
+            if (mv2_homogeneous_cluster) {
+                MPIU_Snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
+                          "%08hx:%08x",
+                          my_info->lid[0][0], my_info->ud_cm_qpn);
+            } else {
+                MPIU_Snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
+                          "%08hx:%08x:%016lx",
+                          my_info->lid[0][0], my_info->ud_cm_qpn,
+                          my_info->my_arch_hca_type);
+            }
+        }
+    }
+
+    arch_hca_type_all[pg_rank] = my_info->my_arch_hca_type;
+
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        mv2_ud_start_offset = strlen(mv2_pmi_val);
+
+        mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info = (mv2_ud_exch_info_t **)
+                    MPIU_Malloc(pg_size * sizeof(mv2_ud_exch_info_t*));
+        for (i = 0; i < pg_size; i++) {
+            mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[i] = (mv2_ud_exch_info_t *)
+                    MPIU_Malloc(rdma_num_hcas * sizeof(mv2_ud_exch_info_t));
+        }
+        memset(temp1, 0, sizeof(temp1));
+        memset(temp2, 0, sizeof(temp2));
+
+        for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+            sprintf(temp2, ":%08hx:%08x", my_info->lid[hca_index][0],
+                    my_info->ud_data_qpn[hca_index]);
+            strcat(temp1, temp2);
+    
+            PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d Put lids: %d ud_qp: %d\n",
+                        pg_rank, my_info->lid[hca_index][0],
+                        my_info->ud_data_qpn[hca_index]);
+            mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[pg_rank][hca_index].lid = my_info->lid[hca_index][0];
+            mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[pg_rank][hca_index].qpn = my_info->ud_data_qpn[hca_index];
+        }
+        MPIU_Strnapp(mv2_pmi_val, temp1, mv2_pmi_max_vallen);
+    }
+#endif /* _ENABLE_UD_ */
+
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "Put: Init info: %s\n Len: %lu\n",
+                mv2_pmi_val, strlen(mv2_pmi_val));
+
+    mpi_errno = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
+    if (mpi_errno != UPMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put",
+                                    "**pmi_kvs_put %d", mpi_errno);
+    }
+
+    mpi_errno = UPMI_KVS_COMMIT(pg->ch.kvs_name);
+    if (mpi_errno != UPMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit",
+                                    "**pmi_kvs_commit %d", mpi_errno);
+    }
+    mpi_errno = UPMI_BARRIER();
+    if (mpi_errno != UPMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_barrier",
+                                    "**pmi_barrier %d", mpi_errno);
+    }
+
+    for (i = 0; i < pg_size; i++) {
+        if (i == pg_rank) {
+            continue;
+        }
+        if (!mv2_on_demand_ud_info_exchange || !mv2_homogeneous_cluster) {
+            mpi_errno = MPIDI_CH3I_PMI_Get_Init_Info(pg, i, arch_hca_type_all);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+        }
+    }
+
+  fn_exit:
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "Done MPIDI_CH3I_PMI_Exchange_Init_Info() \n");
+
+    MPIDI_FUNC_EXIT(MPIDI_CH3I_PMI_EXCHANGE_INIT_INFO);
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+
+extern struct ibv_qp *cm_ud_qp;
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_Exchange_Init_Info
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank)
+{
+    int pg_size   = 0;
+#ifdef _ENABLE_UD_
+    int hca_index = 0;
+#endif /*_ENABLE_UD_*/
+    int mpi_errno = MPI_SUCCESS;
+    struct hostent *hostent = NULL;
+    char hostname[HOSTNAME_LEN + 1];
+    mv2_process_init_info_t my_proc_info;
+    mv2_arch_hca_type *arch_hca_type_all = NULL;
+
+    MPIDI_STATE_DECL(MPIDI_CH3I_EXCHANGE_INIT_INFO);
+    MPIDI_FUNC_ENTER(MPIDI_CH3I_EXCHANGE_INIT_INFO);
+
+    pg_size = MPIDI_PG_Get_size(pg);
+
+    MPIU_Memset(&my_proc_info, 0, sizeof(my_proc_info));
+    arch_hca_type_all = (mv2_arch_hca_type *)
+                            MPIU_Malloc(pg_size * sizeof(mv2_arch_hca_type));
+    if (!arch_hca_type_all) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                                  "**nomem %s",
+                                  "archtype struct to exchange information");
+    }
+
+#ifdef _ENABLE_XRC_
+    if (USE_XRC) {
+        /* Get the hostid */
+        mpi_errno = gethostname(hostname, HOSTNAME_LEN);
+        if (mpi_errno != 0) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                      "**fail %s", "Could not get hostname");
+        }
+        hostent = gethostbyname(hostname);
+        if (hostent == NULL) {
+            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+                        "**gethostbyname", "**gethostbyname %s %d",
+                        hstrerror(h_errno), h_errno );
+        }
+        my_proc_info.hostid             = (int) ((struct in_addr *)
+                                            hostent->h_addr_list[0])->s_addr;
+    }
+#endif /*_ENABLE_XRC_*/
+
+    my_proc_info.ud_cm_qpn          =  cm_ud_qp->qp_num;
+    my_proc_info.my_arch_hca_type   = mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type;
+    MPIU_Memcpy(&my_proc_info.lid, &mv2_MPIDI_CH3I_RDMA_Process.lids,
+           sizeof(uint16_t) * MAX_NUM_HCAS * MAX_NUM_PORTS);
+    if (use_iboeth) {
+        MPIU_Memcpy(&my_proc_info.gid, &mv2_MPIDI_CH3I_RDMA_Process.gids,
+            sizeof(union ibv_gid) * MAX_NUM_HCAS * MAX_NUM_PORTS);
+    }
+
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+            my_proc_info.ud_data_qpn[hca_index] =
+                mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_index]->qp->qp_num;
+        }
+    }
+#endif /*_ENABLE_UD_*/
+
+    /* Initialize local PG structure */
+    pg->ch.mrail.cm_lid[pg_rank]    = my_proc_info.lid[0][0];
+    pg->ch.mrail.cm_ud_qpn[pg_rank] = my_proc_info.ud_cm_qpn;
+    MPIU_Memcpy(&pg->ch.mrail.cm_gid[pg_rank], &my_proc_info.gid, sizeof(union ibv_gid));
+#ifdef _ENABLE_XRC_
+    if (USE_XRC) {
+        pg->ch.mrail.xrc_hostid[pg_rank]    = my_proc_info.hostid;
+    }
+#endif
+
+    if (pg_size == 1) {
+        /* With only one process, we don't need to do anything else */
+        goto fn_exit;
+    }
+
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup) {
+        mpi_errno = MPIDI_CH3I_Ring_Exchange_Init_Info(pg, pg_rank,
+                                            &my_proc_info, arch_hca_type_all);
+    } else {
+        mpi_errno = MPIDI_CH3I_PMI_Exchange_Init_Info(pg, pg_rank,
+                                            &my_proc_info, arch_hca_type_all);
+    }
+    if (mpi_errno != 0) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                  "**fail %s", "Could exchange init info");
+    }
+
+    if (!mv2_homogeneous_cluster) {
+        /* Check heterogeneity */
+        rdma_param_handle_heterogeneity(arch_hca_type_all, pg_size);
+    }
+
+  fn_exit:
+    MPIU_Free(arch_hca_type_all);
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "Done MPIDI_CH3I_Exchange_Init_Info() \n");
+
+    MPIDI_FUNC_EXIT(MPIDI_CH3I_EXCHANGE_INIT_INFO);
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_CM_Init
@@ -1082,31 +1544,11 @@ static int mv2_xrc_init(MPIDI_PG_t * pg)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 {
-    /* Initialize the rdma implemenation. */
-    /* This function is called after the RDMA channel has initialized its
-     * structures - like the vc_table. */
-    MPIDI_VC_t *vc;
-    int pg_size;
-    int i, error;
-    int key_max_sz;
-    int val_max_sz;
-#if defined(RDMA_CM)
-    int *hosts = NULL;
-#endif
-    uint32_t *ud_qpn_all = NULL;
-    uint32_t ud_qpn_self;
-    uint16_t *lid_all = NULL;
-    union ibv_gid *gid_all = NULL;
-    mv2_arch_hca_type *arch_hca_type_all = NULL;
-    mv2_arch_hca_type my_arch_hca_type;
-    int mpi_errno = MPI_SUCCESS;
-    ud_addr_info_t self_info;
-    ud_addr_info_t *all_info;
-    char hostname[HOSTNAME_LEN + 1];
-    char *key = NULL, *val = NULL;
-    int hostid;
-    int result;
-    struct hostent *hostent;
+    int i                   = 0;
+    int pg_size             = 0;
+    int mpi_errno           = MPI_SUCCESS;
+    MPIDI_VC_t *vc          = NULL;
+    uint32_t ud_qpn_self    = 0;
 
     MPIDI_STATE_DECL(MPID_STATE_CH3I_CM_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_CH3I_CM_INIT);
@@ -1115,70 +1557,21 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 
     rdma_get_pm_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
 
-#if defined(RDMA_CM)
-    /* We cann't setup UD Ring for iWARP devices. Use PMI here for hostid exchange
-     ** in the case of hydra. Consider using hydra process mapping in the next
-     ** release as it is not correct in the current release.
+    /* 
+     * Identify local rank and number of local processes
      */
-    if (mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm && !using_mpirun_rsh) {
-        rdma_cm_exchange_hostid(pg, pg_rank, pg_size);
-    } else
-#endif
-    if (pg_size > 1 && mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup) {
-        mpi_errno =
-            rdma_setup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process, pg_rank,
-                                    pg_size);
+    if (pg->ch.local_process_id == -1) {
+        mpi_errno = MPIDI_Get_local_host(pg, pg_rank);
         if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-        /* Host ids exchanges through PMI in MPIDI_Get_local_host for
-         ** mpirun_rsh. for all other launchers do it here */
-        if (!using_mpirun_rsh) {
-            rdma_ring_exchange_host_id(pg, pg_rank, pg_size);
-        }
-        ring_setup_done = 1;
-    } else {
-        /* Allocate space for pmi keys and values */
-        error = PMI_KVS_Get_key_length_max(&key_max_sz);
-        if (error != PMI_SUCCESS) {
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                    "**fail %s",
-                    "Error getting max key length");
-        }
-
-        ++key_max_sz;
-        key = MPIU_Malloc(key_max_sz);
-        if (key == NULL) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                    "**nomem %s", "PMI key");
-        }
-
-        error = PMI_KVS_Get_value_length_max(&val_max_sz);
-        if (error != PMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                    "**fail %s",
-                    "Error getting max value length");
-        }
-
-        ++val_max_sz;
-        val = MPIU_Malloc(val_max_sz);
-        if (val == NULL) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                    "**nomem %s", "PMI value");
-        }
-
-        if (key_max_sz < 20 || val_max_sz < 40) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                    "**fail", "**fail %s",
-                    "PMI value too small");
+                                  "**fail %s", "MPIDI_Get_local_host");
         }
     }
 
     rdma_local_id = MPIDI_Get_local_process_id(pg);
     rdma_num_local_procs = MPIDI_Num_local_processes(pg);
 
-    /* Reading the values from user first and
-     * then allocating the memory */
+    /* Reading the values from user first and then allocating the memory */
     mpi_errno = rdma_get_control_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
     if (mpi_errno) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -1188,96 +1581,60 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     rdma_set_default_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
     rdma_get_user_parameters(pg_size, pg_rank);
 
-    /*
-     * TODO Local Memory, must free if error occurs
-     */
-    lid_all = (uint16_t *) MPIU_Malloc(pg_size * sizeof(uint16_t));
-    gid_all = (union ibv_gid *)
-        MPIU_Malloc(pg_size * sizeof(union ibv_gid));
-    ud_qpn_all = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
-    arch_hca_type_all =
-        (mv2_arch_hca_type *) MPIU_Malloc(pg_size * sizeof(mv2_arch_hca_type));
-
-    if (!ud_qpn_all || !lid_all || !arch_hca_type_all || !gid_all) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                                  "**nomem %s",
-                                  "structure to exchange information");
+    /* Initialize parameters for XRC */
+#ifdef _ENABLE_XRC_
+    if (USE_XRC) {
+        mpi_errno = mv2_xrc_init(pg);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
     }
+#endif /* _ENABLE_XRC_ */
+
+    if ((mpi_errno = rdma_iba_hca_init_noqp(&mv2_MPIDI_CH3I_RDMA_Process,
+                                            pg_rank, pg_size)) != MPI_SUCCESS) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    if ((mpi_errno = MPICM_Init_UD_CM(&ud_qpn_self)) != MPI_SUCCESS) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        if ((mpi_errno =
+             rdma_init_ud(&mv2_MPIDI_CH3I_RDMA_Process)) != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        if (rdma_use_ud_zcopy) {
+            if ((mpi_errno =
+                 mv2_ud_setup_zcopy_rndv(&mv2_MPIDI_CH3I_RDMA_Process)) !=
+                MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+        }
+    }
+#endif /* _ENABLE_UD_ */
+
+    mpi_errno = MPIDI_CH3I_Exchange_Init_Info(pg, pg_rank);
+    if (mpi_errno) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                  "**fail %s", "MPIDI_CH3I_Exchange_Init_Info");
+    }
+
+    /* Unlink XRC file */
+#ifdef _ENABLE_XRC_
+    if (USE_XRC) {
+        mpi_errno = mv2_xrc_unlink_file(pg);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+    }
+#endif /* _ENABLE_XRC_ */
 
     for (i = 0; i < rdma_num_hcas; i++) {
         pthread_mutex_init(&mv2_MPIDI_CH3I_RDMA_Process.async_mutex_lock[i], 0);
-    }
-
-    if (pg_size > 1 && !mv2_homogeneous_cluster
-#if defined(RDMA_CM)
-        && !mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm
-#endif /* defined(RDMA_CM) */
-    ) {
-        my_arch_hca_type = mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type;
-        if (mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup) {
-
-            mpi_errno = rdma_ring_based_allgather(&my_arch_hca_type,
-                                                  sizeof(my_arch_hca_type),
-                                                  pg_rank, arch_hca_type_all,
-                                                  pg_size,
-                                                  &mv2_MPIDI_CH3I_RDMA_Process);
-            if (mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
-            }
-
-        } else {
-
-            /* Generate the key and value pair */
-            MPIU_Snprintf(key, key_max_sz, "ARCH-HCA-%08x", pg_rank);
-            MPIU_Snprintf(val, val_max_sz, "%016lx", my_arch_hca_type);
-
-            DEBUG_PRINT("put: rdmavalue %s len:%lu arch_hca:%lu\n",
-                        val, strlen(val), my_arch_hca_type);
-
-            error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
-            if (error != PMI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**pmi_kvs_put", "**pmi_kvs_put %d",
-                                          error);
-            }
-
-
-            error = PMI_KVS_Commit(pg->ch.kvs_name);
-            if (error != PMI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**pmi_kvs_commit",
-                                          "**pmi_kvs_commit %d", error);
-            }
-
-            error = PMI_Barrier();
-            if (error != PMI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
-            }
-
-            for (i = 0; i < pg_size; i++) {
-                if (pg_rank == i) {
-                    arch_hca_type_all[i] = my_arch_hca_type;
-                    continue;
-                }
-
-                MPIU_Snprintf(key, key_max_sz, "ARCH-HCA-%08x", i);
-
-                error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
-                if (error != PMI_SUCCESS) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                              "**pmi_kvs_get",
-                                              "**pmi_kvs_get %d", error);
-                }
-                sscanf(val, "%016lx", &arch_hca_type_all[i]);
-                DEBUG_PRINT("get: rdmavalue %s len:%lu arch_hca[%d]:%lu\n",
-                            val, strlen(val), i, arch_hca_type_all[i]);
-            }
-        }
-
-        /* Check heterogeneity */
-        rdma_param_handle_heterogeneity(arch_hca_type_all, pg_size);
     }
 
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
@@ -1293,7 +1650,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
         }
     }
 
-    DEBUG_PRINT("num_qp_per_port %d, num_rails = %d, "
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "num_qp_per_port %d, num_rails = %d, "
                 "rdma_num_rails_per_hca = %d, "
                 "rdma_process_binding_rail_offset = %d\n", rdma_num_qp_per_port,
                 rdma_num_rails, rdma_num_rails_per_hca,
@@ -1312,346 +1669,42 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
         MPIU_Memset(&(vc->mrail), 0, sizeof(vc->mrail));
-        /* This assmuption will soon be done with */
-        vc->mrail.num_rails = rdma_num_rails;
     }
-
-#ifdef RDMA_CM
-    if (mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm) {
-        mpi_errno = rdma_iba_hca_init(&mv2_MPIDI_CH3I_RDMA_Process,
-                                      pg_rank, pg, NULL);
-
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-
-        hosts = rdma_cm_get_hostnames(pg_rank, pg);
-        if (!hosts) {
-            MPIU_Error_printf("Error obtaining hostnames\n");
-        }
-
-        if (MV2_IS_CHELSIO_IWARP_CARD(mv2_MPIDI_CH3I_RDMA_Process.hca_type)) {
-            /* TRAC Ticket #455 */
-            if (g_num_smp_peers + 1 < pg_size) {
-                int avail_cq_entries = 0;
-                avail_cq_entries = rdma_default_max_cq_size /
-                    ((pg_size - g_num_smp_peers - 1) * rdma_num_rails);
-                avail_cq_entries = avail_cq_entries -
-                    rdma_initial_prepost_depth - 1;
-                if (avail_cq_entries < rdma_prepost_depth) {
-                    rdma_prepost_depth = avail_cq_entries;
-                }
-                mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq =
-                    (rdma_prepost_depth + rdma_initial_prepost_depth + 1)
-                    * (pg_size - g_num_smp_peers - 1);
-            }
-        }
-
-        if (g_num_smp_peers + 1 < pg_size) {
-            /* Initialize the registration cache. */
-            mpi_errno = dreg_init();
-
-            if (mpi_errno != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
-            }
-
-            mpi_errno = rdma_iba_allocate_memory(&mv2_MPIDI_CH3I_RDMA_Process,
-                                                 pg_rank, pg_size);
-
-            if (mpi_errno != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
-            }
-        }
-    }
-#endif
-
-    /* Open the device and create cq and qp's */
-#if defined(RDMA_CM)
-    if (!mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm) {
-#endif /* defined(RDMA_CM) */
-
-#ifdef _ENABLE_XRC_
-        if (USE_XRC) {
-            mpi_errno = mv2_xrc_init(pg);
-            if (mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
-            }
-        }
-#endif /* _ENABLE_XRC_ */
-        if ((mpi_errno = rdma_iba_hca_init_noqp(&mv2_MPIDI_CH3I_RDMA_Process,
-                                                pg_rank,
-                                                pg_size)) != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-#if defined(RDMA_CM)
-    }
-#endif /* defined(RDMA_CM) */
 
     mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize = RDMA_MAX_RDMA_SIZE;
 
-#ifdef RDMA_CM
-    {
-        if (mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm) {
-            {
-                error = PMI_Barrier();
-                if (error != PMI_SUCCESS) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                              "**fail", "**fail %s",
-                                              "PMI Barrier failed");
-                }
-            }
-
-            if ((mpi_errno =
-                 rdma_cm_connect_all(hosts, pg_rank, pg)) != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
-            }
-
-            if (g_num_smp_peers + 1 == pg_size) {
-                mv2_MPIDI_CH3I_RDMA_Process.has_one_sided = 0;
-            }
-
-            DEBUG_PRINT("Done RDMA_CM based MPIDI_CH3I_CM_Init()\n");
-            goto fn_exit;
-        }
-    }
-#endif /* RDMA_CM */
-
-    if ((mpi_errno = MPICM_Init_UD(&ud_qpn_self)) != MPI_SUCCESS) {
+    /* Initialize the registration cache */
+    mpi_errno = dreg_init();
+    if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }
 
-    result = gethostname(hostname, HOSTNAME_LEN);
-    if (result != 0) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s", "Could not get hostname");
-    }
-    hostent = gethostbyname(hostname);
-    if (hostent == NULL) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, 
-                 "**gethostbyname", "**gethostbyname %s %d",
-                        hstrerror(h_errno), h_errno );
-    }
-    hostid = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
-
-    if (pg_size > 1) {
-        if (mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup) {
-            self_info.hostid = hostid;
-            memcpy(&self_info.lid, &mv2_MPIDI_CH3I_RDMA_Process.lids,
-                   sizeof(uint16_t) * MAX_NUM_HCAS * MAX_NUM_PORTS);
-            memcpy(&self_info.gid, &mv2_MPIDI_CH3I_RDMA_Process.gids,
-                   sizeof(union ibv_gid) * MAX_NUM_HCAS * MAX_NUM_PORTS);
-            self_info.qpn = ud_qpn_self;
-            all_info = (ud_addr_info_t *) MPIU_Malloc(sizeof(ud_addr_info_t) *
-                                                      pg_size);
-            /*will be freed in rdma_cleanup_startup_ring */
-
-            mpi_errno = rdma_ring_based_allgather(&self_info,
-                                                  sizeof(self_info),
-                                                  pg_rank,
-                                                  all_info,
-                                                  pg_size,
-                                                  &mv2_MPIDI_CH3I_RDMA_Process);
-
-            if (mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
-            }
-
-            for (i = 0; i < pg_size; ++i) {
-                MPIDI_PG_Get_vc(pg, i, &vc);
-                vc->smp.hostid = all_info[i].hostid;
-                memcpy(&vc->mrail.lid, &all_info[i].lid,
-                       sizeof(uint16_t) * MAX_NUM_HCAS * MAX_NUM_PORTS);
-                memcpy(&vc->mrail.gid, &all_info[i].gid,
-                       sizeof(union ibv_gid) * MAX_NUM_HCAS * MAX_NUM_PORTS);
-#ifdef _ENABLE_XRC_
-                if (USE_XRC) {
-                    pg->ch.mrail.xrc_hostid[i] = all_info[i].hostid;
-                }
-#endif
-                ud_qpn_all[i] = all_info[i].qpn;
-                lid_all[i] = all_info[i].lid[0][0];
-                gid_all[i] = all_info[i].gid[0][0];
-            }
-            MPIU_Free(all_info);
-        } else {
-            /*Exchange the information about HCA_lid and qp_num */
-
-            /*Just put lid for default port and ud_qpn is sufficient */
-            MPIU_Snprintf(key, key_max_sz, "ud_info_%08d", pg_rank);
-
-            if (!use_iboeth) {
-                MPIU_Snprintf(val, val_max_sz, "%08hx:%08x:%016lx:%08x",
-                              mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
-                              ud_qpn_self,
-                              mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type,
-                              hostid);
-            } else {
-                MPIU_Snprintf(val, val_max_sz,
-                              "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016"
-                              SCNx64, mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
-                              ud_qpn_self,
-                              mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type, hostid,
-                              mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.
-                              subnet_prefix,
-                              mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.
-                              interface_id);
-            }
-
-            DEBUG_PRINT("[%d] Put lids: %08hx ud_qp: %08x arch_hca_type: %02x"
-                        " hostid: %08x\n", pg_rank,
-                        mv2_MPIDI_CH3I_RDMA_Process.lids[0][0], ud_qpn_self,
-                        mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type, hostid);
-
-            error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
-            if (error != PMI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**pmi_kvs_put", "**pmi_kvs_put %d",
-                                          error);
-            }
-
-            error = PMI_KVS_Commit(pg->ch.kvs_name);
-            if (error != PMI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**pmi_kvs_commit",
-                                          "**pmi_kvs_commit %d", error);
-            }
-
-            error = PMI_Barrier();
-            if (error != PMI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
-            }
-
-            if (!mv2_on_demand_ud_info_exchange) {
-
-                for (i = 0; i < pg_size; i++) {
-                    if (pg_rank == i) {
-                        lid_all[i] = mv2_MPIDI_CH3I_RDMA_Process.lids[0][0];
-                        ud_qpn_all[i] = ud_qpn_self;
-                        arch_hca_type_all[i] =
-                            mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type;
-                        gid_all[i] = mv2_MPIDI_CH3I_RDMA_Process.gids[0][0];
-                        continue;
-                    }
-
-                    MPIU_Snprintf(key, key_max_sz, "ud_info_%08d", i);
-
-                    error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
-                    if (error != PMI_SUCCESS) {
-                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                                  "**pmi_kvs_get",
-                                                  "**pmi_kvs_get %d", error);
-                    }
-
-                    if (!use_iboeth) {
-                        sscanf(val, "%08hx:%08x:%016lx:%08x",
-                               (uint16_t *) & (lid_all[i]), &(ud_qpn_all[i]),
-                               &(arch_hca_type_all[i]), &hostid);
-                    } else {
-                        sscanf(val,
-                               "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016"
-                               SCNx64, (uint16_t *) & (lid_all[i]),
-                               &(ud_qpn_all[i]), &(arch_hca_type_all[i]),
-                               &hostid, &(gid_all[i].global.subnet_prefix),
-                               &(gid_all[i].global.interface_id));
-                    }
-#ifdef _ENABLE_XRC_
-                    if (USE_XRC) {
-                        pg->ch.mrail.xrc_hostid[i] = hostid;
-                    }
-#endif
-                    DEBUG_PRINT
-                        ("[%d<-%d]Get: lid: %08hx, qpn: %08x arch_hca_type:%016lx"
-                         " hostid: %08x\n", pg_rank, i, lid_all[i],
-                         ud_qpn_all[i], arch_hca_type_all[i], hostid);
-                }
-            }
-            MPIU_Free(key);
-            MPIU_Free(val);
-        }
-    } else {
-#ifdef _ENABLE_XRC_
-        if (USE_XRC) {
-            struct hostent *hostent;
-            char hostname[HOSTNAME_LEN + 1];
-
-            if (gethostname(hostname, HOSTNAME_LEN)) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                          "**fail %s",
-                                          "Could not get hostname");
-            }
-            hostent = gethostbyname(hostname);
-            if (hostent == NULL) {
-                MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, 
-                        "**gethostbyname", "**gethostbyname %s %d",
-                        hstrerror(h_errno), h_errno );
-            }
-            pg->ch.mrail.xrc_hostid[0] =
-                (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
-            MPIDI_PG_Get_vc(pg, 0, &vc);
-            vc->smp.hostid = pg->ch.mrail.xrc_hostid[0];
-        }
-#endif
-        lid_all[0] = mv2_MPIDI_CH3I_RDMA_Process.lids[0][0];
-        gid_all[0] = mv2_MPIDI_CH3I_RDMA_Process.gids[0][0];
-        ud_qpn_all[0] = ud_qpn_self;
+    /* Allocate RDMA Buffers */
+    mpi_errno = rdma_iba_allocate_memory(&mv2_MPIDI_CH3I_RDMA_Process,
+                                         pg_rank, pg_size);
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIU_ERR_POP(mpi_errno);
     }
 
-    if (pg_size > 1
-#if defined(RDMA_CM)
-        && !mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm
-#endif /* defined(RDMA_CM) */
-    ) {
-        if (ring_setup_done) {
-            rdma_cleanup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process);
-        }
-    }
-#if defined(RDMA_CM)
-    if (g_num_smp_peers + 1 < pg_size ||
-        !mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm) {
-#endif /* defined(RDMA_CM) */
-        /* Initialize the registration cache */
-        mpi_errno = dreg_init();
-
-        if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-
-        /* Allocate RDMA Buffers */
-        /*
-         * Add Error Handling in Function
-         */
-        mpi_errno = rdma_iba_allocate_memory(&mv2_MPIDI_CH3I_RDMA_Process,
-                                             pg_rank, pg_size);
-
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-#if defined(RDMA_CM)
-    }
-#endif /* defined(RDMA_CM) */
-
+    /* Create address handles for UD CM */
     if (mv2_on_demand_ud_info_exchange) {
-        mpi_errno = MPICM_Init_Local_UD_struct(pg, ud_qpn_self,
-                                               mv2_MPIDI_CH3I_RDMA_Process.
-                                               lids[0][0],
-                                               &mv2_MPIDI_CH3I_RDMA_Process.
-                                               gids[0][0], hostid);
-        if (mpi_errno) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                      "**fail %s", "rdma_init_ud_struct");
-        }
+        mpi_errno = MPICM_Init_Local_UD_struct(pg);
     } else {
-        mpi_errno = MPICM_Init_UD_struct(pg, ud_qpn_all, lid_all, gid_all);
-        if (mpi_errno) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                      "**fail %s", "rdma_init_ud_struct");
-        }
+        mpi_errno = MPICM_Init_UD_struct(pg);
+    }
+    if (mpi_errno) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                  "**fail %s", "init_ud_struct");
     }
 
-    MPICM_Create_UD_threads();
+    /* Create threads for UD CM */
+    mpi_errno = MPICM_Create_UD_threads();
+    if (mpi_errno) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                  "**fail %s", "create_ud_threads");
+    }
 
+    /* Create conn info */
     *conn_info_ptr = MPIU_Malloc(128);
     if (!*conn_info_ptr) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -1664,40 +1717,20 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid) {
         if ((mpi_errno =
-             rdma_init_ud(&mv2_MPIDI_CH3I_RDMA_Process)) != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-
-        if (rdma_use_ud_zcopy) {
-            if ((mpi_errno =
-                 mv2_ud_setup_zcopy_rndv(&mv2_MPIDI_CH3I_RDMA_Process)) !=
+            rdma_ud_post_buffers(&mv2_MPIDI_CH3I_RDMA_Process)) != 
                 MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
-            }
-        }
-
-        if ((mpi_errno =
-             mv2_ud_get_remote_info(pg, pg_rank, pg_size)) != MPI_SUCCESS) {
             MPIU_ERR_POP(mpi_errno);
         }
 
         if ((mpi_errno =
              MPIDI_CH3I_UD_Generate_addr_handles(pg, pg_rank,
                                                  pg_size)) != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
+             MPIU_ERR_POP(mpi_errno);
         }
     }
 #endif /* _ENABLE_UD_ */
 
   fn_exit:
-    /*
-     * Freeing local memory
-     */
-    MPIU_Free(ud_qpn_all);
-    MPIU_Free(lid_all);
-    MPIU_Free(arch_hca_type_all);
-    MPIU_Free(gid_all);
-
     PRINT_DEBUG(DEBUG_CM_verbose > 0, "Done MPIDI_CH3I_CM_Init() \n");
 
     MPIDI_FUNC_EXIT(MPID_STATE_CH3I_CM_INIT);
@@ -1747,27 +1780,18 @@ int MPIDI_CH3I_CM_Finalize(void)
     }
 
     /*barrier to make sure queues are initialized before continuing */
-    if ((retval = PMI_Barrier()) != 0) {
+    if ((retval = UPMI_BARRIER()) != 0) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                   "**pmi_barrier", "**pmi_barrier %d", retval);
     }
-#if defined(RDMA_CM)
-    if (!mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm) {
-#endif /* defined(RDMA_CM) */
-        if ((retval = MPICM_Finalize_UD()) != 0) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                      "**fail", "**fail %d", retval);
-        }
-#if defined(RDMA_CM)
+
+    if ((retval = MPICM_Finalize_UD()) != 0) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                  "**fail", "**fail %d", retval);
     }
-#endif /* defined(RDMA_CM) */
 
     if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
         mv2_release_3d_torus_resources();
-    }
-
-    if (ring_setup_done) {
-        ring_rdma_close_hca(&mv2_MPIDI_CH3I_RDMA_Process);
     }
 
     for (; i < pg_size; ++i) {
@@ -1815,56 +1839,50 @@ int MPIDI_CH3I_CM_Finalize(void)
 #endif
 
         for (rail_index = 0; rail_index < vc->mrail.num_rails; ++rail_index) {
-#if defined(RDMA_CM)
-            if (!mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm) {
-#endif /* defined(RDMA_CM) */
 #ifdef _ENABLE_XRC_
-                hca_index = rail_index / (rdma_num_ports *
-                                          rdma_num_qp_per_port);
-                if (USE_XRC && vc->ch.xrc_my_rqpn[rail_index] != 0) {
-                    /*  Unregister recv QP */
-                    PRINT_DEBUG(DEBUG_XRC_verbose > 0, "unreg %d",
-                                vc->ch.xrc_my_rqpn[rail_index]);
-                    if ((retval =
-                         ibv_unreg_xrc_rcv_qp(mv2_MPIDI_CH3I_RDMA_Process.
-                                              xrc_domain[hca_index],
-                                              vc->ch.
-                                              xrc_my_rqpn[rail_index])) != 0) {
-                        PRINT_DEBUG(DEBUG_XRC_verbose > 0, "unreg failed %d %d",
-                                    vc->ch.xrc_rqpn[rail_index], retval);
-                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN,
-                                                  "**fail", "**fail %s",
-                                                  "Can't unreg RCV QP");
-                    }
+            hca_index = rail_index / (rdma_num_ports *
+                                      rdma_num_qp_per_port);
+            if (USE_XRC && vc->ch.xrc_my_rqpn[rail_index] != 0) {
+                /*  Unregister recv QP */
+                PRINT_DEBUG(DEBUG_XRC_verbose > 0, "unreg %d",
+                            vc->ch.xrc_my_rqpn[rail_index]);
+                if ((retval =
+                     ibv_unreg_xrc_rcv_qp(mv2_MPIDI_CH3I_RDMA_Process.
+                                          xrc_domain[hca_index],
+                                          vc->ch.
+                                          xrc_my_rqpn[rail_index])) != 0) {
+                    PRINT_DEBUG(DEBUG_XRC_verbose > 0, "unreg failed %d %d",
+                                vc->ch.xrc_rqpn[rail_index], retval);
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN,
+                                              "**fail", "**fail %s",
+                                              "Can't unreg RCV QP");
                 }
-                if (!USE_XRC || (VC_XST_ISUNSET(vc, XF_INDIRECT_CONN) &&
-                                 VC_XST_ISSET(vc, XF_SEND_IDLE)))
-                    /* Destroy SEND QP */
-#endif
-                {
-                    if (vc->mrail.rails && vc->mrail.rails[rail_index].qp_hndl) {
-                        ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
-                    }
-                }
-#if defined(RDMA_CM)
             }
-#endif /* defined(RDMA_CM) */
+            if (!USE_XRC || (VC_XST_ISUNSET(vc, XF_INDIRECT_CONN) &&
+                             VC_XST_ISSET(vc, XF_SEND_IDLE)))
+                /* Destroy SEND QP */
+#endif
+            {
+                if (vc->mrail.rails && vc->mrail.rails[rail_index].qp_hndl) {
+                    ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
+                }
+            }
         }
 
         if (vc->mrail.rfp.RDMA_send_buf_DMA) {
-            MPIU_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
         }
 
         if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
-            MPIU_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
         }
 
         if (vc->mrail.rfp.RDMA_send_buf) {
-            MPIU_Free(vc->mrail.rfp.RDMA_send_buf);
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf);
         }
 
         if (vc->mrail.rfp.RDMA_recv_buf) {
-            MPIU_Free(vc->mrail.rfp.RDMA_recv_buf);
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
         }
     }
 
@@ -1872,14 +1890,18 @@ int MPIDI_CH3I_CM_Finalize(void)
     /* destroy ud context */
     if (rdma_enable_hybrid) {
         for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-            mv2_ud_destroy_ctx(mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_index]);
+            if (mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_index]) {
+                mv2_ud_destroy_ctx(mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_index]);
+            }
         }
-        for (i = 0; i < pg_size; ++i) {
-            MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[i]);
+        if (mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info) {
+            for (i = 0; i < pg_size; ++i) {
+                MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[i]);
+            }
+            MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info);
         }
-        MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info);
 
-        if (rdma_use_ud_zcopy) {
+        if (rdma_use_ud_zcopy && mv2_MPIDI_CH3I_RDMA_Process.zcopy_info.rndv_qp_pool) {
             mv2_ud_zcopy_info_t *zcopy_info =
                 &mv2_MPIDI_CH3I_RDMA_Process.zcopy_info;
             dreg_unregister(zcopy_info->grh_mr);
@@ -1905,60 +1927,51 @@ int MPIDI_CH3I_CM_Finalize(void)
     /* STEP 3: release all the cq resource, relaes all the unpinned buffers, release the
      * ptag
      *   and finally, release the hca */
-#if defined(RDMA_CM)
-    if (!mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm) {
-#endif /* defined(RDMA_CM) */
-        for (i = 0; i < rdma_num_hcas; ++i) {
-            ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+    for (i = 0; i < rdma_num_hcas; ++i) {
+        ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
 
-            if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
-                pthread_cancel(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i]);
-                pthread_join(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);
-                PRINT_DEBUG(DEBUG_XRC_verbose > 0, "destroyed SRQ: %d\n", i);
-                ibv_destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
+        if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
+            pthread_cancel(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i]);
+            pthread_join(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);
+            PRINT_DEBUG(DEBUG_XRC_verbose > 0, "destroyed SRQ: %d\n", i);
+            ibv_destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
 #ifdef _ENABLE_XRC_
-                if (USE_XRC) {
-                    int err;
-                    if (MPIDI_CH3I_Process.has_dpm) {
-                        char xrc_file[512];
-                        hca_index = i / (rdma_num_ports * rdma_num_qp_per_port);
-                        sprintf(xrc_file, "/dev/shm/%s-%d", ufile, hca_index);
-                        unlink(xrc_file);
-                    }
-                    ibv_close_xrc_domain(mv2_MPIDI_CH3I_RDMA_Process.
-                                         xrc_domain[i]);
-                    if ((err = close(mv2_MPIDI_CH3I_RDMA_Process.xrc_fd[i]))) {
-                        MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
-                                                  MPI_ERR_INTERN,
-                                                  "**fail",
-                                                  "%s: %s",
-                                                  "close", strerror(err));
-                    }
+            if (USE_XRC) {
+                int err;
+                if (MPIDI_CH3I_Process.has_dpm) {
+                    char xrc_file[512];
+                    hca_index = i / (rdma_num_ports * rdma_num_qp_per_port);
+                    sprintf(xrc_file, "/dev/shm/%s-%d", ufile, hca_index);
+                    unlink(xrc_file);
                 }
-#endif
+                ibv_close_xrc_domain(mv2_MPIDI_CH3I_RDMA_Process.
+                                     xrc_domain[i]);
+                if ((err = close(mv2_MPIDI_CH3I_RDMA_Process.xrc_fd[i]))) {
+                    MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+                                              MPI_ERR_INTERN,
+                                              "**fail",
+                                              "%s: %s",
+                                              "close", strerror(err));
+                }
             }
-
-            deallocate_vbufs(i);
-        }
-
-        deallocate_vbuf_region();
-        dreg_finalize();
-
-        for (i = 0; i < rdma_num_hcas; ++i) {
-            ibv_dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
-            ibv_close_device(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]);
-        }
-#ifdef _ENABLE_XRC_
-        if (USE_XRC) {
-            clear_xrc_hash();
-        }
 #endif
-#if defined(RDMA_CM)
-    } else {
-        ib_finalize_rdma_cm(pg_rank, pg);
-        MPIU_Free(rdma_cm_host_list);
+        }
+
+        deallocate_vbufs(i);
     }
-#endif /* defined(RDMA_CM) */
+
+    deallocate_vbuf_region();
+    dreg_finalize();
+
+    for (i = 0; i < rdma_num_hcas; ++i) {
+        ibv_dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
+        ibv_close_device(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]);
+    }
+#ifdef _ENABLE_XRC_
+    if (USE_XRC) {
+        clear_xrc_hash();
+    }
+#endif
 
     if (mv2_MPIDI_CH3I_RDMA_Process.polling_set != NULL) {
         MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.polling_set);
@@ -1971,5 +1984,273 @@ int MPIDI_CH3I_CM_Finalize(void)
   fn_fail:
     goto fn_exit;
 }
+
+#if defined(RDMA_CM)
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_RDMA_CM_Init
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_RDMA_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
+{
+    /* Initialize the rdma implemenation. */
+    /* This function is called after the RDMA channel has initialized its
+     * structures - like the vc_table. */
+    MPIDI_VC_t *vc;
+    int pg_size;
+    int i, error;
+    int *hosts = NULL;
+    int mpi_errno = MPI_SUCCESS;
+
+    MPIDI_STATE_DECL(MPID_STATE_CH3I_RDMA_CM_INIT);
+    MPIDI_FUNC_ENTER(MPID_STATE_CH3I_RDMA_CM_INIT);
+
+    pg_size = MPIDI_PG_Get_size(pg);
+
+    rdma_get_pm_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
+
+    /* We can't setup UD Ring for iWARP devices. Use PMI here for hostid exchange
+     ** in the case of hydra. Consider using hydra process mapping in the next
+     ** release as it is not correct in the current release.
+     */
+    if (!using_mpirun_rsh) {
+        rdma_cm_exchange_hostid(pg, pg_rank, pg_size);
+    }
+
+    rdma_local_id = MPIDI_Get_local_process_id(pg);
+    rdma_num_local_procs = MPIDI_Num_local_processes(pg);
+
+    /* Reading the values from user first and
+     * then allocating the memory */
+    mpi_errno = rdma_get_control_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
+    if (mpi_errno) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                  "**fail %s", "rdma_get_control_parameters");
+    }
+
+    rdma_set_default_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
+    rdma_get_user_parameters(pg_size, pg_rank);
+
+    for (i = 0; i < rdma_num_hcas; i++) {
+        pthread_mutex_init(&mv2_MPIDI_CH3I_RDMA_Process.async_mutex_lock[i], 0);
+    }
+
+    rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
+    rdma_num_rails_per_hca = rdma_num_ports * rdma_num_qp_per_port;
+
+    if (rdma_multirail_usage_policy == MV2_MRAIL_SHARING) {
+        if (mrail_use_default_mapping) {
+            rdma_process_binding_rail_offset = rdma_num_rails_per_hca *
+                (rdma_local_id % rdma_num_hcas);
+        } else {
+            rdma_process_binding_rail_offset = rdma_num_rails_per_hca *
+                mrail_user_defined_p2r_mapping;
+        }
+    }
+
+    DEBUG_PRINT("num_qp_per_port %d, num_rails = %d, "
+                "rdma_num_rails_per_hca = %d, "
+                "rdma_process_binding_rail_offset = %d\n", rdma_num_qp_per_port,
+                rdma_num_rails, rdma_num_rails_per_hca,
+                rdma_process_binding_rail_offset);
+
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_apm) {
+        init_apm_lock();
+    }
+
+    mpi_errno = init_vbuf_lock();
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    /* the vc structure has to be initialized */
+    for (i = 0; i < pg_size; i++) {
+        MPIDI_PG_Get_vc(pg, i, &vc);
+        MPIU_Memset(&(vc->mrail), 0, sizeof(vc->mrail));
+        /* This assmuption will soon be done with */
+        vc->mrail.num_rails = rdma_num_rails;
+    }
+
+    mpi_errno = rdma_iba_hca_init(&mv2_MPIDI_CH3I_RDMA_Process,
+                                  pg_rank, pg, NULL);
+
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    hosts = rdma_cm_get_hostnames(pg_rank, pg);
+    if (!hosts) {
+        MPIU_Error_printf("Error obtaining hostnames\n");
+    }
+
+    if (MV2_IS_CHELSIO_IWARP_CARD(mv2_MPIDI_CH3I_RDMA_Process.hca_type)) {
+        /* TRAC Ticket #455 */
+        if (g_num_smp_peers + 1 < pg_size) {
+            int avail_cq_entries = 0;
+            avail_cq_entries = rdma_default_max_cq_size /
+                ((pg_size - g_num_smp_peers - 1) * rdma_num_rails);
+            avail_cq_entries = avail_cq_entries -
+                rdma_initial_prepost_depth - 1;
+            if (avail_cq_entries < rdma_prepost_depth) {
+                rdma_prepost_depth = avail_cq_entries;
+            }
+            mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq =
+                (rdma_prepost_depth + rdma_initial_prepost_depth + 1)
+                * (pg_size - g_num_smp_peers - 1);
+        }
+    }
+
+    if (g_num_smp_peers + 1 < pg_size) {
+        /* Initialize the registration cache. */
+        mpi_errno = dreg_init();
+
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        mpi_errno = rdma_iba_allocate_memory(&mv2_MPIDI_CH3I_RDMA_Process,
+                                             pg_rank, pg_size);
+
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+    }
+
+    mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize = RDMA_MAX_RDMA_SIZE;
+
+    error = UPMI_BARRIER();
+    if (error != UPMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                  "**fail", "**fail %s",
+                                  "PMI Barrier failed");
+    }
+
+    if ((mpi_errno =
+         rdma_cm_connect_all(hosts, pg_rank, pg)) != MPI_SUCCESS) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    if (g_num_smp_peers + 1 == pg_size) {
+        mv2_MPIDI_CH3I_RDMA_Process.has_one_sided = 0;
+    }
+
+  fn_exit:
+
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "Done MPIDI_CH3I_RDMA_CM_Init() \n");
+
+    MPIDI_FUNC_EXIT(MPID_STATE_CH3I_RDMA_CM_INIT);
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_RDMA_CM_Finalize
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_RDMA_CM_Finalize(void)
+{
+    /* Finalize the rdma implementation */
+    /* No rdma functions will be called after this function */
+    int retval;
+    int i = 0;
+    int rail_index;
+    int hca_index;
+    int mpi_errno = MPI_SUCCESS;
+
+    MPIDI_VC_t *vc = NULL;
+
+    /* Insert implementation here */
+    MPIDI_PG_t *pg = MPIDI_Process.my_pg;
+    int pg_rank = MPIDI_Process.my_pg_rank;
+    int pg_size = MPIDI_PG_Get_size(pg);
+
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
+
+    /* Show memory usage statistics */
+    if (DEBUG_MEM_verbose) {
+        if (pg_rank == 0 || DEBUG_MEM_verbose > 1) {
+            mv2_print_mem_usage();
+            mv2_print_vbuf_usage_usage();
+        }
+    }
+
+    /*barrier to make sure queues are initialized before continuing */
+    if ((retval = UPMI_BARRIER()) != 0) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                  "**pmi_barrier", "**pmi_barrier %d", retval);
+    }
+
+    if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
+        mv2_release_3d_torus_resources();
+    }
+
+    for (; i < pg_size; ++i) {
+
+        MPIDI_PG_Get_vc(pg, i, &vc);
+
+#ifndef MV2_DISABLE_HEADER_CACHING
+        MPIU_Free(vc->mrail.rfp.cached_incoming);
+        MPIU_Free(vc->mrail.rfp.cached_outgoing);
+#endif /* !MV2_DISABLE_HEADER_CACHING */
+
+        if (!qp_required(vc, pg_rank, i)) {
+            continue;
+        }
+
+        if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
+            continue;
+        }
+
+        for (hca_index = 0; hca_index < rdma_num_hcas; ++hca_index) {
+            if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
+                ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
+            }
+
+            if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
+                ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+            }
+        }
+
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
+            ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
+            ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
+        }
+#endif
+
+        if (vc->mrail.rfp.RDMA_send_buf_DMA) {
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
+        }
+
+        if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
+        }
+
+        if (vc->mrail.rfp.RDMA_send_buf) {
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf);
+        }
+
+        if (vc->mrail.rfp.RDMA_recv_buf) {
+            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
+        }
+    }
+
+    ib_finalize_rdma_cm(pg_rank, pg);
+    MPIU_Free(rdma_cm_host_list);
+
+    if (mv2_MPIDI_CH3I_RDMA_Process.polling_set != NULL) {
+        MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.polling_set);
+    }
+
+  fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+#endif
 
 /* vi:set sw=4 tw=80: */

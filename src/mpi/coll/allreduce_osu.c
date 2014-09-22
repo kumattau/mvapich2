@@ -1974,6 +1974,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     char *recv_host_buf = NULL;
     char *send_host_buf = NULL;
     char *temp_recvbuf = recvbuf;
+    char *temp_sendbuf = sendbuf;
 
     if (rdma_enable_cuda) {
        recv_mem_type = is_device_buffer(recvbuf);
@@ -2130,6 +2131,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
         }
     }
     if(rdma_enable_cuda && send_mem_type){
+        sendbuf = temp_sendbuf;
         if(send_host_buf){
             MPIU_Free(send_host_buf);
             send_host_buf = NULL;
@@ -2348,7 +2350,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
 		}
 		else {
 		    lp2ltn = pow(2, (int)log2(comm_size));
-		    comm_size_index = log2( lp2ltn / table_min_comm_size );
+		    comm_size_index = (lp2ltn < table_min_comm_size) ? 0 : log2( lp2ltn / table_min_comm_size );
 		}
 	    }
 	    /* Search for corresponding inter-leader function */
@@ -2378,7 +2380,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
 		}
 		else {
 		    lp2ltn = pow(2, (int)log2(nbytes));
-		    inter_node_algo_index = log2( lp2ltn / table_min_inter_size );
+		    inter_node_algo_index = (lp2ltn < table_min_inter_size) ? 0 : log2( lp2ltn / table_min_inter_size );
 		}
 	    }
     
@@ -2397,7 +2399,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
 		}
 		else {
 		    lp2ltn = pow(2, (int)log2(nbytes));
-		    intra_node_algo_index = log2(lp2ltn / table_min_intra_size );
+		    intra_node_algo_index = (lp2ltn < table_min_intra_size) ? 0 : log2(lp2ltn / table_min_intra_size );
 		}
 	    }
 	    
@@ -2543,6 +2545,7 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
     char *recv_host_buf = NULL;
     char *send_host_buf = NULL;
     char *temp_recvbuf = recvbuf;
+    const char *temp_sendbuf = sendbuf;
 
     if (rdma_enable_cuda) {
        recv_mem_type = is_device_buffer(recvbuf);
@@ -2612,6 +2615,7 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
         }
     }
     if(rdma_enable_cuda && send_mem_type){
+        sendbuf = temp_sendbuf;
         if(send_host_buf){
             MPIU_Free(send_host_buf);
             send_host_buf = NULL;

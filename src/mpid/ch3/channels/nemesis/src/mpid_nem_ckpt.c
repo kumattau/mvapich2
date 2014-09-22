@@ -32,7 +32,7 @@ MPIU_SUPPRESS_OSX_HAS_NO_SYMBOLS_WARNING;
 #include <string.h>
 #include <libcr.h>
 #include <stdio.h>
-#include "pmi.h"
+#include "upmi.h"
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif
@@ -227,20 +227,20 @@ static int reinit_pmi(void)
     MPIDI_FUNC_ENTER(MPID_STATE_REINIT_PMI);
 
     /* Init pmi and do some sanity checks */
-    ret = PMI_Init(&has_parent);
+    ret = UPMI_INIT(&has_parent);
     CHECK_ERR(ret, "pmi_init");
 
-    ret = PMI_Get_rank(&pg_rank);
+    ret = UPMI_GET_RANK(&pg_rank);
     CHECK_ERR(ret, "pmi_get_rank");
 
-    ret = PMI_Get_size(&pg_size);
+    ret = UPMI_GET_SIZE(&pg_size);
     CHECK_ERR(ret, "pmi_get_size");
 
     CHECK_ERR(pg_size != MPIDI_Process.my_pg->size, "pg size differs after restart");
     CHECK_ERR(pg_rank != MPIDI_Process.my_pg_rank, "pg rank differs after restart");
 
     /* get new pg_id */
-    ret = PMI_KVS_Get_name_length_max(&pg_id_sz);
+    ret = UPMI_KVS_GET_NAME_LENGTH_MAX(&pg_id_sz);
     CHECK_ERR(ret, "pmi_get_id_length_max");
     
     MPIU_Free(MPIDI_Process.my_pg->id);
@@ -248,19 +248,19 @@ static int reinit_pmi(void)
     MPIDI_Process.my_pg->id = MPIU_Malloc(pg_id_sz + 1);
     CHECK_ERR(MPIDI_Process.my_pg->id == NULL, "malloc failed");
 
-    ret = PMI_KVS_Get_my_name(MPIDI_Process.my_pg->id, pg_id_sz);
+    ret = UPMI_KVS_GET_MY_NAME(MPIDI_Process.my_pg->id, pg_id_sz);
     CHECK_ERR(ret, "pmi_kvs_get_my_name");
 
     /* get new kvsname */
-    ret = PMI_KVS_Get_name_length_max(&kvs_name_sz);
-    CHECK_ERR(ret, "PMI_KVS_Get_name_length_max");
+    ret = UPMI_KVS_GET_NAME_LENGTH_MAX(&kvs_name_sz);
+    CHECK_ERR(ret, "UPMI_KVS_GET_NAME_LENGTH_MAX");
     
     MPIU_Free(MPIDI_Process.my_pg->connData);
    
     MPIDI_Process.my_pg->connData = MPIU_Malloc(kvs_name_sz + 1);
     CHECK_ERR(MPIDI_Process.my_pg->connData == NULL, "malloc failed");
 
-    ret = PMI_KVS_Get_my_name(MPIDI_Process.my_pg->connData, kvs_name_sz);
+    ret = UPMI_KVS_GET_MY_NAME(MPIDI_Process.my_pg->connData, kvs_name_sz);
     CHECK_ERR(ret, "PMI_Get_my_name");
 
     

@@ -529,7 +529,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
 
     *base_pp = (*win_ptr)->base;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(CHANNEL_MRAIL)
     (*win_ptr)->my_id = rank;
     (*win_ptr)->comm_size = comm_size;
     /* -- OSU-MPI2 uses extended CH3 interface */

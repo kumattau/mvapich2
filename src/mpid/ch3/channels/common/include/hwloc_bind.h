@@ -16,6 +16,13 @@
 #include <hwloc.h>
 #include <dirent.h>
 
+extern int ib_socket_bind;
+
+typedef struct {
+    int num_hca;
+    int closest[16];
+} tab_socket_t;
+
 typedef enum {
     POLICY_BUNCH,
     POLICY_SCATTER,
@@ -56,6 +63,7 @@ void map_bunch_core(int num_cpus);
 void map_bunch_socket(int num_sockets, hwloc_obj_type_t binding_level);
 int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology);
 int get_cpu_mapping(long N_CPUs_online);
+int get_ib_socket(struct ibv_device * ibdev);
 int smpi_setaffinity(int my_local_id);
 int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank);
 

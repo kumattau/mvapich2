@@ -11,10 +11,11 @@
  */
 
 #define _GNU_SOURCE
+#include <mpiimpl.h>
 #include "ib_process.h"
 #include "ib_errors.h"
 #include "ib_srq.h"
-#include "pmi.h"
+#include "upmi.h"
 
 MPID_nem_ib_srq_info_t srq_info;
 

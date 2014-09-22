@@ -81,6 +81,8 @@ mpi_sources +=                     \
     src/mpi/coll/gather_osu.c      \
     src/mpi/coll/reduce_osu.c      \
     src/mpi/coll/scatter_osu.c     \
+    src/mpi/coll/scan_osu.c        \
+    src/mpi/coll/exscan_osu.c      \
     src/mpi/coll/red_scat_osu.c    \
     src/mpi/coll/ch3_shmem_coll.c  \
     src/mpi/coll/alltoall_cuda_osu.c \
@@ -107,7 +109,7 @@ mpi_sources +=                     \
     src/mpi/coll/iscatter_tuning.c
 endif
 
-lib_lib@MPILIBNAME@_la_SOURCES += \
+mpi_core_sources += \
     src/mpi/coll/allred_group.c   \
     src/mpi/coll/barrier_group.c  \
     src/mpi/coll/helper_fns.c     \

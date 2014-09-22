@@ -18,7 +18,6 @@
 #include "ib_channel_manager.h"
 #include "ib_vbuf.h"
 /* add mpidimpl.h to pass MPIDI_PG_t *pg to MPID_nem_ib_setup_conn(); */
-#include "mpidimpl.h"
 typedef enum {
      MPID_NEM_IB_CONN_NONE        = 1,
      MPID_NEM_IB_CONN_IN_PROGRESS = 2,
@@ -212,14 +211,32 @@ typedef struct _MPID_nem_ib_connections {
  */
 extern MPID_nem_ib_conn_info_t conn_info;
 
-
+struct MPIDI_PG;
 int MPID_nem_ib_init_connection(int size, int rank);
 int MPID_nem_ib_alloc_process_init_info();
-int MPID_nem_ib_setup_conn(MPIDI_PG_t *pg);
+int MPID_nem_ib_setup_conn(struct MPIDI_PG *pg);
 int MPID_nem_ib_establish_conn();
-int MPID_nem_ib_exchange_conn(MPIDI_PG_t *pg, int rank);
+int MPID_nem_ib_exchange_conn(struct MPIDI_PG *pg, int rank);
 int MPID_nem_ib_free_conn_info(int size);
-int MPID_nem_ib_setup_startup_ring(MPIDI_PG_t *pg, int rank);
+int MPID_nem_ib_setup_startup_ring(struct MPIDI_PG *pg, int rank);
+
+extern int mv2_pmi_max_keylen;
+extern int mv2_pmi_max_vallen;
+extern char *mv2_pmi_key;
+extern char *mv2_pmi_val;
+
+/*
+ * mv2_allocate_pmi_keyval
+ * Allocate a Key-Value pair of correct length
+ * Return 0 on success, non-zero on failure
+ */
+int mv2_allocate_pmi_keyval(void);
+
+/*
+ * mv2_free_pmi_keyval
+ * Free a previously allocated Key-Value pair
+ */
+void mv2_free_pmi_keyval(void);
 
 /**
  * set credits info into packet header

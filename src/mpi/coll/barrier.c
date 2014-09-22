@@ -46,6 +46,8 @@ cvars:
 #pragma _HP_SECONDARY_DEF PMPI_Barrier  MPI_Barrier
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Barrier as PMPI_Barrier
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Barrier(MPI_Comm comm) __attribute__((weak,alias("PMPI_Barrier")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -430,9 +432,11 @@ int MPI_Barrier( MPI_Comm comm )
     if (mpi_errno) goto fn_fail;
 
 #ifdef _OSU_MVAPICH_
-    mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
-    if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+    if (mv2_use_osu_collectives) {
+        mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
     }
 #endif /* _OSU_MVAPICH_ */
     

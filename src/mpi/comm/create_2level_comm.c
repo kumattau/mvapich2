@@ -628,6 +628,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     int up = 0;
     int down = 0;
     int prev = -1;
+    int shmem_size;
 
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
@@ -681,7 +682,8 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
            }
            ++grp_index;
        }  
-    } 
+    }
+    shmem_size = grp_index;
 
     if (local_rank == 0){
         lock_shmem_region();
@@ -740,7 +742,6 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     if(mpi_errno) {
        MPIU_ERR_POP(mpi_errno);
     }
-
 
     int* leader_group = MPIU_Malloc(sizeof(int) * size);
     if (NULL == leader_group){
@@ -805,12 +806,24 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
        if(mpi_errno) {
                MPIU_ERR_POP(mpi_errno);
        }
-    } 
+    }
 
+    mpi_errno = PMPI_Group_incl(comm_group, shmem_size, shmem_group, &subgroup1);
+     if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
+
+    mpi_errno = PMPI_Comm_create(comm, subgroup1, &(comm_ptr->ch.shmem_comm));
+    if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
+    
+    /*
     mpi_errno = PMPI_Comm_split(comm, leader, local_rank, &(comm_ptr->ch.shmem_comm));
     if(mpi_errno) {
        MPIU_ERR_POP(mpi_errno);
     }
+    */
 
     MPID_Comm *shmem_ptr;
     MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_ptr);
@@ -911,6 +924,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     if(mpi_errno) {
        MPIU_ERR_POP(mpi_errno);
     } 
+
     comm_ptr->ch.allgather_comm_ok = 0;
 
     mpi_errno=PMPI_Group_free(&comm_group);

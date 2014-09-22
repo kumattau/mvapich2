@@ -10,11 +10,7 @@
 
 #ifndef NEWMAD_MODULE_IMPL_H
 #define NEWMAD_MODULE_IMPL_H
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
+#include "upmi.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <stdint.h>

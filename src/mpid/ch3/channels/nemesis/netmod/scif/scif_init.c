@@ -10,11 +10,7 @@
  */
 
 #include "scif_impl.h"
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
+#include "upmi.h"
 
 MPID_nem_netmod_funcs_t MPIDI_nem_scif_funcs = {
     MPID_nem_scif_init,
@@ -143,8 +139,8 @@ int MPID_nem_scif_init(MPIDI_PG_t * pg_p, int pg_rank, char **bc_val_p, int *val
     mpi_errno = MPID_nem_register_initcomp_cb(MPID_nem_scif_post_init);
     if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
-    pmi_errno = PMI_Barrier();
-    MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier",
+    pmi_errno = UPMI_BARRIER();
+    MPIU_ERR_CHKANDJUMP1(pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier",
                          "**pmi_barrier %d", pmi_errno);
 
   fn_exit:
@@ -252,7 +248,7 @@ static int get_addr(MPIDI_VC_t * vc, struct scif_portID *addr)
     MPIU_CHKLMEM_DECL(1);
 
     /* Allocate space for the business card */
-    pmi_errno = PMI_KVS_Get_value_length_max(&val_max_sz);
+    pmi_errno = UPMI_KVS_GET_VALUE_LENGTH_MAX(&val_max_sz);
     MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
     MPIU_CHKLMEM_MALLOC(bc, char *, val_max_sz, mpi_errno, "bc");
 

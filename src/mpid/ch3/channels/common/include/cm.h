@@ -44,21 +44,19 @@ Initialize MPICM based on UD connection, need to be called before calling
 any of following interfaces, it will return a qpn for the established ud qp,
 mpi lib needs to exchange the ud qpn with other procs
 */
-int MPICM_Init_UD(uint32_t * ud_qpn);
+int MPICM_Init_UD_CM(uint32_t * ud_qpn);
 
 /*
 MPICM_Init_ud_struct
 Provide connect information to UD
 */
-int MPICM_Init_UD_struct(MPIDI_PG_t *, uint32_t * qpns, uint16_t * lids,
-                         union ibv_gid *gid);
+int MPICM_Init_UD_struct(MPIDI_PG_t *);
 
 /*
 MPICM_Init_Local_UD_struct
 Provide local connect information to UD
 */
-int MPICM_Init_Local_UD_struct(MPIDI_PG_t *, uint32_t qpn, uint16_t lid,
-                               union ibv_gid *gid, int hostid);
+int MPICM_Init_Local_UD_struct(MPIDI_PG_t *);
 
 /*
 MPICM_Create_ud_threads
@@ -97,5 +95,23 @@ int cm_qp_reuse(MPIDI_VC_t * vc, MPIDI_VC_t * orig);
 
 #define MV2_QPT_RC      1
 #define MV2_QPT_XRC     2
+
+extern int mv2_pmi_max_keylen;
+extern int mv2_pmi_max_vallen;
+extern char *mv2_pmi_key;
+extern char *mv2_pmi_val;
+
+/*
+ * mv2_allocate_pmi_keyval
+ * Allocate a Key-Value pair of correct length
+ * Return 0 on success, non-zero on failure
+ */
+int mv2_allocate_pmi_keyval(void);
+
+/*
+ * mv2_free_pmi_keyval
+ * Free a previously allocated Key-Value pair
+ */
+void mv2_free_pmi_keyval(void);
 
 #endif /* MVAPICH2_GEN2_CM_H */

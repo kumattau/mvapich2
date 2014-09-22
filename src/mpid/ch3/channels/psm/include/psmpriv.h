@@ -23,7 +23,7 @@
 #include <string.h>
 #include <pthread.h>
 #include "mpidimpl.h"
-#include "pmi.h"
+#include "upmi.h"
 
 #define MPID_PSM_UUID           "uuid"      /* pmi key for uuid */
 #define WRBUFSZ                 1024        /* scratch buffer */
@@ -48,7 +48,7 @@
 #define DBG(args...)                                                 \
     do {                                                             \
         int __rank;                                                  \
-        PMI_Get_rank(&__rank);                                       \
+        UPMI_GET_RANK(&__rank);                                       \
         fprintf(stderr, "[%d][%s:%d]\t\t", __rank, __FILE__, __LINE__); \
         fprintf(stderr, args);                                       \
         fflush(stderr);                                              \
@@ -58,7 +58,7 @@
 #endif /* defined(DEBUG) */
 
 #define PSM_ERR_ABORT(args...) do {                                          \
-    int __rank; PMI_Get_rank(&__rank);                                       \
+    int __rank; UPMI_GET_RANK(&__rank);                                       \
     fprintf(stderr, "[Rank %d][%s: line %d]", __rank ,__FILE__, __LINE__);   \
     fprintf(stderr, args);                                                   \
     fprintf(stderr, "\n");                                                   \

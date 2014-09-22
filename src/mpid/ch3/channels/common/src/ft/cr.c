@@ -44,7 +44,7 @@
 #include <string.h>
 #include <libcr.h>
 #include "rdma_impl.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "cm.h"
 #include "mem_hooks.h"
 #include "mpiutil.h"
@@ -849,8 +849,8 @@ int CR_Thread_loop()
 #ifdef CR_FTB
             if (cr_ftb_mig_req) {
                 PRINT_DEBUG(DEBUG_MIG_verbose > 1,"Entering migration barrier\n");
-                if (PMI_Barrier() != 0)
-                    fprintf(stderr, "At Migration: rank %d, PMI_Barrier failed\n", MPICR_pg_rank);
+                if (UPMI_BARRIER() != 0)
+                    fprintf(stderr, "At Migration: rank %d, UPMI_BARRIER failed\n", MPICR_pg_rank);
             }
             /* end of phase 3 */
 
@@ -939,29 +939,29 @@ int CR_Reset_proc_info()
 
     PRINT_DEBUG(DEBUG_CR_verbose > 2,"unset PMI_FD\n");
 
-    if (PMI_Init(&has_parent)) {
+    if (UPMI_INIT(&has_parent)) {
         CR_ERR_ABORT("PMI_Init failed\n");
     }
 
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"PMI_Init, has_parent=%d\n", has_parent);
 
-    if (PMI_KVS_Get_name_length_max(&pg_id_sz)) {
-        CR_ERR_ABORT("PMI_KVS_Get_name_length_max failed\n");
+    if (UPMI_KVS_GET_NAME_LENGTH_MAX(&pg_id_sz)) {
+        CR_ERR_ABORT("UPMI_KVS_GET_NAME_LENGTH_MAX failed\n");
     }
 
-    PRINT_DEBUG(DEBUG_MIG_verbose > 1,"PMI_KVS_Get_name_length_max = %d\n", pg_id_sz);
+    PRINT_DEBUG(DEBUG_MIG_verbose > 1,"UPMI_KVS_GET_NAME_LENGTH_MAX = %d\n", pg_id_sz);
     MPIDI_Process.my_pg->id = MPIU_Malloc(pg_id_sz + 1);
 
     if (NULL == MPIDI_Process.my_pg->id) {
         CR_ERR_ABORT("MPIU_Malloc failed\n");
     }
 
-    if (PMI_KVS_Get_my_name(MPIDI_Process.my_pg->id, pg_id_sz)) {
-        CR_ERR_ABORT("PMI_KVS_Get_my_name failed\n");
+    if (UPMI_KVS_GET_MY_NAME(MPIDI_Process.my_pg->id, pg_id_sz)) {
+        CR_ERR_ABORT("UPMI_KVS_GET_MY_NAME failed\n");
     }
     PRINT_DEBUG(DEBUG_CR_verbose > 2,"get id=%p\n", MPIDI_Process.my_pg->id);
-    if (PMI_KVS_Get_name_length_max(&kvs_name_sz)) {
-        CR_ERR_ABORT("PMI_KVS_Get_name_length_max failed\n");
+    if (UPMI_KVS_GET_NAME_LENGTH_MAX(&kvs_name_sz)) {
+        CR_ERR_ABORT("UPMI_KVS_GET_NAME_LENGTH_MAX failed\n");
     }
 
     MPIDI_Process.my_pg->ch.kvs_name = MPIU_Malloc(kvs_name_sz + 1);
@@ -970,8 +970,8 @@ int CR_Reset_proc_info()
         CR_ERR_ABORT("MPIU_Malloc failed\n");
     }
 
-    if (PMI_KVS_Get_my_name(MPIDI_Process.my_pg->ch.kvs_name, kvs_name_sz)) {
-        CR_ERR_ABORT("PMI_KVS_Get_my_name failed\n");
+    if (UPMI_KVS_GET_MY_NAME(MPIDI_Process.my_pg->ch.kvs_name, kvs_name_sz)) {
+        CR_ERR_ABORT("UPMI_KVS_GET_MY_NAME failed\n");
     }
 
     MPIDI_PG_InitConnKVS(MPIDI_Process.my_pg);
@@ -1573,7 +1573,7 @@ int CR_IBU_Rebuild_network()
     }
 
     uint32_t ud_qpn_self;
-    mpi_errno = MPICM_Init_UD(&ud_qpn_self);
+    mpi_errno = MPICM_Init_UD_CM(&ud_qpn_self);
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"init UD ret %d\n", mpi_errno);
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
@@ -1636,50 +1636,20 @@ int CR_IBU_Rebuild_network()
             }
         } else {
             /* Exchange the information about HCA_lid and qp_num. */
-            /* Allocate space for pmi keys and values. */
-
-            int key_max_sz;
-
-            if (PMI_KVS_Get_key_length_max(&key_max_sz) != 0) {
-                CR_ERR_ABORT("PMI_KVS_Get_key_length_max failed\n");
-            }
-
-            char *key = MPIU_Malloc(++key_max_sz);
-
-            if (key == NULL) {
-                CR_ERR_ABORT("MPIU_Malloc failed\n");
-            }
-
-            int val_max_sz;
-
-            if (PMI_KVS_Get_value_length_max(&val_max_sz) != 0) {
-                CR_ERR_ABORT("PMI_KVS_Get_value_length_max failed\n");
-            }
-
-            char *val = MPIU_Malloc(++val_max_sz);
-
-            if (val == NULL) {
-                CR_ERR_ABORT("MPIU_Malloc failed\n");
-            }
-
-            if (key_max_sz < 20 || val_max_sz < 20) {
-                CR_ERR_ABORT("key_max_sz val_max_sz too small\n");
-            }
-
-            sprintf(key, "ud_info_%08d", pg_rank);
+            sprintf(mv2_pmi_key, "ud_info_%08d", pg_rank);
             if (!use_iboeth) {
-                sprintf(val, "%08x:%08x", mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
+                sprintf(mv2_pmi_val, "%08x:%08x", mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
                         ud_qpn_self);
             } else {
-                sprintf(val, "%08x:%08x:%016"PRIx64":%016"PRIx64,
+                sprintf(mv2_pmi_val, "%08x:%08x:%016"PRIx64":%016"PRIx64,
                        mv2_MPIDI_CH3I_RDMA_Process.lids[0][0], ud_qpn_self,
                        mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.subnet_prefix,
                        mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.interface_id);
             }
 
 
-            if (PMI_KVS_Put(pg->ch.kvs_name, key, val) != 0) {
-                CR_ERR_ABORT("PMI_KVS_Put failed\n");
+            if (UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val) != 0) {
+                CR_ERR_ABORT("UPMI_KVS_PUT failed\n");
             }
 
             /* when running with slurm, srun can get overwhelmed with RPC
@@ -1693,11 +1663,11 @@ int CR_IBU_Rebuild_network()
                 sleep(slurm_pmi_delay);
             }
 
-            if (PMI_KVS_Commit(pg->ch.kvs_name) != 0) {
-                CR_ERR_ABORT("PMI_KVS_Commit failed\n");
+            if (UPMI_KVS_COMMIT(pg->ch.kvs_name) != 0) {
+                CR_ERR_ABORT("UPMI_KVS_COMMIT failed\n");
             }
-            if (PMI_Barrier() != 0) {
-                CR_ERR_ABORT("PMI_Barrier failed\n");
+            if (UPMI_BARRIER() != 0) {
+                CR_ERR_ABORT("UPMI_BARRIER failed\n");
             }
 
             for (i = 0; i < pg_size; ++i) {
@@ -1708,29 +1678,33 @@ int CR_IBU_Rebuild_network()
                     continue;
                 }
 
-                sprintf(key, "ud_info_%08d", i);
+                sprintf(mv2_pmi_key, "ud_info_%08d", i);
 
-                if (PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz) != 0) {
-                    CR_ERR_ABORT("PMI_KVS_Get failed\n");
+                if (UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen) != 0) {
+                    CR_ERR_ABORT("UPMI_KVS_GET failed\n");
                 }
 
                 if (!use_iboeth) {
-                    sscanf(val, "%08hx:%08x", &(lid_all[i]), &(ud_qpn_all[i]));
+                    sscanf(mv2_pmi_val, "%08hx:%08x", &(lid_all[i]), &(ud_qpn_all[i]));
                 } else {
-                    sscanf(val, "%08hx:%08x:%016"SCNx64":%016"SCNx64, &(lid_all[i]),
+                    sscanf(mv2_pmi_val, "%08hx:%08x:%016"SCNx64":%016"SCNx64, &(lid_all[i]),
                            &(ud_qpn_all[i]), &(gid_all[i].global.subnet_prefix),
                            &(gid_all[i].global.interface_id));
                 }
             }
-            MPIU_Free(key);
-            MPIU_Free(val);
         }
+    }
+
+    for (i = 0; i < pg_size; ++i) {
+        pg->ch.mrail.cm_lid[i] = lid_all[i];
+        memcpy(&pg->ch.mrail.cm_gid[i], &gid_all[i], sizeof(union ibv_gid));
+        pg->ch.mrail.cm_ud_qpn[i] = ud_qpn_all[i];
     }
 
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"Exchanging parameters done\n");
 
     PRINT_DEBUG(DEBUG_CR_verbose > 2,"MPICM_Init_UD_struct\n");
-    mpi_errno = MPICM_Init_UD_struct(MPICR_pg, ud_qpn_all, lid_all, gid_all);
+    mpi_errno = MPICM_Init_UD_struct(MPICR_pg);
     PRINT_DEBUG(DEBUG_CR_verbose > 2,"MPICM_Create_UD_threads\n");
     MPICM_Create_UD_threads();
 
@@ -1738,9 +1712,9 @@ int CR_IBU_Rebuild_network()
         MPIU_ERR_POP(mpi_errno);
     }
 
-    PRINT_DEBUG(DEBUG_CR_verbose > 2,"Waiting in a PMI_Barrier\n");
-    if (PMI_Barrier() != 0) {
-        CR_ERR_ABORT("PMI_Barrier failed\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"Waiting in a UPMI_BARRIER\n");
+    if (UPMI_BARRIER() != 0) {
+        CR_ERR_ABORT("UPMI_BARRIER failed\n");
     }
 
     PRINT_DEBUG(DEBUG_CR_verbose,"CR_IBU_Rebuild_network finish\n");
@@ -2032,7 +2006,7 @@ int CR_IBU_Reactivate_channels()
     }
 
     int pg_rank;
-    PMI_Get_rank(&pg_rank);
+    UPMI_GET_RANK(&pg_rank);
     retval = MPIDI_CH3I_set_affinity(MPICR_pg, pg_rank);
     if (retval) {
         fprintf(stderr, "[%s:%d] MPIDI_CH3I_set_affinity) returned %d\n", 

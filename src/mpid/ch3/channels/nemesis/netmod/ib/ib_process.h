@@ -18,10 +18,10 @@
 
 #include "ib_hca.h"
 #include "ib_cm.h"
-#include "mpidimpl.h"
 #include "ib_param.h"
 
 
+struct MPIDI_VC;
 
 /**
  * Information about current process.
@@ -32,7 +32,7 @@ typedef struct  {
      * MPIDI_PG_t defined in mpidimpl.h. Number of processes
      * in the process group: pg->size.
      */
-	MPIDI_PG_t *pg;
+	struct MPIDI_PG *pg;
 
     /** Rank in process group */
     int rank;
@@ -60,11 +60,11 @@ typedef struct  {
     int                         global_used_send_cq;
     int                         global_used_recv_cq;
 
-    int    (*post_send)(MPIDI_VC_t * vc, vbuf * v, int rail);
+    int    (*post_send)(struct MPIDI_VC * vc, vbuf * v, int rail);
 
 
     int                         polling_group_size;
-    MPIDI_VC_t                  **polling_set;
+    struct MPIDI_VC             **polling_set;
 
     /* data structure for ring based startup */
     struct ibv_cq               *boot_cq_hndl;
@@ -87,7 +87,7 @@ extern MPID_nem_ib_process_info_t process_info;
 /**
  *  Initialize the process information.
  */
-int MPID_nem_ib_init_process_info(int pg_rank, MPIDI_PG_t *pg_p);
+int MPID_nem_ib_init_process_info(int pg_rank, struct MPIDI_PG *pg_p);
 
 
 #endif /* IB_PROCESS_H */

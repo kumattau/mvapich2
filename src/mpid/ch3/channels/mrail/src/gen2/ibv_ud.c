@@ -37,15 +37,32 @@ static inline void mv2_ud_flush_ext_window(MPIDI_VC_t *vc)
         q->tail = NULL;
     }
 }
+
+inline void mv2_unack_queue_clear(MPIDI_VC_t *vc)
+{
+    vbuf *sendwin_head = vc->mrail.rely.send_window.head;
+
+    while (sendwin_head != NULL) {
+        PRINT_DEBUG(DEBUG_UD_verbose>2,"Clearing seqnum %d from unack queue for rank %d\n", sendwin_head->seqnum, vc->pg_rank);
+        mv2_ud_send_window_remove(&vc->mrail.rely.send_window, sendwin_head);
+        mv2_ud_unack_queue_remove(&(mv2_MPIDI_CH3I_RDMA_Process.unack_queue), sendwin_head);
+        MRAILI_Process_send(sendwin_head);
+        sendwin_head = vc->mrail.rely.send_window.head;
+    }
+
+    return;
+}
+
 static inline void mv2_ud_process_ack(MPIDI_VC_t *vc, uint16_t acknum)
 {
     vbuf *sendwin_head = vc->mrail.rely.send_window.head;
 
-    PRINT_DEBUG(DEBUG_UD_verbose>2,"ack recieved: %d next_to_ack: %d\n",acknum, vc->mrail.seqnum_next_toack);
+    PRINT_DEBUG(DEBUG_UD_verbose>2,"ack: %d recieved from rank: %d, next_to_ack: %d\n", acknum, vc->pg_rank, vc->mrail.seqnum_next_toack);
 
     while (sendwin_head != NULL && 
             INCL_BETWEEN (acknum, sendwin_head->seqnum, vc->mrail.seqnum_next_tosend))
     {
+        PRINT_DEBUG(DEBUG_UD_verbose>2,"Removing seqnum %d from unack queue for rank %d\n", sendwin_head->seqnum, vc->pg_rank);
         mv2_ud_send_window_remove(&vc->mrail.rely.send_window, sendwin_head);
         mv2_ud_unack_queue_remove(&(mv2_MPIDI_CH3I_RDMA_Process.unack_queue), sendwin_head);
         MRAILI_Process_send(sendwin_head);
@@ -73,17 +90,17 @@ static inline void mv2_ud_place_recvwin(vbuf *v)
     /* check if the packet is in the window or not */
     if (INCL_BETWEEN(v->seqnum, recv_win_start, recv_win_end)) {
         if (v->seqnum == vc->mrail.seqnum_next_torecv) {
-            PRINT_DEBUG(DEBUG_UD_verbose>2,"get one with in-order seqnum:%d \n",v->seqnum);
+            PRINT_DEBUG(DEBUG_UD_verbose>2,"get one from %d with in-order seqnum:%d, next_to_ack:%d \n",vc->pg_rank, v->seqnum, vc->mrail.seqnum_next_torecv);
+            vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
             /* process in-order message */
             handle_read(vc, v);
-            vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
             ++vc->mrail.seqnum_next_torecv;
             if (v->transport == IB_TRANSPORT_UD) {
                 MARK_ACK_REQUIRED(vc);
             }
         } else {
             /* we are not in order */
-            PRINT_DEBUG(DEBUG_UD_verbose>1,"Got out-of-order packet recv:%d expected:%d\n",v->seqnum, vc->mrail.seqnum_next_torecv);
+            PRINT_DEBUG(DEBUG_UD_verbose>1,"Got out-of-order packet from %d recv:%d expected:%d\n",vc->pg_rank, v->seqnum, vc->mrail.seqnum_next_torecv);
             ret = mv2_ud_recv_window_add(&vc->mrail.rely.recv_window, v, vc->mrail.seqnum_next_torecv);
             if (ret == MSG_IN_RECVWIN) {
                 MPIDI_CH3I_MRAIL_Release_vbuf(v);
@@ -98,14 +115,15 @@ static inline void mv2_ud_place_recvwin(vbuf *v)
         while ( vc->mrail.rely.recv_window.head != NULL && 
                 (vc->mrail.rely.recv_window.head->seqnum == 
                  vc->mrail.seqnum_next_torecv)) {
-            PRINT_DEBUG(DEBUG_UD_verbose>1,"get one with in-order seqnum:%d \n",vc->mrail.seqnum_next_torecv);
+            PRINT_DEBUG(DEBUG_UD_verbose>1,"process one from %d with in-order seqnum:%d \n",vc->pg_rank, vc->mrail.seqnum_next_torecv);
+            vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
             handle_read(vc, vc->mrail.rely.recv_window.head);
             mv2_ud_recv_window_remove(&vc->mrail.rely.recv_window);
-            vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
             ++vc->mrail.seqnum_next_torecv;
         }
     } else {
-        PRINT_DEBUG(DEBUG_UD_verbose>1,"Message is not in recv window seqnum:%d win start:%d win end:%d\n", v->seqnum, recv_win_start, recv_win_end);
+        PRINT_DEBUG(DEBUG_UD_verbose>1,"Message from %d is not in recv window seqnum:%d win start:%d win end:%d\n",
+                    vc->pg_rank, v->seqnum, recv_win_start, recv_win_end);
         MPIDI_CH3I_MRAIL_Release_vbuf(v);
         if (v->transport == IB_TRANSPORT_UD) {
             MARK_ACK_REQUIRED(vc);
@@ -137,6 +155,17 @@ int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *send_ud_ctx)
     MV2_UD_RESET_CREDITS(vc, v);
     v->flags |= UD_VBUF_SEND_INPROGRESS;
 
+    if (unlikely(vc->mrail.ud == NULL)) {
+        if (likely(vc->pg->ch.mrail.cm_lid[vc->pg_rank] == 0)) {
+            MPICM_lock();
+            PRINT_DEBUG(DEBUG_CM_verbose>0, "Calling MPIDI_CH3I_PMI_Get_Init_Info for %d\n", vc->pg_rank);
+            MPIDI_CH3I_PMI_Get_Init_Info(vc->pg, vc->pg_rank, NULL);
+            MPICM_unlock();
+        }
+        PRINT_DEBUG(DEBUG_CM_verbose>0, "Calling MPIDI_CH3I_UD_Generate_addr_handle_for_rank %d\n", vc->pg_rank);
+        MPIDI_CH3I_UD_Generate_addr_handle_for_rank(vc->pg, vc->pg_rank);
+    }
+
     PRINT_DEBUG(DEBUG_UD_verbose>1,"UD Send : to:%d seqnum:%d acknum:%d len:%d rail:%d\n", 
                 vc->pg_rank, p->seqnum, p->acknum, v->desc.sg_entry.length, rail);
 
@@ -161,6 +190,17 @@ void mv2_send_control_msg(MPIDI_VC_t *vc, vbuf *v)
     v->seqnum = p->seqnum = -1;
     MARK_ACK_COMPLETED(vc);
     MV2_UD_RESET_CREDITS(vc, v);
+
+    if (unlikely(vc->mrail.ud == NULL)) {
+        if (likely(vc->pg->ch.mrail.cm_lid[vc->pg_rank] == 0)) {
+            MPICM_lock();
+            PRINT_DEBUG(DEBUG_CM_verbose>0, "Calling MPIDI_CH3I_PMI_Get_Init_Info for %d\n", vc->pg_rank);
+            MPIDI_CH3I_PMI_Get_Init_Info(vc->pg, vc->pg_rank, NULL);
+            MPICM_unlock();
+        }
+        PRINT_DEBUG(DEBUG_CM_verbose>0, "Calling MPIDI_CH3I_UD_Generate_addr_handle_for_rank %d\n", vc->pg_rank);
+        MPIDI_CH3I_UD_Generate_addr_handle_for_rank(vc->pg, vc->pg_rank);
+    }
 
     IBV_UD_POST_SR(v, vc->mrail.ud[p->rail], ud_ctx);
 
@@ -238,6 +278,7 @@ void mv2_ud_resend(vbuf *v)
 
     p = v->pheader;
     vc = v->vc;
+
     if (p->type == MPIDI_CH3_PKT_ZCOPY_FINISH) {
         int found;
         int hca_index = ((MPIDI_CH3_Pkt_zcopy_finish_t *)p)->hca_index;
@@ -259,6 +300,11 @@ void mv2_ud_resend(vbuf *v)
         ud_ctx->send_wqes_avail--;
         if (ibv_post_send(ud_ctx->qp, &(v->desc.u.sr),&(v->desc.y.bad_sr))) {
             ibv_error_abort(-1, "reliability resend failed");
+        }
+        /* Handle condition where the last close message keeps getting lost */
+        if (unlikely(vc->state == MPIDI_VC_STATE_CLOSE_ACKED ||
+                     vc->state == MPIDI_VC_STATE_CLOSED)) {
+            mv2_unack_queue_clear(vc);
         }
     }
     vc->mrail.rely.resend_count++;

@@ -32,7 +32,7 @@
 
 #include "mpidimpl.h"
 #include <mpimem.h>
-#include "pmi.h"
+#include "upmi.h"
 #include "ib_vbuf.h"
 #include "mpiutil.h"
 #include "ib_process.h"
@@ -153,8 +153,8 @@ void deallocate_vbuf_region()
 
     while (curr) {
         next = curr->next;
-        free(curr->malloc_start);
-        free(curr->malloc_buf_start);
+        MPIU_Memalign_Free(curr->malloc_start);
+        MPIU_Memalign_Free(curr->malloc_buf_start);
         MPIU_Free(curr);
         curr = next;
     }

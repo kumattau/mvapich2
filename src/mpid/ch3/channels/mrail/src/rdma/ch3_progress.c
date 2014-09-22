@@ -28,11 +28,11 @@
 #endif
 
 #ifdef DEBUG
-#include "pmi.h"
+#include "upmi.h"
 #define DEBUG_PRINT(args...)  \
 do {                                                          \
     int rank;                                                 \
-    PMI_Get_rank(&rank);                                      \
+    UPMI_GET_RANK(&rank);                                      \
     fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);\
     fprintf(stderr, args);                                    \
     fflush(stderr); \

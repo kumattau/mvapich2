@@ -20,7 +20,7 @@
 
 #include "mpidimpl.h"
 #include "mpidbg.h"
-#include "pmi.h"
+#include "upmi.h"
 
 #include "ib_errors.h"
 #include "ib_process.h"

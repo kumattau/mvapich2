@@ -23,7 +23,7 @@
 #include "ib_vc.h"
 #include "ib_finalize.h"
 #include "ib_process.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "ib_srq.h"
 #include "mem_hooks.h"
 #include "dreg.h"
@@ -179,8 +179,11 @@ int MPID_nem_ib_finalize(void)
         /* PMI barrier is to make sure that remote peer complete the conn close
          ** protocol in MPIDI_CH3U_VC_WaitForClose. In hydra it is removed to
          ** support run-through stabilization. */
-        PMI_Barrier();
+        UPMI_BARRIER();
     }
+
+	/* Deallocate PMI Key Value Pair */
+	mv2_free_pmi_keyval();
 
     for (i = 0; i < pg_size; i++) {
         if (i == pg_rank) {
@@ -210,13 +213,13 @@ int MPID_nem_ib_finalize(void)
         }
 
         if (VC_FIELD(vc, connection)->rfp.RDMA_send_buf_DMA)
-            MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_send_buf_DMA);
+            MPIU_Memalign_Free(VC_FIELD(vc, connection)->rfp.RDMA_send_buf_DMA);
         if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_DMA)
-            MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_DMA);
+            MPIU_Memalign_Free(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_DMA);
         if (VC_FIELD(vc, connection)->rfp.RDMA_send_buf)
-            MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_send_buf);
+            MPIU_Memalign_Free(VC_FIELD(vc, connection)->rfp.RDMA_send_buf);
         if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf)
-            MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf);
+            MPIU_Memalign_Free(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf);
 
 #ifndef MV2_DISABLE_HEADER_CACHING
         if (NULL != VC_FIELD(vc, connection)) {

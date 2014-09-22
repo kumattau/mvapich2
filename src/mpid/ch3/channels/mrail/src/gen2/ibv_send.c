@@ -21,7 +21,7 @@
 #include "rdma_impl.h"
 #include "ibv_impl.h"
 #include "vbuf.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "mpiutil.h"
 #include "dreg.h"
 #include "debug_utils.h"
@@ -34,7 +34,7 @@
 #define DEBUG_PRINT(args...) \
 do {                                                          \
     int rank;                                                 \
-    PMI_Get_rank(&rank);                                      \
+    UPMI_GET_RANK(&rank);                                      \
     fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);\
     fprintf(stderr, args);                                    \
 } while (0)
@@ -683,7 +683,8 @@ int post_hybrid_send(MPIDI_VC_t* vc, vbuf* v, int rail)
                 && (vc->mrail.rely.total_messages > rdma_ud_num_msg_limit)
                 && ((mv2_MPIDI_CH3I_RDMA_Process.rc_connections + rdma_hybrid_pending_rc_conn)
                     < rdma_hybrid_max_rc_conn)
-                && vc->mrail.rely.ext_window.head == NULL) {
+                && vc->mrail.rely.ext_window.head == NULL
+                && !(vc->state & (MPIDI_VC_STATE_LOCAL_CLOSE | MPIDI_VC_STATE_CLOSE_ACKED))) {
                 /* This is hack to create RC channel usig CM protocol.
                 ** Need to handle this by sending REQ/REP on UD channel itself
                 */

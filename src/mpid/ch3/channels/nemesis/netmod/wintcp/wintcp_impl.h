@@ -30,7 +30,7 @@
 
 #include "mpiu_ex.h"
 #include "socksm.h"
-#include "pmi.h"
+#include "upmi.h"
 
 /* globals */
 extern MPID_nem_queue_ptr_t MPID_nem_newtcp_module_free_queue;

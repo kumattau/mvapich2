@@ -118,6 +118,9 @@ cvars:
 #pragma _HP_SECONDARY_DEF PMPI_Bcast  MPI_Bcast
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Bcast as PMPI_Bcast
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm)
+              __attribute__((weak,alias("PMPI_Bcast")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -1023,8 +1026,9 @@ static int MPIR_SMP_Bcast(
     MPI_Status status;
     int recvd_size;
 
-    if (!MPIR_CVAR_ENABLE_SMP_COLLECTIVES || !MPIR_CVAR_ENABLE_SMP_BCAST)
+    if (!MPIR_CVAR_ENABLE_SMP_COLLECTIVES || !MPIR_CVAR_ENABLE_SMP_BCAST) {
         MPIU_Assert(0);
+    }
     MPIU_Assert(MPIR_Comm_is_node_aware(comm_ptr));
 
     is_homogeneous = 1;
@@ -1459,14 +1463,6 @@ int MPIR_Bcast_impl(void *buffer, int count, MPI_Datatype datatype, int root, MP
 {
     int mpi_errno = MPI_SUCCESS;
 
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        if (is_device_buffer(buffer)) { 
-            enable_device_ptr_checks = 1;
-        }
-    }
-#endif
-
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Bcast != NULL)
     {
        /* --BEGIN USEREXTENSION-- */
@@ -1483,11 +1479,6 @@ int MPIR_Bcast_impl(void *buffer, int count, MPI_Datatype datatype, int root, MP
 
 
  fn_exit:
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        enable_device_ptr_checks = 0;
-    }
-#endif
     return mpi_errno;
  fn_fail:
     goto fn_exit;
@@ -1620,9 +1611,11 @@ int MPI_Bcast( void *buffer, int count, MPI_Datatype datatype, int root,
     if (mpi_errno) goto fn_fail;
 
 #ifdef _OSU_MVAPICH_
-    mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
-    if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+    if (mv2_use_osu_collectives) {
+        mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
     }
 #endif /* _OSU_MVAPICH_ */
 

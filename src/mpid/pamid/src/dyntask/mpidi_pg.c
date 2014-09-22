@@ -4,11 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 #include <mpidimpl.h>
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
+#include "upmi.h"
 
 #ifdef DYNAMIC_TASKING
 
@@ -99,7 +95,7 @@ int MPIDI_PG_Finalize(void)
      MPIU_PG_Printall( stdout );
    }
 
-   /* FIXME - straighten out the use of PMI_Finalize - no use after
+   /* FIXME - straighten out the use of UPMI_FINALIZE - no use after
       PG_Finalize */
    conn_node     = _conn_info_list;
    my_max_worldid  = -1;
@@ -204,11 +200,11 @@ int MPIDI_PG_Finalize(void)
         fails to use MPI_Comm_disconnect on communicators that
         were created with the dynamic process routines.*/
 	/* XXX DJG FIXME-MT should we be checking this? */
-     if (MPIU_Object_get_ref(pg) == 0 || 1) {
+     if (MPIU_Object_get_ref(pg) == 0 ) {
        if (pg == MPIDI_Process.my_pg)
          MPIDI_Process.my_pg = NULL;
-        MPIU_Object_set_ref(pg, 0); /* satisfy assertions in PG_Destroy */
-        MPIDI_PG_Destroy( pg );
+       MPIU_Object_set_ref(pg, 0); /* satisfy assertions in PG_Destroy */
+       MPIDI_PG_Destroy( pg );
      }
      pg     = pgNext;
    }
@@ -218,10 +214,9 @@ int MPIDI_PG_Finalize(void)
       point is that comm_world (and comm_self) still exist, and
       hence the usual process to free the related VC structures will
       not be invoked. */
-   if (MPIDI_Process.my_pg) {
-     MPIDI_PG_Destroy(MPIDI_Process.my_pg);
-   }
-   MPIDI_Process.my_pg = NULL;
+
+   /* The process group associated with MPI_COMM_WORLD will be
+      freed when MPI_COMM_WORLD is freed */
 
    return mpi_errno;
 }
@@ -553,22 +548,6 @@ fn_fail:
    process information */
 static int MPIDI_getConnInfoKVS( int rank, char *buf, int bufsize, MPIDI_PG_t *pg )
 {
-#ifdef USE_PMI2_API
-    char key[MPIDI_MAX_KVS_KEY_LEN];
-    int  mpi_errno = MPI_SUCCESS, rc;
-    int vallen;
-
-    rc = MPIU_Snprintf(key, MPIDI_MAX_KVS_KEY_LEN, "P%d-businesscard", rank );
-
-    mpi_errno = PMI2_KVS_Get(pg->connData, PMI2_ID_NULL, key, buf, bufsize, &vallen);
-    if (mpi_errno) {
-	TRACE_ERR("PMI2_KVS_Get returned with mpi_errno=%d\n", mpi_errno);
-    }
- fn_exit:
-    return mpi_errno;
- fn_fail:
-    goto fn_exit;
-#else
     char key[MPIDI_MAX_KVS_KEY_LEN];
     int  mpi_errno = MPI_SUCCESS, rc, pmi_errno;
 
@@ -578,10 +557,10 @@ static int MPIDI_getConnInfoKVS( int rank, char *buf, int bufsize, MPIDI_PG_t *p
     }
 
 /*    MPIU_THREAD_CS_ENTER(PMI,);*/
-    pmi_errno = PMI_KVS_Get(pg->connData, key, buf, bufsize );
+    pmi_errno = UPMI_KVS_GET(pg->connData, key, buf, bufsize );
     if (pmi_errno) {
 	MPIDI_PG_CheckForSingleton();
-	pmi_errno = PMI_KVS_Get(pg->connData, key, buf, bufsize );
+	pmi_errno = UPMI_KVS_GET(pg->connData, key, buf, bufsize );
     }
 /*    MPIU_THREAD_CS_EXIT(PMI,);*/
     if (pmi_errno) {
@@ -592,7 +571,6 @@ static int MPIDI_getConnInfoKVS( int rank, char *buf, int bufsize, MPIDI_PG_t *p
    return mpi_errno;
  fn_fail:
     goto fn_exit;
-#endif
 }
 
 /* *slen is the length of the string, including the null terminator.  So if the
@@ -712,22 +690,11 @@ static int MPIDI_connFreeKVS( MPIDI_PG_t *pg )
 
 int MPIDI_PG_InitConnKVS( MPIDI_PG_t *pg )
 {
-#ifdef USE_PMI2_API
-    int mpi_errno = MPI_SUCCESS;
-
-    pg->connData = (char *)MPIU_Malloc(MAX_JOBID_LEN);
-    if (pg->connData == NULL) {
-	TRACE_ERR("MPIDI_PG_InitConnKVS - MPIU_Malloc failure\n");
-    }
-
-    mpi_errno = PMI2_Job_GetId(pg->connData, MAX_JOBID_LEN);
-    if (mpi_errno) TRACE_ERR("PMI2_Job_GetId returned with mpi_errno=%d\n", mpi_errno);
-#else
     int pmi_errno, kvs_name_sz;
     int mpi_errno = MPI_SUCCESS;
 
-    pmi_errno = PMI_KVS_Get_name_length_max( &kvs_name_sz );
-    if (pmi_errno != PMI_SUCCESS) {
+    pmi_errno = UPMI_KVS_GET_NAME_LENGTH_MAX( &kvs_name_sz );
+    if (pmi_errno != UPMI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,
 			     "**pmi_kvs_get_name_length_max",
 			     "**pmi_kvs_get_name_length_max %d", pmi_errno);
@@ -738,13 +705,12 @@ int MPIDI_PG_InitConnKVS( MPIDI_PG_t *pg )
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomem");
     }
 
-    pmi_errno = PMI_KVS_Get_my_name(pg->connData, kvs_name_sz);
-    if (pmi_errno != PMI_SUCCESS) {
+    pmi_errno = UPMI_KVS_GET_MY_NAME(pg->connData, kvs_name_sz);
+    if (pmi_errno != UPMI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,
 			     "**pmi_kvs_get_my_name",
 			     "**pmi_kvs_get_my_name %d", pmi_errno);
     }
-#endif
     pg->getConnInfo        = MPIDI_getConnInfoKVS;
     pg->connInfoToString   = MPIDI_connToStringKVS;
     pg->connInfoFromString = MPIDI_connFromStringKVS;
@@ -822,7 +788,7 @@ static int MPIDI_connToString( char **buf_p, int *slen, MPIDI_PG_t *pg )
 #ifdef USE_PMI2_API
         MPIU_Assertp(0); /* don't know what to do here for pmi2 yet.  DARIUS */
 #else
-	PMI_KVS_Get_my_name( pg->id, 256 );
+	UPMI_KVS_GET_MY_NAME( pg->id, 256 );
 #endif
     }
 

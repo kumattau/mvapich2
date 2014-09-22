@@ -33,7 +33,7 @@ int user_val_to_bytes(char* value, const char* param)
     char lastChar='\0';
     char *str;
 
-    PMI_Get_rank(&rank);
+    UPMI_GET_RANK(&rank);
     length=strlen(value);
     lastChar=value[length-1];
     str=alloca(length);

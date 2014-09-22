@@ -63,6 +63,7 @@ static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 #define INTEL_E5_2680_MODEL_NAME    "Intel(R) Xeon(R) CPU E5-2680 0 @ 2.70GHz"
 #define INTEL_E5_2670_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2670 v2 @ 2.50GHz"
 #define INTEL_E5_2630_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2630 v2 @ 2.60GHz"
+#define INTEL_E5_2680_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2680 v2 @ 2.80GHz"
 #define INTEL_E5_2690_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2690 v2 @ 3.00GHz"
 
 typedef struct _mv2_arch_types_log_t{
@@ -86,6 +87,7 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_XEON_E5_2680_16,"MV2_ARCH_INTEL_XEON_E5_2680_16"},
     {MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20,"MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20"},
     {MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12,"MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12"},
+    {MV2_ARCH_INTEL_XEON_E5_2680_V2_2S_20,"MV2_ARCH_INTEL_XEON_E5_2680_V2_2S_20"},
     {MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20,"MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20"},
 
     /* AMD Architectures */
@@ -293,6 +295,8 @@ mv2_arch_type mv2_get_arch_type()
 			  
                             if(NULL != strstr(model_name, INTEL_E5_2670_V2_MODEL_NAME)){
                                 arch_type = MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20;
+                            }else if(NULL != strstr(model_name, INTEL_E5_2680_V2_MODEL_NAME)){
+                                arch_type = MV2_ARCH_INTEL_XEON_E5_2680_V2_2S_20;
                             }else if(NULL != strstr(model_name, INTEL_E5_2690_V2_MODEL_NAME)){
                                 arch_type = MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20;
                             }

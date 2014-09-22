@@ -244,11 +244,7 @@ MPID_nem_newmad_vc_init (MPIDI_VC_t *vc)
    int            val_max_sz;
    int            ret;
    
-#ifdef USE_PMI2_API
-   val_max_sz = PMI2_MAX_VALLEN;
-#else
-   mpi_errno = PMI_KVS_Get_value_length_max(&val_max_sz);
-#endif
+   mpi_errno = UPMI_KVS_GET_VALUE_LENGTH_MAX(&val_max_sz);
    business_card = (char *)MPIU_Malloc(val_max_sz);   
    mpi_errno = vc->pg->getConnInfo(vc->pg_rank, business_card,val_max_sz,vc->pg);
    if (mpi_errno) MPIU_ERR_POP(mpi_errno);

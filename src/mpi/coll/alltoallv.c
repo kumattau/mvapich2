@@ -25,6 +25,11 @@
 #pragma _HP_SECONDARY_DEF PMPI_Alltoallv  MPI_Alltoallv
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Alltoallv as PMPI_Alltoallv
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Alltoallv(const void *sendbuf, const int *sendcounts, const int *sdispls,
+                  MPI_Datatype sendtype, void *recvbuf, const int *recvcounts,
+                  const int *rdispls, MPI_Datatype recvtype, MPI_Comm comm)
+                  __attribute__((weak,alias("PMPI_Alltoallv")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -410,10 +415,6 @@ int MPIR_Alltoallv_impl(const void *sendbuf, const int *sendcounts, const int *s
         total_msgs = comm_size * 2; 
         avg_size = total_size / total_msgs;
 
-        if (sendbuf_on_device || recvbuf_on_device) {
-            enable_device_ptr_checks = 1;
-        }
-
         if ((sendbuf_on_device || recvbuf_on_device) &&
              rdma_cuda_use_naive &&
              avg_size <= rdma_cuda_alltoallv_naive_limit) {
@@ -463,11 +464,6 @@ int MPIR_Alltoallv_impl(const void *sendbuf, const int *sendcounts, const int *s
 #endif
 
  fn_exit:
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        enable_device_ptr_checks = 0;
-    }
-#endif
     return mpi_errno;
  fn_fail:
     goto fn_exit;
@@ -558,9 +554,12 @@ int MPI_Alltoallv(const void *sendbuf, const int *sendcounts,
             MPID_Comm_valid_ptr( comm_ptr, mpi_errno );
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
-            if (comm_ptr->comm_kind == MPID_INTRACOMM)
+            if (comm_ptr->comm_kind == MPID_INTRACOMM) {
                 comm_size = comm_ptr->local_size;
-            else
+
+                if (sendbuf != MPI_IN_PLACE && sendtype == recvtype && sendcounts == recvcounts)
+                    MPIR_ERRTEST_ALIAS_COLL(sendbuf, recvbuf, mpi_errno);
+            } else
                 comm_size = comm_ptr->remote_size;
 
             if (comm_ptr->comm_kind == MPID_INTERCOMM && sendbuf == MPI_IN_PLACE) {

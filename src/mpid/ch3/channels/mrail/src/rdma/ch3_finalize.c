@@ -21,9 +21,10 @@
 #include "rdma_impl.h"
 #include "mem_hooks.h"
 #include "debug_utils.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "coll_shmem.h"
 #include "hwloc_bind.h"
+#include "cm.h"
 #if defined(_MCST_SUPPORT_)
 #include "ibv_mcast.h"
 #endif
@@ -89,7 +90,7 @@ int MPIDI_CH3_Finalize()
 #ifdef RDMA_CM
         else if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
             /*FillMe:call RDMA_CM's finalization here*/
-            mpi_errno = MPIDI_CH3I_CM_Finalize();
+            mpi_errno = MPIDI_CH3I_RDMA_CM_Finalize();
         }
 #endif
         else {
@@ -110,6 +111,9 @@ int MPIDI_CH3_Finalize()
     if(mv2_enable_affinity == 1) { 
        hwloc_topology_destroy(topology);
     } 
+
+    /* Deallocate PMI Key Value Pair */
+    mv2_free_pmi_keyval();
 
 fn_exit:
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));

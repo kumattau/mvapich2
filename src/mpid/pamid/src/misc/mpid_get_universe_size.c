@@ -27,11 +27,7 @@
 #include <mpidimpl.h>
 
 #ifdef DYNAMIC_TASKING
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif  /* USE_PMI2_API */
+#include "upmi.h"
 #endif  /* DYNAMIC_TASKING */
 
 extern int mpidi_dynamic_tasking;
@@ -64,10 +60,10 @@ int MPID_Get_universe_size(int  * universe_size)
         TRACE_ERR("PMI2_Info_GetJobAttr found universe_size=%d\n", *universe_size);
       }
 #else
-      int pmi_errno = PMI_SUCCESS;
+      int pmi_errno = UPMI_SUCCESS;
 
-      pmi_errno = PMI_Get_universe_size(universe_size);
-      if (pmi_errno != PMI_SUCCESS) {
+      pmi_errno = UPMI_GET_UNIVERSE_SIZE(universe_size);
+      if (pmi_errno != UPMI_SUCCESS) {
         MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER,
 			     "**pmi_get_universe_size",
 			     "**pmi_get_universe_size %d", pmi_errno);

@@ -14,6 +14,10 @@
 #pragma _HP_SECONDARY_DEF PMPI_Reduce_local  MPI_Reduce_local
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Reduce_local as PMPI_Reduce_local
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Reduce_local(const void *inbuf, void *inoutbuf, int count, MPI_Datatype datatype,
+                     MPI_Op op)
+                     __attribute__((weak,alias("PMPI_Reduce_local")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -46,6 +50,44 @@ int MPIR_Reduce_local_impl(const void *inbuf, void *inoutbuf, int count, MPI_Dat
 
     MPIU_THREADPRIV_GET;
     MPIU_THREADPRIV_FIELD(op_errno) = MPI_SUCCESS;
+
+#ifdef _ENABLE_CUDA_
+    int stride = 0;
+    MPI_Aint true_lb, true_extent, extent;
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+    stride = count * MPIR_MAX(extent, true_extent);
+    int recv_mem_type = 0;
+    int send_mem_type = 0;
+    char *recv_host_buf = NULL;
+    char *send_host_buf = NULL;
+    char *temp_recvbuf = inoutbuf;
+    char *temp_sendbuf = inbuf;
+
+    if (rdma_enable_cuda) {
+       recv_mem_type = is_device_buffer(inoutbuf);
+       if ( inbuf != MPI_IN_PLACE ){
+         send_mem_type = is_device_buffer(inbuf);
+       }
+    }
+    if(rdma_enable_cuda && send_mem_type){
+        send_host_buf = (char*) MPIU_Malloc(stride);
+        MPIU_Memcpy_CUDA((void *)send_host_buf, 
+                            (void *)inbuf, 
+                            stride,
+                            cudaMemcpyDeviceToHost);
+        inbuf = send_host_buf;
+    }
+
+    if(rdma_enable_cuda && recv_mem_type){
+        recv_host_buf = (char*) MPIU_Malloc(stride);
+        MPIU_Memcpy_CUDA((void *)recv_host_buf, 
+                            (void *)inoutbuf, 
+                            stride,
+                            cudaMemcpyDeviceToHost);
+        inoutbuf = recv_host_buf;
+    }
+#endif
 
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
         /* get the function by indexing into the op table */
@@ -97,6 +139,29 @@ int MPIR_Reduce_local_impl(const void *inbuf, void *inoutbuf, int count, MPI_Dat
         (*uop)((void *) inbuf, inoutbuf, &count, &datatype);
 #endif
     }
+    
+#ifdef _ENABLE_CUDA_
+    if(rdma_enable_cuda && recv_mem_type){
+        inoutbuf = temp_recvbuf;
+        inbuf = temp_sendbuf;
+        MPIU_Memcpy_CUDA((void *)inoutbuf, 
+                            (void *)recv_host_buf, 
+                            stride, 
+                            cudaMemcpyHostToDevice);
+    }
+    if(rdma_enable_cuda && recv_mem_type){
+        if(recv_host_buf){
+            MPIU_Free(recv_host_buf);
+            recv_host_buf = NULL;
+        }
+    }
+    if(rdma_enable_cuda && send_mem_type){
+        if(send_host_buf){
+            MPIU_Free(send_host_buf);
+            send_host_buf = NULL;
+        }
+    }
+#endif
 
     /* --BEGIN ERROR HANDLING-- */
     if (MPIU_THREADPRIV_FIELD(op_errno))

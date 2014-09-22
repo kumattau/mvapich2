@@ -59,6 +59,10 @@ cvars:
 #pragma _HP_SECONDARY_DEF PMPI_Allgather  MPI_Allgather
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Allgather as PMPI_Allgather
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+                  int recvcount, MPI_Datatype recvtype, MPI_Comm comm)
+                  __attribute__((weak,alias("PMPI_Allgather")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -837,15 +841,6 @@ int MPIR_Allgather_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
 {
     int mpi_errno = MPI_SUCCESS;
 
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        if (is_device_buffer(sendbuf)
-            || is_device_buffer(recvbuf)) {
-            enable_device_ptr_checks = 1;
-        }
-    }
-#endif
-
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Allgather != NULL)
     {
 	/* --BEGIN USEREXTENSION-- */
@@ -862,11 +857,6 @@ int MPIR_Allgather_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
     }
 
 fn_exit:
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        enable_device_ptr_checks = 0;
-    }
-#endif
     return mpi_errno;
 fn_fail:
     goto fn_exit;
@@ -960,8 +950,18 @@ int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
             MPID_Comm_valid_ptr( comm_ptr, mpi_errno );
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
-	    if (comm_ptr->comm_kind == MPID_INTERCOMM)
+            if (comm_ptr->comm_kind == MPID_INTERCOMM) {
                 MPIR_ERRTEST_SENDBUF_INPLACE(sendbuf, sendcount, mpi_errno);
+            } else {
+                /* catch common aliasing cases */
+                if (sendbuf != MPI_IN_PLACE && sendtype == recvtype &&
+                        recvcount != 0 && sendcount != 0) {
+                    int recvtype_size;
+                    MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+                    MPIR_ERRTEST_ALIAS_COLL(sendbuf, (char*)recvbuf + comm_ptr->rank*recvcount*recvtype_size, mpi_errno);
+                }
+            }
+
             if (sendbuf != MPI_IN_PLACE)
 	    {
                 MPIR_ERRTEST_COUNT(sendcount, mpi_errno);
@@ -989,10 +989,6 @@ int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                 if (mpi_errno != MPI_SUCCESS) goto fn_fail;
             }
 	    MPIR_ERRTEST_USERBUFFER(recvbuf,recvcount,recvtype,mpi_errno);
-
-            /* catch common aliasing cases */
-            if (sendbuf != MPI_IN_PLACE && sendtype == recvtype && recvcount != 0 && sendcount != 0)
-                MPIR_ERRTEST_ALIAS_COLL(sendbuf,recvbuf,mpi_errno);
         }
         MPID_END_ERROR_CHECKS;
     }
@@ -1005,12 +1001,14 @@ int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                                     comm_ptr, &errflag);
     if (mpi_errno) goto fn_fail;
 #ifdef _OSU_MVAPICH_
-    if(comm_ptr->ch.allgather_comm_ok >= 0) {
-        mpi_errno = mv2_increment_allgather_coll_counter(comm_ptr);
-        if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+    if (mv2_use_osu_collectives) {
+        if(comm_ptr->ch.allgather_comm_ok >= 0) {
+            mpi_errno = mv2_increment_allgather_coll_counter(comm_ptr);
+            if (mpi_errno) {
+                MPIU_ERR_POP(mpi_errno);
+            }
         }
-    } 
+    }
 #endif /* _OSU_MVAPICH_ */
     
     /* ... end of body of routine ... */

@@ -99,8 +99,9 @@ static struct option option_table[] = {
     // This option enables the group selection for mpispawns
     {"sg", required_argument, 0, 0},
     {"export", no_argument, 0, 0},
+    {"export-all", no_argument, 0, 0},
 #if defined(CKPT) && defined(CR_FTB)
-    {"sparehosts", required_argument, 0, 0},    // 19
+    {"sparehosts", required_argument, 0, 0},    // 20
 #endif
     {0, 0, 0, 0}
 };
@@ -291,10 +292,13 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
                 DBG(printf("Group change requested: '%s'\n", change_group));
                 break;
             case 18:
-                enable_send_environ();
+                enable_send_environ(0);
+                break;
+            case 19:
+                enable_send_environ(1);
                 break;
 #if defined(CKPT) && defined(CR_FTB)
-            case 19:
+            case 20:
                 sparehosts_on = 1;
                 strncpy(sparehostfile, optarg, HOSTFILE_LEN);
                 if (strlen(optarg) >= HOSTFILE_LEN - 1) {
@@ -388,9 +392,10 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 void usage(const char * arg0)
 {
     fprintf(stderr, "usage: mpirun_rsh [-v] [-sg group] [-rsh|-ssh] "
-            "[-debug] -[tv] [-xterm] [-show] [-legacy] [-export] -np N"
+            "[-debug] -[tv] [-xterm] [-show] [-legacy] [-export|-export-all] "
+            "-np N "
 #if defined(CKPT) && defined(CR_FTB)
-            " [-sparehosts sparehosts_file] "
+            "[-sparehosts sparehosts_file] "
 #endif
             "(-hostfile hfile | h1 h2 ... hN) a.out args | -config configfile (-hostfile hfile | h1 h2 ... hN)]\n");
     fprintf(stderr, "Where:\n");
@@ -403,6 +408,7 @@ void usage(const char * arg0)
     fprintf(stderr, "\tshow       => " "show command for remote execution but don't run it\n");
     fprintf(stderr, "\tlegacy     => " "use old startup method (1 ssh/process)\n");
     fprintf(stderr, "\texport     => " "automatically export environment to remote processes\n");
+    fprintf(stderr, "\texport-all => " "automatically export environment to remote processes even if already set remotely\n");
     fprintf(stderr, "\tnp         => " "specify the number of processes\n");
     fprintf(stderr, "\th1 h2...   => " "names of hosts where processes should run\n");
     fprintf(stderr, "or\thostfile   => " "name of file containing hosts, one per line\n");

@@ -18,5 +18,7 @@ SUFFIXES = .cu .cpp
 .cu.cpp:
 	$(NVCC) $(NVCFLAGS) $(INCLUDES) $(CPPFLAGS) --output-file $@ $<
 
-lib_lib@MPILIBNAME@_la_SOURCES += \
+mpi_core_sources += \
     src/mpid/ch3/channels/mrail/src/cuda/pack_unpack.cu
+
+lib_lib@MPILIBNAME@_la_LIBADD += -lstdc++

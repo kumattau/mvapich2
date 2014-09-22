@@ -19,7 +19,7 @@
 #define _GNU_SOURCE
 #include "mpiimpl.h"
 #include "mpidimpl.h"
-#include "pmi.h"
+#include "upmi.h"
 #include "ib_device.h"
 #include "ib_vc.h"
 #include "ib_send.h"
@@ -51,7 +51,7 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
     MPIDI_CH3I_VC *vc_ch = &vc->ch;
     int pg_size;
     int i;
-    PMI_Get_size(&pg_size);
+    UPMI_GET_SIZE(&pg_size);
 
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_IB_VC_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_IB_VC_INIT);

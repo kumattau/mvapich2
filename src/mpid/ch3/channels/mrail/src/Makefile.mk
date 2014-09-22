@@ -14,7 +14,7 @@
 
 AM_CPPFLAGS += -D_GNU_SOURCE
 
-lib_lib@MPILIBNAME@_la_SOURCES	+=					\
+mpi_core_sources	+=					\
     src/mpid/ch3/channels/mrail/src/rdma/mpid_mrail_rndv.c		\
     src/mpid/ch3/channels/mrail/src/rdma/ch3_finalize.c			\
     src/mpid/ch3/channels/mrail/src/rdma/ch3_init.c			\
@@ -40,14 +40,14 @@ lib_lib@MPILIBNAME@_la_SOURCES	+=					\
     src/mpid/ch3/channels/mrail/src/rdma/ch3_contigsend.c       \
     src/mpid/ch3/channels/mrail/src/rdma/ch3_win_fns.c
 
-lib_lib@MPILIBNAME@_la_LIBADD += libch3affinity.la
+mpi_convenience_libs += libch3affinity.la
 
 if BUILD_MRAIL_GEN2
 
 AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/mrail/src/gen2 \
 			   -I$(top_srcdir)/src/mpi/coll
 
-lib_lib@MPILIBNAME@_la_SOURCES	+=					\
+mpi_core_sources	+=					\
     src/mpid/ch3/channels/mrail/src/gen2/ibv_send.c			\
     src/mpid/ch3/channels/mrail/src/gen2/ibv_recv.c			\
     src/mpid/ch3/channels/mrail/src/gen2/ibv_ud.c			\

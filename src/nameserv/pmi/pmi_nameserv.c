@@ -10,11 +10,7 @@
 
 #include "mpiimpl.h"
 #include "namepub.h"
-#ifdef USE_PMI2_API
-#include "pmi2.h"
-#else
-#include "pmi.h"
-#endif
+#include "upmi.h"
 
 /* style: allow:fprintf:1 sig:0 */   /* For writing the name/service pair */
 
