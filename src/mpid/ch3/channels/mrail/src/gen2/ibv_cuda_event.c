@@ -16,6 +16,13 @@
 #include "ibv_cuda_util.h"
 #include "dreg.h"
 
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
+
 #ifdef _ENABLE_CUDA_
 void *cuda_event_region = NULL;
 cuda_event_t *free_cudaipc_event_list_head = NULL;
@@ -204,7 +211,7 @@ void process_cuda_event_op(cuda_event_t * event)
                     offset = rail*stripe_avg; 
                     stripe_size = (rail < rdma_num_rails-1) ? stripe_avg : (size - offset);
 
-                    v = get_vbuf();
+                    GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                     v->sreq = req;
                     v->orig_vbuf = orig_vbuf;
 
@@ -245,7 +252,7 @@ void process_cuda_event_op(cuda_event_t * event)
                     offset = rail*stripe_avg;
                     stripe_size = (rail < rdma_num_rails-1) ? stripe_avg : (size - offset);
 
-                    v = get_vbuf();
+                    GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                     v->sreq = req;
                     v->orig_vbuf = orig_vbuf;
 
@@ -289,7 +296,7 @@ void process_cuda_event_op(cuda_event_t * event)
                 "buf:%p\n", cuda_vbuf->buffer);
             temp_buf = cuda_vbuf->next;
             cuda_vbuf->next = NULL;
-            release_cuda_vbuf(cuda_vbuf);
+            release_vbuf(cuda_vbuf);
             cuda_vbuf = temp_buf;
         }
         event->cuda_vbuf_head = event->cuda_vbuf_tail = NULL; 

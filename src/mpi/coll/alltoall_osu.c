@@ -22,11 +22,11 @@
 #include "coll_shmem.h"
 #include "alltoall_tuning.h"
 
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoall_mv2_inplace);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoall_mv2_bruck);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoall_mv2_rd);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoall_mv2_sd);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoall_mv2_pw);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_inplace);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_bruck);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_rd);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_sd);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_pw);
 
 /* This is the default implementation of alltoall. The algorithm is:
    
@@ -88,7 +88,7 @@ int MPIR_Alltoall_inplace_MV2(
     MPID_Comm *comm_ptr,
     int *errflag )
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoall_mv2_inplace, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoall_inplace, 1);
     int          comm_size, i, j;
     MPI_Aint     recvtype_extent;
     int mpi_errno=MPI_SUCCESS;
@@ -183,7 +183,7 @@ int MPIR_Alltoall_bruck_MV2(
                             MPID_Comm *comm_ptr,
                             int *errflag )
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoall_mv2_bruck, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoall_bruck, 1);
     int          comm_size, i, pof2;
     MPI_Aint     sendtype_extent, recvtype_extent;
     MPI_Aint recvtype_true_extent, recvbuf_extent, recvtype_true_lb;
@@ -377,7 +377,7 @@ int MPIR_Alltoall_RD_MV2(
                             MPID_Comm *comm_ptr,
                             int *errflag )
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoall_mv2_rd, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoall_rd, 1);
     int          comm_size, i, j;
     MPI_Aint     sendtype_extent, recvtype_extent;
     int mpi_errno=MPI_SUCCESS;
@@ -576,7 +576,7 @@ int MPIR_Alltoall_Scatter_dest_MV2(
                             MPID_Comm *comm_ptr,
                             int *errflag )
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoall_mv2_sd, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoall_sd, 1);
     int          comm_size, i, j;
     MPI_Aint     sendtype_extent = 0, recvtype_extent = 0;
     int mpi_errno=MPI_SUCCESS;
@@ -694,7 +694,7 @@ int MPIR_Alltoall_pairwise_MV2(
                             MPID_Comm *comm_ptr,
                             int *errflag )
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoall_mv2_pw, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoall_pw, 1);
     int          comm_size, i, pof2;
     MPI_Aint     sendtype_extent, recvtype_extent;
     int mpi_errno=MPI_SUCCESS;
@@ -816,9 +816,9 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
     nbytes = sendtype_size * sendcount;
 
     /* check if safe to use partial subscription mode */
-    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    if (comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_uniform) {
     
-        shmem_comm = comm_ptr->ch.shmem_comm;
+        shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
         i = 0;
@@ -860,7 +860,7 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
     }
     else {
 	/* Comm size in between smallest and largest configuration: find closest match */
-	if (comm_ptr->ch.is_pof2) {
+	if (comm_ptr->dev.ch.is_pof2) {
 	    comm_size_index = log2( comm_size / table_min_comm_size );
 	}
 	else {
@@ -949,9 +949,9 @@ int MPIR_Alltoall_tune_intra_MV2(
     nbytes = sendtype_size * sendcount;
 
     /* check if safe to use partial subscription mode */
-    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    if (comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_uniform) {
     
-        shmem_comm = comm_ptr->ch.shmem_comm;
+        shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
         i = 0;

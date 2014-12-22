@@ -258,14 +258,6 @@ do {                                                            \
 /* Return type of the sending interfaces */
 #define MPI_MRAIL_MSG_QUEUED (-1)
 
-int MPIDI_CH3I_MRAILI_Fast_rdma_ok(struct MPIDI_VC * vc, MPIDI_msg_sz_t len);
-
-int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(struct MPIDI_VC * vc,
-                                              MPID_IOV *iov,
-                                              int n_iov,
-                                              int * nb, 
-                                              vbuf ** v);
-
 int MPIDI_CH3I_RDMA_cq_poll(void);
 
 void MRAILI_Init_vc(struct MPIDI_VC* vc);

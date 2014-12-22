@@ -500,7 +500,7 @@ static int checkValidErrcode( int error_class, const char fcname[],
     int errcode = *errcode_p;
     int rc = 0;
 
-    if (error_class > MPICH_ERR_LAST_CLASS)
+    if (error_class > MPICH_ERR_LAST_MPIX)
     {
 	/* --BEGIN ERROR HANDLING-- */
 	if (errcode & ~ERROR_CLASS_MASK)
@@ -552,7 +552,7 @@ int MPIR_Err_combine_codes(int error1, int error2)
 
     error2_class = MPIR_ERR_GET_CLASS(error2_code);
     if (MPIR_ERR_GET_CLASS(error2_class) < MPI_SUCCESS ||
-	MPIR_ERR_GET_CLASS(error2_class) > MPICH_ERR_LAST_CLASS)
+	MPIR_ERR_GET_CLASS(error2_class) > MPICH_ERR_LAST_MPIX)
     {
 	error2_class = MPI_ERR_OTHER;
     }
@@ -935,7 +935,7 @@ int MPIR_Err_create_code_valist( int lastcode, int fatal, const char fcname[],
     if (error_class == MPI_ERR_OTHER)
     {
         if (MPIR_ERR_GET_CLASS(lastcode) > MPI_SUCCESS && 
-	    MPIR_ERR_GET_CLASS(lastcode) <= MPICH_ERR_LAST_CLASS)
+	    MPIR_ERR_GET_CLASS(lastcode) <= MPICH_ERR_LAST_MPIX)
 	{
 	    /* If the last class is more specific (and is valid), then pass it 
 	       through */
@@ -1301,7 +1301,7 @@ static void MPIR_Err_print_stack_string(int errcode, char *str, int maxlen )
 
 	error_class = ERROR_GET_CLASS(errcode);
 	
-	if (error_class <= MPICH_ERR_LAST_CLASS)
+	if (error_class <= MPICH_ERR_LAST_MPIX)
 	{
 	    MPIU_Snprintf(str, maxlen, "(unknown)(): %s\n", 
 			  get_class_msg(ERROR_GET_CLASS(errcode)));

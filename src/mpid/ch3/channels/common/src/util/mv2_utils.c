@@ -17,7 +17,7 @@
 #include <string.h>
 #include <alloca.h>
 #include <ctype.h>
-#include <pmi.h>
+#include <upmi.h>
 
 /****Function Definitions****/
 /**

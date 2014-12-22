@@ -143,7 +143,7 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
         }
 
         /* Is comm_size a power-of-two? */
-        pof2 = comm_ptr->ch.is_pof2;
+        pof2 = comm_ptr->dev.ch.is_pof2;
 
         /* Do the pairwise exchanges */
         for (i = 1; i < comm_size; i++) {

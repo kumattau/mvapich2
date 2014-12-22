@@ -54,6 +54,13 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	goto fn_exit;
     }
 
+    /* Check to make sure the communicator hasn't already been revoked */
+    if (comm->revoked &&
+            MPIR_AGREE_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask) &&
+            MPIR_SHRINK_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask)) {
+        MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
+    }
+
     /* psm buffers unexpected messages internally, so we don't need the ch3
        unexpected queue. If data is contig just call the blocking MPIDI_CH3_Recv
        If data is non-contig,... */
@@ -99,7 +106,6 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
     }
     goto fn_exit;
 #endif
-
 
     MPIU_THREAD_CS_ENTER(MSGQUEUE,);
     rreq = MPIDI_CH3U_Recvq_FDU_or_AEP(rank, tag, 

@@ -34,6 +34,7 @@
 #if defined(_ENABLE_CUDA_)
 #include "ibv_cuda_util.h"
 #endif
+#include <mpiutil.h>
 
 #define CREDIT_VBUF_FLAG (111)
 #define NORMAL_VBUF_FLAG (222)
@@ -115,23 +116,6 @@ typedef enum {
 #define UD_VBUF_SEND_INPROGRESS     (0x02)
 #define UD_VBUF_RETRY_ALWAYS        (0x04)
 #define UD_VBUF_MCAST_MSG           (0x08)
-
-#ifdef _ENABLE_UD_
-#define MRAILI_Get_buffer(_vc, _v)                  \
-do {                                                \
-    if((_vc)->mrail.state & MRAILI_RC_CONNECTED) {  \
-        (_v) = get_vbuf();                          \
-    } else  {                                       \
-        (_v) = get_ud_vbuf();                       \
-    }                                               \
-} while (0)
-
-#else
-#define MRAILI_Get_buffer(_vc, _v)  \
-do {                                \
-    (_v) = get_vbuf();              \
-} while (0)
-#endif 
 
 
 #define MV2_UD_GRH_LEN (40)
@@ -225,13 +209,11 @@ typedef struct vbuf
     LINK mcast_recvwin_msg;
 #endif
 #endif
-#ifdef _ENABLE_CUDA_
     void *pool_index;
     void *next;
     void *orig_vbuf;
     uint8_t finish_count;
     uint16_t displacement;
-#endif
 } vbuf;
 
 /* one for head and one for tail */
@@ -269,9 +251,7 @@ typedef struct vbuf_region
     struct vbuf* vbuf_head;     /* first vbuf in region       */
     struct vbuf_region* next;   /* thread vbuf regions        */
     int shmid;
-#ifdef _ENABLE_CUDA_
     void *pool_index;   /* region allocated for a pool */
-#endif
 } vbuf_region;
 
 /* The data structure to hold vbuf pool info */
@@ -290,12 +270,6 @@ typedef struct vbuf_pool
     vbuf_region *region_head;
 }vbuf_pool_t;
 
-/* index into vbuf pool */
-enum {
-    CUDA_EAGER_BUF = 0,
-    CUDA_RNDV_BLOCK_BUF,
-};
-
 #define RDMA_VBUF_POOL_INIT(rdma_vbuf_pool)     \
 do{                                             \
     rdma_vbuf_pool.free_head = NULL;            \
@@ -308,6 +282,261 @@ do{                                             \
     rdma_vbuf_pool.num_freed = 0;               \
 } while(0)
     
+#define MV2_INIT_VBUF(_v)                               \
+do {                                                    \
+    /* Need to change this to RPUT_VBUF_FLAG later      \
+     * if we are doing rput */                          \
+    (_v)->padding = NORMAL_VBUF_FLAG;                   \
+    (_v)->pheader = (void *)(_v)->buffer;               \
+    /* This is probably not the right place to          \
+     * initialize shandle to NULL. Do it here for now   \
+     * because it will make sure it is always           \
+     * initialized. Otherwise we would need to very     \
+     * carefully add the initialization in              \
+     * a dozen other places, and probably miss one. */  \
+    (_v)->sreq = NULL;                                  \
+    (_v)->coalesce = 0;                                 \
+    (_v)->content_size = 0;                             \
+    (_v)->eager = 0;                                    \
+    (_v)->finish_count = 0;                             \
+    (_v)->orig_vbuf = NULL;                             \
+    (_v)->displacement = 0;                             \
+    /*This is used for RMA put/get*/                    \
+    (_v)->target_rank = -1;                             \
+} while (0)
+
+#define MV2_INIT_RC_VBUF(_v)                            \
+do {                                                    \
+    /* Init VBUF elements */                            \
+    MV2_INIT_VBUF(_v);                                  \
+    /* Decide which transport need to assign here */    \
+    (_v)->transport = IB_TRANSPORT_RC;                  \
+} while (0)
+
+#define MV2_GET_AND_INIT_RC_VBUF(_v, _pool)             \
+do {                                                    \
+    (_v) = (_pool)->free_head;                          \
+    (_pool)->free_head = (_pool)->free_head->desc.next; \
+    --(_pool)->num_free;                                \
+    ++(_pool)->num_get;                                 \
+                                                        \
+    MPIR_T_PVAR_LEVEL_DEC(MV2, mv2_vbuf_available, 1);  \
+    MV2_INIT_RC_VBUF((_v));                             \
+} while (0)
+
+/* Reset VBUF parameters */
+#define MV2_RESET_VBUF(_v)      \
+do {                            \
+    (_v)->vc           = NULL;  \
+    (_v)->sreq         = NULL;  \
+    (_v)->pheader      = NULL;  \
+    (_v)->orig_vbuf    = NULL;  \
+    *(_v)->head_flag   = 0;     \
+    (_v)->content_size = 0;     \
+    (_v)->finish_count = 0;     \
+    (_v)->displacement = 0;     \
+} while (0)
+
+#define MV2_RELEASE_RC_VBUF(_v, _pool)                  \
+do {                                                    \
+    (_v)->desc.next = (_pool)->free_head;               \
+    (_pool)->free_head = (_v);                          \
+    ++(_pool)->num_free;                                \
+    ++(_pool)->num_freed;                               \
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_vbuf_freed, 1);    \
+    MPIR_T_PVAR_LEVEL_INC(MV2, mv2_vbuf_available, 1);  \
+} while (0)
+
+#define MV2_RELEASE_VBUF_NO_LOCK(_v)                        \
+do {                                                        \
+    vbuf_pool_t *__pool = (_v)->pool_index;                 \
+                                                            \
+    MPIU_Assert((_v)->padding == NORMAL_VBUF_FLAG ||        \
+                (_v)->padding == RPUT_VBUF_FLAG ||          \
+                (_v)->padding == RGET_VBUF_FLAG ||          \
+                (_v)->padding == RDMA_ONE_SIDED ||          \
+                (_v)->padding == COLL_VBUF_FLAG);           \
+                                                            \
+    MV2_RELEASE_RC_VBUF((_v), (__pool));                    \
+    MV2_RESET_VBUF((_v));                                   \
+} while (0)
+
+#define MV2_PREPARE_VBUF_FOR_REPOST(_v)                     \
+do {                                                        \
+    vbuf_pool_t *__pool = (_v)->pool_index;                 \
+    ++(__pool)->num_get;                                    \
+    ++(__pool)->num_freed;                                  \
+    MV2_RESET_VBUF((_v));                                   \
+    MV2_INIT_RC_VBUF((_v));                                 \
+} while (0)
+
+#define VBUF_INIT_RECV(_v, _len, _rail)                                     \
+do {                                                                        \
+    int _hca_num = (_rail) / (rdma_num_rails / rdma_num_hcas);              \
+                                                                            \
+    MPIU_Assert((_v) != NULL);                                              \
+                                                                            \
+    (_v)->desc.u.rr.next = NULL;                                            \
+    (_v)->desc.u.rr.wr_id = (uintptr_t) (_v);                               \
+    (_v)->desc.u.rr.num_sge = 1;                                            \
+    (_v)->desc.u.rr.sg_list = &((_v)->desc.sg_entry);                       \
+    (_v)->desc.sg_entry.length = (_len);                                    \
+    (_v)->desc.sg_entry.lkey = (_v)->region->mem_handle[_hca_num]->lkey;    \
+    (_v)->desc.sg_entry.addr = (uintptr_t)((_v)->buffer);                   \
+    (_v)->padding = NORMAL_VBUF_FLAG;                                       \
+    (_v)->rail = (_rail);                                                   \
+} while (0)
+
+#define MV2_REPOST_VBUF_FROM_POOL_TO_SRQ(_pool)                                     \
+do {                                                                                \
+    vbuf *_v = NULL;                                                                \
+    int _hca_num = -1;                                                              \
+    struct ibv_recv_wr* _bad_wr = NULL;                                             \
+                                                                                    \
+    MV2_GET_AND_INIT_RC_VBUF((_v), (_pool));                                        \
+                                                                                    \
+    MPIU_Assert(((vbuf_pool_t*)(_v)->pool_index)->index ==                          \
+                                MV2_RECV_VBUF_POOL_OFFSET);                         \
+                                                                                    \
+    _hca_num = (_v)->rail / (rdma_num_rails / rdma_num_hcas);                       \
+                                                                                    \
+    MV2_PREPARE_VBUF_FOR_REPOST((_v));                                              \
+    VBUF_INIT_RECV((_v), VBUF_BUFFER_SIZE, (_v)->rail);                             \
+    if (unlikely(ibv_post_srq_recv(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[_hca_num],  \
+                            &(_v)->desc.u.rr, &_bad_wr))) {                         \
+        MV2_RELEASE_RC_VBUF((_v), (_pool));                                         \
+    }                                                                               \
+} while (0)
+
+#define MV2_REPOST_VBUF_TO_SRQ(_v, _pool)                                           \
+do {                                                                                \
+    int _hca_num = -1;                                                              \
+    struct ibv_recv_wr* _bad_wr = NULL;                                             \
+                                                                                    \
+    MPIU_Assert(((vbuf_pool_t*)(_v)->pool_index)->index ==                          \
+                                MV2_RECV_VBUF_POOL_OFFSET);                         \
+                                                                                    \
+    _hca_num = (_v)->rail / (rdma_num_rails / rdma_num_hcas);                       \
+                                                                                    \
+    MV2_PREPARE_VBUF_FOR_REPOST((_v));                                              \
+    VBUF_INIT_RECV((_v), VBUF_BUFFER_SIZE, (_v)->rail);                             \
+    if (unlikely(ibv_post_srq_recv(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[_hca_num],  \
+                            &(_v)->desc.u.rr, &_bad_wr))) {                         \
+        MV2_RELEASE_RC_VBUF((_v), (_pool));                                         \
+    }                                                                               \
+} while (0)
+
+int allocate_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool, int nvbufs);
+
+#define GET_VBUF_BY_OFFSET_WITHOUT_LOCK(_v, _offset)                                \
+do {                                                                                \
+    MPIU_Assert((_offset) != MV2_RECV_VBUF_POOL_OFFSET);                            \
+                                                                                    \
+    vbuf_pool_t *__pool = &rdma_vbuf_pools[(_offset)];                              \
+                                                                                    \
+    if (likely(__pool->free_head)) {                                                \
+        MV2_GET_AND_INIT_RC_VBUF((_v), __pool);                                     \
+    } else {                                                                        \
+        if (allocate_vbuf_pool(__pool, __pool->incr_count) != 0) {                  \
+            ibv_va_error_abort(GEN_EXIT_ERR,"vbuf pool allocation failed");         \
+        }                                                                           \
+        MV2_GET_AND_INIT_RC_VBUF((_v), __pool);                                     \
+    }                                                                               \
+} while (0)
+
+#ifdef _ENABLE_CUDA_
+#define SIZE_TO_OFFSET(_msg_sz, _offset)                                            \
+do {                                                                                \
+    (_offset) = (((_msg_sz) <= DEFAULT_SMALL_VBUF_SIZE)?                            \
+                    MV2_SMALL_DATA_VBUF_POOL_OFFSET:                                \
+                    (((_msg_sz) <= DEFAULT_MEDIUM_VBUF_SIZE)?                       \
+                        MV2_MEDIUM_DATA_VBUF_POOL_OFFSET:                           \
+                        (((_msg_sz) <= rdma_vbuf_total_size)?                       \
+                            MV2_LARGE_DATA_VBUF_POOL_OFFSET:                        \
+                            MV2_CUDA_VBUF_POOL_OFFSET)));                           \
+} while (0)
+#else
+#define SIZE_TO_OFFSET(_msg_sz, _offset)                                            \
+do {                                                                                \
+    (_offset) = (((_msg_sz) <= DEFAULT_SMALL_VBUF_SIZE)?                            \
+                    MV2_SMALL_DATA_VBUF_POOL_OFFSET:                                \
+                    (((_msg_sz) <= DEFAULT_MEDIUM_VBUF_SIZE)?                       \
+                        MV2_MEDIUM_DATA_VBUF_POOL_OFFSET:                           \
+                        MV2_LARGE_DATA_VBUF_POOL_OFFSET));                          \
+} while (0)
+#endif /* _ENABLE_CUDA_ */
+
+#define MV2_GET_RC_VBUF(_v, _msg_sz)                                                \
+do {                                                                                \
+    int __offset = 0;                                                               \
+    SIZE_TO_OFFSET((_msg_sz), (__offset));                                          \
+    GET_VBUF_BY_OFFSET_WITHOUT_LOCK((_v), (__offset));                              \
+} while (0)
+
+#if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
+#define MV2_RELEASE_UD_VBUF(_v)                             \
+do {                                                        \
+    MPIU_Assert((_v) != ud_free_vbuf_head);                 \
+    (_v)->desc.next = ud_free_vbuf_head;                    \
+    ud_free_vbuf_head = (_v);                               \
+    ++ud_num_free_vbuf;                                     \
+    ++ud_num_vbuf_freed;                                    \
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_ud_vbuf_freed, 1);     \
+    MPIR_T_PVAR_LEVEL_INC(MV2, mv2_ud_vbuf_available, 1);   \
+} while (0)
+
+#define MV2_INIT_UD_VBUF(_v)                            \
+do {                                                    \
+    /* Init VBUF elements */                            \
+    MV2_INIT_VBUF(_v);                                  \
+    /* Init UD specific VBUF elements */                \
+    (_v)->flags = 0;                                    \
+    (_v)->retry_count = 0;                              \
+    (_v)->pool_index = NULL;                            \
+    (_v)->pending_send_polls = 0;                       \
+    /* Decide which transport need to assign here */    \
+    (_v)->transport = IB_TRANSPORT_UD;                  \
+} while (0)
+
+#define MV2_GET_UD_VBUF(_v)                                                         \
+do {                                                                                \
+	(_v) = ud_free_vbuf_head;                                                       \
+	--ud_num_free_vbuf;                                                             \
+	MPIR_T_PVAR_LEVEL_DEC(MV2, mv2_ud_vbuf_available, 1);                           \
+	++ud_num_vbuf_get;                                                              \
+	/* this correctly handles removing from single entry free list */               \
+	ud_free_vbuf_head = ud_free_vbuf_head->desc.next;                               \
+} while (0)
+
+#define MV2_GET_AND_INIT_UD_VBUF(_v)                                                \
+do {                                                                                \
+    if (likely(ud_free_vbuf_head)) {                                                \
+        MV2_GET_UD_VBUF((_v));                                                      \
+        MV2_INIT_UD_VBUF((_v));                                                     \
+    } else {                                                                        \
+        if(allocate_ud_vbuf_region(rdma_vbuf_secondary_pool_size) != 0) {           \
+            ibv_va_error_abort(GEN_EXIT_ERR, "UD VBUF allocation failed.\n");       \
+        }                                                                           \
+        MV2_GET_UD_VBUF((_v));                                                      \
+        MV2_INIT_UD_VBUF((_v));                                                     \
+    }                                                                               \
+} while (0)
+
+#define MRAILI_Get_buffer(_vc, _v, _msg_sz)                                         \
+do {                                                                                \
+    if ((_vc)->mrail.state & MRAILI_RC_CONNECTED) {                                 \
+        MV2_GET_RC_VBUF((_v), (_msg_sz));                                           \
+    } else  {                                                                       \
+        MV2_GET_AND_INIT_UD_VBUF((_v));                                             \
+    }                                                                               \
+} while (0)
+#else
+#define MRAILI_Get_buffer(_vc, _v, _msg_sz)                                         \
+do {                                                                                \
+    MV2_GET_RC_VBUF((_v), (_msg_sz));                                               \
+} while (0)
+#endif /*defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)*/
+
 static inline void VBUF_SET_RDMA_ADDR_KEY(
     vbuf* v, 
     int len,
@@ -318,7 +547,11 @@ static inline void VBUF_SET_RDMA_ADDR_KEY(
 {
     v->desc.u.sr.next = NULL;
     v->desc.u.sr.opcode = IBV_WR_RDMA_WRITE;
-    v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    if (likely(len <= rdma_max_inline_size)) {
+        v->desc.u.sr.send_flags = IBV_SEND_INLINE | IBV_SEND_SIGNALED;
+    } else {
+        v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    }
     v->desc.u.sr.wr_id = (uintptr_t) v;
 
     v->desc.u.sr.num_sge = 1;
@@ -331,97 +564,221 @@ static inline void VBUF_SET_RDMA_ADDR_KEY(
     (v)->desc.sg_entry.addr = (uintptr_t)(local_addr);
 }
 
-int allocate_vbufs(struct ibv_pd* ptag[], int nvbufs);
+static inline void vbuf_init_rdma_write(vbuf* v)
+{
+    v->desc.u.sr.next = NULL;
+    v->desc.u.sr.opcode = IBV_WR_RDMA_WRITE;
+    v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    v->desc.u.sr.wr_id = (uintptr_t) v;
+
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+    v->padding = FREE_FLAG;
+}
+
+static inline void vbuf_init_send(vbuf* v, unsigned long len, int rail)
+{
+    int hca_num = rail / (rdma_num_rails / rdma_num_hcas);
+
+    v->desc.u.sr.next = NULL;
+    if (likely(len <= rdma_max_inline_size)) {
+        v->desc.u.sr.send_flags = IBV_SEND_INLINE | IBV_SEND_SIGNALED;
+    } else {
+        v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    }
+    v->desc.u.sr.opcode = IBV_WR_SEND;
+    v->desc.u.sr.wr_id = (uintptr_t) v;
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+    v->desc.sg_entry.length = len;
+    v->desc.sg_entry.lkey = v->region->mem_handle[hca_num]->lkey;
+    v->desc.sg_entry.addr = (uintptr_t)(v->buffer);
+    v->padding = NORMAL_VBUF_FLAG;
+    v->rail = rail;
+}
+
+static inline void vbuf_init_rget(
+    vbuf* v,
+    void* local_address,
+    uint32_t lkey, 
+    void* remote_address,
+    uint32_t rkey,
+    int len,
+    int rail)
+{
+    v->desc.u.sr.next = NULL;
+    /* IBV_WR_RDMA_READ cannot support INLINE */
+    v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    v->desc.u.sr.opcode = IBV_WR_RDMA_READ;
+    v->desc.u.sr.wr_id = (uintptr_t) v;
+
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.wr.rdma.remote_addr = (uintptr_t)(remote_address);
+    v->desc.u.sr.wr.rdma.rkey = rkey;
+
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+    v->desc.sg_entry.length = len;
+    v->desc.sg_entry.lkey = lkey;
+    v->desc.sg_entry.addr = (uintptr_t)(local_address);
+    v->padding = RGET_VBUF_FLAG;
+    v->rail = rail;	
+}
+
+static inline void vbuf_init_rput(
+    vbuf* v,
+    void* local_address,
+    uint32_t lkey,
+    void* remote_address,
+    uint32_t rkey,
+    int len,
+    int rail)
+{
+    v->desc.u.sr.next = NULL;
+    if (likely(len <= rdma_max_inline_size)) {
+        v->desc.u.sr.send_flags = IBV_SEND_INLINE | IBV_SEND_SIGNALED;
+    } else {
+        v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    }
+    v->desc.u.sr.opcode = IBV_WR_RDMA_WRITE;
+    v->desc.u.sr.wr_id = (uintptr_t) v;
+
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.wr.rdma.remote_addr = (uintptr_t)(remote_address);
+    v->desc.u.sr.wr.rdma.rkey = rkey;
+
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+    v->desc.sg_entry.length = len;
+    v->desc.sg_entry.lkey = lkey;
+    v->desc.sg_entry.addr = (uintptr_t)(local_address);
+    v->padding = RPUT_VBUF_FLAG;
+    v->rail = rail;	
+}
+
+static inline void vbuf_init_rma_get(vbuf *v, void *l_addr, uint32_t lkey,
+                       void *r_addr, uint32_t rkey, int len, int rail)
+{
+    v->desc.u.sr.next = NULL;
+    /* IBV_WR_RDMA_READ cannot support INLINE */
+    v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    v->desc.u.sr.opcode = IBV_WR_RDMA_READ;
+    v->desc.u.sr.wr_id = (uintptr_t) v;
+
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.wr.rdma.remote_addr = (uintptr_t)(r_addr);
+    v->desc.u.sr.wr.rdma.rkey = rkey;
+
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+    v->desc.sg_entry.length = len;
+    v->desc.sg_entry.lkey = lkey;
+    v->desc.sg_entry.addr = (uintptr_t)(l_addr);
+    v->padding = RDMA_ONE_SIDED;
+    v->rail = rail;
+}
+
+static inline void vbuf_init_rma_put(vbuf *v, void *l_addr, uint32_t lkey,
+                       void *r_addr, uint32_t rkey, int len, int rail)
+{
+    v->desc.u.sr.next = NULL;
+    if (likely(len <= rdma_max_inline_size)) {
+        v->desc.u.sr.send_flags = IBV_SEND_INLINE | IBV_SEND_SIGNALED;
+    } else {
+        v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    }
+    v->desc.u.sr.opcode = IBV_WR_RDMA_WRITE;
+    v->desc.u.sr.wr_id = (uintptr_t) v;
+
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.wr.rdma.remote_addr = (uintptr_t)(r_addr);
+    v->desc.u.sr.wr.rdma.rkey = rkey;
+
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+    v->desc.sg_entry.length = len;
+    v->desc.sg_entry.lkey = lkey;
+    v->desc.sg_entry.addr = (uintptr_t)(l_addr);
+    v->padding = RDMA_ONE_SIDED;
+    v->rail = rail;
+}
+
+static inline void vbuf_init_rma_fetch_and_add(vbuf *v, void *l_addr, uint32_t lkey,
+        void *r_addr, uint32_t rkey, uint64_t add,
+        int rail)
+{   
+    v->desc.u.sr.next = NULL;
+    v->desc.u.sr.opcode = IBV_WR_ATOMIC_FETCH_AND_ADD;
+    /* IBV_WR_ATOMIC_FETCH_AND_ADD cannot support INLINE */
+    v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    v->desc.u.sr.wr_id = (uintptr_t) v;
+
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.wr.atomic.remote_addr = (uintptr_t)(r_addr);
+    v->desc.u.sr.wr.atomic.rkey = rkey;
+    v->desc.u.sr.wr.atomic.compare_add = add;
+
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+    v->desc.sg_entry.length = sizeof(uint64_t);
+    v->desc.sg_entry.lkey = lkey;
+    v->desc.sg_entry.addr = (uintptr_t)(l_addr);
+    v->padding = RDMA_ONE_SIDED;
+    v->rail = rail;
+}
+
+static inline void vbuf_init_rma_compare_and_swap(vbuf *v, void *l_addr, uint32_t lkey,
+                        void *r_addr, uint32_t rkey, uint64_t compare, 
+                        uint64_t swap, int rail)
+{
+    v->desc.u.sr.next = NULL;
+    v->desc.u.sr.opcode = IBV_WR_ATOMIC_CMP_AND_SWP;
+    /* IBV_WR_ATOMIC_CMP_AND_SWP cannot support INLINE */
+    v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    v->desc.u.sr.wr_id  = (uintptr_t) v;
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.wr.atomic.remote_addr = (uintptr_t)(r_addr);
+    v->desc.u.sr.wr.atomic.rkey = rkey;
+    v->desc.u.sr.wr.atomic.compare_add = compare;
+    v->desc.u.sr.wr.atomic.swap = swap;
+
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+
+    v->desc.sg_entry.length = sizeof(uint64_t);
+    v->desc.sg_entry.lkey = lkey;
+    v->desc.sg_entry.addr = (uintptr_t)(v->buffer);
+
+    v->padding = RDMA_ONE_SIDED;
+    v->rail = rail;
+}
+
+int allocate_vbufs(struct ibv_pd* ptag[]);
+inline void release_vbuf(vbuf* v);
 
 void deallocate_vbufs(int);
 void deallocate_vbuf_region(void);
 
-vbuf* get_vbuf(void);
+vbuf* get_vbuf(size_t message_size);
+vbuf* get_vbuf_by_offset(int offset);
 
 #if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
 vbuf* get_ud_vbuf(void);
 int allocate_ud_vbufs(int nvbufs);
 void vbuf_init_ud_recv(vbuf* v, unsigned long len, int rail);
+extern vbuf *ud_free_vbuf_head;
+extern int ud_vbuf_n_allocated;
+extern long ud_num_free_vbuf;
+extern long ud_num_vbuf_get;
+extern long ud_num_vbuf_freed;
 #endif
 
 void MRAILI_Release_vbuf(vbuf* v);
-
-void vbuf_init_rdma_write(vbuf* v);
-
-void vbuf_init_send(vbuf* v, unsigned long len, int rail);
-
-void vbuf_init_recv(vbuf* v, unsigned long len, int rail);
-
-void vbuf_init_rput(
-    vbuf* v,
-    void* local_address,
-    uint32_t lkey,
-    void* remote_address,
-    uint32_t rkey,
-    int nbytes,
-    int rail);
-
-void vbuf_init_rget(
-    vbuf* v,
-    void* local_address,
-    uint32_t lkey,
-    void* remote_address,
-    uint32_t rkey,
-    int nbytes,
-    int rail);
-
-void vbuf_init_rma_get(
-    vbuf* v,
-    void* local_address,
-    uint32_t lkey,
-    void* remote_address,
-    uint32_t rkey,
-    int nbytes,
-    int rail);
-
-void vbuf_init_rma_put(
-    vbuf* v,
-    void* local_address,
-    uint32_t lkey,
-    void* remote_address,
-    uint32_t rkey,
-    int nbytes,
-    int rail);
-
-void vbuf_init_rma_compare_and_swap(
-    vbuf *v, 
-    void *local_address,
-    uint32_t lkey,
-    void *remote_address, 
-    uint32_t rkey, 
-    uint64_t compare,
-    uint64_t swap, 
-    int rail);
-
-void vbuf_init_rma_fetch_and_add(
-    vbuf *v, 
-    void *local_address, 
-    uint32_t lkey,
-    void *remote_address, 
-    uint32_t rkey, 
-    uint64_t add,
-    int rail);
 
 #if defined(CKPT)
 void vbuf_reregister_all();
 #endif /* defined(CKPT) */
 
 #ifdef _ENABLE_CUDA_
-int allocate_cuda_vbufs(struct ibv_pd* ptag[]);
-vbuf* get_cuda_vbuf(int flag);
-void release_cuda_vbuf(vbuf* v);
 void register_cuda_vbuf_regions();
-#define IS_CUDA_VBUF(vbuf_pool) (vbuf_pool &&  (\
-                                (vbuf_pool)->index == CUDA_EAGER_BUF || \
-                                (vbuf_pool)->index == CUDA_RNDV_BLOCK_BUF))
 #endif
 
 extern vbuf_pool_t *rdma_vbuf_pools;
-extern int rdma_num_vbuf_pools;
+extern vbuf_pool_t mv2_srq_repost_pool;
+extern volatile int rdma_num_vbuf_pools;
 
 #endif

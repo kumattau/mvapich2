@@ -16,6 +16,7 @@ AC_DEFUN([PAC_SUBCFG_BODY_]PAC_SUBCFG_AUTO_SUFFIX,[
 AM_COND_IF([BUILD_NEMESIS_NETMOD_IB],[
 AC_MSG_NOTICE([RUNNING CONFIGURE FOR ch3:nemesis:ib])
 
+PAC_SET_HEADER_LIB_PATH(ibverbs)
 AC_CHECK_HEADERS([sys/syscall.h syscall.h], [
                   AC_CHECK_FUNCS([syscall])
                   break

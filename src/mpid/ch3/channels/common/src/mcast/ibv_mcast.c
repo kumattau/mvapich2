@@ -24,6 +24,13 @@
 #include "vbuf.h"
 #include "debug_utils.h"
 
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
+
 /* TODO : replace with hash table */
 MPID_Comm *comm_table[MV2_MCAST_MAX_COMMS];
 mcast_context_t *mcast_ctx = NULL;
@@ -138,9 +145,9 @@ static void mv2_mcast_send_comm_init(mcast_init_elem_t * elem)
         return;
     }
 
-    minfo = &((bcast_info_t *) comm_ptr->ch.bcast_info)->minfo;
+    minfo = &((bcast_info_t *) comm_ptr->dev.ch.bcast_info)->minfo;
 
-    v = get_ud_vbuf();
+    MV2_GET_AND_INIT_UD_VBUF(v);
     MPIDI_CH3_Pkt_mcast_init_t *p = (MPIDI_CH3_Pkt_mcast_init_t *) v->pheader;
     p->type = MPIDI_CH3_PKT_MCST_INIT;
     p->rail = 0;
@@ -228,7 +235,7 @@ int mv2_mcast_progress_comm_ready(MPID_Comm * comm_ptr)
     mcast_comm_status_t status;
     int comm_id;
 
-    minfo = &(((bcast_info_t *) (comm_ptr->ch.bcast_info))->minfo);
+    minfo = &(((bcast_info_t *) (comm_ptr->dev.ch.bcast_info))->minfo);
     comm_id = minfo->grp_info.comm_id;
     curr = mcast_ctx->init_list;
     while (curr) {
@@ -542,8 +549,9 @@ static inline int mv2_mcast_post_ud_recv_buffers(int num_bufs, mv2_ud_ctx_t * ud
                     num_bufs, mcast_max_ud_recv_wqe);
     }
 
-    for (; i < num_bufs; ++i) {
-        if ((v = get_ud_vbuf()) == NULL) {
+    for (i = 0; i < num_bufs; ++i) {
+        MV2_GET_AND_INIT_UD_VBUF(v);
+        if (v == NULL) {
             break;
         }
 
@@ -766,7 +774,7 @@ static inline void mv2_mcast_send_init_ack(int comm_id, int root)
     pkt.comm_id = comm_id;
     comm_ptr = mv2_mcast_find_comm(comm_id);
     MPIU_Assert(comm_ptr);
-    PMPI_Comm_rank(comm_ptr->ch.leader_comm, &leader_rank);
+    PMPI_Comm_rank(comm_ptr->dev.ch.leader_comm, &leader_rank);
     pkt.src_rank = leader_rank;
     MPIDI_Comm_get_vc(comm_ptr, root, &vc);
 
@@ -802,7 +810,7 @@ static inline void mv2_mcast_send_nack(uint32_t psn, int comm_id, int root)
     pkt.src_rank = comm_ptr->rank;
 
     if (mcast_use_mcast_nack) {
-        bcast_info = (bcast_info_t *) comm_ptr->ch.bcast_info;
+        bcast_info = (bcast_info_t *) comm_ptr->dev.ch.bcast_info;
         minfo = &bcast_info->minfo;
 
         long now = mv2_get_time_us();
@@ -810,7 +818,7 @@ static inline void mv2_mcast_send_nack(uint32_t psn, int comm_id, int root)
             /* received multicast NACK recently from other */
             return;
         }
-        v = get_ud_vbuf();
+        MV2_GET_AND_INIT_UD_VBUF(v);
         bcast_info->nack_time = mv2_get_time_us();
         MPIU_Memcpy(v->pheader, &pkt, sizeof(MPIDI_CH3_Pkt_mcast_nack_t));
 
@@ -934,10 +942,10 @@ int mv2_setup_multicast(mcast_info_t * minfo, MPID_Comm * comm_ptr)
     int leader_rank, leader_comm_size, errflag = 0;
     int comm_id;
 
-    MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_ptr);
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.leader_comm, leader_ptr);
 
-    PMPI_Comm_size(comm_ptr->ch.leader_comm, &leader_comm_size);
-    PMPI_Comm_rank(comm_ptr->ch.leader_comm, &leader_rank);
+    PMPI_Comm_size(comm_ptr->dev.ch.leader_comm, &leader_comm_size);
+    PMPI_Comm_rank(comm_ptr->dev.ch.leader_comm, &leader_rank);
     if (leader_rank == 0) {
         all_init_info = MPIU_Malloc(leader_comm_size * sizeof(mcast_init_info_t));
         if (all_init_info == NULL) {
@@ -1011,8 +1019,8 @@ int mv2_cleanup_multicast(mcast_info_t * minfo, MPID_Comm * comm_ptr)
 {
     int leader_rank, leader_comm_size;
 
-    PMPI_Comm_size(comm_ptr->ch.leader_comm, &leader_comm_size);
-    PMPI_Comm_rank(comm_ptr->ch.leader_comm, &leader_rank);
+    PMPI_Comm_size(comm_ptr->dev.ch.leader_comm, &leader_comm_size);
+    PMPI_Comm_rank(comm_ptr->dev.ch.leader_comm, &leader_rank);
 
     mv2_mcast_unregister_comm(minfo->grp_info.comm_id);
     mv2_mcast_detach_ud_qp(minfo);
@@ -1052,7 +1060,7 @@ void mv2_mcast_send(bcast_info_t * bcast_info, char *buf, int len)
     MPID_Comm *comm_ptr;
     mcast_info_t *minfo = &bcast_info->minfo;
 
-    v = get_ud_vbuf();
+    MV2_GET_AND_INIT_UD_VBUF(v);
     MPIDI_CH3_Pkt_mcast_t *p = (MPIDI_CH3_Pkt_mcast_t *) v->pheader;
     p->type = MPIDI_CH3_PKT_MCST;
     p->rail = 0;
@@ -1103,7 +1111,7 @@ void mv2_process_mcast_msg(vbuf * v)
         return;
     }
 
-    bcast_info = (bcast_info_t *) comm_ptr->ch.bcast_info;
+    bcast_info = (bcast_info_t *) comm_ptr->dev.ch.bcast_info;
 
     switch (p->type) {
         case MPIDI_CH3_PKT_MCST_NACK:
@@ -1152,7 +1160,7 @@ void mv2_mcast_handle_nack(MPIDI_CH3_Pkt_mcast_nack_t * p)
     PRINT_DEBUG(DEBUG_MCST_verbose > 2, "nack received psn:%d\n", p->psn);
     psn = p->psn;
     comm_ptr = mv2_mcast_find_comm(p->comm_id);
-    bcast_info = (bcast_info_t *) comm_ptr->ch.bcast_info;
+    bcast_info = (bcast_info_t *) comm_ptr->dev.ch.bcast_info;
     if (!EXCL_BETWEEN(psn, bcast_info->win_tail, bcast_info->win_head)) {
         PRINT_DEBUG(DEBUG_MCST_verbose > 2, "psn:%d is not in window (%d - %d)\n",
                     psn, bcast_info->win_tail, bcast_info->win_head);

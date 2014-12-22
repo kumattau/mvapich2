@@ -13,6 +13,7 @@
 #include "mpichconf.h"
 #include <mpimem.h>
 #include "rdma_impl.h"
+#include "mpiimpl.h"
 #include "ibv_impl.h"
 #include "vbuf.h"
 #include "dreg.h"
@@ -30,6 +31,13 @@
 #else
 #define DEBUG_PRINT(args...)
 #endif
+
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
 
 void get_sorted_index(MPIDI_VC_t *vc, int *b);
 
@@ -443,7 +451,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                 rreq->mrail.rndv_buf_off, rreq->mrail.remote_addr);
         
         if (nbytes <= rdma_large_msg_rail_sharing_threshold) {
-            v = get_vbuf();
+            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
             v->sreq = rreq;
 
             rail = MRAILI_Send_select_rail(vc);
@@ -464,7 +472,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
             inc = nbytes / rdma_num_rails;
             
             for(rail = 0; rail < rdma_num_rails - 1; rail++) {
-                v = get_vbuf();
+                GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                 v->sreq = rreq;
                 MRAILI_RDMA_Get(vc, v,
                         (char *) (rreq->mrail.rndv_buf) +
@@ -478,7 +486,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                 rreq->mrail.num_rdma_read_completions++;
                 /* Send the finish message immediately after the data */  
             }
-            v = get_vbuf();
+            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
             v->sreq = rreq;
             MRAILI_RDMA_Get(vc, v,
                     (char *) (rreq->mrail.rndv_buf) +
@@ -519,7 +527,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                     continue;
                 }
                 
-                v = get_vbuf();
+                GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                 v->sreq = rreq;
                 MRAILI_RDMA_Get(vc, v,
                         (char *) (rreq->mrail.rndv_buf) +
@@ -538,7 +546,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                 disp += inc;
             }
 
-            v = get_vbuf();
+            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
             v->sreq = rreq;
             MRAILI_RDMA_Get(vc, v,
                     (char *) (rreq->mrail.rndv_buf) +
@@ -657,7 +665,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
                 break;
             }
 
-            v = get_vbuf();
+            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
             v->sreq = sreq;
 
             MRAILI_RDMA_Put(vc, v,
@@ -684,7 +692,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
             inc = nbytes / rdma_num_rails;
             
             for(rail = 0; rail < rdma_num_rails - 1; rail++) {
-                v = get_vbuf();
+                GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                 v->sreq = sreq;
                 MRAILI_RDMA_Put(vc, v,
                         (char *) (sreq->mrail.rndv_buf) +
@@ -697,7 +705,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
                         inc, rail);
                 /* Send the finish message immediately after the data */  
             }
-            v = get_vbuf();
+            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
             v->sreq = sreq;
             MRAILI_RDMA_Put(vc, v,
                     (char *) (sreq->mrail.rndv_buf) +
@@ -738,7 +746,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
                     
                 }
                 
-                v = get_vbuf();
+                GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                 v->sreq = sreq;
                 MRAILI_RDMA_Put(vc, v,
                         (char *) (sreq->mrail.rndv_buf) +
@@ -756,7 +764,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
                 disp += inc;
             }
 
-            v = get_vbuf();
+            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
             v->sreq = sreq;
             MRAILI_RDMA_Put(vc, v,
                     (char *) (sreq->mrail.rndv_buf) +
@@ -801,7 +809,7 @@ int MPIDI_CH3I_MRAILI_Rendezvous_r3_ack_send(MPIDI_VC_t *vc)
     int rail;
     MPID_Seqnum_t seqnum;
 
-    MRAILI_Get_buffer(vc, v);
+    MRAILI_Get_buffer(vc, v, rdma_vbuf_total_size);
     rail = MRAILI_Send_select_rail(vc);
  
     MPIDI_CH3_Pkt_rndv_r3_ack_t r3_ack;

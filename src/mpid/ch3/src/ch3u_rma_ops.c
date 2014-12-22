@@ -94,7 +94,7 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
     if ((*win_ptr)->fall_back != 1) {
 	MPIDI_CH3I_RDMA_win_free(win_ptr);
     }
-    if( (*win_ptr)->comm_ptr->ch.shmem_coll_ok == 1) {
+    if( (!(*win_ptr)->shm_win_pt2pt) && (*win_ptr)->comm_ptr->dev.ch.shmem_coll_ok == 1) {
         free_2level_comm((*win_ptr)->comm_ptr);
     }
 #endif /* defined(CHANNEL_MRAIL) */

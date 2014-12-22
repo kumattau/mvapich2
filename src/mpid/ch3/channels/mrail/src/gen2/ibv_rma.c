@@ -11,6 +11,7 @@
  */
 
 #include "rdma_impl.h"
+#include "mpiimpl.h"
 #include "vbuf.h"
 #include "dreg.h"
 #include "mpiutil.h"
@@ -27,6 +28,13 @@ do {                                                          \
 #else
 #define DEBUG_PRINT(args...)
 #endif
+
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAILI_Get_rndv_rput
@@ -60,7 +68,7 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
     while ((req->mrail.rndv_buf_off < req->mrail.rndv_buf_sz)
             && MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol) {
 
-        v = get_vbuf();
+        GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
         v->sreq = req;
         
         MPIU_Assert(v != NULL);

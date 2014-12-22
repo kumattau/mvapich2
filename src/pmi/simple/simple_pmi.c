@@ -66,7 +66,7 @@
 /* #define DBG_PRINTF(args) printf args ; fflush(stdout) */
 #define DBG_PRINTF(args)
 
-#include "pmi.h"
+#include "upmi.h"
 #include "simple_pmiutil.h"
 #include "mpi.h"		/* to get MPI_MAX_PORT_NAME */
 
@@ -792,7 +792,7 @@ static int PMII_getmaxes( int *kvsname_max, int *keylen_max, int *vallen_max )
     if (err < 0) {
 	PMIU_printf( 1, "Error reading initack on %d\n", PMI_fd );
 	perror( "Error on readline:" );
-	PMI_Abort(-1, "Above error when reading after init" );
+	UPMI_ABORT(-1, "Above error when reading after init" );
     }
     PMIU_parse_keyvals( buf );
     cmd[0] = 0;
@@ -801,7 +801,7 @@ static int PMII_getmaxes( int *kvsname_max, int *keylen_max, int *vallen_max )
 	MPIU_Snprintf(errmsg, PMIU_MAXLINE, 
 		      "got unexpected response to init :%s: (full line = %s)",
 		      cmd, buf  );
-	PMI_Abort( -1, errmsg );
+	UPMI_ABORT( -1, errmsg );
     }
     else {
 	char buf1[PMIU_MAXLINE];
@@ -812,7 +812,7 @@ static int PMII_getmaxes( int *kvsname_max, int *keylen_max, int *vallen_max )
 	    MPIU_Snprintf(errmsg, PMIU_MAXLINE, 
 			  "pmi_version mismatch; client=%d.%d mgr=%s.%s",
 			  PMI_VERSION, PMI_SUBVERSION, buf, buf1 );
-	    PMI_Abort( -1, errmsg );
+	    UPMI_ABORT( -1, errmsg );
         }
     }
     err = GetResponse( "cmd=get_maxes\n", "maxes", 0 );
@@ -1290,7 +1290,7 @@ static int PMIi_InitIfSingleton(void)
 
     /* FIXME: We need to support a distinct kvsname for each 
        process group */
-    PMI_KVS_Put( singinit_kvsname, cached_singinit_key, cached_singinit_val );
+    UPMI_KVS_PUT( singinit_kvsname, cached_singinit_key, cached_singinit_val );
 
     return 0;
 }

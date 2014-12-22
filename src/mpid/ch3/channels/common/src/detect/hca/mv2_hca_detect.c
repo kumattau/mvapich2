@@ -137,16 +137,25 @@ static const float get_link_speed(uint8_t speed)
 
 #if defined(HAVE_LIBIBVERBS)
 mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
-                                    struct ibv_device *ib_dev)
+                                    struct ibv_device *ib_dev,
+                                    uint64_t *guid)
 {
     int rate=0;
     char *dev_name = NULL;
+    struct ibv_device_attr device_attr;
+    int max_ports = 0;
     mv2_hca_type hca_type = MV2_HCA_UNKWN;
 
     dev_name = (char*) ibv_get_device_name( ib_dev );
 
     if (!dev_name) {
         return MV2_HCA_UNKWN;
+    }
+
+    memset(&device_attr, 0, sizeof(struct ibv_device_attr));
+    if(!ibv_query_device(ctx, &device_attr)){
+        max_ports = device_attr.phys_port_cnt;
+        *guid = device_attr.node_guid;
     }
 
     if (!strncmp(dev_name, MV2_STR_MLX, 3)
@@ -161,17 +170,10 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
         /* honor MV2_DEFAULT_PORT, if set */
         if ((value = getenv("MV2_DEFAULT_PORT")) != NULL) {
 
-            int max_ports = 1;
-            struct ibv_device_attr device_attr;
             int default_port = atoi(value);
-            
-            memset(&device_attr, 0, sizeof(struct ibv_device_attr));
-            if(!ibv_query_device(ctx, &device_attr)){
-                max_ports = device_attr.phys_port_cnt;
-            }
             query_port = (default_port <= max_ports) ? default_port : 1;
         }
-        
+
         if (!ibv_query_port(ctx, query_port, &port_attr)) {
             rate = (int) (get_link_width(port_attr.active_width)
                     * get_link_speed(port_attr.active_speed));
@@ -383,10 +385,10 @@ mv2_hca_type mv2_get_hca_type(void *dev)
 
 #if defined(HAVE_LIBIBVERBS)
 mv2_arch_hca_type mv2_new_get_arch_hca_type (struct ibv_context *ctx,
-                                    struct ibv_device *ib_dev)
+                                    struct ibv_device *ib_dev, uint64_t *guid)
 {
     mv2_arch_hca_type arch_hca = mv2_get_arch_type();
-    arch_hca = arch_hca << 32 | mv2_new_get_hca_type(ctx, ib_dev);
+    arch_hca = arch_hca << 32 | mv2_new_get_hca_type(ctx, ib_dev, guid);
     return arch_hca;
 }
 

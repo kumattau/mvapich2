@@ -136,7 +136,8 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             } while (ret && (connect_attempts < max_rdma_connect_attempts));
             if (ret) {
                 ibv_va_error_abort(IBV_RETURN_ERR,
-                        "rdma_resolve_route error %d\n", ret);
+                    "rdma_resolve_route error %d after"
+                    " %d attempts\n", ret, connect_attempts);
             }
 
         break;
@@ -1316,13 +1317,13 @@ int rdma_cm_init_pd_cq()
                     if((rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE)
                         && MV2_IS_CHELSIO_IWARP_CARD(proc->hca_type)) {
                         rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
-                        proc->send_cq_hndl[i] = ibv_create_cq(
+                        proc->cq_hndl[i] = ibv_create_cq(
                                 proc->nic_context[i],
                                 rdma_default_max_cq_size,
                                 NULL,
                                 NULL,
                                 0);
-                        if (!proc->send_cq_hndl[i]) {
+                        if (!proc->cq_hndl[i]) {
                             ibv_error_abort(GEN_EXIT_ERR,"Error allocating CQ");
                         }
                     } else {

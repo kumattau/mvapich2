@@ -160,6 +160,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     int mpi_errno = MPI_SUCCESS;
     int pg_size, threshold, dpm = 0, p;
     char *dpm_str, *value, *conn_info = NULL;
+    int mv2_rdma_init_timers = 0;
     MPIDI_VC_t *vc;
 
     /* Override split_type */
@@ -268,6 +269,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
          * hybrid is used */ 
         mv2_enable_zcpy_bcast = 0; 
         mv2_enable_zcpy_reduce = 0; 
+        mv2_rdma_init_timers = 1;
     } 
 #endif
 
@@ -349,6 +351,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         MPIU_ERR_POP(mpi_errno);
     }
 
+    /* get parameters from the job-launcher */
+    rdma_get_pm_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
+
     /* Check for SMP only */
     MPIDI_CH3I_set_smp_only();
 
@@ -414,14 +419,16 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
 #endif /* defined(CKPT) */
 
-    /* set connection info for dynamic process management */
-    if (conn_info && dpm) {
-        mpi_errno = MPIDI_PG_SetConnInfo(pg_rank, (const char *) conn_info);
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
+    if (conn_info) {
+        /* set connection info for dynamic process management */
+        if (dpm) {
+	        mpi_errno = MPIDI_PG_SetConnInfo(pg_rank, (const char *) conn_info);
+	        if (mpi_errno != MPI_SUCCESS) {
+	            MPIU_ERR_POP(mpi_errno);
+	        }
         }
+        MPIU_Free(conn_info);
     }
-    MPIU_Free(conn_info);
 
     MV2_collectives_arch_init(mv2_MPIDI_CH3I_RDMA_Process.heterogeneity);
 
@@ -469,10 +476,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         mv2_print_env_info(&mv2_MPIDI_CH3I_RDMA_Process);
     }
 
-#if defined(_MCST_SUPPORT_) || defined(_ENABLE_UD_)
-    mv2_init_timers();
 #if defined(_MCST_SUPPORT_)
     if (rdma_enable_mcast) {
+        mv2_rdma_init_timers = 1;
         /* TODO : Is there a better way to seed? */
         srand(time(NULL) * pg_rank);
 
@@ -490,7 +496,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         }
     }
 #endif
-#endif
+
+    if (mv2_rdma_init_timers) {
+        mv2_init_timers();
+    }
 
     mpi_errno = MPIDI_CH3U_Comm_register_destroy_hook(MPIDI_CH3I_comm_destroy, NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);

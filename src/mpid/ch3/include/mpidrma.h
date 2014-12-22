@@ -48,9 +48,12 @@ enum MPIDI_RMA_Datatype {
     MPIDI_RMA_DATATYPE_DERIVED  = 51
 };
 
+/* We start with an arbitrarily chosen number (42), to help with
+ * debugging when a packet type is not initialized or wrongly
+ * initialized. */
 enum MPID_Lock_state {
-    MPID_LOCK_NONE              = 0,
-    MPID_LOCK_SHARED_ALL        = 1
+    MPID_LOCK_NONE              = 42,
+    MPID_LOCK_SHARED_ALL
 };
 
 /*
@@ -144,6 +147,8 @@ int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank);
 int MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
 int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr);
 int MPIDI_CH3I_RDMA_finish_rma_target(MPID_Win *win_ptr, int target_rank);
+int MPIDI_CH3I_barrier_in_rma(MPID_Win **win_ptr, int rank, int node_size, int comm_size);
+void mv2_init_rank_for_barrier (MPID_Win ** win_ptr);
 #endif /* defined(CHANNEL_MRAIL) */
 
 /*** RMA OPS LIST HELPER ROUTINES ***/
@@ -225,6 +230,7 @@ static inline int MPIDI_CH3I_RMA_Ops_alloc_tail(MPIDI_RMA_Ops_list_t *list,
 
     tmp_ptr->next = NULL;
     tmp_ptr->dataloop = NULL;
+    tmp_ptr->request = NULL;
 
     MPL_DL_APPEND(*list, tmp_ptr);
 
@@ -358,6 +364,158 @@ static inline MPIDI_RMA_Ops_list_t *MPIDI_CH3I_RMA_Get_ops_list(MPID_Win *win_pt
             dest_[i] = src_[i];                 \
         goto fn_exit;                           \
     }
+
+#define RMA_COPY_BUFFER_SZ 16384
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Localcopy_RMA
+#undef FCNAME
+#define FCNAME "MPIR_Localcopy_RMA"
+static int MPIR_Localcopy_RMA(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+                   void *recvbuf, int recvcount, MPI_Datatype recvtype)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int sendtype_iscontig, recvtype_iscontig;
+    MPI_Aint sendsize, recvsize, sdata_sz, rdata_sz, copy_sz;
+    MPI_Aint true_extent, sendtype_true_lb, recvtype_true_lb;
+    MPIU_CHKLMEM_DECL(1);
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_LOCALCOPY);
+
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_LOCALCOPY);
+
+    MPID_Datatype_get_size_macro(sendtype, sendsize);
+    MPID_Datatype_get_size_macro(recvtype, recvsize);
+
+    sdata_sz = sendsize * sendcount;
+    rdata_sz = recvsize * recvcount;
+
+    /* if there is no data to copy, bail out */
+    if (!sdata_sz || !rdata_sz)
+        goto fn_exit;
+
+#if defined(HAVE_ERROR_CHECKING)
+    if (sdata_sz > rdata_sz) {
+        MPIU_ERR_SET2(mpi_errno, MPI_ERR_TRUNCATE, "**truncate", "**truncate %d %d", sdata_sz, rdata_sz);
+        copy_sz = rdata_sz;
+    }
+    else
+#endif /* HAVE_ERROR_CHECKING */
+        copy_sz = sdata_sz;
+
+    /* Builtin types is the common case; optimize for it */
+    if ((HANDLE_GET_KIND(sendtype) == HANDLE_KIND_BUILTIN) &&
+        HANDLE_GET_KIND(recvtype) == HANDLE_KIND_BUILTIN) {
+        MPIU_Memcpy(recvbuf, sendbuf, copy_sz);
+        goto fn_exit;
+    }
+
+    MPIR_Datatype_iscontig(sendtype, &sendtype_iscontig);
+    MPIR_Datatype_iscontig(recvtype, &recvtype_iscontig);
+
+    MPIR_Type_get_true_extent_impl(sendtype, &sendtype_true_lb, &true_extent);
+    MPIR_Type_get_true_extent_impl(recvtype, &recvtype_true_lb, &true_extent);
+
+    if (sendtype_iscontig && recvtype_iscontig)
+    {
+#if defined(HAVE_ERROR_CHECKING)
+            MPIU_ERR_CHKMEMCPYANDJUMP(mpi_errno,
+                                  ((char *)recvbuf + recvtype_true_lb),
+                                  ((char *)sendbuf + sendtype_true_lb),
+                                  copy_sz);
+#endif
+            MPIU_Memcpy(((char *) recvbuf + recvtype_true_lb),
+                   ((char *) sendbuf + sendtype_true_lb),
+                   copy_sz);
+    }
+    else if (sendtype_iscontig)
+    {
+        MPID_Segment seg;
+        MPI_Aint last;
+
+        MPID_Segment_init(recvbuf, recvcount, recvtype, &seg, 0);
+        last = copy_sz;
+        MPID_Segment_unpack(&seg, 0, &last, (char*)sendbuf + sendtype_true_lb);
+        MPIU_ERR_CHKANDJUMP(last != copy_sz, mpi_errno, MPI_ERR_TYPE, "**dtypemismatch");
+    }
+    else if (recvtype_iscontig)
+    {
+        MPID_Segment seg;
+        MPI_Aint last;
+
+        MPID_Segment_init(sendbuf, sendcount, sendtype, &seg, 0);
+        last = copy_sz;
+        MPID_Segment_pack(&seg, 0, &last, (char*)recvbuf + recvtype_true_lb);
+        MPIU_ERR_CHKANDJUMP(last != copy_sz, mpi_errno, MPI_ERR_TYPE, "**dtypemismatch");
+    }
+    else
+    {
+        char * buf;
+        MPIDI_msg_sz_t buf_off;
+        MPID_Segment sseg;
+        MPIDI_msg_sz_t sfirst;
+        MPID_Segment rseg;
+        MPIDI_msg_sz_t rfirst;
+        MPIU_CHKLMEM_MALLOC(buf, char *, RMA_COPY_BUFFER_SZ, mpi_errno, "buf");
+    
+        MPID_Segment_init(sendbuf, sendcount, sendtype, &sseg, 0);
+        MPID_Segment_init(recvbuf, recvcount, recvtype, &rseg, 0);
+    
+        sfirst = 0;
+        rfirst = 0;
+        buf_off = 0;
+
+        while (1)
+        {
+            MPI_Aint last;
+            char * buf_end;
+             
+            if (copy_sz - sfirst > RMA_COPY_BUFFER_SZ - buf_off)
+            {
+                last = sfirst + (RMA_COPY_BUFFER_SZ - buf_off);
+            }
+            else
+            {
+                last = copy_sz;
+            }
+            
+            MPID_Segment_pack(&sseg, sfirst, &last, buf + buf_off);
+            MPIU_Assert(last > sfirst);
+            
+            buf_end = buf + buf_off + (last - sfirst);
+            sfirst = last;
+            
+            MPID_Segment_unpack(&rseg, rfirst, &last, buf);
+            MPIU_Assert(last > rfirst);
+             
+            rfirst = last;
+             
+            if (rfirst == copy_sz)
+            {
+                /* successful completion */
+                break;
+            }
+             
+                /* if the send side finished, but the recv side couldn't unpack it, there's a datatype mismatch */
+                MPIU_ERR_CHKANDJUMP(sfirst == copy_sz, mpi_errno, MPI_ERR_TYPE, "**dtypemismatch");        
+             
+                /* if not all data was unpacked, copy it to the front of the buffer for next time */
+            buf_off = sfirst - rfirst;
+            if (buf_off > 0)
+            {
+                memmove(buf, buf_end - buf_off, buf_off);
+            }
+        }
+    }
+
+  fn_exit:
+    MPIU_CHKLMEM_FREEALL();
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_LOCALCOPY);
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+#undef FUNCNAME
 
 static inline int shm_copy(const void *src, int scount, MPI_Datatype stype,
                            void *dest, int dcount, MPI_Datatype dtype)
@@ -569,7 +727,7 @@ static inline int shm_copy(const void *src, int scount, MPI_Datatype stype,
         }
     }
 
-    mpi_errno = MPIR_Localcopy(src, scount, stype, dest, dcount, dtype);
+    mpi_errno = MPIR_Localcopy_RMA(src, scount, stype, dest, dcount, dtype);
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
  fn_exit:
@@ -702,7 +860,7 @@ static inline int MPIDI_CH3I_Shm_acc_op(const void *origin_addr, int origin_coun
             /* adjust for potential negative lower bound in datatype */
             tmp_buf = (void *)((char*)tmp_buf - true_lb);
 
-            mpi_errno = MPIR_Localcopy(origin_addr, origin_count,
+            mpi_errno = MPIR_Localcopy_RMA(origin_addr, origin_count,
                                        origin_datatype, tmp_buf,
                                        target_count, target_datatype);
             if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
@@ -865,7 +1023,7 @@ static inline int MPIDI_CH3I_Shm_get_acc_op(const void *origin_addr, int origin_
             /* adjust for potential negative lower bound in datatype */
             tmp_buf = (void *)((char*)tmp_buf - true_lb);
 
-            mpi_errno = MPIR_Localcopy(origin_addr, origin_count,
+            mpi_errno = MPIR_Localcopy_RMA(origin_addr, origin_count,
                                        origin_datatype, tmp_buf,
                                        target_count, target_datatype);
             if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
@@ -1104,14 +1262,22 @@ static inline int MPIDI_CH3I_Wait_for_pt_ops_finish(MPID_Win *win_ptr)
     MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
     MPIR_T_PVAR_TIMER_END(RMA, rma_winfree_rs);
 
-    if (total_pt_rma_puts_accs != win_ptr->my_pt_rma_puts_accs)
+    if ((total_pt_rma_puts_accs != win_ptr->my_pt_rma_puts_accs) 
+#if defined (CHANNEL_MRAIL)
+         || (win_ptr->at_completion_counter != 0)
+#endif
+       )
     {
 	MPID_Progress_state progress_state;
 
 	/* poke the progress engine until the two are equal */
 	MPIR_T_PVAR_TIMER_START(RMA, rma_winfree_complete);
 	MPID_Progress_start(&progress_state);
-	while (total_pt_rma_puts_accs != win_ptr->my_pt_rma_puts_accs)
+	while ((total_pt_rma_puts_accs != win_ptr->my_pt_rma_puts_accs) 
+#if defined (CHANNEL_MRAIL)
+         || (win_ptr->at_completion_counter != 0)
+#endif
+         )
 	{
 	    mpi_errno = MPID_Progress_wait(&progress_state);
 	    /* --BEGIN ERROR HANDLING-- */

@@ -92,7 +92,6 @@ extern int                  rdma_rndv_ext_sendq_size;
 extern int                  rdma_pin_pool_size;
 extern int                  rdma_put_fallback_threshold;
 extern int                  rdma_get_fallback_threshold;
-extern int                  rdma_num_ops_threshold;
 extern int                  rdma_iba_eager_threshold;
 extern long                 rdma_eagersize_1sc;
 extern int                  rdma_qos_num_sls;

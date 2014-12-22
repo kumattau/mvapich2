@@ -727,11 +727,14 @@ void MPIDI_CH3I_SHMEM_COLL_Unlink()
 
     if (mv2_shmem_coll_obj.fd != -1) {
         unlink(mv2_shmem_coll_file);
+        mv2_shmem_coll_obj.mmap_ptr = NULL;
+        mv2_shmem_coll_obj.fd = -1;
     }
+
     if (mv2_shmem_coll_file != NULL) {
         MPIU_Free(mv2_shmem_coll_file);
+        mv2_shmem_coll_file = NULL;
     }
-    mv2_shmem_coll_file = NULL;
 }
 
 #undef FUNCNAME
@@ -1393,11 +1396,11 @@ int mv2_increment_shmem_coll_counter(MPID_Comm *comm_ptr)
    PMPI_Comm_test_inter(comm_ptr->handle, &flag);
 
    if(flag == 0 && mv2_enable_shmem_collectives
-      && comm_ptr->ch.shmem_coll_ok == 0
+      && comm_ptr->dev.ch.shmem_coll_ok == 0
       && check_split_comm(pthread_self())) { 
-        comm_ptr->ch.shmem_coll_count++; 
+        comm_ptr->dev.ch.shmem_coll_count++; 
 
-        if(comm_ptr->ch.shmem_coll_count >= shmem_coll_count_threshold) { 
+        if(comm_ptr->dev.ch.shmem_coll_count >= shmem_coll_count_threshold) { 
             disable_split_comm(pthread_self());
             mpi_errno = create_2level_comm(comm_ptr->handle, comm_ptr->local_size, comm_ptr->rank);
             if(mpi_errno) {
@@ -1425,13 +1428,13 @@ int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr)
    if(flag == 0 
       && mv2_allgather_ranking 
       && mv2_enable_shmem_collectives
-      && comm_ptr->ch.allgather_comm_ok == 0
+      && comm_ptr->dev.ch.allgather_comm_ok == 0
       && check_split_comm(pthread_self())) {
-        comm_ptr->ch.allgather_coll_count++;
+        comm_ptr->dev.ch.allgather_coll_count++;
 
-        if(comm_ptr->ch.allgather_coll_count >= shmem_coll_count_threshold) {
+        if(comm_ptr->dev.ch.allgather_coll_count >= shmem_coll_count_threshold) {
             disable_split_comm(pthread_self());
-            if(comm_ptr->ch.shmem_coll_ok == 0) { 
+            if(comm_ptr->dev.ch.shmem_coll_ok == 0) { 
                 /* If comm_ptr does not have leader/shmem sub-communicators,
                  * create them now */ 
                 mpi_errno = create_2level_comm(comm_ptr->handle, comm_ptr->local_size, comm_ptr->rank);
@@ -1440,7 +1443,7 @@ int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr)
                 }
             } 
 
-            if(comm_ptr->ch.shmem_coll_ok == 1) { 
+            if(comm_ptr->dev.ch.shmem_coll_ok == 1) { 
                 /* Before we go ahead with allgather-comm creation, be sure that 
                  * the sub-communicators are actually ready */ 
                 mpi_errno = create_allgather_comm(comm_ptr, &errflag);
@@ -2893,7 +2896,7 @@ int MPIR_Limic_Gather_OSU(void *recvbuf,
     limic_user local_limic_hndl;
 
     shmem_comm = shmem_comm_ptr->handle;
-    shmem_comm_rank = shmem_comm_ptr->ch.shmem_comm_rank;   /*shmem_comm_rank; */
+    shmem_comm_rank = shmem_comm_ptr->dev.ch.shmem_comm_rank;   /*shmem_comm_rank; */
 
     mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
     if (mpi_errno) {
@@ -3142,14 +3145,18 @@ void mv2_shm_tree_reduce(shmem_info_t * shmem, char *in_buf, int len,
 int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
 {
     int mpi_errno = MPI_SUCCESS; 
-    int nspin = 0, intra_node_root=0;
+    int nspin = 0;
     int windex = -1, rindex=-1; 
-    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL, *comm_ptr=NULL;
+    MPID_Comm *shmem_commptr = NULL, *comm_ptr=NULL;
 
     MPID_Comm_get_ptr(shmem->comm, comm_ptr);
-    MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_commptr);
-    MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
-    shmem  = shmem_commptr->ch.shmem_info; 
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_commptr);
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
+    int intra_node_root = 0;
+    MPID_Comm *leader_commptr = NULL;
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.leader_comm, leader_commptr);
+#endif
+    shmem  = shmem_commptr->dev.ch.shmem_info; 
     windex = shmem->write % mv2_shm_window_size;
     rindex = shmem->read % mv2_shm_window_size;
 
@@ -3190,7 +3197,7 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
 #if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
     if (shmem->half_full_complete == 0 &&
         IS_SHMEM_WINDOW_HALF_FULL(shmem->write, shmem->tail)) {
-        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window half full: %d \n", shmem->write);
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window half full: %llu \n", shmem->write);
         mv2_shm_barrier(shmem);
         if (shmem->local_rank == intra_node_root &&
             leader_commptr->local_size > 1) {
@@ -3218,7 +3225,7 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
     } 
 
     if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
-        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %d \n", shmem->write);
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %llu \n", shmem->write);
         mv2_shm_barrier(shmem);
         if (shmem->local_rank == intra_node_root &&
             leader_commptr->local_size > 1) {
@@ -3247,7 +3254,7 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
     }
 #else /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
     if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
-        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %d \n", shmem->write);
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %llu \n", shmem->write);
         mv2_shm_barrier(shmem);
         shmem->tail = shmem->read;
     }
@@ -3278,8 +3285,8 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
     shm_coll_pkt *remote_handle_info_parent = shmem->bcast_remote_handle_info_parent;
     shm_coll_pkt *remote_handle_info_children = shmem->bcast_remote_handle_info_children;
 
-    MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_commptr);
-    MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_commptr);
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.leader_comm, leader_commptr);
 
     if(shmem->buffer_registered == 0) {
        if(shmem_commptr->rank == 0 && leader_commptr->local_size > 1) {
@@ -3293,7 +3300,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
 
     if (shmem->local_rank == intra_node_root) {
         MPID_Comm *leader_commptr=NULL;
-        MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
+        MPID_Comm_get_ptr(comm_ptr->dev.ch.leader_comm, leader_commptr);
 
         if(leader_commptr->local_size > 1) {
             /*Exchange keys, (if needed) */
@@ -3316,7 +3323,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                     } while( i < rdma_num_hcas);
 
                     mpi_errno = MPIC_Send(&pkt, sizeof(shm_coll_pkt), MPI_BYTE, src,
-                                             MPIR_BCAST_TAG, comm_ptr->ch.leader_comm, &errflag);
+                                             MPIR_BCAST_TAG, comm_ptr->dev.ch.leader_comm, &errflag);
                     if (mpi_errno) {
                                 MPIU_ERR_POP(mpi_errno);
                     }
@@ -3331,7 +3338,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                     /* Sending to dst. Receive its key info */
                     int j=0;
                     mpi_errno = MPIC_Recv(&pkt, sizeof(shm_coll_pkt), MPI_BYTE, dst_array[i],
-                                              MPIR_BCAST_TAG, comm_ptr->ch.leader_comm, MPI_STATUS_IGNORE, &errflag);
+                                              MPIR_BCAST_TAG, comm_ptr->dev.ch.leader_comm, MPI_STATUS_IGNORE, &errflag);
                     if (mpi_errno) {
                         MPIU_ERR_POP(mpi_errno);
                     }
@@ -3477,7 +3484,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
 
     if (shmem->half_full_complete == 0 &&
         IS_SHMEM_WINDOW_HALF_FULL(shmem->write, shmem->tail)) {
-        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window half full: %d \n", shmem->write);
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window half full: %llu \n", shmem->write);
         mv2_shm_barrier(shmem);
         if (shmem->local_rank == intra_node_root &&
             leader_commptr->local_size > 1) {
@@ -3505,7 +3512,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
     } 
 
     if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
-        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %d \n", shmem->write);
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %llu \n", shmem->write);
         mv2_shm_barrier(shmem);
         if (shmem->local_rank == intra_node_root &&
             leader_commptr->local_size > 1) {
@@ -3569,10 +3576,10 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
 #endif
     int shmem_comm_rank, local_size, local_rank; 
 
-    MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_commptr);
-    MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_commptr);
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.leader_comm, leader_commptr);
 
-    shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank; 
+    shmem_comm_rank = shmem_commptr->dev.ch.shmem_comm_rank; 
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
 
@@ -3581,7 +3588,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
 
     if (shmem->half_full_complete == 0 && 
         (IS_SHMEM_WINDOW_HALF_FULL(shmem->write, shmem->tail))) { 
-        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window half full: %d \n", shmem->write);
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window half full: %llu \n", shmem->write);
 
         if (shmem->local_rank == intra_node_root &&
             leader_commptr->local_size > 1) {
@@ -3612,7 +3619,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
 
     if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)   ||
        ((mv2_shm_window_size - windex < 2) || (mv2_shm_window_size - rindex < 2))) {
-        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %d \n", shmem->write);
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %llu \n", shmem->write);
         if (shmem->local_size > 1) {
              MPIDI_CH3I_SHMEM_COLL_Barrier_gather(local_size, local_rank,
                                              shmem_comm_rank);
@@ -3678,7 +3685,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
    if (shmem->local_rank == intra_node_root) {
         MPID_Comm *leader_commptr=NULL;
         int inter_node_reduce_completions=0; 
-        MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
+        MPID_Comm_get_ptr(comm_ptr->dev.ch.leader_comm, leader_commptr);
     
         if(leader_commptr->local_size > 1) {
             if(shmem->buffer_registered == 0) {
@@ -3717,7 +3724,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                     /* I am sending data to "dst". I will be needing dst's 
                      * RDMA info */ 
                     mpi_errno = MPIC_Recv(&pkt, sizeof(shm_coll_pkt), MPI_BYTE, dst,
-                                          MPIR_REDUCE_TAG, comm_ptr->ch.leader_comm, 
+                                          MPIR_REDUCE_TAG, comm_ptr->dev.ch.leader_comm, 
                                           &status, errflag);
                     if (mpi_errno) {
                          MPIU_ERR_POP(mpi_errno);
@@ -3772,7 +3779,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                         src = src_array[i]; 
                         pkt_array[i].recv_id =  i;
                         mpi_errno = MPIC_Isend(&pkt_array[i], sizeof(shm_coll_pkt), MPI_BYTE, src,
-                                             MPIR_REDUCE_TAG, comm_ptr->ch.leader_comm, 
+                                             MPIR_REDUCE_TAG, comm_ptr->dev.ch.leader_comm, 
                                              &request_array[i], errflag);
                         if (mpi_errno) {
                                 MPIU_ERR_POP(mpi_errno);
@@ -3972,7 +3979,7 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     int errflag = 0, max_local_size = 0;
     MPID_Comm *shmem_ptr = NULL;
  
-    MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_ptr);
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_ptr);
 
     shmem = MPIU_Malloc(sizeof (shmem_info_t));
     MPIU_Assert(shmem != NULL);

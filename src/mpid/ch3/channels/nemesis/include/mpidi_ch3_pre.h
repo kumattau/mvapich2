@@ -40,6 +40,65 @@ typedef struct MPIDI_CH3I_Process_group_s {
 /*#define HAVE_CH3_PRE_INIT*/
 /* #define MPIDI_CH3_HAS_NO_DYNAMIC_PROCESS */
 #define MPIDI_DEV_IMPLEMENTS_KVS
+
+/* Nemesis packets */
+#if defined(ENABLE_CHECKPOINTING) && defined(CHANNEL_NEMESIS_IB)
+#define MPIDI_CH3_PKT_ENUM                  \
+    MPIDI_NEM_PKT_LMT_RTS,                  \
+    MPIDI_NEM_PKT_LMT_CTS,                  \
+    MPIDI_NEM_PKT_LMT_DONE,                 \
+    MPIDI_NEM_PKT_LMT_COOKIE,               \
+    MPIDI_NEM_PKT_CKPT_MARKER,              \
+    MPIDI_NEM_PKT_NETMOD,                   \
+    MPIDI_NEM_IB_PKT_UNPAUSE
+#else
+#define MPIDI_CH3_PKT_ENUM                  \
+    MPIDI_NEM_PKT_LMT_RTS,                  \
+    MPIDI_NEM_PKT_LMT_CTS,                  \
+    MPIDI_NEM_PKT_LMT_DONE,                 \
+    MPIDI_NEM_PKT_LMT_COOKIE,               \
+    MPIDI_NEM_PKT_CKPT_MARKER,              \
+    MPIDI_NEM_PKT_NETMOD
+#endif
+
+typedef struct {
+    struct MPID_nem_barrier_vars *barrier_vars; /* shared memory variables used in barrier */
+    void *netmod_priv;      /* netmod communicator private data */
+#ifdef _OSU_MVAPICH_
+    MPI_Comm     leader_comm;
+    MPI_Comm     shmem_comm;
+    MPI_Comm     allgather_comm;
+    int*    leader_map;
+    int*    leader_rank;
+    int*    node_sizes;
+    int*    allgather_new_ranks;
+    int     is_uniform;
+    int     is_blocked;
+    int     shmem_comm_rank;
+    int     shmem_coll_ok;
+    int     allgather_comm_ok;
+    int     leader_group_size;
+    int     is_global_block;
+    int     is_pof2; /* Boolean to know if comm size is equal to pof2  */
+    int     gpof2; /* Greater pof2 < size of comm */
+    int     intra_node_done; /* Used to check if intra node communication has been done
+                                with mcast and bcast */
+    int     shmem_coll_count;
+    int     allgather_coll_count;
+    void    *shmem_info; /* intra node shmem info */
+#if defined(_SMP_LIMIC_)
+    MPI_Comm     intra_sock_comm;
+    MPI_Comm     intra_sock_leader_comm;
+    int*         socket_size;
+    int          is_socket_uniform;
+    int          use_intra_sock_comm;
+#endif
+#if defined(_MCST_SUPPORT_)
+    int     is_mcast_ok;
+    void    *bcast_info;
+#endif /* _MCST_SUPPORT_ */
+#endif /* _OSU_MVAPICH_ */
+} MPIDI_CH3I_CH_comm_t;
     
 typedef enum MPIDI_CH3I_VC_state
 {

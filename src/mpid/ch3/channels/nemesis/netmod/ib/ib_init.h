@@ -49,7 +49,7 @@ int MPID_nem_ib_connect_to_root (const char *business_card, MPIDI_VC_t *new_vc);
 #ifdef ENABLE_CHECKPOINTING
 typedef struct MPIDI_nem_ib_pkt_unpause
 {
-    MPID_nem_pkt_type_t type;
+    MPIDI_CH3_Pkt_type_t type;
     unsigned subtype;
 } MPIDI_nem_ib_pkt_unpause_t;
 #endif

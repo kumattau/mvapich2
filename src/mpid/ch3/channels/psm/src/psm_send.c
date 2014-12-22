@@ -44,8 +44,8 @@ psm_error_t psm_large_msg_isend_pkt(MPID_Request **rptr, int dest, void *buf,
     obj_ref = MPIU_Object_get_ref(req);
 
     /* Increment obj ref count and comp count by number of chunks */
-    cc_cnt  += steps-1;
-    obj_ref += steps-1;
+    cc_cnt  += steps - (balance == 0 ? 1 : 0);
+    obj_ref += steps - (balance == 0 ? 1 : 0);
 
     /* Update object reference count and completion count */
     MPID_cc_set(req->cc_ptr, cc_cnt);

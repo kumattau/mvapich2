@@ -62,7 +62,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
     comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
-    comm_size_is_pof2 = comm_ptr->ch.is_pof2;
+    comm_size_is_pof2 = comm_ptr->dev.ch.is_pof2;
 
     MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
 

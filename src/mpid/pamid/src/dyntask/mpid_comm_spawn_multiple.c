@@ -261,13 +261,15 @@ int MPIDI_Comm_spawn_multiple(int count, char **commands,
         preput_keyval_vector.key = MPIDI_PARENT_PORT_KVSKEY;
         preput_keyval_vector.val = port_name;
 
-        pmi_errno = PMI_Spawn_multiple(count, (const char **)
+        pmi_errno = UPMI_JOB_SPAWN(count, (const char **)
                                        commands,
+                                       NULL,
                                        (const char ***) argvs,
                                        maxprocs, info_keyval_sizes,
                                        (const PMI_keyval_t **)
                                        info_keyval_vectors, 1,
                                        &preput_keyval_vector,
+                                       NULL, 0,
                                        pmi_errcodes);
 	TRACE_ERR("pmi_errno from PMI_Spawn_multiple=%d\n", pmi_errno);
 #endif

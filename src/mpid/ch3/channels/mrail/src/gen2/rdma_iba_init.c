@@ -158,8 +158,6 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
     pg_size = MPIDI_PG_Get_size(pg);
 
-    rdma_get_pm_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
-
     /* Host ids exchanges through PMI in MPIDI_Get_local_host for
      ** mpirun_rsh. for all other launchers do it here */
     if (pg->ch.local_process_id == -1) {
@@ -1260,7 +1258,7 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
                     &(pg->ch.mrail.cm_ud_qpn[tgt_rank]), &arch_hca_type);
             }
         }
-        PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %d\n",
+        PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %ld\n",
                     tgt_rank, pg->ch.mrail.cm_lid[tgt_rank], pg->ch.mrail.cm_ud_qpn[tgt_rank],
                     arch_hca_type);
     }
@@ -1301,7 +1299,6 @@ int MPIDI_CH3I_PMI_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
                                         mv2_arch_hca_type *arch_hca_type_all)
 {
     int i           = 0;
-    int hostid      = 0;
     int pg_size     = 0;
     int mpi_errno   = MPI_SUCCESS;
 #ifdef _ENABLE_UD_
@@ -1404,14 +1401,13 @@ int MPIDI_CH3I_PMI_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
                                     "**pmi_barrier %d", mpi_errno);
     }
 
-    for (i = 0; i < pg_size; i++) {
-        if (i == pg_rank) {
-            continue;
-        }
-        if (!mv2_on_demand_ud_info_exchange || !mv2_homogeneous_cluster) {
-            mpi_errno = MPIDI_CH3I_PMI_Get_Init_Info(pg, i, arch_hca_type_all);
-            if (mpi_errno != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
+    if (!mv2_on_demand_ud_info_exchange || !mv2_homogeneous_cluster) {
+        for (i = 0; i < pg_size; i++) {
+            if (i != pg_rank) {
+                mpi_errno = MPIDI_CH3I_PMI_Get_Init_Info(pg, i, arch_hca_type_all);
+                if (mpi_errno != MPI_SUCCESS) {
+                    MPIU_ERR_POP(mpi_errno);
+                }
             }
         }
     }
@@ -1554,8 +1550,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     MPIDI_FUNC_ENTER(MPID_STATE_CH3I_CM_INIT);
 
     pg_size = MPIDI_PG_Get_size(pg);
-
-    rdma_get_pm_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
 
     /* 
      * Identify local rank and number of local processes
@@ -2006,8 +2000,6 @@ int MPIDI_CH3I_RDMA_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 
     pg_size = MPIDI_PG_Get_size(pg);
 
-    rdma_get_pm_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
-
     /* We can't setup UD Ring for iWARP devices. Use PMI here for hostid exchange
      ** in the case of hydra. Consider using hydra process mapping in the next
      ** release as it is not correct in the current release.
@@ -2154,7 +2146,6 @@ int MPIDI_CH3I_RDMA_CM_Finalize(void)
     /* No rdma functions will be called after this function */
     int retval;
     int i = 0;
-    int rail_index;
     int hca_index;
     int mpi_errno = MPI_SUCCESS;
 

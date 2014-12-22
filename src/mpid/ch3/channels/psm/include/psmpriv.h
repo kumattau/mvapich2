@@ -85,8 +85,8 @@ int (*psm_progress_unlock_fn)(pthread_spinlock_t *);
 #define _psm_enter_  psm_lock_fn(&psmlock)
 #define _psm_exit_   psm_unlock_fn(&psmlock)
 
-#define _psm_progress_enter_  psm_progress_lock_fn(&psmlock)
-#define _psm_progress_exit_   psm_progress_unlock_fn(&psmlock)
+#define _psm_progress_enter_  psm_progress_lock_fn(&psmlock_progress)
+#define _psm_progress_exit_   psm_progress_unlock_fn(&psmlock_progress)
 
 #define PSM_COUNTERS    9 
 
@@ -115,6 +115,7 @@ extern uint8_t              ipath_debug_enable;
 extern uint8_t                 ipath_enable_func_lock;
 extern uint32_t                ipath_progress_yield_count;
 extern pthread_spinlock_t   psmlock;
+extern pthread_spinlock_t   psmlock_progress;
 extern size_t ipath_max_transfer_size;
 
 void psm_queue_init();

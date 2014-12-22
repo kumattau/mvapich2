@@ -120,6 +120,9 @@
 #define MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12 13
 #define MV2_ARCH_INTEL_XEON_E5_2680_V2_2S_20 14
 #define MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20 15
+#define MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32 16
+#define MV2_ARCH_INTEL_XEON_E5_2660_V3_2S_20 17
+#define MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24 18
 #define MV2_ARCH_INTEL_END              1000
 
 /* AMD Architectures */
@@ -177,7 +180,9 @@ int mv2_is_arch_hca_type(mv2_arch_hca_type arch_hca_type,
 /* Get architecture-hca type */
 #if defined(HAVE_LIBIBVERBS)
 mv2_arch_hca_type mv2_get_arch_hca_type (struct ibv_device *dev);
-mv2_arch_hca_type mv2_new_get_arch_hca_type (struct ibv_context *ctx, struct ibv_device *dev);
+mv2_arch_hca_type mv2_new_get_arch_hca_type (struct ibv_context *ctx,
+                                                struct ibv_device *dev,
+                                                uint64_t *guid);
 #else
 mv2_arch_hca_type mv2_get_arch_hca_type (void *dev);
 #endif
@@ -191,7 +196,7 @@ mv2_arch_type mv2_get_arch_type(void);
 /* Get card type */
 #if defined(HAVE_LIBIBVERBS)
 mv2_hca_type mv2_get_hca_type(struct ibv_device *dev);
-mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx, struct ibv_device *dev);
+mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx, struct ibv_device *dev, uint64_t *guid);
 #else
 mv2_hca_type mv2_get_hca_type(void *dev);
 #endif

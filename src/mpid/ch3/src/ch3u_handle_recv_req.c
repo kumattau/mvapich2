@@ -169,12 +169,15 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
 					       int *complete )
 {
     int mpi_errno = MPI_SUCCESS;
+    int get_acc_flag = 0;
     MPID_Win *win_ptr;
 
     MPIU_CHKPMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQHANDLER_PUTACCUMRESPCOMPLETE);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_REQHANDLER_PUTACCUMRESPCOMPLETE);
+
+    MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
 
     /* Perform get in get-accumulate */
     if (rreq->dev.resp_request_handle != MPI_REQUEST_NULL) {
@@ -210,8 +213,19 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
             MPID_Segment_free(seg);
         }
 
+#if defined (CHANNEL_PSM)
+        resp_req->dev.OnFinal = NULL;
+        resp_req->dev.OnDataAvail = NULL;
+#else
         resp_req->dev.OnFinal = MPIDI_CH3_ReqHandler_GetAccumRespComplete;
         resp_req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GetAccumRespComplete;
+#endif
+        resp_req->dev.target_win_handle = rreq->dev.target_win_handle;
+        resp_req->dev.flags = rreq->dev.flags;
+
+        /* here we increment the Active Target counter to guarantee the GET-like
+           operation are completed when counter reaches zero. */
+        win_ptr->at_completion_counter++;
 
 #if defined (CHANNEL_MRAIL)
         /*if this is a rndv exchange*/
@@ -274,9 +288,12 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
 
         /* Mark get portion as handled */
         rreq->dev.resp_request_handle = MPI_REQUEST_NULL;
+#if defined (CHANNEL_MRAIL)
+        get_acc_flag = 0;
+#else
+        get_acc_flag = 1;
+#endif
     }
-
-    MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
 
     if (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_ACCUM_RESP) {
 
@@ -296,9 +313,11 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
     win_ptr->outstanding_rma--;
 #endif /* defined(CHANNEL_MRAIL) */
    
+    if (!get_acc_flag) {
     mpi_errno = MPIDI_CH3_Finish_rma_op_target(vc, win_ptr, TRUE, rreq->dev.flags,
                                                rreq->dev.source_win_handle);
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+    }
 
 #if defined (CHANNEL_MRAIL)
      /*if this is a rndv exchange*/
@@ -540,11 +559,25 @@ int MPIDI_CH3_ReqHandler_GetAccumRespComplete( MPIDI_VC_t *vc,
                                                int *complete )
 {
     int mpi_errno = MPI_SUCCESS;
+    MPID_Win *win_ptr;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQHANDLER_GETACCUMRESPCOMPLETE);
     
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_REQHANDLER_GETACCUMRESPCOMPLETE);
 
     MPIU_Free(rreq->dev.user_buf);
+
+    MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
+
+#if !defined(CHANNEL_MRAIL)
+    mpi_errno = MPIDI_CH3_Finish_rma_op_target(vc, win_ptr, TRUE, rreq->dev.flags,
+                                               MPI_WIN_NULL);
+    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+#endif
+
+    /* here we decrement the Active Target counter to guarantee the GET-like
+       operation are completed when counter reaches zero. */
+    win_ptr->at_completion_counter--;
+    MPIU_Assert(win_ptr->at_completion_counter >= 0);
 
     MPIDI_CH3U_Request_complete(rreq);
     *complete = TRUE;
@@ -741,7 +774,7 @@ int MPIDI_CH3_ReqHandler_SinglePutAccumComplete( MPIDI_VC_t *vc,
 	
 	if (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_PT_SINGLE_PUT) {
 	    /* copy the data over */
-	    mpi_errno = MPIR_Localcopy(rreq->dev.user_buf,
+	    mpi_errno = MPIR_Localcopy_RMA(rreq->dev.user_buf,
 				       rreq->dev.user_count,
 				       rreq->dev.datatype,
 				       lock_queue_entry->pt_single_op->addr,
@@ -826,6 +859,8 @@ int MPIDI_CH3_ReqHandler_FOPComplete( MPIDI_VC_t *vc,
     fop_resp_pkt->mapped_trank = win_ptr->rank_mapping[vc->pg_rank];
 #endif /* CHANNEL_PSM */
 
+    MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
+
     /* Copy original data into the send buffer.  If data will fit in the
        header, use that.  Otherwise allocate a temporary buffer.  */
     if (len <= sizeof(fop_resp_pkt->data)) {
@@ -836,12 +871,18 @@ int MPIDI_CH3_ReqHandler_FOPComplete( MPIDI_VC_t *vc,
         MPIU_ERR_CHKANDJUMP(resp_req == NULL, mpi_errno, MPI_ERR_OTHER, "**nomemreq");
         MPIU_Object_set_ref(resp_req, 1);
 
+        resp_req->dev.target_win_handle = rreq->dev.target_win_handle;
+        resp_req->dev.flags = rreq->dev.flags;
+        resp_req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GetAccumRespComplete;
+
+        /* here we increment the Active Target counter to guarantee the GET-like
+           operation are completed when counter reaches zero. */
+        win_ptr->at_completion_counter++;
+
         MPIDI_CH3U_SRBuf_alloc(resp_req, len);
         MPIU_ERR_CHKANDJUMP(resp_req->dev.tmpbuf_sz < len, mpi_errno, MPI_ERR_OTHER, "**nomemreq");
         MPIU_Memcpy( resp_req->dev.tmpbuf, rreq->dev.real_user_buf, len );
     }
-
-    MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
 
     /* Apply the op */
     if (rreq->dev.op != MPI_NO_OP) {
@@ -864,8 +905,36 @@ int MPIDI_CH3_ReqHandler_FOPComplete( MPIDI_VC_t *vc,
         MPIU_ERR_CHKANDJUMP(mpi_errno != MPI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
 
         if (resp_req != NULL) {
+#if defined (CHANNEL_PSM)
+            resp_req->dev.target_win_handle = rreq->dev.target_win_handle;
+            resp_req->dev.flags = rreq->dev.flags;
+            resp_req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GetAccumRespComplete;
             MPID_Request_release(resp_req);
+#else
+            if (!MPID_Request_is_complete(resp_req)) {
+                /* sending process is not completed, set proper OnDataAvail
+                   (it is initialized to NULL by lower layer) */
+                resp_req->dev.target_win_handle = rreq->dev.target_win_handle;
+                resp_req->dev.flags = rreq->dev.flags;
+
+                mpi_errno = MPIDI_CH3_Finish_rma_op_target(vc, win_ptr, TRUE, rreq->dev.flags,
+                        rreq->dev.source_win_handle);
+                if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+
+                MPID_Request_release(resp_req);
+                goto finish_up;
+            }
+            else {
+                MPID_Request_release(resp_req);
+            }
+#endif
         }
+
+        /* There are additional steps to take if this is a passive
+           target RMA or the last operation from the source */
+        mpi_errno = MPIDI_CH3_Finish_rma_op_target(vc, win_ptr, TRUE, rreq->dev.flags,
+                                                   rreq->dev.source_win_handle);
+        if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
     }
     else {
         MPID_IOV iov[MPID_IOV_LIMIT];
@@ -887,17 +956,11 @@ int MPIDI_CH3_ReqHandler_FOPComplete( MPIDI_VC_t *vc,
         MPIU_ERR_CHKANDJUMP(mpi_errno != MPI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
     }
 
+ finish_up:
     /* Free temporary buffer allocated in PktHandler_FOP */
     if (len > sizeof(int) * MPIDI_RMA_FOP_IMMED_INTS && rreq->dev.op != MPI_NO_OP) {
         MPIU_Free(rreq->dev.user_buf);
     }
-
-    /* There are additional steps to take if this is a passive 
-       target RMA or the last operation from the source */
-
-    mpi_errno = MPIDI_CH3_Finish_rma_op_target(vc, win_ptr, TRUE, rreq->dev.flags,
-                                               rreq->dev.source_win_handle);
-    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
     *complete = 1;
 
@@ -1114,7 +1177,7 @@ static int do_accumulate_op(MPID_Request *rreq)
     if (rreq->dev.op == MPI_REPLACE)
     {
         /* simply copy the data */
-        mpi_errno = MPIR_Localcopy(rreq->dev.user_buf, rreq->dev.user_count,
+        mpi_errno = MPIR_Localcopy_RMA(rreq->dev.user_buf, rreq->dev.user_count,
                                    rreq->dev.datatype,
                                    rreq->dev.real_user_buf,
                                    rreq->dev.user_count,
@@ -1318,7 +1381,7 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
 			    
 			    single_op = lock_queue->pt_single_op;
 			    if (single_op->type == MPIDI_RMA_PUT) {
-				mpi_errno = MPIR_Localcopy(single_op->data,
+				mpi_errno = MPIR_Localcopy_RMA(single_op->data,
 							   single_op->count,
 							   single_op->datatype,
 							   single_op->addr,
@@ -1496,7 +1559,7 @@ static int do_simple_accumulate(MPIDI_PT_single_op *single_op)
     if (single_op->op == MPI_REPLACE)
     {
         /* simply copy the data */
-        mpi_errno = MPIR_Localcopy(single_op->data, single_op->count,
+        mpi_errno = MPIR_Localcopy_RMA(single_op->data, single_op->count,
                                    single_op->datatype, single_op->addr,
                                    single_op->count, single_op->datatype);
         if (mpi_errno) {
@@ -1568,6 +1631,10 @@ static int do_simple_get(MPID_Win *win_ptr, MPIDI_Win_lock_queue *lock_queue)
     req->kind = MPID_REQUEST_SEND;
     req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GetSendRespComplete;
     req->dev.OnFinal     = MPIDI_CH3_ReqHandler_GetSendRespComplete;
+
+    /* here we increment the Active Target counter to guarantee the GET-like
+       operation are completed when counter reaches zero. */
+    win_ptr->at_completion_counter++;
     
     MPIDI_Pkt_init(get_resp_pkt, MPIDI_CH3_PKT_GET_RESP);
     get_resp_pkt->request_handle = lock_queue->pt_single_op->request_handle;

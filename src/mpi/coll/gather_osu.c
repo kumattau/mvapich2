@@ -376,7 +376,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
 
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
@@ -384,7 +384,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
     if (local_rank == 0) {
         /* Node leader. Extract the rank, size information for the leader
          * communicator */
-        leader_comm = comm_ptr->ch.leader_comm;
+        leader_comm = comm_ptr->dev.ch.leader_comm;
         MPID_Comm_get_ptr(leader_comm, leader_commptr);
         leader_comm_rank = leader_commptr->rank;
         leader_comm_size = leader_commptr->local_size;
@@ -398,7 +398,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
     }
 
 #if defined(_SMP_LIMIC_)
-     if((g_use_limic2_coll) && (shmem_commptr->ch.use_intra_sock_comm == 1) 
+     if((g_use_limic2_coll) && (shmem_commptr->dev.ch.use_intra_sock_comm == 1) 
          && (use_limic_gather)
          &&((num_scheme == USE_GATHER_PT_PT_BINOMIAL) 
             || (num_scheme == USE_GATHER_PT_PT_DIRECT)
@@ -472,12 +472,12 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
         MPIU_ERR_POP(mpi_errno);
     }
 
-    leader_of_root = comm_ptr->ch.leader_map[root];
-    leader_root = comm_ptr->ch.leader_rank[leader_of_root];
+    leader_of_root = comm_ptr->dev.ch.leader_map[root];
+    leader_root = comm_ptr->dev.ch.leader_rank[leader_of_root];
     /* leader_root is the rank of the leader of the root in leader_comm. 
      * leader_root is to be used as the root of the inter-leader gather ops 
      */
-    if (comm_ptr->ch.is_uniform != 1) {
+    if (comm_ptr->dev.ch.is_uniform != 1) {
         if (local_rank == 0) {
             int *displs = NULL;
             int *recvcnts = NULL;
@@ -513,7 +513,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
                 }
             }
 
-            node_sizes = comm_ptr->ch.node_sizes;
+            node_sizes = comm_ptr->dev.ch.node_sizes;
 
             if (leader_comm_rank == leader_root) {
                 displs = MPIU_Malloc(sizeof (int) * leader_comm_size);
@@ -702,7 +702,7 @@ static int MPIR_Limic_Gather_Scheme_PT_PT(
 
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_size = shmem_commptr->local_size;
 
@@ -714,9 +714,9 @@ static int MPIR_Limic_Gather_Scheme_PT_PT(
         nbytes = sendcnt * sendtype_size;
     }
 
-    if(shmem_commptr->ch.use_intra_sock_comm == 1) { 
-        MPID_Comm_get_ptr(shmem_commptr->ch.intra_sock_comm, intra_sock_commptr);
-        MPID_Comm_get_ptr(shmem_commptr->ch.intra_sock_leader_comm, intra_node_leader_commptr);
+    if(shmem_commptr->dev.ch.use_intra_sock_comm == 1) { 
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_comm, intra_sock_commptr);
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_leader_comm, intra_node_leader_commptr);
 
         intra_sock_rank = intra_sock_commptr->rank;
         intra_sock_comm_size = intra_sock_commptr->local_size;
@@ -777,13 +777,13 @@ static int MPIR_Limic_Gather_Scheme_PT_PT(
     /*Inter socket gather*/
     if(intra_sock_rank == 0) {
         /*When data in each socket is different*/
-        if (shmem_commptr->ch.is_socket_uniform != 1) {
+        if (shmem_commptr->dev.ch.is_socket_uniform != 1) {
 
             int *displs = NULL;
             int *recvcnts = NULL;
             int *socket_sizes;
             int i = 0;
-            socket_sizes = shmem_commptr->ch.socket_size;
+            socket_sizes = shmem_commptr->dev.ch.socket_size;
 
             if (intra_node_leader_rank == 0) {
                 tmp_buf = intra_tmp_buf;
@@ -935,7 +935,7 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
 
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
@@ -948,9 +948,9 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
         nbytes = sendcnt * sendtype_size;
     }
 
-    if(shmem_commptr->ch.use_intra_sock_comm == 1) { 
-        MPID_Comm_get_ptr(shmem_commptr->ch.intra_sock_comm, intra_sock_commptr);
-        MPID_Comm_get_ptr(shmem_commptr->ch.intra_sock_leader_comm, intra_node_leader_commptr);
+    if(shmem_commptr->dev.ch.use_intra_sock_comm == 1) { 
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_comm, intra_sock_commptr);
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_leader_comm, intra_node_leader_commptr);
 
         intra_sock_rank = intra_sock_commptr->rank;
         intra_sock_comm_size = intra_sock_commptr->local_size;
@@ -1031,13 +1031,13 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
     /*Inter socket gather*/
     if(intra_sock_rank == 0) {
         /*When data in each socket is different*/
-        if (shmem_commptr->ch.is_socket_uniform != 1) {
+        if (shmem_commptr->dev.ch.is_socket_uniform != 1) {
 
             int *displs = NULL;
             int *recvcnts = NULL;
             int *socket_sizes;
             int i = 0;
-            socket_sizes = shmem_commptr->ch.socket_size;
+            socket_sizes = shmem_commptr->dev.ch.socket_size;
 
             if (intra_node_leader_rank == 0) {
                 tmp_buf = intra_tmp_buf;
@@ -1185,7 +1185,7 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_PT(
 
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_size = shmem_commptr->local_size;
 
@@ -1197,9 +1197,9 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_PT(
         nbytes = sendcnt * sendtype_size;
     }
 
-    if(shmem_commptr->ch.use_intra_sock_comm == 1) { 
-        MPID_Comm_get_ptr(shmem_commptr->ch.intra_sock_comm, intra_sock_commptr);
-        MPID_Comm_get_ptr(shmem_commptr->ch.intra_sock_leader_comm, intra_node_leader_commptr);
+    if(shmem_commptr->dev.ch.use_intra_sock_comm == 1) { 
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_comm, intra_sock_commptr);
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_leader_comm, intra_node_leader_commptr);
 
         intra_sock_rank = intra_sock_commptr->rank;
         intra_sock_comm_size = intra_sock_commptr->local_size;
@@ -1333,7 +1333,7 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
 
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
@@ -1346,9 +1346,9 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
         nbytes = sendcnt * sendtype_size;
     }
 
-    if(shmem_commptr->ch.use_intra_sock_comm == 1) { 
-        MPID_Comm_get_ptr(shmem_commptr->ch.intra_sock_comm, intra_sock_commptr);
-        MPID_Comm_get_ptr(shmem_commptr->ch.intra_sock_leader_comm, intra_node_leader_commptr);
+    if(shmem_commptr->dev.ch.use_intra_sock_comm == 1) { 
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_comm, intra_sock_commptr);
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_leader_comm, intra_node_leader_commptr);
 
         intra_sock_rank = intra_sock_commptr->rank;
         intra_sock_comm_size = intra_sock_commptr->local_size;
@@ -1500,7 +1500,7 @@ static int MPIR_Limic_Gather_Scheme_SINGLE_LEADER(
 
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
@@ -1586,12 +1586,12 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
     
     /* extract the rank,size information for the intra-node
      * communicator */
-	shmem_comm = comm_ptr->ch.shmem_comm;
+	shmem_comm = comm_ptr->dev.ch.shmem_comm;
 	MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
 
     /*This case uses the PT-PT scheme with binomial
      * algorithm */
-    if((shmem_commptr->ch.use_intra_sock_comm == 1) 
+    if((shmem_commptr->dev.ch.use_intra_sock_comm == 1) 
             && (num_scheme ==  USE_GATHER_PT_PT_BINOMIAL)) {
 
         mpi_errno = MPIR_Limic_Gather_Scheme_PT_PT(sendbuf, sendcnt, sendtype,
@@ -1605,7 +1605,7 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
     } 
     /*This case uses the PT-PT scheme with DIRECT
      * algorithm */
-    else if((shmem_commptr->ch.use_intra_sock_comm == 1) 
+    else if((shmem_commptr->dev.ch.use_intra_sock_comm == 1) 
             && (num_scheme == USE_GATHER_PT_PT_DIRECT)) {
 
         mpi_errno = MPIR_Limic_Gather_Scheme_PT_PT(sendbuf, sendcnt, sendtype,
@@ -1619,7 +1619,7 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
     } 
     /*This case uses the PT-LINEAR scheme with binomial
      * algorithm */
-    else if((shmem_commptr->ch.use_intra_sock_comm == 1) 
+    else if((shmem_commptr->dev.ch.use_intra_sock_comm == 1) 
             && (num_scheme == USE_GATHER_PT_LINEAR_BINOMIAL)) {
         
         mpi_errno = MPIR_Limic_Gather_Scheme_PT_LINEAR(sendbuf, sendcnt, sendtype,
@@ -1634,7 +1634,7 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
     } 
     /*This case uses the PT-LINEAR scheme with DIRECT
      * algorithm */
-    else if((shmem_commptr->ch.use_intra_sock_comm == 1) 
+    else if((shmem_commptr->dev.ch.use_intra_sock_comm == 1) 
             && (num_scheme == USE_GATHER_PT_LINEAR_DIRECT)) {
         
         mpi_errno = MPIR_Limic_Gather_Scheme_PT_LINEAR(sendbuf, sendcnt, sendtype,
@@ -1649,7 +1649,7 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
     } 
     /*This case uses the LINEAR-PT scheme with binomial
      * algorithm */
-    else if((shmem_commptr->ch.use_intra_sock_comm == 1) 
+    else if((shmem_commptr->dev.ch.use_intra_sock_comm == 1) 
               && (num_scheme == USE_GATHER_LINEAR_PT_BINOMIAL)) {
         
         mpi_errno = MPIR_Limic_Gather_Scheme_LINEAR_PT(sendbuf, sendcnt, sendtype,
@@ -1664,7 +1664,7 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
     } 
     /*This case uses the LINEAR-PT scheme with DIRECT
      * algorithm */
-    else if((shmem_commptr->ch.use_intra_sock_comm == 1) 
+    else if((shmem_commptr->dev.ch.use_intra_sock_comm == 1) 
               && (num_scheme == USE_GATHER_LINEAR_PT_DIRECT)) {
         
         mpi_errno = MPIR_Limic_Gather_Scheme_LINEAR_PT(sendbuf, sendcnt, sendtype,
@@ -1676,7 +1676,7 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
             MPIU_ERR_POP(mpi_errno);
         }
 
-    } else if((shmem_commptr->ch.use_intra_sock_comm == 1) 
+    } else if((shmem_commptr->dev.ch.use_intra_sock_comm == 1) 
              && (num_scheme == USE_GATHER_LINEAR_LINEAR)) {
 
         mpi_errno = MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(sendbuf, sendcnt, sendtype,
@@ -1687,8 +1687,8 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
             MPIU_ERR_POP(mpi_errno);
         }
       
-    } else if(((comm_ptr->ch.shmem_coll_ok == 1) || 
-              (shmem_commptr->ch.use_intra_sock_comm == 1))
+    } else if(((comm_ptr->dev.ch.shmem_coll_ok == 1) || 
+              (shmem_commptr->dev.ch.use_intra_sock_comm == 1))
              && (num_scheme == USE_GATHER_SINGLE_LEADER)) {
 
         mpi_errno = MPIR_Limic_Gather_Scheme_SINGLE_LEADER(sendbuf, sendcnt, sendtype,
@@ -1766,9 +1766,9 @@ int MPIR_Gather_index_tuned_intra_MV2(const void *sendbuf,
     }
     
     /* check if safe to use partial subscription mode */
-    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    if (comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_uniform) {
     
-        shmem_comm = comm_ptr->ch.shmem_comm;
+        shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
         i = 0;
@@ -1811,7 +1811,7 @@ int MPIR_Gather_index_tuned_intra_MV2(const void *sendbuf,
     }
     else {
 	/* Comm size in between smallest and largest configuration: find closest match */
-	if (comm_ptr->ch.is_pof2) {
+	if (comm_ptr->dev.ch.is_pof2) {
 	    comm_size_index = log2( comm_size / table_min_comm_size );
 	}
 	else {
@@ -1911,8 +1911,8 @@ int MPIR_Gather_index_tuned_intra_MV2(const void *sendbuf,
     } else
 #endif /*_ENABLE_CUDA_*/
 
-    if (comm_ptr->ch.is_global_block == 1 && mv2_use_direct_gather == 1 &&
-            mv2_use_two_level_gather == 1 && comm_ptr->ch.shmem_coll_ok == 1) {
+    if (comm_ptr->dev.ch.is_global_block == 1 && mv2_use_direct_gather == 1 &&
+            mv2_use_two_level_gather == 1 && comm_ptr->dev.ch.shmem_coll_ok == 1) {
         /* Set intra-node function pt for gather_two_level */
         MV2_Gather_intra_node_function = mv2_gather_indexed_thresholds_table[conf_index][comm_size_index].
 	    intra_node[intra_node_algo_index].MV2_pt_Gather_function;
@@ -2081,8 +2081,8 @@ int MPIR_Gather_MV2(const void *sendbuf,
     } else
 #endif /*_ENABLE_CUDA_*/
 
-    if (comm_ptr->ch.is_global_block == 1 && mv2_use_direct_gather == 1 &&
-            mv2_use_two_level_gather == 1 && comm_ptr->ch.shmem_coll_ok == 1) {
+    if (comm_ptr->dev.ch.is_global_block == 1 && mv2_use_direct_gather == 1 &&
+            mv2_use_two_level_gather == 1 && comm_ptr->dev.ch.shmem_coll_ok == 1) {
         /* Set intra-node function pt for gather_two_level */
         MV2_Gather_intra_node_function = 
                               mv2_gather_thresholds_table[range].intra_node[range_intra_threshold].

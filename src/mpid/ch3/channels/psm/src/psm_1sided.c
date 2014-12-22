@@ -1039,7 +1039,6 @@ static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *putreq, int putlen,
     MPID_Request *preq = vc->ch.recv_active;
     uint64_t rtag, rtagsel;
     psm_error_t psmerr;
-    int predefined;
 
     if(req == NULL) {
         req = psm_create_req();

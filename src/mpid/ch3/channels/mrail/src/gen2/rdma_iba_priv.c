@@ -640,11 +640,16 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                                       "**fail %s",
                                       "Error getting HCA attributes\n");
         }
+
         /* Identify the maximum number of atomic operations supported by the HCA */
         rdma_supported_max_rdma_dst_ops   = dev_attr.max_qp_rd_atom;
         rdma_supported_max_qp_ous_rd_atom = dev_attr.max_qp_rd_atom;
 
-        g_atomics_support = (dev_attr.atomic_cap != IBV_ATOMIC_NONE);
+        if ((dev_attr.atomic_cap == IBV_ATOMIC_HCA) || (dev_attr.atomic_cap == IBV_ATOMIC_GLOB)) {
+            g_atomics_support = 1;
+        } else {
+            g_atomics_support = 0;
+        }
 
         /* detecting active ports */
         if (rdma_default_port < 0 || rdma_num_ports > 1) {
@@ -835,7 +840,11 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
             rdma_supported_max_rdma_dst_ops   = dev_attr.max_qp_rd_atom;
             rdma_supported_max_qp_ous_rd_atom = dev_attr.max_qp_rd_atom;
 
-            g_atomics_support = (dev_attr.atomic_cap != IBV_ATOMIC_NONE);
+            if ((dev_attr.atomic_cap == IBV_ATOMIC_HCA) || (dev_attr.atomic_cap == IBV_ATOMIC_GLOB)) {
+                g_atomics_support = 1;
+            } else {
+                g_atomics_support = 0;
+            }
 
             /* detecting active ports */
             if (rdma_default_port < 0 || rdma_num_ports > 1) {
@@ -1155,8 +1164,7 @@ rdma_iba_allocate_memory(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 
     /* We need to allocate vbufs for send/recv path */
     if ((ret =
-         allocate_vbufs(mv2_MPIDI_CH3I_RDMA_Process.ptag,
-                        rdma_vbuf_pool_size))) {
+         allocate_vbufs(mv2_MPIDI_CH3I_RDMA_Process.ptag))) {
         return ret;
     }
 #ifdef _ENABLE_UD_

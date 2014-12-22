@@ -64,6 +64,7 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     mv2_hca_type                 hca_type;
     mv2_arch_type                arch_type;
     mv2_arch_hca_type            arch_hca_type;
+    uint64_t                    node_guid;
     int                         cluster_size;
     uint8_t                     heterogeneity;
     uint8_t                     enable_rma_fast_path;
@@ -75,6 +76,7 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     uint8_t                     has_ring_startup;
     uint8_t                     has_lazy_mem_unregister;
     uint8_t                     has_one_sided;
+    uint8_t                     shm_win_pt2pt;
     uint8_t                     has_flush;
     int                         maxtransfersize;
     int                         global_used_send_cq;
@@ -226,8 +228,8 @@ extern int (*check_cq_overflow) (MPIDI_VC_t *c, int rail);
 }
 
 #define PREPOST_VBUF_RECV(_c, _subrail)  {                      \
-    vbuf *__v = get_vbuf();                                     \
-    vbuf_init_recv(__v, VBUF_BUFFER_SIZE, _subrail);            \
+    vbuf *__v = get_vbuf_by_offset(MV2_RECV_VBUF_POOL_OFFSET);  \
+    VBUF_INIT_RECV(__v, VBUF_BUFFER_SIZE, _subrail);            \
     IBV_POST_RR(_c, __v, (_subrail));                           \
     (_c)->mrail.srp.credits[(_subrail)].local_credit++;         \
     (_c)->mrail.srp.credits[(_subrail)].preposts++;             \
@@ -236,7 +238,7 @@ extern int (*check_cq_overflow) (MPIDI_VC_t *c, int rail);
 #ifdef _ENABLE_XRC_
 #define  XRC_FILL_SRQN_FIX_CONN(_v, _vc, _rail)\
 do {                                                                    \
-    if (USE_XRC && VC_XST_ISUNSET ((_vc), XF_DPM_INI)) {                \
+    if (unlikely(USE_XRC && VC_XST_ISUNSET ((_vc), XF_DPM_INI))) {                \
         int hca_index = _rail / (rdma_num_ports                         \
                 * rdma_num_qp_per_port);                                \
         (_v)->desc.u.sr.xrc_remote_srq_num =                            \
@@ -256,24 +258,13 @@ do {                                                                    \
 } while (0);
 #define  IBV_POST_SR(_v, _c, _rail, err_string) {                           \
     {                                                                       \
+        int __ret;                                                          \
         PRINT_DEBUG(DEBUG_XRC_verbose>1, "POST_SR: to %d (qpn: %d) (state: %d %d %d) (%s:%d)\n",    \
                 (_c)->pg_rank, (_c)->mrail.rails[(_rail)].qp_hndl->qp_num,  \
                 (_c)->mrail.rails[(_rail)].qp_hndl->state, (_c)->ch.state,  \
                 (_c)->state, __FILE__, __LINE__);                           \
         MPIU_Assert ((_c)->mrail.rails[(_rail)].send_wqes_avail >= 0);      \
         MPIU_Assert (!USE_XRC || VC_XST_ISUNSET ((_c), XF_INDIRECT_CONN));  \
-        int __ret;                                                          \
-        if(((_v)->desc.sg_entry.length <= rdma_max_inline_size)       \
-                && ((_v)->desc.u.sr.opcode != IBV_WR_RDMA_READ)      \
-                && ((_v)->desc.u.sr.opcode != IBV_WR_ATOMIC_CMP_AND_SWP) \
-                && ((_v)->desc.u.sr.opcode != IBV_WR_ATOMIC_FETCH_AND_ADD)) \
-        {                                                             \
-           (_v)->desc.u.sr.send_flags = (enum ibv_send_flags)         \
-                                        (IBV_SEND_SIGNALED |          \
-                                         IBV_SEND_INLINE);            \
-        } else {                                                      \
-            (_v)->desc.u.sr.send_flags = IBV_SEND_SIGNALED ;          \
-        }                                                             \
         MPIU_Assert((_rail) == (_v)->rail);                           \
         mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq++;            \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \
@@ -327,17 +318,6 @@ inline static void print_info(vbuf* v, char* title, int err)
 #define  IBV_POST_SR(_v, _c, _rail, err_string) {                     \
     {                                                                 \
         int __ret;                                                    \
-        if(((_v)->desc.sg_entry.length <= rdma_max_inline_size)       \
-                && ((_v)->desc.u.sr.opcode != IBV_WR_RDMA_READ)      \
-                && ((_v)->desc.u.sr.opcode != IBV_WR_ATOMIC_CMP_AND_SWP) \
-                && ((_v)->desc.u.sr.opcode != IBV_WR_ATOMIC_FETCH_AND_ADD)) \
-        {                                                             \
-           (_v)->desc.u.sr.send_flags = (enum ibv_send_flags)         \
-                                        (IBV_SEND_SIGNALED |          \
-                                         IBV_SEND_INLINE);            \
-        } else {                                                      \
-            (_v)->desc.u.sr.send_flags = IBV_SEND_SIGNALED ;          \
-        }                                                             \
         MPIU_Assert((_rail) == (_v)->rail);                           \
         mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq++;            \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \

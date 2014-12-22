@@ -51,6 +51,9 @@ static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 #define INTEL_X5650_MODEL   44
 #define INTEL_E5_2670_MODEL 45
 #define INTEL_XEON_E5_2670_V2_MODEL 62
+#define INTEL_XEON_E5_2698_V3_MODEL 63
+#define INTEL_XEON_E5_2660_V3_MODEL 63
+#define INTEL_XEON_E5_2680_V3_MODEL 63
 
 #define MV2_STR_VENDOR_ID    "vendor_id"
 #define MV2_STR_AUTH_AMD     "AuthenticAMD"
@@ -65,6 +68,9 @@ static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 #define INTEL_E5_2630_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2630 v2 @ 2.60GHz"
 #define INTEL_E5_2680_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2680 v2 @ 2.80GHz"
 #define INTEL_E5_2690_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2690 v2 @ 3.00GHz"
+#define INTEL_E5_2698_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2698 v3 @ 2.30GHz"
+#define INTEL_E5_2660_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2660 v3 @ 2.60GHz"
+#define INTEL_E5_2680_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2680 v3 @ 2.50GHz"
 
 typedef struct _mv2_arch_types_log_t{
     uint64_t arch_type;
@@ -89,6 +95,9 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12,"MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12"},
     {MV2_ARCH_INTEL_XEON_E5_2680_V2_2S_20,"MV2_ARCH_INTEL_XEON_E5_2680_V2_2S_20"},
     {MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20,"MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20"},
+    {MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32,"MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32"},
+    {MV2_ARCH_INTEL_XEON_E5_2660_V3_2S_20,"MV2_ARCH_INTEL_XEON_E5_2660_V3_2S_20"},
+    {MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24,"MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24"},
 
     /* AMD Architectures */
     {MV2_ARCH_AMD_GENERIC,          "MV2_ARCH_AMD_GENERIC"},
@@ -277,7 +286,7 @@ mv2_arch_type mv2_get_arch_type()
                         if(NEHALEM_MODEL == g_mv2_cpu_model) {  /* nehalem with smt on */
                             arch_type = MV2_ARCH_INTEL_NEHALEM_16;
                         
-			}else if(INTEL_E5_2670_MODEL == g_mv2_cpu_model) {
+			            }else if(INTEL_E5_2670_MODEL == g_mv2_cpu_model) {
                             if(strncmp(model_name, INTEL_E5_2670_MODEL_NAME, 
                                         strlen(INTEL_E5_2670_MODEL_NAME)) == 0){
                                 arch_type = MV2_ARCH_INTEL_XEON_E5_2670_16;
@@ -290,19 +299,34 @@ mv2_arch_type mv2_get_arch_type()
                                 arch_type = MV2_ARCH_INTEL_GENERIC;
                             }
                         }
-		    } else if(20 == num_cpus){
-		        if(INTEL_XEON_E5_2670_V2_MODEL == g_mv2_cpu_model) {
-			  
-                            if(NULL != strstr(model_name, INTEL_E5_2670_V2_MODEL_NAME)){
-                                arch_type = MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20;
-                            }else if(NULL != strstr(model_name, INTEL_E5_2680_V2_MODEL_NAME)){
-                                arch_type = MV2_ARCH_INTEL_XEON_E5_2680_V2_2S_20;
-                            }else if(NULL != strstr(model_name, INTEL_E5_2690_V2_MODEL_NAME)){
-                                arch_type = MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20;
+				    } else if(20 == num_cpus){
+				        if(INTEL_XEON_E5_2670_V2_MODEL == g_mv2_cpu_model) {
+		                    if(NULL != strstr(model_name, INTEL_E5_2670_V2_MODEL_NAME)){
+		                        arch_type = MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20;
+		                    }else if(NULL != strstr(model_name, INTEL_E5_2680_V2_MODEL_NAME)){
+		                        arch_type = MV2_ARCH_INTEL_XEON_E5_2680_V2_2S_20;
+		                    }else if(NULL != strstr(model_name, INTEL_E5_2690_V2_MODEL_NAME)){
+		                        arch_type = MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20;
+		                    }
+					    } else if (INTEL_XEON_E5_2660_V3_MODEL == g_mv2_cpu_model) {
+		                    if(NULL != strstr(model_name, INTEL_E5_2660_V3_MODEL_NAME)) {
+		                        arch_type = MV2_ARCH_INTEL_XEON_E5_2660_V3_2S_20;
                             }
-			}
-		    }
-		}
+                        }
+				    } else if(24 == num_cpus){
+				        if(INTEL_XEON_E5_2680_V3_MODEL == g_mv2_cpu_model) {
+		                    if(NULL != strstr(model_name, INTEL_E5_2680_V3_MODEL_NAME)) {
+		                        arch_type = MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24;
+                            }
+                        }
+				    } else if(32 == num_cpus){
+				        if(INTEL_XEON_E5_2698_V3_MODEL == g_mv2_cpu_model) {
+		                    if(NULL != strstr(model_name, INTEL_E5_2698_V3_MODEL_NAME)) {
+		                        arch_type = MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32;
+                            }
+                        }
+				    }
+		        }
 
             } else if(MV2_CPU_FAMILY_AMD == g_mv2_cpu_family_type) {
                 arch_type = MV2_ARCH_AMD_GENERIC;

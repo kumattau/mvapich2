@@ -93,7 +93,6 @@ extern int rdma_num_extra_polls;
 extern int rdma_pin_pool_size;
 extern int rdma_put_fallback_threshold;
 extern int rdma_get_fallback_threshold;
-extern int rdma_num_ops_threshold;
 extern int rdma_iba_eager_threshold;
 extern long rdma_eagersize_1sc;
 extern int rdma_qos_num_sls;
@@ -287,28 +286,32 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_NDREG_ENTRIES              (1100)
 #define RDMA_NDREG_ENTRIES_MAX          (4096)
 #define RDMA_VBUF_POOL_SIZE             (512)
-#define RDMA_OPT_VBUF_POOL_SIZE         (256)
+#define RDMA_OPT_VBUF_POOL_SIZE         (80)
 #define RDMA_UD_VBUF_POOL_SIZE          (8192)
 #define RDMA_MIN_VBUF_POOL_SIZE         (512)
-#define RDMA_OPT_MIN_VBUF_POOL_SIZE     (256)
+#define RDMA_OPT_MIN_VBUF_POOL_SIZE     (32)
 #define RDMA_VBUF_SECONDARY_POOL_SIZE   (256)
-#define RDMA_OPT_VBUF_SECONDARY_POOL_SIZE   (128)
+#define RDMA_OPT_VBUF_SECONDARY_POOL_SIZE   (16)
 #define RDMA_PREPOST_DEPTH              (64)
 #define RDMA_INITIAL_PREPOST_DEPTH      (10)
 #define RDMA_LOW_WQE_THRESHOLD          (10)
 #define RDMA_MAX_RDMA_SIZE              (4194304)
-#define DEFAULT_RDMA_CONNECT_ATTEMPTS   (10)
+#define DEFAULT_RDMA_CONNECT_ATTEMPTS   (20)
 #define RDMA_DEFAULT_CONNECT_INTERVAL   (100)
 
+#define DEFAULT_SMALL_VBUF_SIZE          (256)
+#define DEFAULT_MEDIUM_VBUF_SIZE         (2048)
+
 #ifdef _ENABLE_CUDA_
-#define DEFAULT_CUDA_VBUF_SIZES          {17408, 262144}
-#define DEFAULT_CUDA_VBUF_POOL_SIZE      {1024, 128}
-#define DEFAULT_CUDA_VBUF_SECONDARY_POOL_SIZE {256, 64}
-#define DEFAULT_CUDA_VBUF_MAX_POOL_SIZE  {-1, -1}
+#define DEFAULT_CUDA_VBUF_SIZES          {DEFAULT_SMALL_VBUF_SIZE, DEFAULT_MEDIUM_VBUF_SIZE, rdma_vbuf_total_size, rdma_cuda_block_size, rdma_cuda_block_size}
+#define DEFAULT_CUDA_VBUF_POOL_SIZE      {rdma_vbuf_pool_size, rdma_vbuf_pool_size, rdma_vbuf_pool_size, rdma_vbuf_pool_size, rdma_vbuf_pool_size}
+#define DEFAULT_CUDA_VBUF_SECONDARY_POOL_SIZE {rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size}
 #define DEFAULT_CUDA_BLOCK_SIZE          (262144)
-#define DEFAULT_CUDA_STREAM_COUNT        (64)
-#define NUM_CUDA_BUF_POOLS               (2)
 #endif
+
+#define DEFAULT_VBUF_SIZES               {DEFAULT_SMALL_VBUF_SIZE, DEFAULT_MEDIUM_VBUF_SIZE, rdma_vbuf_total_size, rdma_vbuf_total_size}
+#define DEFAULT_VBUF_POOL_SIZE           {rdma_vbuf_pool_size, rdma_vbuf_pool_size, rdma_vbuf_pool_size, rdma_vbuf_pool_size}
+#define DEFAULT_VBUF_SECONDARY_POOL_SIZE {rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size}
 
 #define RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD  (32)
 #define RDMA_DEFAULT_ASYNC_THREAD_STACK_SIZE  (1<<20)
@@ -325,6 +328,17 @@ extern int rdma_default_async_thread_stack_size;
  * to benefit */
 #define STRIPING_THRESHOLD              8 * 1024
 extern char rdma_iba_hcas[MAX_NUM_HCAS][32];
+
+typedef enum _mv2_vbuf_pool_offsets {
+    MV2_SMALL_DATA_VBUF_POOL_OFFSET = 0,
+    MV2_MEDIUM_DATA_VBUF_POOL_OFFSET,
+    MV2_LARGE_DATA_VBUF_POOL_OFFSET,
+    MV2_RECV_VBUF_POOL_OFFSET,
+#ifdef _ENABLE_CUDA_
+    MV2_CUDA_VBUF_POOL_OFFSET,
+#endif /*_ENABLE_CUDA_*/
+    MV2_MAX_NUM_VBUF_POOLS
+} mv2_vbuf_pool_offsets;
 
 typedef enum _mv2_iba_network_classes {
     MV2_NETWORK_CLASS_UNKNOWN = 0,

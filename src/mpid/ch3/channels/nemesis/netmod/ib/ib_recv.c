@@ -54,7 +54,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPID_nem_pkt_lmt_cts_t),
     sizeof(MPID_nem_pkt_lmt_done_t),
     sizeof(MPID_nem_pkt_lmt_cookie_t),
-    -1,                                 /* MPIDI_NEM_PKT_END */
+    -1,                                 /* MPIDI_CH3_PKT_END_ALL */
     sizeof(MPIDI_nem_ib_pkt_noop),
     sizeof(MPIDI_nem_ib_pkt_address),
     sizeof(MPIDI_nem_ib_pkt_address_reply),

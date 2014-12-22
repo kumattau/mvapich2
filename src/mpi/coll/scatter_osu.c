@@ -129,11 +129,11 @@ int MPIR_Scatter_mcst_MV2(const void *sendbuf,
      * is also the node-level leader. If not, we need to transfer the
      * data from the root to its leader */  
 
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank; 
 
-    leader_of_root = comm_ptr->ch.leader_map[root];
+    leader_of_root = comm_ptr->dev.ch.leader_map[root];
     /* leader_of_root is the global rank of the leader of the root */
 
     if ((local_rank == 0) && (root != rank)
@@ -185,7 +185,7 @@ int MPIR_Scatter_mcst_MV2(const void *sendbuf,
         MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
     }
 
-    if(comm_ptr->ch.intra_node_done == 0) { 
+    if(comm_ptr->dev.ch.intra_node_done == 0) { 
         mpi_errno = MPIR_Shmem_Bcast_MV2(in_buf, in_count, in_type,
                                          intra_node_root, shmem_commptr, errflag);
         if (mpi_errno) {
@@ -911,7 +911,7 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
@@ -925,7 +925,7 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
     if (local_rank == 0) {
         /* Node leader. Extract the rank, size information for the leader
          * communicator */
-        leader_comm = comm_ptr->ch.leader_comm;
+        leader_comm = comm_ptr->dev.ch.leader_comm;
         mpi_errno = PMPI_Comm_rank(leader_comm, &leader_comm_rank);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
@@ -963,9 +963,9 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
             tmp_buf = MPIU_Malloc(nbytes * local_size);
         }
 
-        leader_of_root = comm_ptr->ch.leader_map[root];
+        leader_of_root = comm_ptr->dev.ch.leader_map[root];
         /* leader_of_root is the global rank of the leader of the root */
-        leader_root = comm_ptr->ch.leader_rank[leader_of_root];
+        leader_root = comm_ptr->dev.ch.leader_rank[leader_of_root];
         /* leader_root is the rank of the leader of the root in leader_comm.
          * leader_root is to be used as the root of the inter-leader gather ops
          */
@@ -1001,12 +1001,12 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
         }
 
         if (leader_comm_size > 1 && local_rank == 0) {
-            if (comm_ptr->ch.is_uniform != 1) {
+            if (comm_ptr->dev.ch.is_uniform != 1) {
                 int *displs = NULL;
                 int *sendcnts = NULL;
                 int *node_sizes;
                 int i = 0;
-                node_sizes = comm_ptr->ch.node_sizes;
+                node_sizes = comm_ptr->dev.ch.node_sizes;
 
                 if (root != leader_of_root) {
                     if (leader_comm_rank == leader_root) {
@@ -1160,7 +1160,7 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
@@ -1174,7 +1174,7 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
     if (local_rank == 0) {
         /* Node leader. Extract the rank, size information for the leader
          * communicator */
-        leader_comm = comm_ptr->ch.leader_comm;
+        leader_comm = comm_ptr->dev.ch.leader_comm;
         mpi_errno = PMPI_Comm_rank(leader_comm, &leader_comm_rank);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
@@ -1209,9 +1209,9 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
             tmp_buf = MPIU_Malloc(nbytes * local_size);
         }
 
-        leader_of_root = comm_ptr->ch.leader_map[root];
+        leader_of_root = comm_ptr->dev.ch.leader_map[root];
         /* leader_of_root is the global rank of the leader of the root */
-        leader_root = comm_ptr->ch.leader_rank[leader_of_root];
+        leader_root = comm_ptr->dev.ch.leader_rank[leader_of_root];
         /* leader_root is the rank of the leader of the root in leader_comm.
          * leader_root is to be used as the root of the inter-leader gather ops
          */
@@ -1247,12 +1247,12 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
         }
 
         if (leader_comm_size > 1 && local_rank == 0) {
-            if (comm_ptr->ch.is_uniform != 1) {
+            if (comm_ptr->dev.ch.is_uniform != 1) {
                 int *displs = NULL;
                 int *sendcnts = NULL;
                 int *node_sizes;
                 int i = 0;
-                node_sizes = comm_ptr->ch.node_sizes;
+                node_sizes = comm_ptr->dev.ch.node_sizes;
 
                 if (root != leader_of_root) {
                     if (leader_comm_rank == leader_root) {
@@ -1414,9 +1414,9 @@ int MPIR_Scatter_index_tuned_intra_MV2(const void *sendbuf,
     }
 
     /* check if safe to use partial subscription mode */
-    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    if (comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_uniform) {
     
-        shmem_comm = comm_ptr->ch.shmem_comm;
+        shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
         i = 0;
@@ -1459,7 +1459,7 @@ int MPIR_Scatter_index_tuned_intra_MV2(const void *sendbuf,
     }
     else {
 	/* Comm size in between smallest and largest configuration: find closest match */
-	if (comm_ptr->ch.is_pof2) {
+	if (comm_ptr->dev.ch.is_pof2) {
 	    comm_size_index = log2( comm_size / table_min_comm_size );
 	}
 	else {
@@ -1518,9 +1518,9 @@ int MPIR_Scatter_index_tuned_intra_MV2(const void *sendbuf,
 
     if(MV2_Scatter_function == &MPIR_Scatter_mcst_wrap_MV2) { 
 #if defined(_MCST_SUPPORT_)
-        if(comm_ptr->ch.is_mcast_ok == 1 
+        if(comm_ptr->dev.ch.is_mcast_ok == 1 
            && mv2_use_mcast_scatter == 1 
-           && comm_ptr->ch.shmem_coll_ok == 1) {
+           && comm_ptr->dev.ch.shmem_coll_ok == 1) {
             MV2_Scatter_function = &MPIR_Scatter_mcst_MV2; 
         } else
 #endif /*#if defined(_MCST_SUPPORT_) */
@@ -1538,8 +1538,8 @@ int MPIR_Scatter_index_tuned_intra_MV2(const void *sendbuf,
  
     if( (MV2_Scatter_function == &MPIR_Scatter_MV2_two_level_Direct) || 
         (MV2_Scatter_function == &MPIR_Scatter_MV2_two_level_Binomial)) { 
-         if( comm_ptr->ch.shmem_coll_ok == 1 && 
-             comm_ptr->ch.is_global_block == 1 ) {
+         if( comm_ptr->dev.ch.shmem_coll_ok == 1 && 
+             comm_ptr->dev.ch.is_global_block == 1 ) {
              MV2_Scatter_intra_function = mv2_scatter_indexed_thresholds_table[conf_index][comm_size_index]
 		 .intra_node[intra_node_algo_index].MV2_pt_Scatter_function;
 
@@ -1620,9 +1620,9 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
     }
 
     /* check if safe to use partial subscription mode */
-    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    if (comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_uniform) {
     
-        shmem_comm = comm_ptr->ch.shmem_comm;
+        shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
         i = 0;
@@ -1674,9 +1674,9 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
 
     if(MV2_Scatter_function == &MPIR_Scatter_mcst_wrap_MV2) { 
 #if defined(_MCST_SUPPORT_)
-        if(comm_ptr->ch.is_mcast_ok == 1 
+        if(comm_ptr->dev.ch.is_mcast_ok == 1 
            && mv2_use_mcast_scatter == 1 
-           && comm_ptr->ch.shmem_coll_ok == 1) {
+           && comm_ptr->dev.ch.shmem_coll_ok == 1) {
             MV2_Scatter_function = &MPIR_Scatter_mcst_MV2; 
         } else
 #endif /*#if defined(_MCST_SUPPORT_) */
@@ -1694,8 +1694,8 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
  
     if( (MV2_Scatter_function == &MPIR_Scatter_MV2_two_level_Direct) || 
         (MV2_Scatter_function == &MPIR_Scatter_MV2_two_level_Binomial)) { 
-         if( comm_ptr->ch.shmem_coll_ok == 1 && 
-             comm_ptr->ch.is_global_block == 1 ) {
+         if( comm_ptr->dev.ch.shmem_coll_ok == 1 && 
+             comm_ptr->dev.ch.is_global_block == 1 ) {
              MV2_Scatter_intra_function = mv2_scatter_thresholds_table[conf_index][range].intra_node[range_threshold_intra]
                                 .MV2_pt_Scatter_function;
 
@@ -1774,7 +1774,7 @@ int MPIR_Scatter_intra_MV2(const void *sendbuf,
         range++;
     }
 #if defined(_MCST_SUPPORT_)
-    if(comm_ptr->ch.is_mcast_ok == 1
+    if(comm_ptr->dev.ch.is_mcast_ok == 1
        && mv2_use_mcast_scatter == 1
        && nbytes <= mv2_mcast_scatter_msg_size
        && comm_size >= mv2_mcast_scatter_small_sys_size
@@ -1794,7 +1794,7 @@ int MPIR_Scatter_intra_MV2(const void *sendbuf,
                                                   comm_ptr, errflag);
                 } else if (nbytes > mv2_scatter_mv2_tuning_table[range].small
                            && nbytes < mv2_scatter_mv2_tuning_table[range].medium
-                           && comm_ptr->ch.shmem_coll_ok == 1
+                           && comm_ptr->dev.ch.shmem_coll_ok == 1
                            && mv2_use_two_level_scatter == 1) {
                     mpi_errno =
                         MPIR_Scatter_MV2_two_level_Direct(sendbuf, sendcnt,
@@ -1808,7 +1808,7 @@ int MPIR_Scatter_intra_MV2(const void *sendbuf,
                                                         root, comm_ptr, errflag);
                 }
             } else if (comm_size > mv2_scatter_mv2_tuning_table[range - 1].numproc
-                       && comm_ptr->ch.shmem_coll_ok == 1
+                       && comm_ptr->dev.ch.shmem_coll_ok == 1
                        && mv2_use_two_level_scatter == 1) {
                 mpi_errno =
                     MPIR_Scatter_MV2_two_level_Binomial(sendbuf, sendcnt, sendtype,
@@ -2076,7 +2076,7 @@ int MPIR_Scatter_MV2(const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
         }
     }
 #endif                          /*#ifdef _ENABLE_CUDA_*/     
-    comm_ptr->ch.intra_node_done = 0;
+    comm_ptr->dev.ch.intra_node_done = 0;
         if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
 

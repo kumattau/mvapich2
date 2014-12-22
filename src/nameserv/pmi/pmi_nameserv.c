@@ -51,7 +51,7 @@ int MPID_NS_Publish( MPID_NS_Handle handle, const MPID_Info *info_ptr,
     rc = PMI2_Nameserv_publish(service_name, info_ptr, port);
     MPIU_THREAD_CS_ENTER(ALLFUNC,);
 #else
-    rc = PMI_Publish_name( service_name, port );
+    rc = UPMI_PUBLISH_NAME( service_name, port, NULL );
 #endif
     MPIU_ERR_CHKANDJUMP1(rc, mpi_errno, MPI_ERR_NAME, "**namepubnotpub", "**namepubnotpub %s", service_name);
 
@@ -78,7 +78,7 @@ int MPID_NS_Lookup( MPID_NS_Handle handle, const MPID_Info *info_ptr,
     rc = PMI2_Nameserv_lookup(service_name, info_ptr, port, MPI_MAX_PORT_NAME);
     MPIU_THREAD_CS_ENTER(ALLFUNC,);
 #else
-    rc = PMI_Lookup_name( service_name, port );
+    rc = UPMI_LOOKUP_NAME( service_name, port, NULL );
 #endif
     MPIU_ERR_CHKANDJUMP1(rc, mpi_errno, MPI_ERR_NAME, "**namepubnotfound", "**namepubnotfound %s", service_name);
 
@@ -105,7 +105,7 @@ int MPID_NS_Unpublish( MPID_NS_Handle handle, const MPID_Info *info_ptr,
     rc = PMI2_Nameserv_unpublish(service_name, info_ptr);
     MPIU_THREAD_CS_ENTER(ALLFUNC,);
 #else
-    rc = PMI_Unpublish_name( service_name );
+    rc = UPMI_UNPUBLISH_NAME( service_name, NULL );
 #endif
     MPIU_ERR_CHKANDJUMP1(rc, mpi_errno, MPI_ERR_SERVICE, "**namepubnotunpub", "**namepubnotunpub %s", service_name);
 
@@ -209,7 +209,7 @@ int MPID_NS_Publish( MPID_NS_Handle handle, const MPID_Info *info_ptr,
     int  err;
 
     /*printf("publish kvs: <%s>\n", handle->kvsname);fflush(stdout);*/
-    err = PMI_KVS_Put(handle->kvsname, service_name, port);
+    err = UPMI_KVS_PUT(handle->kvsname, service_name, port);
     /* --BEGIN ERROR HANDLING-- */
     if (err != PMI_SUCCESS)
     {
@@ -217,7 +217,7 @@ int MPID_NS_Publish( MPID_NS_Handle handle, const MPID_Info *info_ptr,
 	return err;
     }
     /* --END ERROR HANDLING-- */
-    err = PMI_KVS_Commit(handle->kvsname);
+    err = UPMI_KVS_COMMIT(handle->kvsname);
     /* --BEGIN ERROR HANDLING-- */
     if (err != PMI_SUCCESS)
     {
@@ -238,7 +238,7 @@ int MPID_NS_Lookup( MPID_NS_Handle handle, const MPID_Info *info_ptr,
     int err;
 
     /*printf("lookup kvs: <%s>\n", handle->kvsname);fflush(stdout);*/
-    err = PMI_KVS_Get(handle->kvsname, service_name, port, MPI_MAX_PORT_NAME);
+    err = UPMI_KVS_GET(handle->kvsname, service_name, port, MPI_MAX_PORT_NAME);
     /* --BEGIN ERROR HANDLING-- */
     if (err != PMI_SUCCESS)
     {
@@ -264,7 +264,7 @@ int MPID_NS_Unpublish( MPID_NS_Handle handle, const MPID_Info *info_ptr,
 
     /*printf("unpublish kvs: <%s>\n", handle->kvsname);fflush(stdout);*/
     /* This assumes you can put the same key more than once which breaks the PMI specification */
-    err = PMI_KVS_Put(handle->kvsname, service_name, "");
+    err = UPMI_KVS_PUT(handle->kvsname, service_name, "");
     /* --BEGIN ERROR HANDLING-- */
     if (err != PMI_SUCCESS)
     {
@@ -272,7 +272,7 @@ int MPID_NS_Unpublish( MPID_NS_Handle handle, const MPID_Info *info_ptr,
 	return err;
     }
     /* --END ERROR HANDLING-- */
-    err = PMI_KVS_Commit(handle->kvsname);
+    err = UPMI_KVS_COMMIT(handle->kvsname);
     /* --BEGIN ERROR HANDLING-- */
     if (err != PMI_SUCCESS)
     {

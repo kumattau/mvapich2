@@ -20,6 +20,7 @@
 MPID_Request psmcomphead;
 pthread_spinlock_t reqlock;
 pthread_spinlock_t psmlock;
+pthread_spinlock_t psmlock_progress;
 
 static void psm_dump_debug();
 
@@ -31,6 +32,7 @@ void psm_queue_init()
 {
     pthread_spin_init(&reqlock, 0);
     pthread_spin_init(&psmlock, 0);
+    pthread_spin_init(&psmlock_progress, 0);
     psmcomphead.psmcompnext = &psmcomphead;
     psmcomphead.psmcompprev = &psmcomphead;
 }

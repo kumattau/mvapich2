@@ -170,6 +170,20 @@ for arg in "$@" ; do
     nativelinking=yes
     addarg=no
     ;;
+    -itac)
+    if [ -n "$VT_ROOT" ] ; then
+        if [ -e "$VT_ROOT/bin/itacvars.sh" ] ; then
+            VT_LIB_DIR=`bash -c ". $VT_ROOT/bin/itacvars.sh; echo \\$VT_LIB_DIR"`
+            VT_ADD_LIBS=`bash -c ". $VT_ROOT/bin/itacvars.sh; echo \\$VT_ADD_LIBS"`
+            ITAC_OPTIONS="-L$VT_LIB_DIR -lVT $VT_ADD_LIBS"
+        else
+            echo "Cannot find itacvars.sh in $VT_ROOT/bin. -itac option ignored."
+        fi
+    else
+        echo "VT_ROOT should be set with the root directory of Intel Trace Analyzer and Collector. -itac option ignored."
+    fi
+    addarg=no
+    ;;
     -help)
     NC=`echo "$F77" | sed 's%\/% %g' | awk '{print $NF}' -`
     if [ -f "$sysconfdir/mpixxx_opts.conf" ] ; then
@@ -292,7 +306,7 @@ if [ "$linking" = yes ] ; then
         $Show $F77 $PROFILE_INCPATHS @WRAPPER_FFLAGS@ @WRAPPER_LDFLAGS@ "${allargs[@]}" -I$includedir
         rc=$?
     else
-        $Show $F77 $PROFILE_INCPATHS @WRAPPER_FFLAGS@ @WRAPPER_LDFLAGS@ "${allargs[@]}" -I$includedir -L$libdir $f77libs $PROFILE_PRELIB $PROFILE_FOO $rpath_flags -l@MPILIBNAME@ @LPMPILIBNAME@ $PROFILE_POSTLIB @WRAPPER_LIBS@ @F77_OTHER_LIBS@
+        $Show $F77 $PROFILE_INCPATHS @WRAPPER_FFLAGS@ @WRAPPER_LDFLAGS@ "${allargs[@]}" -I$includedir $ITAC_OPTIONS -L$libdir $f77libs $PROFILE_PRELIB $PROFILE_FOO $rpath_flags -l@MPILIBNAME@ @LPMPILIBNAME@ $PROFILE_POSTLIB @WRAPPER_LIBS@ @F77_OTHER_LIBS@
         rc=$?
     fi
 else

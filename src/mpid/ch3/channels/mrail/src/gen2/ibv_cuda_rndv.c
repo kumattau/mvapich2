@@ -20,6 +20,13 @@
 #ifdef _ENABLE_CUDA_
 #include "ibv_cuda_util.h"
 
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
+
 int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda(MPIDI_VC_t * vc, 
             MPID_Request * sreq, MPID_Request * rreq)
 {
@@ -72,7 +79,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda(MPIDI_VC_t * vc,
             ROUNDUP(req->mrail.rndv_buf_sz, rdma_cuda_block_size);
     for (i = 0; i < MIN(req->mrail.num_cuda_blocks, rdma_num_cuda_rndv_blocks);
          i++) {
-        req->mrail.cuda_vbuf[i] = get_cuda_vbuf(CUDA_RNDV_BLOCK_BUF);
+        GET_VBUF_BY_OFFSET_WITHOUT_LOCK(req->mrail.cuda_vbuf[i], MV2_CUDA_VBUF_POOL_OFFSET);
     }
     req->mrail.cuda_block_offset = 0;
     req->mrail.num_remote_cuda_pending =
@@ -497,7 +504,7 @@ void MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(MPIDI_VC_t * vc, MPID_Request * req)
     vbuf *v;
     int i;
 
-    MRAILI_Get_buffer(vc, v);
+    MRAILI_Get_buffer(vc, v, rdma_vbuf_total_size);
     cts_pkt = (MPIDI_CH3_Pkt_cuda_cts_cont_t *) v->buffer;
     MPIDI_Pkt_init(cts_pkt, MPIDI_CH3_PKT_CUDA_CTS_CONTI);
     cts_pkt->sender_req_id = req->dev.sender_req_id;
@@ -506,7 +513,7 @@ void MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(MPIDI_VC_t * vc, MPID_Request * req)
     for (i = 0;
          i < MIN((req->mrail.num_cuda_blocks - req->mrail.cuda_block_offset),
                  rdma_num_cuda_rndv_blocks); i++) {
-        req->mrail.cuda_vbuf[i] = get_cuda_vbuf(CUDA_RNDV_BLOCK_BUF);
+        GET_VBUF_BY_OFFSET_WITHOUT_LOCK(req->mrail.cuda_vbuf[i], MV2_CUDA_VBUF_POOL_OFFSET);
     }
     req->mrail.num_remote_cuda_pending =
         MIN((req->mrail.num_cuda_blocks - req->mrail.cuda_block_offset),
@@ -625,7 +632,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
             cuda_event->req = sreq;
             cuda_event->displacement = i;
             cuda_event->size = nbytes; 
-            cuda_event->cuda_vbuf_head = get_cuda_vbuf(CUDA_RNDV_BLOCK_BUF);
+            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(cuda_event->cuda_vbuf_head, MV2_CUDA_VBUF_POOL_OFFSET);
             sreq->mrail.num_send_cuda_copy++;
             cuda_error = cudaMemcpyAsync(cuda_event->cuda_vbuf_head->buffer, 
                     (const void *)(sreq->dev.iov[0].MPID_IOV_BUF + 
@@ -682,7 +689,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
                 rail = MRAILI_Send_select_rail(vc);
                 rail_index = vc->mrail.rails[rail].hca_index;
 
-                v = get_vbuf();
+                GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                 v->sreq = sreq;
 
                 MRAILI_RDMA_Put(vc, v,
@@ -703,7 +710,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
 
                     rail_index = vc->mrail.rails[rail].hca_index;
 
-                    v = get_vbuf();
+                    GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                     v->sreq = sreq;
 
                     MRAILI_RDMA_Put(vc, v,

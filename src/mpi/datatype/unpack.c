@@ -75,8 +75,8 @@ int MPIR_Unpack_impl(const void *inbuf, MPI_Aint insize, MPI_Aint *position,
     if (contig) {
 #if defined(_ENABLE_CUDA_)
         if (rdma_enable_cuda && outbuf_isdev) {
-            MPIU_Memcpy_CUDA((void *) ((char *)outbuf + *position),
-                    (void *) ((char *)inbuf + dt_true_lb),
+            MPIU_Memcpy_CUDA((void *) ((char *)outbuf + dt_true_lb),
+                    (void *) ((char *)inbuf + *position),
                     data_sz,
                     cudaMemcpyHostToDevice);
         } else
@@ -212,7 +212,7 @@ int MPI_Unpack(const void *inbuf, int insize, int *position,
 	    MPIR_ERRTEST_COUNT(outcount, mpi_errno);
 
             /* Validate comm_ptr */
-            MPID_Comm_valid_ptr(comm_ptr, mpi_errno);
+            MPID_Comm_valid_ptr( comm_ptr, mpi_errno, FALSE );
 	    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 	    /* If comm_ptr is not valid, it will be reset to null */
 

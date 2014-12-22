@@ -43,6 +43,13 @@ int MPID_Iprobe(int source, int tag, MPID_Comm *comm, int context_offset,
 	goto fn_exit;
     }
 
+    /* Check to make sure the communicator hasn't already been revoked */
+    if (comm->revoked &&
+            MPIR_AGREE_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask) &&
+            MPIR_SHRINK_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask)) {
+        MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
+    }
+
 #if defined (CHANNEL_PSM)
 		int complete = FALSE;
         MPID_Progress_poke();
@@ -52,6 +59,7 @@ int MPID_Iprobe(int source, int tag, MPID_Comm *comm, int context_offset,
         *flag = complete;
         goto fn_exit;
 #endif
+
 #ifdef ENABLE_COMM_OVERRIDES
     if (MPIDI_Anysource_iprobe_fn) {
         if (source == MPI_ANY_SOURCE) {

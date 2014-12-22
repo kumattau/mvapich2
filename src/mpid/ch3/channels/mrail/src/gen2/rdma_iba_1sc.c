@@ -12,6 +12,7 @@
 #include <math.h>
 
 #include "rdma_impl.h"
+#include "mpiimpl.h"
 #include "dreg.h"
 #include "ibv_param.h"
 #include "infiniband/verbs.h"
@@ -44,6 +45,13 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
+
 #ifdef _ENABLE_XRC_
 #define IS_XRC_SEND_IDLE_UNSET(vc_ptr) (USE_XRC && VC_XST_ISUNSET (vc_ptr, XF_SEND_IDLE))
 #define CHECK_HYBRID_XRC_CONN(vc_ptr) \
@@ -59,29 +67,29 @@ do {                                                                    \
 #define CHECK_HYBRID_XRC_CONN(vc_ptr) 
 #endif
 
-#define ONESIDED_RDMA_POST(vc_ptr, save_vc, rail)                           \
+#define ONESIDED_RDMA_POST(_v, _vc_ptr, _save_vc, _rail)                    \
 do {                                                                        \
-    if (!(IS_RC_CONN_ESTABLISHED(vc_ptr))                                   \
-            || (IS_XRC_SEND_IDLE_UNSET(vc_ptr))                             \
-            || !MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {              \
+    if (unlikely(!(IS_RC_CONN_ESTABLISHED((_vc_ptr)))                       \
+            || (IS_XRC_SEND_IDLE_UNSET((_vc_ptr)))                          \
+            || !MPIDI_CH3I_CM_One_Sided_SendQ_empty((_vc_ptr)))) {          \
         /* VC is not ready to be used. Wait till it is ready and send */    \
-        MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc_ptr, v);                   \
-        if (!(vc_ptr->mrail.state & MRAILI_RC_CONNECTED) &&                 \
-                  vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_IDLE) {           \
-            vc_ptr->ch.state = MPIDI_CH3I_VC_STATE_UNCONNECTED;             \
+        MPIDI_CH3I_CM_One_Sided_SendQ_enqueue((_vc_ptr), (_v));             \
+        if (!((_vc_ptr)->mrail.state & MRAILI_RC_CONNECTED) &&              \
+                  (_vc_ptr)->ch.state == MPIDI_CH3I_VC_STATE_IDLE) {        \
+            (_vc_ptr)->ch.state = MPIDI_CH3I_VC_STATE_UNCONNECTED;          \
         }                                                                   \
-        CHECK_HYBRID_XRC_CONN(vc_ptr);                                      \
-        if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED) {          \
+        CHECK_HYBRID_XRC_CONN((_vc_ptr));                                   \
+        if ((_vc_ptr)->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED) {       \
             /* VC is not connected, initiate connection */                  \
-            MPIDI_CH3I_CM_Connect(vc_ptr);                                  \
+            MPIDI_CH3I_CM_Connect((_vc_ptr));                               \
         }                                                                   \
     } else {                                                                \
-        XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, rail);                              \
-        if (MRAILI_Flush_wqe(vc_ptr,v,rail) != -1) { /* message not enqueued */\
-            -- vc_ptr->mrail.rails[rail].send_wqes_avail;                      \
-            IBV_POST_SR(v, vc_ptr, rail, "Failed to post rma put");            \
+        XRC_FILL_SRQN_FIX_CONN ((_v), (_vc_ptr), (_rail));                  \
+        if (MRAILI_Flush_wqe((_vc_ptr),(_v),(_rail)) != -1) { /* message not enqueued */\
+            -- (_vc_ptr)->mrail.rails[(_rail)].send_wqes_avail;             \
+            IBV_POST_SR((_v), (_vc_ptr), (_rail), "Failed to post rma put");\
         }                                                                   \
-        if(save_vc) { vc_ptr = save_vc;}                                    \
+        if((_save_vc)) { (_vc_ptr) = (_save_vc);}                           \
     }                                                                       \
 }while(0);
 
@@ -680,7 +688,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 size = origin_count * origin_type_size;
                 ++win_ptr->rma_issued;
 
-                v = get_vbuf();
+                GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                 tmp_dreg = dreg_register(origin_addr, size);
                 l_key = tmp_dreg->memhandle[0]->lkey;
                 local_addr = (char *)origin_addr;
@@ -703,7 +711,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 }
 
                 vbuf_init_rma_put(v, local_addr, l_key, remote_addr, r_key, size, rail);
-                ONESIDED_RDMA_POST(vc, NULL, rail);
+                ONESIDED_RDMA_POST(v, vc, NULL, rail);
 
                 complete = 1;
                 break;
@@ -717,7 +725,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 remote_addr = (char *) win_ptr->base_addrs[target_rank] +
                     win_ptr->disp_units[target_rank] * target_disp;
 
-                v = get_vbuf();
+                GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                 tmp_dreg = dreg_register(origin_addr, size);
                 l_key = tmp_dreg->memhandle[0]->lkey;
                 r_key = win_ptr->win_rkeys[target_rank *
@@ -737,7 +745,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 }
 
                 vbuf_init_rma_get(v, local_addr, l_key, remote_addr, r_key, size, rail);
-                ONESIDED_RDMA_POST(vc, NULL, rail);
+                ONESIDED_RDMA_POST(v, vc, NULL, rail);
 
                 complete = 1;
                 break;
@@ -758,7 +766,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
 
                 if (aligned && origin_type_size == 8) {
                     ++win_ptr->rma_issued;
-                    v = get_vbuf();
+                    GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                     l_key = v->region->mem_handle[0]->lkey;
                     r_key = win_ptr->win_rkeys[target_rank *
                         rdma_num_hcas + rail];
@@ -777,7 +785,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                     fetch_addr = (uint64_t *)v->buffer;
                     *fetch_addr = 0;
                     vbuf_init_rma_fetch_and_add(v, (void *) fetch_addr, l_key, remote_addr, r_key, add_value, rail);
-                    ONESIDED_RDMA_POST(vc, NULL, rail);
+                    ONESIDED_RDMA_POST(v, vc, NULL, rail);
 
                     complete = 1;
                 }
@@ -802,7 +810,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
 
                 if (aligned && origin_type_size == 8) {
                     ++win_ptr->rma_issued;
-                    v = get_vbuf();
+                    GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                     l_key = v->region->mem_handle[0]->lkey;
                     r_key = win_ptr->win_rkeys[target_rank *
                         rdma_num_hcas + rail];
@@ -821,7 +829,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                     return_addr = (char *)v->buffer;
                     *((uint64_t *)return_addr) = 0;
                     vbuf_init_rma_compare_and_swap(v, return_addr, l_key, remote_addr, r_key, compare_value, swap_value, rail);
-                    ONESIDED_RDMA_POST(vc, NULL, rail);
+                    ONESIDED_RDMA_POST(v, vc, NULL, rail);
 
                     complete = 1;
                 }
@@ -838,6 +846,68 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
 
 fn_exit:
     return complete;
+}
+
+
+void mv2_init_rank_for_barrier (MPID_Win ** win_ptr) 
+{
+    int             i, comm_size;
+    MPIDI_VC_t*     vc=NULL;
+    MPID_Comm       *comm_ptr=NULL;
+
+    MPIU_Assert(win_ptr != NULL);
+    MPID_Comm_get_ptr(MPI_COMM_WORLD, comm_ptr );
+    comm_size = comm_ptr->local_size;
+
+    (*win_ptr)->shm_l2g_rank = (int *)
+                  MPIU_Malloc(g_smpi.num_local_nodes * sizeof(int));
+    if((*win_ptr)->shm_l2g_rank == NULL) {
+        ibv_error_abort (GEN_EXIT_ERR, 
+               "rdma_iba_1sc: error allocating shm_l2g_rank");
+    }
+
+    for(i=0; i<comm_size; i++) {
+        MPIDI_Comm_get_vc(comm_ptr, i, &vc);
+        if(vc->smp.local_nodes != -1) {
+            (*win_ptr)->shm_l2g_rank[vc->smp.local_nodes] = vc->pg_rank;
+        }
+    }
+}
+
+int MPIDI_CH3I_barrier_in_rma(MPID_Win **win_ptr, int rank, int node_size, int comm_size) 
+{
+    int lsrc, ldst, src, dst, mask, mpi_errno=MPI_SUCCESS;
+    MPI_Comm comm;
+    int * errflag=NULL;
+    int l_rank = g_smpi.my_local_id;
+
+    MPIU_Assert(win_ptr != NULL);
+    /* Trivial barriers return immediately */
+    if (node_size == 1) goto fn_exit;
+
+    comm = MPI_COMM_WORLD;
+
+    mask = 0x1;
+    while (mask < node_size) {
+        ldst = (l_rank + mask) % node_size;
+        lsrc = (l_rank - mask + node_size) % node_size;
+
+        src = (*win_ptr)->shm_l2g_rank[lsrc];
+        dst = (*win_ptr)->shm_l2g_rank[ldst];
+
+        mpi_errno = MPIC_Sendrecv(NULL, 0, MPI_BYTE, dst,
+                MPIR_BARRIER_TAG, NULL, 0, MPI_BYTE,
+                src, MPIR_BARRIER_TAG, comm,
+                MPI_STATUS_IGNORE, errflag);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        mask <<= 1;
+    }
+
+fn_exit:
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+
 }
 
 /* Go through RMA op list once, and start as many RMA ops as possible */
@@ -873,32 +943,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
     ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
     head = MPIDI_CH3I_RMA_Ops_head(ops_list);
     curr_ptr = head;
-
-    if (!win_ptr->use_rdma_path) { 
-        /*enable RDMA path when, 
-         * (a) there are at least threshold number of pending ops 
-         * (b) if operation is a get 
-         * (c) if operation is a put lager than threshold*/
-        int num_ops = 0; 
-        while (curr_ptr != NULL) { 
-            curr_ptr = curr_ptr->next;
-            num_ops++; 
-        }    
-
-        curr_ptr = head;
-
-        if (num_ops >= rdma_num_ops_threshold) {
-            win_ptr->use_rdma_path = 1;
-        } else if (curr_ptr != NULL && curr_ptr->type == MPIDI_RMA_GET) {
-            win_ptr->use_rdma_path = 1;
-        } else if (curr_ptr != NULL && curr_ptr->type == MPIDI_RMA_PUT) {
-            MPID_Datatype_get_size_macro(curr_ptr->target_datatype, target_type_size);
-            size = curr_ptr->target_count * target_type_size;
-            if (size > rdma_put_fallback_threshold)
-                win_ptr->use_rdma_path = 1;
-        } else 
-            return;
-    }
 
 #ifdef _SCHEDULE
     while (curr_ptr != NULL || skipped_op != NULL)
@@ -1107,7 +1151,7 @@ int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank)
     /*part 1 prepare origin side buffer */
     size = sizeof(int);
 
-    v = get_vbuf();
+    GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
     origin_addr = (char *) v->buffer;
     *((int *) origin_addr) = 1;
     remote_addr = (char *) win_ptr->remote_post_flags[target_rank];
@@ -1155,6 +1199,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     uintptr_t       *post_flag_ptr_send, *post_flag_ptr_recv;
     int             fallback_trigger = 0;
 
+    int h = 0;
     if (mv2_MPIDI_CH3I_RDMA_Process.enable_rma_fast_path == 1)
     {
         (*win_ptr)->enable_fast_path = 1;
@@ -1163,13 +1208,13 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     if (!mv2_MPIDI_CH3I_RDMA_Process.has_one_sided)
     {
         (*win_ptr)->fall_back = 1;
-        return;
+        goto fn_exit;
     }
 
     if ((*win_ptr)->create_flavor == MPI_WIN_FLAVOR_DYNAMIC)
     {
         (*win_ptr)->fall_back = 1;
-        return;
+        goto fn_exit;
     }
     
     /*Allocate structure for window information exchange*/
@@ -1526,7 +1571,7 @@ static int Decrease_CC(MPID_Win * win_ptr, int target_rank)
     MPIDI_Comm_get_vc(comm_ptr, target_rank, &tmp_vc);
     
     for (i=0; i<rdma_num_rails; ++i) {
-            v[i] = get_vbuf(); 
+            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v[i], MV2_SMALL_DATA_VBUF_POOL_OFFSET);
             local_addr[i] = (void *) v[i]->buffer;
             hca_index = i/rdma_num_rails_per_hca;
             remote_addr[i]    = (void *)(uintptr_t)
@@ -1576,7 +1621,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
         bytes_per_rail = length/rdma_num_rails;
         while (bytes_per_rail > mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize) {
            for (i = 0; i < rdma_num_rails; ++i) {
-              v = get_vbuf(); 
+              GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET); 
               if (NULL == v) {
                   MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
               }
@@ -1603,7 +1648,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
                                 rkeys[i], 
                                 mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize, 
                                 i);
-              ONESIDED_RDMA_POST(vc_ptr, save_vc, i);
+              ONESIDED_RDMA_POST(v, vc_ptr, save_vc, i);
 
            }
           
@@ -1616,7 +1661,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
          * Still stripe if length > rdma_large_msg_rail_sharing_threshold*/
         if (length < rdma_large_msg_rail_sharing_threshold) { 
            rail = MRAILI_Send_select_rail(vc_ptr);
-           v = get_vbuf();
+           GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
            if (NULL == v) {
                MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
            }
@@ -1641,11 +1686,11 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
            v->list = (void *)(&(winptr->put_get_list[index]));
            v->vc = (void *)vc_ptr;
 
-            ONESIDED_RDMA_POST(vc_ptr, NULL, rail);
+            ONESIDED_RDMA_POST(v, vc_ptr, NULL, rail);
  
         } else {
            for (i = 0; i < rdma_num_rails; ++i) {
-              v = get_vbuf(); 
+              GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET); 
               if (NULL == v) {
                   MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
               }
@@ -1678,7 +1723,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
                                 rkeys[i], 
                                 posting_length, 
                                 i);
-              ONESIDED_RDMA_POST(vc_ptr, save_vc, i);
+              ONESIDED_RDMA_POST(v, vc_ptr, save_vc, i);
 
            }
         }
@@ -1686,7 +1731,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
         rail = MRAILI_Send_select_rail(vc_ptr);
 
         if (*allocated_v == NULL) { 
-            v = get_vbuf();
+            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
         } else {
             v = *allocated_v;
         }
@@ -1710,12 +1755,12 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
                           length, 
                           rail);
 
-        ONESIDED_RDMA_POST(vc_ptr, NULL, rail);
+        ONESIDED_RDMA_POST(v, vc_ptr, NULL, rail);
 
     } else if (rail_select == REPLICATE) { /* send on all rails */
         for (i = 0; i < rdma_num_rails; ++i) {
 	    if (*allocated_v == NULL) {
-               v = get_vbuf(); 
+               GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET); 
                if (NULL == v) {
                   MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
                }
@@ -1739,7 +1784,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
                               length, 
                               i);
 
-            ONESIDED_RDMA_POST(vc_ptr, save_vc, i);
+            ONESIDED_RDMA_POST(v, vc_ptr, save_vc, i);
  
         }
     }
@@ -1797,7 +1842,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
         bytes_per_rail = length/rdma_num_rails;
         while (bytes_per_rail > mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize) {
            for (i = 0; i < rdma_num_rails; ++i) {
-              v = get_vbuf(); 
+              GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET); 
               if (NULL == v) {
                   MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
               }
@@ -1825,7 +1870,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
                                 mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize, 
                                 i);
 
-              ONESIDED_RDMA_POST(vc_ptr, save_vc, i);
+              ONESIDED_RDMA_POST(v, vc_ptr, save_vc, i);
 
            }
           
@@ -1838,7 +1883,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
          * Still stripe if length > rdma_large_msg_rail_sharing_threshold*/
         if (length < rdma_large_msg_rail_sharing_threshold) { 
            rail = MRAILI_Send_select_rail(vc_ptr);
-           v = get_vbuf();
+           GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
            if (NULL == v) {
                MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
            }
@@ -1863,11 +1908,11 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
            v->list = (void *)(&(winptr->put_get_list[index]));
            v->vc = (void *)vc_ptr;
 
-           ONESIDED_RDMA_POST(vc_ptr, NULL, rail);
+           ONESIDED_RDMA_POST(v, vc_ptr, NULL, rail);
  
         } else {
            for (i = 0; i < rdma_num_rails; ++i) {
-              v = get_vbuf(); 
+              GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET); 
               if (NULL == v) {
                   MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
               }
@@ -1901,7 +1946,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
                                 posting_length, 
                                 i);
 
-              ONESIDED_RDMA_POST(vc_ptr, save_vc, i);
+              ONESIDED_RDMA_POST(v, vc_ptr, save_vc, i);
 
            }
         }
@@ -1909,7 +1954,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
         rail = MRAILI_Send_select_rail(vc_ptr);
  
         if (*allocated_v == NULL) { 
-            v = get_vbuf();
+            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
         } else {
             v = *allocated_v;
         }
@@ -1928,7 +1973,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
         vbuf_init_rma_get(v, local_buf[0], lkeys[rail], remote_buf[0],
                           rkeys[rail], length, rail);
 
-        ONESIDED_RDMA_POST(vc_ptr, NULL, rail);
+        ONESIDED_RDMA_POST(v, vc_ptr, NULL, rail);
 
     }
 
@@ -2098,9 +2143,9 @@ static int iba_put(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t s
         + win_ptr->disp_units[rma_op->target_rank]
         * rma_op->target_disp;
 
-    if (size <= rdma_eagersize_1sc) {
-        v = get_vbuf();
-	origin_addr = (char *)v->buffer;
+    if (likely(size <= rdma_eagersize_1sc)) {
+        MV2_GET_RC_VBUF(v, size);
+	    origin_addr = (char *)v->buffer;
         MPIU_Memcpy(origin_addr, (char *)rma_op->origin_addr, size);
 
         for(i = 0; i < rdma_num_hcas; ++i) {
@@ -2161,7 +2206,7 @@ int iba_get(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
         win_ptr->disp_units[rma_op->target_rank] * rma_op->target_disp;
 
     if (size <= rdma_eagersize_1sc) {
-        v = get_vbuf();
+        MV2_GET_RC_VBUF(v, size);
         for(i = 0; i < rdma_num_hcas; ++i) {
             l_key[i] = v->region->mem_handle[i]->lkey;
         }
@@ -2222,7 +2267,7 @@ int iba_compare_and_swap(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_
     rail = 0;
     hca_index = vc_ptr->mrail.rails[rail].hca_index;
     r_key = win_ptr->win_rkeys[rma_op->target_rank * rdma_num_hcas + hca_index];
-    v = get_vbuf();
+    GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
     if (NULL == v)
         MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
     index = win_ptr->put_get_list_tail;
@@ -2249,7 +2294,7 @@ int iba_compare_and_swap(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_
     swap_value    = *((uint64_t *) rma_op->origin_addr);
     vbuf_init_rma_compare_and_swap(v, local_addr, l_key, remote_addr, r_key,
             compare_value, swap_value, rail);
-    ONESIDED_RDMA_POST(vc_ptr, NULL, rail);
+    ONESIDED_RDMA_POST(v, vc_ptr, NULL, rail);
 
 fn_fail:
     return mpi_errno;
@@ -2279,7 +2324,7 @@ int iba_fetch_and_add(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr, MPIDI_msg_sz_t 
     comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc(comm_ptr, rma_op->target_rank, &vc_ptr);
 
-    v = get_vbuf();
+    GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
     if(NULL == v){
         MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
     }
@@ -2308,7 +2353,7 @@ int iba_fetch_and_add(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr, MPIDI_msg_sz_t 
     l_key = v->region->mem_handle[hca_index]->lkey;
     add_value = *((uint64_t *) rma_op->origin_addr);
     vbuf_init_rma_fetch_and_add(v, (void *) fetch_addr, l_key, remote_addr, r_key, add_value, rail);
-    ONESIDED_RDMA_POST(vc_ptr, NULL, rail);
+    ONESIDED_RDMA_POST(v, vc_ptr, NULL, rail);
 
 fn_fail:
     return mpi_errno;

@@ -186,6 +186,8 @@ int MPID_Finalize(void)
 	}
     }
 
+    MPIU_Free(MPIDI_failed_procs_string);
+
 #if defined(_ENABLE_CUDA_)
     /* Release any COLL SRbuf pool storage */
     if (MPIDI_CH3U_COLL_SRBuf_pool) {

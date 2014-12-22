@@ -62,6 +62,14 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                   "rank=%d, tag=%d, context=%d", 
                   rank, tag, comm->context_id + context_offset));
+
+    /* Check to make sure the communicator hasn't already been revoked */
+    if (comm->revoked &&
+            MPIR_AGREE_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask) &&
+            MPIR_SHRINK_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask)) {
+        MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"Communicator revoked. MPID_ISEND returning");
+        MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
+    }
     
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
@@ -255,7 +263,7 @@ eager_send:
             goto fn_exit;
 #endif            
             /* If we're not complete, then add a reference to the datatype */
-            if (sreq && sreq->dev.OnDataAvail) {
+            if (sreq && sreq->dev.OnDataAvail && sreq->dev.datatype_ptr == NULL) {
                 sreq->dev.datatype_ptr = dt_ptr;
                 MPID_Datatype_add_ref(dt_ptr);
             }
@@ -282,7 +290,7 @@ rndv_send:
         MPID_Progress_test();
 #endif /* defined(CHANNEL_MRAIL) */
 	
-	if (sreq && dt_ptr != NULL)
+	if (sreq && dt_ptr != NULL && sreq->dev.datatype_ptr == NULL)
 	{
 	    sreq->dev.datatype_ptr = dt_ptr;
 	    MPID_Datatype_add_ref(dt_ptr);
@@ -309,6 +317,7 @@ rndv_send:
     }
 		  );
     
+  fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_ISEND);
     return mpi_errno;
 }

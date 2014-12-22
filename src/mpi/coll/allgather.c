@@ -947,7 +947,7 @@ int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
         {
             MPID_Datatype *recvtype_ptr=NULL, *sendtype_ptr=NULL;
 
-            MPID_Comm_valid_ptr( comm_ptr, mpi_errno );
+            MPID_Comm_valid_ptr( comm_ptr, mpi_errno, FALSE );
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
             if (comm_ptr->comm_kind == MPID_INTERCOMM) {
@@ -1002,7 +1002,7 @@ int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     if (mpi_errno) goto fn_fail;
 #ifdef _OSU_MVAPICH_
     if (mv2_use_osu_collectives) {
-        if(comm_ptr->ch.allgather_comm_ok >= 0) {
+        if(comm_ptr->dev.ch.allgather_comm_ok >= 0) {
             mpi_errno = mv2_increment_allgather_coll_counter(comm_ptr);
             if (mpi_errno) {
                 MPIU_ERR_POP(mpi_errno);

@@ -444,7 +444,7 @@ int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 	if (mpi_errno)
 		MPIU_ERR_POP(mpi_errno);
 
-	pof2 = comm_ptr->ch.gpof2;
+	pof2 = comm_ptr->dev.ch.gpof2;
 
 	rem = comm_size - pof2;
 

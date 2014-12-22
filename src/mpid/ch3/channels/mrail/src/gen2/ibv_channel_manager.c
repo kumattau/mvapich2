@@ -17,6 +17,7 @@
  */
 
 #include "upmi.h"
+#include "mpiimpl.h"
 #include "rdma_impl.h"
 #include "mpiutil.h"
 #include <debug_utils.h>
@@ -39,6 +40,13 @@
 #endif
 
 static pthread_spinlock_t g_apm_lock;
+
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
 
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_rdmafp_ctrl_packet_count);
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2,
@@ -662,30 +670,10 @@ inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, int receiving, st
         }
         else
 #endif 
-        if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
-	        pthread_spin_lock(&mv2_MPIDI_CH3I_RDMA_Process.
-	                srq_post_spin_lock);
-	
-	        if(v->padding == NORMAL_VBUF_FLAG) {
-	            /* Can only be from SRQ path */
-	            --mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num];
-	        }
-	
-	        if(mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] <= 
-	                rdma_credit_preserve) {
-	            /* Need to post more to the SRQ */
-	            mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] +=
-	                mv2_post_srq_buffers(mv2_srq_fill_size - 
-	                    mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num], hca_num);
-	
-	        }
-	
-	        pthread_spin_unlock(&mv2_MPIDI_CH3I_RDMA_Process.
-	                srq_post_spin_lock);
-	
+        if (likely(mv2_MPIDI_CH3I_RDMA_Process.has_srq)) {
 	        /* Check if we need to release the SRQ limit thread */
-	        if (mv2_MPIDI_CH3I_RDMA_Process.
-	                srq_zero_post_counter[hca_num] >= 1) {
+	        if (unlikely(mv2_MPIDI_CH3I_RDMA_Process.
+	                srq_zero_post_counter[hca_num] >= 1)) {
 	            pthread_mutex_lock(
 	                    &mv2_MPIDI_CH3I_RDMA_Process.
 	                    srq_post_mutex_lock[hca_num]);
@@ -737,7 +725,7 @@ inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, int receiving, st
                         vc->mrail.seqnum_next_torecv);
             }
         }
-	    if (!mv2_MPIDI_CH3I_RDMA_Process.has_srq && v->transport != IB_TRANSPORT_UD) {
+	    if (unlikely(!mv2_MPIDI_CH3I_RDMA_Process.has_srq && v->transport != IB_TRANSPORT_UD)) {
               
 	        if (PKT_IS_NOOP(v)) {
 	            PREPOST_VBUF_RECV(vc, v->rail);
@@ -779,25 +767,7 @@ inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, int receiving, st
 	            INDEX_GLOBAL(&vc->mrail.cmanager, v->rail),
 	            v);
         if (v->transport != IB_TRANSPORT_UD) {
-            if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
-                pthread_spin_lock(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
-
-                if(v->padding == NORMAL_VBUF_FLAG ) {
-                    /* Can only be from SRQ path */
-                    --mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num];
-                }
-
-                if(mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] <= rdma_credit_preserve) {
-                    /* Need to post more to the SRQ */
-                    mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] +=
-                        mv2_post_srq_buffers(mv2_srq_fill_size - 
-                                mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num], hca_num);
-
-                }
-
-                pthread_spin_unlock(&mv2_MPIDI_CH3I_RDMA_Process.
-                        srq_post_spin_lock);
-            } else {
+            if (unlikely(!mv2_MPIDI_CH3I_RDMA_Process.has_srq)) {
                 --vc->mrail.srp.credits[v->rail].preposts;
 
                 needed = rdma_prepost_depth + rdma_prepost_noop_extra
@@ -1121,14 +1091,22 @@ int MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf **vbuf_handle,
     	        ++nspin;
     	
     	        /* Blocking mode progress */
-    	        if(rdma_use_blocking && is_blocking && nspin >= rdma_blocking_spin_count_threshold) {
+    	        if (unlikely(rdma_use_blocking && is_blocking &&
+                            nspin >= rdma_blocking_spin_count_threshold)) {
                     perform_blocking_progress(i, num_cqs);
     	            nspin = 0;
     	        }
+
+			    if (unlikely(mv2_srq_repost_pool.num_free >= rdma_credit_preserve &&
+                                nspin >= rdma_blocking_spin_count_threshold)) {
+			        MV2_REPOST_VBUF_FROM_POOL_TO_SRQ(&mv2_srq_repost_pool);
+    	            nspin = 0;
+			    }
     	    }
         }
     }
 fn_exit:
+
     MPIDI_FUNC_EXIT(MPID_GEN2_MRAILI_CQ_POLL);
     return type;
 }
@@ -1137,7 +1115,7 @@ void async_thread(void *context)
 {
     struct ibv_async_event event;
     struct ibv_srq_attr srq_attr;
-    int post_new, i, hca_num = -1;
+    int post_new = 0, i = 0, hca_num = -1;
 #ifdef _ENABLE_XRC_
     int xrc_event = 0; 
 #endif
@@ -1228,18 +1206,13 @@ void async_thread(void *context)
                     mv2_srq_fill_size = mv2_srq_alloc_size;
                 }
 
-                rdma_credit_preserve = (mv2_srq_fill_size > 200) ?
-                     (mv2_srq_fill_size - 100) : (mv2_srq_fill_size / 2);
-                
                 /* Need to post more to the SRQ */
-                post_new = mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num];
+                post_new = mv2_srq_limit;
 
-                mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] +=
-                    mv2_post_srq_buffers(mv2_srq_fill_size -
+                post_new += mv2_post_srq_buffers(mv2_srq_fill_size -
                             mv2_srq_limit, hca_num);
 
-                post_new = mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] - 
-                    post_new;
+                post_new = mv2_srq_limit - post_new;
 
                 pthread_spin_unlock(&mv2_MPIDI_CH3I_RDMA_Process.
                         srq_post_spin_lock);

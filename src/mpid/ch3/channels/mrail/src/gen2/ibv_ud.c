@@ -18,6 +18,13 @@
 #include "mv2_ud_inline.h"
 #include <debug_utils.h>
 
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
+
 static inline void mv2_ud_flush_ext_window(MPIDI_VC_t *vc)
 {
     vbuf *next;
@@ -243,7 +250,8 @@ void mv2_ud_update_send_credits(vbuf *v)
 
 void mv2_send_explicit_ack(MPIDI_VC_t *vc)
 {
-    vbuf *v = get_ud_vbuf();
+    vbuf *v = NULL;
+    MV2_GET_AND_INIT_UD_VBUF(v);
     MPIDI_CH3I_MRAILI_Pkt_comm_header *ack_pkt = v->pheader;
     MPIDI_Pkt_init(ack_pkt, MPIDI_CH3_PKT_FLOW_CNTL_UPDATE);
     ack_pkt->acknum = vc->mrail.seqnum_next_toack;

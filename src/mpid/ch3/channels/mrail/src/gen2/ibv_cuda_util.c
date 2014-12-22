@@ -21,6 +21,13 @@
 #define SUCCESS_PACKUNPACK_OPT 0
 #define FAILURE_PACKUNPACK_OPT 1
 
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
+
 static int can_use_cuda = 0;
 int cudaipc_init = 0;
 static int cudaipc_init_global = 0;
@@ -65,7 +72,7 @@ void vector_pack_cudabuf(void *buf, MPID_IOV *iov, int size, cudaStream_t stream
     cerr = cudaMemcpy2DAsync(buf,
                 iov[0].MPID_IOV_LEN,
                 iov[0].MPID_IOV_BUF,
-                iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
+                (size_t)(iov[1].MPID_IOV_BUF) - (size_t)(iov[0].MPID_IOV_BUF),
                 iov[0].MPID_IOV_LEN,
                 size / iov[0].MPID_IOV_LEN,
                 cudaMemcpyDeviceToDevice, stream);
@@ -79,7 +86,7 @@ void vector_unpack_cudabuf(void *buf, MPID_IOV *iov, int size, cudaStream_t stre
 {
     cudaError_t cerr = cudaSuccess;
     cerr = cudaMemcpy2DAsync(iov[0].MPID_IOV_BUF,
-                iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
+                (size_t)(iov[1].MPID_IOV_BUF) - (size_t)(iov[0].MPID_IOV_BUF),
                 buf,
                 iov[0].MPID_IOV_LEN,
                 iov[0].MPID_IOV_LEN,
@@ -1308,7 +1315,6 @@ void cuda_cleanup()
             }
         }
 #endif
-        return;
     }
 
     deallocate_cuda_events();

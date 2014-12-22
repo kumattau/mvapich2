@@ -1689,10 +1689,9 @@ int get_socket_id (int ib_socket, int cpu_socket, int num_sockets,
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int smpi_setaffinity(int my_local_id)
 {
-    char *value;
     int cpu_socket;
     int selected_ib;
-    int i, selected_socket;
+    int selected_socket;
     int mpi_errno = MPI_SUCCESS;
     tab_socket_t * tab_socket;
 

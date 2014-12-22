@@ -145,7 +145,10 @@ inline void dump_device_cap(struct ibv_device_attr dev_attr)
     PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of resources used for RDMA Read & Atomic operations by this HCA as the Target  : %6d\n", dev_attr.max_res_rd_atom);
     PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum depth per QP for initiation of RDMA Read & Atomic operations                          : %6d\n", dev_attr.max_qp_init_rd_atom);
     PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum depth per EEC for initiation of RDMA Read & Atomic operations                         : %6d\n", dev_attr.max_ee_init_rd_atom);
-    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Atomic operations support level                                                               : %6d\n", dev_attr.atomic_cap);
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "Atomic operations support level                                                               : %s\n",
+                (dev_attr.atomic_cap == IBV_ATOMIC_NONE)?"No Support":
+                (dev_attr.atomic_cap == IBV_ATOMIC_HCA)?"HCA Level":
+                (dev_attr.atomic_cap == IBV_ATOMIC_GLOB)?"Node Level":"Un-known");
     PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of supported EE contexts                                                       : %6d\n", dev_attr.max_ee);
     PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of supported RD domains                                                        : %6d\n", dev_attr.max_rdd);
     PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of supported MWs                                                               : %6d\n", dev_attr.max_mw);

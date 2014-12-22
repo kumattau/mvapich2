@@ -612,7 +612,7 @@ static int cm_get_conn_info(MPIDI_PG_t * pg, int peer)
                     &(pg->ch.mrail.cm_ud_qpn[peer]), &hca_type);
             }
         }
-        PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %d\n",
+        PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %llu\n",
                     peer, pg->ch.mrail.cm_lid[peer], pg->ch.mrail.cm_ud_qpn[peer],
                     hca_type);
     } else {
@@ -1000,7 +1000,7 @@ static int cm_accept(MPIDI_PG_t * pg, cm_msg * msg)
             MPIDI_CH3I_MRAILI_Pkt_comm_header *p = NULL;
 
             if (!SMP_ONLY) {
-                v = get_vbuf();
+                v = get_vbuf_by_offset(MV2_RECV_VBUF_POOL_OFFSET);
                 p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;
             }
 
@@ -1091,7 +1091,7 @@ static int cm_accept_and_cancel(MPIDI_PG_t * pg, cm_msg * msg)
             MPIDI_CH3I_MRAILI_Pkt_comm_header *p = NULL;
 
             if (!SMP_ONLY) {
-                v = get_vbuf();
+                v = get_vbuf_by_offset(MV2_RECV_VBUF_POOL_OFFSET);
                 p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;
             }
 
@@ -1306,7 +1306,7 @@ static int cm_enable(MPIDI_PG_t * pg, cm_msg * msg)
             MPIDI_CH3I_MRAILI_Pkt_comm_header *p = NULL;
 
             if (!SMP_ONLY) {
-                v = get_vbuf();
+                v = get_vbuf_by_offset(MV2_RECV_VBUF_POOL_OFFSET);
                 p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;
             }
 
@@ -2817,7 +2817,7 @@ int cm_send_suspend_msg(MPIDI_VC_t * vc)
     for (; rail < vc->mrail.num_rails; ++rail) {
         /*Send suspend msg to each rail */
 
-        v = get_vbuf();
+        v = get_vbuf_by_offset(MV2_RECV_VBUF_POOL_OFFSET);
         p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;
         p->type = MPIDI_CH3_PKT_CM_SUSPEND;
         vbuf_init_send(v, sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header), rail);

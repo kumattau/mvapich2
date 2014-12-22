@@ -52,10 +52,10 @@
 
 
 
-MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mpit_smp_read_progress_poll);
-MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mpit_smp_write_progress_poll);
-MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mpit_smp_read_progress_poll_success);
-MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mpit_smp_write_progress_poll_success);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_smp_read_progress_poll);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_smp_write_progress_poll);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_smp_read_progress_poll_success);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_smp_write_progress_poll_success);
 
 int mv2_shmem_pool_init = 0;
 int g_smp_delay_shmem_pool_init = 1;
@@ -748,7 +748,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
 #endif
 
     /* track smp write progress polling for MPIT*/
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_smp_write_progress_poll, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_write_progress_poll, 1);
 
     for (i=0; i < g_smpi.num_local_nodes; ++i)
     {
@@ -928,7 +928,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
                         nb));
                 break;
             }
-            MPIR_T_PVAR_COUNTER_INC(MV2, mpit_smp_write_progress_poll_success, 1);
+            MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_write_progress_poll_success, 1);
         } /* while (vc->smp.send_active != NULL) */
     } /* for (i=0; i < g_smpi.num_local_nodes; ++i) */
 
@@ -957,7 +957,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
     int index = -1;
 
     /* track smp read progress polling for MPIT*/
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_smp_read_progress_poll, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_read_progress_poll, 1);
 
 #if defined(_SMP_LIMIC_)
     struct limic_header l_header;
@@ -1011,7 +1011,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                 use_cma = 0;
                 use_limic = 0;
 
-                MPIR_T_PVAR_COUNTER_INC(MV2, mpit_smp_read_progress_poll_success, 1);
+                MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_read_progress_poll_success, 1);
                 mpi_errno = MPIDI_CH3I_SMP_Process_header(vc, pkt_head, &index, &l_header, &c_header,
                         &use_limic, &use_cma);
 
@@ -1239,7 +1239,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                     }
                 }
             }
-            MPIR_T_PVAR_COUNTER_INC(MV2, mpit_smp_read_progress_poll_success, 1);
+            MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_read_progress_poll_success, 1);
         }
 
         if(is_fair_polling) {

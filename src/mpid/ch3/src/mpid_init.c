@@ -100,7 +100,7 @@ static int set_eager_threshold(MPID_Comm *comm_ptr, MPID_Info *info, void *state
 
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_SET_EAGER_THRESHOLD);
 
-    comm_ptr->ch.eager_max_msg_sz = strtol(info->value, &endptr, 0);
+    comm_ptr->dev.eager_max_msg_sz = strtol(info->value, &endptr, 0);
 
     MPIU_ERR_CHKANDJUMP1(*endptr, mpi_errno, MPI_ERR_ARG,
                          "**infohintparse", "**infohintparse %s",
@@ -253,6 +253,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     int pg_size;
     MPID_Comm * comm;
     int p;
+    int val;
 #if defined(CHANNEL_MRAIL)
     char *value;
     int blocking_val;
@@ -285,22 +286,17 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     MPIDI_Use_pmi2_api = TRUE;
 #else
     {
-        int ret, val;
+        int ret;
         ret = MPL_env2bool("MPICH_USE_PMI2_API", &val);
         if (ret == 1 && val)
             MPIDI_Use_pmi2_api = TRUE;
     }
 #endif
     
-#if 0
-    /* This is a sanity check because we define a generic packet size
-     */
-    if (sizeof(MPIDI_CH3_PktGeneric_t) < sizeof(MPIDI_CH3_Pkt_t)) {
-	fprintf( stderr, "Internal error - packet definition is too small.  Generic is %ld bytes, MPIDI_CH3_Pkt_t is %ld\n", (long int)sizeof(MPIDI_CH3_PktGeneric_t),
-		 (long int)sizeof(MPIDI_CH3_Pkt_t) );
-	exit(1);
-    }
-#endif
+    /* Create the string that will cache the last group of failed processes
+     * we received from PMI */
+    UPMI_KVS_GET_VALUE_LENGTH_MAX(&val);
+    MPIDI_failed_procs_string = MPIU_Malloc(sizeof(char) * (val+1));
 
     /*
      * Set global process attributes.  These can be overridden by the channel 
@@ -616,7 +612,6 @@ static int init_pg( int *argc, char ***argv,
     int usePMI=1;
     char *pg_id;
     MPIDI_PG_t *pg = 0;
-    int inited;
 
     /* See if the channel will provide the PMI values.  The channel
      is responsible for defining HAVE_CH3_PRE_INIT and providing 

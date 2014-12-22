@@ -45,10 +45,10 @@ MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_reg_cache_misses);
  * Count progress engine polling
  */
 MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mpit_progress_poll);
-MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mpit_smp_read_progress_poll);
-MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mpit_smp_write_progress_poll);
-MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mpit_smp_read_progress_poll_success);
-MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mpit_smp_write_progress_poll_success);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_smp_read_progress_poll);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_smp_write_progress_poll);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_smp_read_progress_poll_success);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_smp_write_progress_poll_success);
 
 /*
  * Count number of shared-memory collective calls
@@ -64,36 +64,36 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_num_2level_comm_success);
 /*
  * Count MVAPICH Broadcast algorithms used
  */
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_bcast_mv2_binomial);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_bcast_mv2_scatter_doubling_allgather);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_bcast_mv2_scatter_ring_allgather);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_bcast_mv2_scatter_ring_allgather_shm);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_bcast_mv2_shmem);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_bcast_mv2_knomial_internode);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_bcast_mv2_knomial_intranode);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_bcast_mv2_mcast_internode);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_bcast_mv2_pipelined);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_binomial);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_scatter_doubling_allgather);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_scatter_ring_allgather);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_scatter_ring_allgather_shm);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_shmem);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_knomial_internode);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_knomial_intranode);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_mcast_internode);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_pipelined);
 
 /*
  * Count MVAPICH Alltoall algorithms used
  */
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_alltoall_mv2_inplace);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_alltoall_mv2_bruck);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_alltoall_mv2_rd);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_alltoall_mv2_sd);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_alltoall_mv2_pw);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoall_inplace);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoall_bruck);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoall_rd);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoall_sd);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoall_pw);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_alltoallv_mv2_pw);
 
 /*
  * Count MVAPICH Allreduce algorithms used
  */
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_allreduce_mv2_shm_rd);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_allreduce_mv2_shm_rs);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_allreduce_mv2_shm_intra);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_allreduce_mv2_intra_p2p);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_allreduce_mv2_2lvl);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_allreduce_mv2_shmem);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_allreduce_mv2_mcast);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_shm_rd);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_shm_rs);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_shm_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_intra_p2p);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_2lvl);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_shmem);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_mcast);
 
 /*
  * Count number of UD retransmissions
@@ -142,7 +142,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG,
-            mpit_smp_read_progress_poll,
+            mv2_smp_read_progress_poll,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -151,7 +151,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG,
-            mpit_smp_write_progress_poll,
+            mv2_smp_write_progress_poll,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -160,7 +160,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG,
-            mpit_smp_read_progress_poll_success,
+            mv2_smp_read_progress_poll_success,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -169,7 +169,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG,
-            mpit_smp_write_progress_poll_success,
+            mv2_smp_write_progress_poll_success,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -187,7 +187,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_bcast_mv2_binomial,
+            mv2_coll_bcast_binomial,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -196,7 +196,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_bcast_mv2_scatter_doubling_allgather,
+            mv2_coll_bcast_scatter_doubling_allgather,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -206,7 +206,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_bcast_mv2_scatter_ring_allgather,
+            mv2_coll_bcast_scatter_ring_allgather,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -216,7 +216,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_bcast_mv2_scatter_ring_allgather_shm,
+            mv2_coll_bcast_scatter_ring_allgather_shm,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -226,7 +226,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_bcast_mv2_shmem,
+            mv2_coll_bcast_shmem,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -235,7 +235,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_bcast_mv2_knomial_internode,
+            mv2_coll_bcast_knomial_internode,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -245,7 +245,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_bcast_mv2_knomial_intranode,
+            mv2_coll_bcast_knomial_intranode,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -255,7 +255,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_bcast_mv2_mcast_internode,
+            mv2_coll_bcast_mcast_internode,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -265,7 +265,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_bcast_mv2_pipelined,
+            mv2_coll_bcast_pipelined,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -274,7 +274,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_alltoall_mv2_inplace,
+            mv2_coll_alltoall_inplace,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -283,7 +283,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_alltoall_mv2_bruck,
+            mv2_coll_alltoall_bruck,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -292,7 +292,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_alltoall_mv2_rd,
+            mv2_coll_alltoall_rd,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -301,7 +301,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_alltoall_mv2_sd,
+            mv2_coll_alltoall_sd,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -310,7 +310,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_alltoall_mv2_pw,
+            mv2_coll_alltoall_pw,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -328,7 +328,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_allreduce_mv2_shm_rd,
+            mv2_coll_allreduce_shm_rd,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -337,7 +337,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_allreduce_mv2_shm_rs,
+            mv2_coll_allreduce_shm_rs,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -346,7 +346,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_allreduce_mv2_shm_intra,
+            mv2_coll_allreduce_shm_intra,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -355,7 +355,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_allreduce_mv2_intra_p2p,
+            mv2_coll_allreduce_intra_p2p,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -364,7 +364,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_allreduce_mv2_2lvl,
+            mv2_coll_allreduce_2lvl,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -373,7 +373,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_allreduce_mv2_shmem,
+            mv2_coll_allreduce_shmem,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
@@ -382,7 +382,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mpit_allreduce_mv2_mcast,
+            mv2_coll_allreduce_mcast,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),

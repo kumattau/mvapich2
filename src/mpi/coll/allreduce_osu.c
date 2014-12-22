@@ -24,13 +24,13 @@
 #include <cr.h>
 #endif
 
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_shm_rd);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_shm_rs);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_shm_intra);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_intra_p2p);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_2lvl);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_shmem);
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_allreduce_mv2_mcast);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_shm_rd);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_shm_rs);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_shm_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_intra_p2p);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_2lvl);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_shmem);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_mcast);
 
 int (*MV2_Allreduce_function)(const void *sendbuf,
                              void *recvbuf,
@@ -124,7 +124,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_shm_rd, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_shm_rd, 1);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -207,7 +207,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
     }
 
     /* find nearest power-of-two less than or equal to comm_size */
-    pof2 = comm_ptr->ch.gpof2;
+    pof2 = comm_ptr->dev.ch.gpof2;
 
     rem = comm_size - pof2;
 
@@ -389,7 +389,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_shm_rs, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_shm_rs, 1);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -472,7 +472,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
     }
 
     /* find nearest power-of-two less than or equal to comm_size */
-    pof2 = comm_ptr->ch.gpof2;
+    pof2 = comm_ptr->dev.ch.gpof2;
 
     rem = comm_size - pof2;
 
@@ -907,7 +907,7 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
         MPID_Datatype_get_size_macro(datatype, type_size);
 
         /* find nearest power-of-two less than or equal to comm_size */
-        pof2 = comm_ptr->ch.gpof2;
+        pof2 = comm_ptr->dev.ch.gpof2;
 
         rem = comm_size - pof2;
 
@@ -1222,7 +1222,7 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_shm_intra, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_shm_intra, 1);
     int mpi_errno = MPI_SUCCESS;
     int i = 0, is_commutative = 0;
     MPI_Aint true_lb, true_extent, extent;
@@ -1250,7 +1250,7 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
     MPID_Datatype_get_extent_macro(datatype, extent);
     stride = count * MPIR_MAX(extent, true_extent);
  
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     PMPI_Comm_size(shmem_comm, &local_size);
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);   
     if (count * (MPIR_MAX(extent, true_extent)) >= SHMEM_COLL_BLOCK_SIZE) {
@@ -1288,7 +1288,7 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
 
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
-    shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
+    shmem_comm_rank = shmem_commptr->dev.ch.shmem_comm_rank;
 
 #if defined(CKPT)
     MPIDI_CH3I_CR_lock();
@@ -1361,7 +1361,7 @@ int MPIR_Allreduce_reduce_p2p_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_intra_p2p, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_intra_p2p, 1);
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     MPI_Aint true_lb, true_extent;
@@ -1375,7 +1375,7 @@ int MPIR_Allreduce_reduce_p2p_MV2(const void *sendbuf,
 
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
 
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     PMPI_Comm_size(shmem_comm, &local_size);
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
@@ -1437,7 +1437,7 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_2lvl, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_2lvl, 1);
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int total_size = 0;
@@ -1453,13 +1453,13 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
 
     total_size = comm_ptr->local_size;
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     PMPI_Comm_size(shmem_comm, &local_size);
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
 
-    leader_comm = comm_ptr->ch.leader_comm;
+    leader_comm = comm_ptr->dev.ch.leader_comm;
     MPID_Comm_get_ptr(leader_comm, leader_commptr);
 
     if (local_rank == 0) {
@@ -1562,7 +1562,7 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_shmem, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_shmem, 1);
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int i = 0, is_commutative = 0;
@@ -1616,14 +1616,14 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
     }
 
     total_size = comm_ptr->local_size;
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     PMPI_Comm_size(shmem_comm, &local_size);
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
-    shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
+    shmem_comm_rank = shmem_commptr->dev.ch.shmem_comm_rank;
 
-    leader_comm = comm_ptr->ch.leader_comm;
+    leader_comm = comm_ptr->dev.ch.leader_comm;
     MPID_Comm_get_ptr(leader_comm, leader_commptr);
 
     if (local_rank == 0) {
@@ -1771,7 +1771,7 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_allreduce_mv2_mcast, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_mcast, 1);
     MPI_Aint true_lb, true_extent;
    /*We use reduce (at rank =0) followed by mcst-bcast to implement the 
     * allreduce operation */
@@ -1879,9 +1879,9 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
 
     /* check to see if the intra-node mcast is not done. 
      * if this is the case, do it either through shmem or knomial */ 
-    if(comm_ptr->ch.intra_node_done == 0) { 
+    if(comm_ptr->dev.ch.intra_node_done == 0) { 
         MPID_Comm *shmem_commptr=NULL; 
-        MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_commptr); 
+        MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_commptr); 
         int local_size = shmem_commptr->local_size; 
         if (local_size > 1) {
             MPIR_Bcast_MV2(recvbuf, count, datatype, 0, shmem_commptr, errflag);
@@ -2075,8 +2075,8 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
         if((MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2)||
           (MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2)){
 #if defined(_MCST_SUPPORT_)
-            if(comm_ptr->ch.is_mcast_ok == 1
-                && comm_ptr->ch.shmem_coll_ok == 1
+            if(comm_ptr->dev.ch.is_mcast_ok == 1
+                && comm_ptr->dev.ch.shmem_coll_ok == 1
                 && mv2_use_mcast_allreduce == 1){
             } else
 #endif  /* #if defined(_MCST_SUPPORT_) */
@@ -2099,7 +2099,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
 #endif  /* #if defined(_MCST_SUPPORT_) */
             { 
                 /* check if shm is ready, if not use other algorithm first */
-                if ((comm_ptr->ch.shmem_coll_ok == 1)
+                if ((comm_ptr->dev.ch.shmem_coll_ok == 1)
                     && (mv2_enable_shmem_allreduce)
                     && (is_commutative)
                     && (mv2_enable_shmem_collectives)) {
@@ -2138,7 +2138,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
         }
     }
 #endif
-	comm_ptr->ch.intra_node_done=0;
+	comm_ptr->dev.ch.intra_node_done=0;
 	
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
@@ -2273,9 +2273,9 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
 #endif
     
     /* check if safe to use partial subscription mode */
-    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    if (comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_uniform) {
     
-        shmem_comm = comm_ptr->ch.shmem_comm;
+        shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
         i = 0;
@@ -2345,7 +2345,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
 	    }
 	    else {
 		/* Comm size in between smallest and largest configuration: find closest match */
-		if (comm_ptr->ch.is_pof2) {
+		if (comm_ptr->dev.ch.is_pof2) {
 		    comm_size_index = log2( comm_size / table_min_comm_size );
 		}
 		else {
@@ -2418,8 +2418,8 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
 	    if((MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2)||
 	       (MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2)){
 #if defined(_MCST_SUPPORT_)
-		if(comm_ptr->ch.is_mcast_ok == 1
-		   && comm_ptr->ch.shmem_coll_ok == 1
+		if(comm_ptr->dev.ch.is_mcast_ok == 1
+		   && comm_ptr->dev.ch.shmem_coll_ok == 1
 		   && mv2_use_mcast_allreduce == 1){
 		} else
 #endif  /* #if defined(_MCST_SUPPORT_) */
@@ -2442,7 +2442,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
 #endif  /* #if defined(_MCST_SUPPORT_) */
 		    { 
 			/* check if shm is ready, if not use other algorithm first */
-			if ((comm_ptr->ch.shmem_coll_ok == 1)
+			if ((comm_ptr->dev.ch.shmem_coll_ok == 1)
 			    && (mv2_enable_shmem_allreduce)
 			    && (is_commutative)
 			    && (mv2_enable_shmem_collectives)) {
@@ -2480,7 +2480,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
         }
     }
 #endif
-    comm_ptr->ch.intra_node_done=0;
+    comm_ptr->dev.ch.intra_node_done=0;
 	
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
@@ -2574,8 +2574,8 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
 #endif
 
 #if defined(_MCST_SUPPORT_)
-    if(comm_ptr->ch.is_mcast_ok == 1
-       && comm_ptr->ch.shmem_coll_ok == 1
+    if(comm_ptr->dev.ch.is_mcast_ok == 1
+       && comm_ptr->dev.ch.shmem_coll_ok == 1
        && mv2_use_mcast_allreduce == 1
        && stride >= mv2_mcast_allreduce_small_msg_size 
        && stride <= mv2_mcast_allreduce_large_msg_size){
@@ -2584,7 +2584,7 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
     } else
 #endif /* #if defined(_MCST_SUPPORT_) */ 
     {
-        if ((comm_ptr->ch.shmem_coll_ok == 1)
+        if ((comm_ptr->dev.ch.shmem_coll_ok == 1)
             && (stride < mv2_coll_param.allreduce_2level_threshold)
             && (mv2_enable_shmem_allreduce)
             && (is_commutative)
@@ -2622,7 +2622,7 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
         }
     }
 #endif
-	comm_ptr->ch.intra_node_done=0;
+	comm_ptr->dev.ch.intra_node_done=0;
 	
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);

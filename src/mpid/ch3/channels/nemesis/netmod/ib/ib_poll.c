@@ -25,7 +25,7 @@
 #include "ib_lmt.h"
 #include "ib_srq.h"
 
-#define PKTARRAY_SIZE (MPIDI_NEM_PKT_END+1)
+#define PKTARRAY_SIZE (MPIDI_CH3_PKT_END_ALL+1)
 static MPIDI_CH3_PktHandler_Fcn *pktArray[PKTARRAY_SIZE];
 
 /* This is called whenever a vc has been closed as a result of an

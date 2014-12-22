@@ -26,7 +26,7 @@ typedef enum MPIDI_nem_ib_Pkt_type
     ** Note: currently these packets types do not have handlers in pktArray[].
     ** set the PKTARRAY_SIZE to appropriately if it needs to setup handlers
     */
-    MPIDI_CH3_PKT_NOOP = MPIDI_NEM_PKT_END + 1,
+    MPIDI_CH3_PKT_NOOP = MPIDI_CH3_PKT_END_ALL + 1,
     MPIDI_CH3_PKT_ADDRESS,
     MPIDI_CH3_PKT_ADDRESS_REPLY,
     MPIDI_CH3_PKT_FAST_EAGER_SEND,

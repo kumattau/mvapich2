@@ -1840,7 +1840,7 @@ int CR_IBU_Prep_remote_update()
 
         if(!SMP_ONLY)
         {
-            v = get_vbuf();
+            v = get_vbuf_by_offset(MV2_RECV_VBUF_POOL_OFFSET);
             p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*) v->pheader;
         }
         else

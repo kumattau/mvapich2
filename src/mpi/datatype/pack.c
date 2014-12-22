@@ -88,7 +88,7 @@ int MPIR_Pack_impl(const void *inbuf,
         } else
 #endif
         {
-            MPIU_Memcpy((char *) outbuf + *position, (char *)inbuf + dt_true_lb, data_sz);
+            MPIU_Memcpy((char *)outbuf + *position, (char *)inbuf + dt_true_lb, data_sz);
         }
         *position = (int)((MPI_Aint)*position + data_sz);
         goto fn_exit;
@@ -227,7 +227,7 @@ int MPI_Pack(const void *inbuf,
 	    MPIR_ERRTEST_ARGNULL(position, "position", mpi_errno);
             /* Validate comm_ptr */
 	    /* If comm_ptr is not valid, it will be reset to null */
-            MPID_Comm_valid_ptr(comm_ptr, mpi_errno);
+            MPID_Comm_valid_ptr( comm_ptr, mpi_errno, FALSE );
 	    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
 	    MPIR_ERRTEST_DATATYPE(datatype, "datatype", mpi_errno);

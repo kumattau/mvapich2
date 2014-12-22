@@ -728,7 +728,7 @@ int MPIR_Allgather_intra_MV2(const void *sendbuf,
     MPID_Datatype_get_size_macro(recvtype, type_size);
 
     /* check if comm_size is a power of two */
-    comm_size_is_pof2 = comm_ptr->ch.is_pof2;
+    comm_size_is_pof2 = comm_ptr->dev.ch.is_pof2;
 
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
@@ -783,7 +783,7 @@ int MPIR_2lvl_Allgather_MV2(const void *sendbuf,int sendcnt, MPI_Datatype sendty
      * communicator */
     MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
     
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
@@ -791,7 +791,7 @@ int MPIR_2lvl_Allgather_MV2(const void *sendbuf,int sendcnt, MPI_Datatype sendty
     if (local_rank == 0) {
         /* Node leader. Extract the rank, size information for the leader
          * communicator */
-        leader_comm = comm_ptr->ch.leader_comm;
+        leader_comm = comm_ptr->dev.ch.leader_comm;
         MPID_Comm_get_ptr(leader_comm, leader_commptr);
         leader_comm_size = leader_commptr->local_size;
     }
@@ -825,14 +825,14 @@ int MPIR_2lvl_Allgather_MV2(const void *sendbuf,int sendcnt, MPI_Datatype sendty
     /* Exchange the data between the node leaders*/
     if (local_rank == 0 && (leader_comm_size > 1)) {
         /*When data in each socket is different*/
-        if (comm_ptr->ch.is_uniform != 1) {
+        if (comm_ptr->dev.ch.is_uniform != 1) {
 
             int *displs = NULL;
             int *recvcnts = NULL;
             int *node_sizes;
             int i = 0;
 
-            node_sizes = comm_ptr->ch.node_sizes;
+            node_sizes = comm_ptr->dev.ch.node_sizes;
 
             displs = MPIU_Malloc(sizeof (int) * leader_comm_size);
             recvcnts = MPIU_Malloc(sizeof (int) * leader_comm_size);
@@ -999,9 +999,9 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
     }
     
     /* check if safe to use partial subscription mode */
-    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    if (comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_uniform) {
     
-        shmem_comm = comm_ptr->ch.shmem_comm;
+        shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
         i = 0;
@@ -1043,7 +1043,7 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
     }
     else {
 	/* Comm size in between smallest and largest configuration: find closest match */
-	if (comm_ptr->ch.is_pof2) {
+	if (comm_ptr->dev.ch.is_pof2) {
 	    comm_size_index = log2( comm_size / table_min_comm_size );
 	}
 	else {
@@ -1081,7 +1081,7 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
 	inter_leader[inter_node_algo_index].MV2_pt_Allgather_function;
 
     if(MV2_Allgather_function == &MPIR_Allgather_RD_Allgather_Comm_MV2) {
-        if(comm_ptr->ch.allgather_comm_ok == 1) {
+        if(comm_ptr->dev.ch.allgather_comm_ok == 1) {
             int sendtype_iscontig = 0, recvtype_iscontig = 0;
             void *tmp_recv_buf = NULL;
             MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_shmem_coll_calls, 1);
@@ -1091,7 +1091,7 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
             }
 
             MPID_Comm *allgather_comm_ptr;
-            MPID_Comm_get_ptr(comm_ptr->ch.allgather_comm, allgather_comm_ptr);
+            MPID_Comm_get_ptr(comm_ptr->dev.ch.allgather_comm, allgather_comm_ptr);
 
             /*creation of a temporary recvbuf */
             tmp_recv_buf = MPIU_Malloc(recvcount * comm_size * recvtype_extent);
@@ -1125,7 +1125,7 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
             ){
                 for (i = 0; i < comm_size; i++) {
                     MPIUI_Memcpy((void *) ((char *) recvbuf +
-                                           (comm_ptr->ch.allgather_new_ranks[i]) *
+                                           (comm_ptr->dev.ch.allgather_new_ranks[i]) *
                                            nbytes),
                                            (char *) tmp_recv_buf + i * nbytes, nbytes);
                 }
@@ -1136,7 +1136,7 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
                                                 recvtype_extent),
                                                 recvcount, recvtype,
                                                 (void *) ((char *) recvbuf +
-                                                (comm_ptr->ch.allgather_new_ranks[i])
+                                                (comm_ptr->dev.ch.allgather_new_ranks[i])
                                                 * recvcount * recvtype_extent),
                                            recvcount, recvtype);
                     if (mpi_errno) {
@@ -1304,9 +1304,9 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     }
     
     /* check if safe to use partial subscription mode */
-    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    if (comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_uniform) {
     
-        shmem_comm = comm_ptr->ch.shmem_comm;
+        shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
         i = 0;
@@ -1354,9 +1354,9 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     /* intracommunicator */
     if(is_two_level ==1){
         
-        if(comm_ptr->ch.shmem_coll_ok == 1){
+        if(comm_ptr->dev.ch.shmem_coll_ok == 1){
             MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_shmem_coll_calls, 1);
-	   if (1 == comm_ptr->ch.is_blocked) {
+	   if (1 == comm_ptr->dev.ch.is_blocked) {
                 mpi_errno = MPIR_2lvl_Allgather_MV2(sendbuf, sendcount, sendtype,
 						    recvbuf, recvcount, recvtype,
 						    comm_ptr, errflag);
@@ -1372,7 +1372,7 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
                                                 comm_ptr, errflag);
         }
     } else if(MV2_Allgather_function == &MPIR_Allgather_RD_Allgather_Comm_MV2){
-        if(comm_ptr->ch.allgather_comm_ok == 1) {
+        if(comm_ptr->dev.ch.allgather_comm_ok == 1) {
             int sendtype_iscontig = 0, recvtype_iscontig = 0;
             void *tmp_recv_buf = NULL;
             MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_shmem_coll_calls, 1);
@@ -1382,7 +1382,7 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
             }
 
             MPID_Comm *allgather_comm_ptr;
-            MPID_Comm_get_ptr(comm_ptr->ch.allgather_comm, allgather_comm_ptr);
+            MPID_Comm_get_ptr(comm_ptr->dev.ch.allgather_comm, allgather_comm_ptr);
 
             /*creation of a temporary recvbuf */
             tmp_recv_buf = MPIU_Malloc(recvcount * comm_size * recvtype_extent);
@@ -1416,7 +1416,7 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
             ){
                 for (i = 0; i < comm_size; i++) {
                     MPIUI_Memcpy((void *) ((char *) recvbuf +
-                                           (comm_ptr->ch.allgather_new_ranks[i]) *
+                                           (comm_ptr->dev.ch.allgather_new_ranks[i]) *
                                            nbytes),
                                            (char *) tmp_recv_buf + i * nbytes, nbytes);
                 }
@@ -1427,7 +1427,7 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
                                                 recvtype_extent),
                                                 recvcount, recvtype,
                                                 (void *) ((char *) recvbuf +
-                                                (comm_ptr->ch.allgather_new_ranks[i])
+                                                (comm_ptr->dev.ch.allgather_new_ranks[i])
                                                 * recvcount * recvtype_extent),
                                            recvcount, recvtype);
                     if (mpi_errno) {

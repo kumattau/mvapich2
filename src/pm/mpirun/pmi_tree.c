@@ -604,12 +604,6 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
                     strncpy(rc, start, end - start);
                     rc[end - start] = 0;
                 }
-                if (0 == strcmp(name, "rc")) {
-                    if (strcmp(rc, "0")) {
-                        rv = ERR_RC;
-                        goto exit_err;
-                    }
-                }
                 break;
             default:
                 rv = ERR_STR;
@@ -800,7 +794,7 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
             char *valptr;
             valptr = check_kvc(key);
             if (valptr) {
-                sprintf(resp, "cmd=lookup_result info=ok port=%s\n", valptr);
+                sprintf(resp, "cmd=lookup_result rc=0 port=%s\n", valptr);
                 hdr.msg_len = strlen(resp);
                 hdr.msg_rank = rank;
                 if (src == MT_CHILD) {
@@ -812,7 +806,7 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
                     save_pending_req(rank, key, fd);
                     send_parent(rank, msg, msg_len);
                 } else {
-                    sprintf(resp, "cmd=lookup_result info=notok\n");
+                    sprintf(resp, "cmd=lookup_result rc=1\n");
                     hdr.msg_len = strlen(resp);
                     hdr.msg_rank = rank;
                     if (src == MT_CHILD) {
@@ -856,7 +850,7 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
                 save_pending_req(rank, key, fd);
                 send_parent(rank, msg, msg_len);
             } else {
-                sprintf(resp, "cmd=publish_result info=ok\n");
+                sprintf(resp, "cmd=publish_result rc=0\n");
                 writeline(fd, resp, strlen(resp));
             }
             goto ret;
@@ -908,7 +902,7 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
                 save_pending_req(rank, key, fd);
                 send_parent(rank, msg, msg_len);
             } else {
-                sprintf(resp, "cmd=unpublish_result info=ok\n");
+                sprintf(resp, "cmd=unpublish_result rc=0\n");
                 writeline(fd, resp, strlen(resp));
             }
             goto ret;

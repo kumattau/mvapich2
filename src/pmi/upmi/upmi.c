@@ -3,11 +3,29 @@
 
 struct PMI_keyval_t;
 int _size, _rank, _appnum;
+pthread_mutex_t umpi_lock;
+
+void UPMI_lock_init(void) {
+    pthread_mutex_init(&umpi_lock, NULL);
+}
+
+void UPMI_lock_destroy(void) {
+    pthread_mutex_destroy(&umpi_lock);
+}
+
+void UPMI_lock(void) {
+    pthread_mutex_lock(&umpi_lock);
+}
+
+void UPMI_unlock(void) {
+    pthread_mutex_unlock(&umpi_lock);
+}
 
 int UPMI_INIT( int *spawned ) {
     #ifdef USE_PMI2_API
     return PMI2_Init( spawned, &_size, &_rank, &_appnum );
     #else
+    UPMI_lock_init();
     return PMI_Init( spawned );
     #endif
 }
@@ -22,11 +40,16 @@ int UPMI_INITIALIZED( int *initialized ) {
 }
 
 int UPMI_FINALIZE( void ) { 
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
-    return PMI2_Finalize();
+    pmi_ret_val = PMI2_Finalize();
     #else
-    return PMI_Finalize();
+    UPMI_lock();
+    pmi_ret_val = PMI_Finalize();
+    UPMI_unlock();
+    UPMI_lock_destroy();
     #endif
+    return pmi_ret_val;
 }
 
 int UPMI_GET_SIZE( int *size ) { 
@@ -48,35 +71,47 @@ int UPMI_GET_RANK( int *rank ) {
 }
 
 int UPMI_GET_APPNUM( int *appnum ) { 
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
     *appnum = _appnum;
-    return UPMI_SUCCESS;
+    pmi_ret_val = UPMI_SUCCESS;
     #else
-    return PMI_Get_appnum( appnum );
+    UPMI_lock();
+    pmi_ret_val = PMI_Get_appnum( appnum );
+    UPMI_unlock();
     #endif
+    return pmi_ret_val;
 }
 
 int UPMI_GET_UNIVERSE_SIZE( int *size ) { 
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
     char name[] = "universeSize";
     int outlen, found;
     PMI2_Info_GetJobAttrIntArray( name, size, sizeof (int), &outlen, &found );
     if( found && outlen==1 ) {
-        return UPMI_SUCCESS;
+        pmi_ret_val = UPMI_SUCCESS;
     } else {
-        return UPMI_FAIL;
+        pmi_ret_val = UPMI_FAIL;
     }
     #else
-    return PMI_Get_universe_size( size );
+    UPMI_lock();
+    pmi_ret_val = PMI_Get_universe_size( size );
+    UPMI_unlock();
     #endif
+    return pmi_ret_val;
 }
 
 int UPMI_BARRIER( void ) { 
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
-    return PMI2_KVS_Fence();
+    pmi_ret_val = PMI2_KVS_Fence();
     #else
-    return PMI_Barrier();
+    UPMI_lock();
+    pmi_ret_val = PMI_Barrier();
+    UPMI_unlock();
     #endif
+    return pmi_ret_val;
 }
 
 int UPMI_ABORT( int exit_code, const char error_msg[] ) { 
@@ -115,28 +150,40 @@ int UPMI_KVS_GET_VALUE_LENGTH_MAX( int *length ) {
 }
 
 int UPMI_KVS_GET_MY_NAME( char kvsname[], int length ) {
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
-    return PMI2_Job_GetId( kvsname, length );
+    pmi_ret_val = PMI2_Job_GetId( kvsname, length );
     #else
-    return PMI_KVS_Get_my_name( kvsname, length );
+    UPMI_lock();
+    pmi_ret_val = PMI_KVS_Get_my_name( kvsname, length );
+    UPMI_unlock();
     #endif
+    return pmi_ret_val;
 }
 
 int UPMI_KVS_PUT( const char kvsname[], const char key[], const char value[] ) { 
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
-    return PMI2_KVS_Put( key, value );
+    pmi_ret_val = PMI2_KVS_Put( key, value );
     #else
-    return PMI_KVS_Put( kvsname, key, value );
+    UPMI_lock();
+    pmi_ret_val = PMI_KVS_Put( kvsname, key, value );
+    UPMI_unlock();
     #endif
+    return pmi_ret_val;
 }
 
 int UPMI_KVS_GET( const char kvsname[], const char key[], char value[], int length ) { 
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
     int vallen;
-    return PMI2_KVS_Get( kvsname, PMI2_ID_NULL, key, value, length, &vallen );
+    pmi_ret_val = PMI2_KVS_Get( kvsname, PMI2_ID_NULL, key, value, length, &vallen );
     #else
-    return PMI_KVS_Get( kvsname, key, value, length );
+    UPMI_lock();
+    pmi_ret_val = PMI_KVS_Get( kvsname, key, value, length );
+    UPMI_unlock();
     #endif
+    return pmi_ret_val;
 }
 
 int UPMI_KVS_COMMIT( const char kvsname[] ) { 
@@ -149,27 +196,39 @@ int UPMI_KVS_COMMIT( const char kvsname[] ) {
 }
 
 int UPMI_PUBLISH_NAME( const char service_name[], const char port[], const struct MPID_Info *info_ptr ) { 
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
-    return PMI2_Nameserv_publish( service_name, info_ptr, port );
+    pmi_ret_val = PMI2_Nameserv_publish( service_name, info_ptr, port );
     #else
-    return PMI_Publish_name( service_name, port );
+    UPMI_lock();
+    pmi_ret_val = PMI_Publish_name( service_name, port );
+    UPMI_unlock();
     #endif
+    return pmi_ret_val;
 }
 
 int UPMI_UNPUBLISH_NAME( const char service_name[], const struct MPID_Info *info_ptr ) { 
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
-    return PMI2_Nameserv_unpublish( service_name, info_ptr );
+    pmi_ret_val = PMI2_Nameserv_unpublish( service_name, info_ptr );
     #else
-    return PMI_Unpublish_name( service_name );
+    UPMI_lock();
+    pmi_ret_val = PMI_Unpublish_name( service_name );
+    UPMI_unlock();
     #endif
+    return pmi_ret_val;
 }
 
 int UPMI_LOOKUP_NAME( const char service_name[], char port[], const struct MPID_Info *info_ptr ) { 
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
-    return PMI2_Nameserv_lookup( service_name, info_ptr, port, sizeof port );  
+    pmi_ret_val = PMI2_Nameserv_lookup( service_name, info_ptr, port, sizeof port );  
     #else
-    return PMI_Lookup_name( service_name, port );
+    UPMI_lock();
+    pmi_ret_val = PMI_Lookup_name( service_name, port );
+    UPMI_unlock();
     #endif
+    return pmi_ret_val;
 }
 
 int UPMI_GET_NODE_ATTR( const char name[], char value[], int valuelen, int *found, int waitfor ) {
@@ -225,16 +284,20 @@ int UPMI_JOB_SPAWN(int count,
                    int jobIdSize,
                    int errors[])
 {
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
-    return PMI2_Job_Spawn( count, cmds, argcs, argvs, maxprocs,
+    pmi_ret_val = PMI2_Job_Spawn( count, cmds, argcs, argvs, maxprocs,
                            info_keyval_sizes, (const struct MPID_Info**)info_keyval_vectors,
                            preput_keyval_size, (const struct MPID_Info**)preput_keyval_vector,
                            jobId, jobIdSize, errors );
     #else
-    return PMI_Spawn_multiple( count, cmds, argvs, maxprocs,
+    UPMI_lock();
+    pmi_ret_val = PMI_Spawn_multiple( count, cmds, argvs, maxprocs,
                                info_keyval_sizes, (const struct PMI_keyval_t**)info_keyval_vectors,
                                preput_keyval_size, (const struct PMI_keyval_t*)preput_keyval_vector[0],
                                errors );
+    UPMI_unlock();
     #endif
+    return pmi_ret_val;
 }
 

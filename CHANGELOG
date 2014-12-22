@@ -3,6 +3,24 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-2.1rc1 (12/18/2014)
+
+* Features and Enhancements (since 2.1a):
+    - Based on MPICH-3.1.3
+    - Flexibility to use internal communication buffers of different size for
+      improved performance and memory footprint
+    - Improve communication performance by removing locks from critical path
+    - Enhanced communication performance for small/medium message sizes
+    - Support for linking Intel Trace Analyzer and Collector
+    - Increase the number of connect retry attempts with RDMA_CM
+    - Automatic detection and tuning for Haswell architecture
+
+* Bug-Fixes (since 2.1a):
+    - Fix automatic detection of support for atomics
+    - Fix issue with void pointer arithmetic with PGI
+    - Fix deadlock in ctxidup MPICH test in PSM channel
+    - Fix compile warnings
+
 MVAPICH2-2.1a (09/21/2014)
 
 * Features and Enhancements (since 2.0):

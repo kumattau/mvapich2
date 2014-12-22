@@ -222,13 +222,15 @@ int MPIDI_Comm_spawn_multiple(int count, char **commands,
 
 
         MPIU_THREAD_CS_ENTER(PMI,);
-        pmi_errno = PMI_Spawn_multiple(count, (const char **)
+        pmi_errno = UPMI_JOB_SPAWN(count, (const char **)
                                        commands, 
+                                       NULL,
                                        (const char ***) argvs,
                                        maxprocs, info_keyval_sizes,
-                                       (const PMI_keyval_t **)
+                                       (const void**)
                                        info_keyval_vectors, 1, 
-                                       &preput_keyval_vector,
+                                       (const void**) &preput_keyval_vector,
+                                       NULL, 0, 
                                        pmi_errcodes);
 	MPIU_THREAD_CS_EXIT(PMI,);
         if (pmi_errno != UPMI_SUCCESS) {

@@ -120,7 +120,7 @@ int MPIDI_CH3_SHM_Win_free(MPID_Win **win_ptr)
          *                       If node_comm == NULL, this process is the only one on this node, therefore
          *                                  we use comm_self as node comm. */
         MPI_Comm shmem_comm;
-        shmem_comm = (*win_ptr)->comm_ptr->ch.shmem_comm;
+        shmem_comm = (*win_ptr)->comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, node_comm_ptr);
         MPIU_Assert(node_comm_ptr != NULL);
 
@@ -261,13 +261,13 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     }
 
 
-    if((*win_ptr)->comm_ptr->ch.shmem_coll_ok == 0)
+    if((*win_ptr)->comm_ptr->dev.ch.shmem_coll_ok == 0)
         mpi_errno = create_2level_comm((*win_ptr)->comm_ptr->handle, (*win_ptr)->comm_ptr->local_size, (*win_ptr)->comm_ptr->rank);
     if(mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }
 
-    shmem_comm = (*win_ptr)->comm_ptr->ch.shmem_comm;
+    shmem_comm = (*win_ptr)->comm_ptr->dev.ch.shmem_comm;
     MPID_Comm_get_ptr(shmem_comm, node_comm_ptr);
 
     MPIU_Assert(node_comm_ptr != NULL);
@@ -472,6 +472,7 @@ for (i = 0; i < node_size; i++) node_sizes[i] = 0;
 
             /* compute the base addresses of each process within the shared memory segment */
             {
+                int curr_rank;
                 if ((*win_ptr)->create_flavor != MPI_WIN_FLAVOR_SHARED) {
                     /* If create flavor is not MPI_WIN_FLAVOR_SHARED, all processes on this
                      * window may not be on the same node. Because we only need to calculate
@@ -486,15 +487,17 @@ for (i = 0; i < node_size; i++) node_sizes[i] = 0;
                 }
 
                 char *cur_base = (*win_ptr)->shm_base_addr;
+                curr_rank = 0;
                 node_shm_base_addrs[0] = (*win_ptr)->shm_base_addr;
                 for (i = 1; i < node_size; ++i) {
                     if (node_sizes[i]) {
                         if (noncontig) {
-                            node_shm_base_addrs[i] = cur_base + MPIDI_CH3_ROUND_UP_PAGESIZE(node_sizes[i-1]);
+                            node_shm_base_addrs[i] = cur_base + MPIDI_CH3_ROUND_UP_PAGESIZE(node_sizes[curr_rank]);
                         } else {
-                            node_shm_base_addrs[i] = cur_base + node_sizes[i-1];
+                            node_shm_base_addrs[i] = cur_base + node_sizes[curr_rank];
                         }
                         cur_base = node_shm_base_addrs[i];
+                        curr_rank = i;
                     } else {
                         node_shm_base_addrs[i] = NULL; /* FIXME: Is this right? */
                     }

@@ -24,6 +24,47 @@
    and must be available to the routines in src/mpi */
 extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
 
+#ifdef _OSU_MVAPICH_
+typedef struct {
+    MPI_Comm     leader_comm;
+    MPI_Comm     shmem_comm;
+    MPI_Comm     allgather_comm;
+    int*    leader_map;
+    int*    leader_rank;
+    int*    node_sizes;
+    int*    allgather_new_ranks;
+    int     is_uniform;
+    int     is_blocked;
+    int     shmem_comm_rank;
+    int     shmem_coll_ok;
+    int     allgather_comm_ok;
+    int     leader_group_size;
+    int     is_global_block;
+    int     is_pof2; /* Boolean to know if comm size is equal to pof2  */
+    int     gpof2; /* Greater pof2 < size of comm */
+    int     intra_node_done; /* Used to check if intra node communication has been done 
+                                with mcast and bcast */
+    int     shmem_coll_count;
+    int     allgather_coll_count;
+    void    *shmem_info; /* intra node shmem info */
+#if defined(_SMP_LIMIC_)    
+    MPI_Comm     intra_sock_comm;
+    MPI_Comm     intra_sock_leader_comm;
+    int*         socket_size;
+    int          is_socket_uniform;
+    int          use_intra_sock_comm;
+#endif
+#if defined(_MCST_SUPPORT_)
+    int     is_mcast_ok;
+    void    *bcast_info;
+#endif
+} MPIDI_CH3I_CH_comm_t;
+#else
+typedef struct {
+    int dummy;  /* dummy variable to ensure we don't have an empty structure */
+} MPIDI_CH3I_CH_comm_t;
+#endif /* _OSU_MVAPICH_ */
+
 typedef struct MPIDI_CH3I_SMP_VC
 {
 	int local_rank;

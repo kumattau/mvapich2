@@ -19,6 +19,13 @@
 #include "dreg.h"
 #include "mpiutil.h"
 
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_vbuf_available);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_allocated);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ud_vbuf_freed);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
+
 #ifdef _ENABLE_UD_
 #define MV2_GET_RNDV_QP(_rqp, _proc)                            \
 do {                                                            \
@@ -99,7 +106,7 @@ static inline void MRAILI_Rndv_send_zcopy_finish(MPIDI_VC_t * vc,
     vbuf *v;
     MPIDI_CH3_Pkt_zcopy_finish_t *zcopy_finish;
     
-    v = get_ud_vbuf();
+    MV2_GET_AND_INIT_UD_VBUF(v);
     zcopy_finish = v->pheader;
     
     PRINT_DEBUG(DEBUG_ZCY_verbose>1, "sending zcopy finish message to:%d\n", vc->pg_rank);
@@ -122,7 +129,7 @@ static inline void MRAILI_Rndv_send_zcopy_ack(MPIDI_VC_t * vc,  MPID_Request * r
     vbuf *v;
     MPIDI_CH3_Pkt_zcopy_ack_t *zcopy_ack;
     
-    v = get_ud_vbuf();
+    MV2_GET_AND_INIT_UD_VBUF(v);
     zcopy_ack = v->pheader;
     hca_index = ((mv2_rndv_qp_t *) rreq->mrail.rndv_qp_entry)->hca_num;
     

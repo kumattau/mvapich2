@@ -274,7 +274,7 @@ int MPI_Finalize( void )
     }
 #endif /* defined(CHANNEL_MRAIL_GEN2) */
 #ifndef CHANNEL_PSM
-    if( MPIR_Process.comm_world->ch.shmem_coll_ok == 1) {
+    if( MPIR_Process.comm_world->dev.ch.shmem_coll_ok == 1) {
         mpi_errno = free_2level_comm(MPIR_Process.comm_world);
         if (mpi_errno) { 
              MPIU_ERR_POP(mpi_errno); 

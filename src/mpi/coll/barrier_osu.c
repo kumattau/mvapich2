@@ -40,7 +40,7 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
     comm = comm_ptr->handle;
 
     /*  N2_prev = greatest power of two < size of Comm  */
-    int N2_prev = comm_ptr->ch.gpof2;
+    int N2_prev = comm_ptr->dev.ch.gpof2;
     int surfeit = size - N2_prev;
 
     /* Perform a combine-like operation */
@@ -90,17 +90,17 @@ static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
     int total_size, shmem_comm_rank;
 
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_shmem_coll_calls, 1);
-    shmem_comm = comm_ptr->ch.shmem_comm;
-    leader_comm = comm_ptr->ch.leader_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
+    leader_comm = comm_ptr->dev.ch.leader_comm;
 
     total_size = comm_ptr->local_size;
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
 
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
-    shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
-    leader_comm = comm_ptr->ch.leader_comm;
+    shmem_comm_rank = shmem_commptr->dev.ch.shmem_comm_rank;
+    leader_comm = comm_ptr->dev.ch.leader_comm;
     MPID_Comm_get_ptr(leader_comm, leader_commptr);
 
     if (local_size > 1) {
@@ -164,7 +164,7 @@ int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, int *errflag)
 #endif
 
     if (mv2_enable_shmem_collectives && mv2_enable_shmem_barrier
-        && comm_ptr->ch.shmem_coll_ok == 1) {
+        && comm_ptr->dev.ch.shmem_coll_ok == 1) {
 
         mpi_errno = MPIR_shmem_barrier_MV2(comm_ptr, errflag);
 

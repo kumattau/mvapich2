@@ -384,7 +384,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
     }
 
     /* find nearest power-of-two less than or equal to comm_size */
-    pof2 = comm_ptr->ch.gpof2;
+    pof2 = comm_ptr->dev.ch.gpof2;
 
     rem = comm_size - pof2;
 
@@ -727,7 +727,7 @@ int MPIR_Reduce_shmem_MV2(const void *sendbuf,
 
     local_rank = comm_ptr->rank;
     local_size = comm_ptr->local_size;
-    shmem_comm_rank = comm_ptr->ch.shmem_comm_rank;
+    shmem_comm_rank = comm_ptr->dev.ch.shmem_comm_rank;
 
     if (sendbuf != MPI_IN_PLACE && local_rank == 0) {
         mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf, count,
@@ -1138,7 +1138,6 @@ int MPIR_Reduce_Zcpy_MV2(const void *sendbuf,
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     void *in_buf = NULL, *out_buf = NULL;
     MPI_Aint true_lb, true_extent, extent;
-    MPID_Op *op_ptr;
     int stride = 0;
     int dst, expected_send_count, expected_recv_count;
     int *src_array=NULL;
@@ -1149,7 +1148,7 @@ int MPIR_Reduce_Zcpy_MV2(const void *sendbuf,
 
     my_rank = comm_ptr->rank;
     comm = comm_ptr->handle;
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
 
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
@@ -1161,13 +1160,13 @@ int MPIR_Reduce_Zcpy_MV2(const void *sendbuf,
     if (local_rank == 0) {
         int leader_of_psuedo_root, leader_psuedo_root; 
         shmem_info_t *shmem_info = NULL;
-        leader_comm = comm_ptr->ch.leader_comm;
+        leader_comm = comm_ptr->dev.ch.leader_comm;
         MPID_Comm_get_ptr(leader_comm, leader_commptr);
  
-        leader_of_psuedo_root = comm_ptr->ch.leader_map[pseudo_root];
-        leader_psuedo_root = comm_ptr->ch.leader_rank[leader_of_psuedo_root];
+        leader_of_psuedo_root = comm_ptr->dev.ch.leader_map[pseudo_root];
+        leader_psuedo_root = comm_ptr->dev.ch.leader_rank[leader_of_psuedo_root];
 
-        shmem_info = comm_ptr->ch.shmem_info;
+        shmem_info = comm_ptr->dev.ch.shmem_info;
         /* If the knomial_factor requested for this specific bcast 
          * is the same as the one that we have used before, the communication
          * tree is already setup and cached. No need to do it again
@@ -1186,7 +1185,7 @@ int MPIR_Reduce_Zcpy_MV2(const void *sendbuf,
     } else {
         in_buf = recvbuf;
     } 
-    mpi_errno = mv2_shm_zcpy_reduce(shmem_commptr->ch.shmem_info, 
+    mpi_errno = mv2_shm_zcpy_reduce(shmem_commptr->dev.ch.shmem_info, 
                                   in_buf, &out_buf, count, stride, 
                                   datatype, op,
                                   root,
@@ -1281,14 +1280,14 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
     my_rank = comm_ptr->rank;
     total_size = comm_ptr->local_size;
     comm = comm_ptr->handle;
-    shmem_comm = comm_ptr->ch.shmem_comm;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
 
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
 
-    leader_of_root = comm_ptr->ch.leader_map[root];
-    leader_root = comm_ptr->ch.leader_rank[leader_of_root];
+    leader_of_root = comm_ptr->dev.ch.leader_map[root];
+    leader_root = comm_ptr->dev.ch.leader_rank[leader_of_root];
 
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
         is_commutative = 1;
@@ -1308,7 +1307,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
 
     if (local_size == total_size) {
         /* First handle the case where there is only one node */
-        if (comm_ptr->ch.shmem_coll_ok == 1 &&
+        if (comm_ptr->dev.ch.shmem_coll_ok == 1 &&
             stride <= mv2_coll_param.shmem_intra_reduce_msg &&
             mv2_enable_shmem_reduce && is_commutative == 1) {
             if (local_rank == 0 ) {
@@ -1385,7 +1384,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
     if(mv2_use_slot_shmem_coll &&
        mv2_enable_zcpy_reduce == 1 && 
        stride <= mv2_shm_slot_len && 
-       comm_ptr->ch.shmem_coll_ok == 1 &&
+       comm_ptr->dev.ch.shmem_coll_ok == 1 &&
        mv2_enable_shmem_reduce && is_commutative == 1){ 
         mpi_errno = MPIR_Reduce_Zcpy_MV2(sendbuf, recvbuf, count,
                                          datatype, op,
@@ -1404,7 +1403,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
 #endif /* CHANNEL_MRAIL_GEN2 */
 
     if (local_rank == 0) {
-        leader_comm = comm_ptr->ch.leader_comm;
+        leader_comm = comm_ptr->dev.ch.leader_comm;
         MPID_Comm_get_ptr(leader_comm, leader_commptr);
         leader_comm_rank = leader_commptr->rank;
         leader_comm_size = leader_commptr->local_size;
@@ -1434,7 +1433,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
          *this step*/
         if (MV2_Reduce_intra_function == & MPIR_Reduce_shmem_MV2)
         {
-            if (comm_ptr->ch.shmem_coll_ok == 1 &&
+            if (comm_ptr->dev.ch.shmem_coll_ok == 1 &&
                 mv2_enable_shmem_reduce && is_commutative == 1
 		&& (count * (MPIR_MAX(extent, true_extent)) < SHMEM_COLL_BLOCK_SIZE)) {
                     mpi_errno = MV2_Reduce_intra_function(in_buf, out_buf, count,
@@ -1656,7 +1655,7 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
     }
 
     /* find nearest power-of-two less than or equal to comm_size */
-    pof2 = comm_ptr->ch.gpof2;
+    pof2 = comm_ptr->dev.ch.gpof2;
 
 #ifdef _ENABLE_CUDA_
     int rank = 0, stride = 0;
@@ -1698,9 +1697,9 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
 #endif
 
     /* check if safe to use partial subscription mode */
-    if (comm_ptr->ch.shmem_coll_ok == 1 && comm_ptr->ch.is_uniform) {
+    if (comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_uniform) {
     
-        shmem_comm = comm_ptr->ch.shmem_comm;
+        shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
         i = 0;
@@ -1743,7 +1742,7 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
     }
     else {
 	/* Comm size in between smallest and largest configuration: find closest match */
-	if (comm_ptr->ch.is_pof2) {
+	if (comm_ptr->dev.ch.is_pof2) {
 	    comm_size_index = log2( comm_size / table_min_comm_size );
 	}
 	else {
@@ -1821,7 +1820,7 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
     /* We call Reduce function */
     if(is_two_level == 1)
     {
-        if (comm_ptr->ch.shmem_coll_ok == 1
+        if (comm_ptr->dev.ch.shmem_coll_ok == 1
             && is_commutative == 1) {
             mpi_errno = MPIR_Reduce_two_level_helper_MV2(sendbuf, recvbuf, count, 
                                            datatype, op, root, comm_ptr, errflag);
@@ -1949,7 +1948,7 @@ int MPIR_Reduce_MV2(const void *sendbuf,
     }
 
     /* find nearest power-of-two less than or equal to comm_size */
-    pof2 = comm_ptr->ch.gpof2;
+    pof2 = comm_ptr->dev.ch.gpof2;
 
 #ifdef _ENABLE_CUDA_
     int rank = 0, stride = 0;
@@ -2037,7 +2036,7 @@ int MPIR_Reduce_MV2(const void *sendbuf,
     /* We call Reduce function */
     if(is_two_level == 1)
     {
-        if (comm_ptr->ch.shmem_coll_ok == 1
+        if (comm_ptr->dev.ch.shmem_coll_ok == 1
             && is_commutative == 1) {
             mpi_errno = MPIR_Reduce_two_level_helper_MV2(sendbuf, recvbuf, count, 
                                            datatype, op, root, comm_ptr, errflag);
