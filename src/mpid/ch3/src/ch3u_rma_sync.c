@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1964,7 +1964,7 @@ static int send_rma_msg(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr,
             if (total_length > vc->eager_max_msg_sz)
             {
               MPIDI_CH3_Pkt_t pkt_rndv;
-              int copy_size, control_iov_count;
+              MPIDI_msg_sz_t copy_size, control_iov_count;
               void* copy_src = NULL;
 
               control_iov_count = 1;
@@ -2130,7 +2130,7 @@ static int send_rma_msg(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr,
             if (total_length > vc->eager_max_msg_sz)
             {
                MPIDI_CH3_Pkt_t pkt_rndv;
-               int copy_size;
+               MPIDI_msg_sz_t copy_size;
                void* copy_src = NULL;
 
                if (MPIDI_RMA_PUT == rma_op->type) {
@@ -2283,7 +2283,7 @@ static int send_rma_msg(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr,
             if (total_length > vc->eager_max_msg_sz)
             {
                MPIDI_CH3_Pkt_t pkt_rndv;
-               int copy_size;
+               MPIDI_msg_sz_t copy_size;
                void* copy_src = NULL;
 
                if (rma_op->type == MPIDI_RMA_PUT)
@@ -2444,7 +2444,7 @@ static int send_rma_msg(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr,
            if (total_length > vc->eager_max_msg_sz)
            {
               MPIDI_CH3_Pkt_t pkt_rndv;
-              int copy_size;
+              MPIDI_msg_sz_t copy_size;
               void* copy_src = NULL;
 
               if (MPIDI_RMA_PUT == rma_op->type) {
@@ -2662,7 +2662,7 @@ static int send_contig_acc_msg(MPIDI_RMA_Op_t *rma_op,
     MPI_Aint origin_type_size;
     MPIDI_VC_t * vc;
     MPID_Comm *comm_ptr;
-    size_t len;
+    MPIDI_msg_sz_t len;
 #if defined(CHANNEL_MRAIL)
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
@@ -3481,7 +3481,9 @@ static int recv_post_msgs(MPID_Win *win_ptr, int *ranks_in_win_grp, int local)
     MPI_Request *req;
     MPI_Status *status;
     MPID_Comm *comm_ptr = win_ptr->comm_ptr;
+#if !defined (CHANNEL_MRAIL)
     MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
+#endif
     MPIU_CHKLMEM_DECL(2);
     MPIDI_STATE_DECL(MPID_STATE_RECV_POST_MSGS);
 
@@ -5976,6 +5978,7 @@ rndv_complete:
         /* derived datatype */
         MPIDI_Request_set_type(req, MPIDI_REQUEST_TYPE_PUT_RESP_DERIVED_DT);
         req->dev.datatype = MPI_DATATYPE_NULL;
+        req->dev.OnFinal = MPIDI_CH3_ReqHandler_PutAccumRespComplete;
 	    
         req->dev.dtype_info = (MPIDI_RMA_dtype_info *) 
             MPIU_Malloc(sizeof(MPIDI_RMA_dtype_info));
@@ -6524,6 +6527,7 @@ do_accumulate:
 	MPIDI_Request_set_type(req, MPIDI_REQUEST_TYPE_ACCUM_RESP_DERIVED_DT);
 	req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_AccumRespDerivedDTComplete;
 	req->dev.datatype = MPI_DATATYPE_NULL;
+        req->dev.OnFinal = MPIDI_CH3_ReqHandler_PutAccumRespComplete;
                 
 	req->dev.dtype_info = (MPIDI_RMA_dtype_info *) 
 	    MPIU_Malloc(sizeof(MPIDI_RMA_dtype_info));

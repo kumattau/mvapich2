@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -250,6 +250,8 @@ have called 'PMI_Barrier()'.
 
 @*/
 int PMI_Barrier( void );
+int PMI_Ibarrier( void );
+int PMI_Wait( void );
 
 /*@
 PMI_Abort - abort the process group associated with this process

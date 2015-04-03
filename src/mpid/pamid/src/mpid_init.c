@@ -18,6 +18,16 @@
 /**
  * \file src/mpid_init.c
  * \brief Normal job startup code
+ *
+ * Copyright (c) 2001-2015, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  */
 
 #include <stdlib.h>
@@ -636,9 +646,11 @@ void MPIDI_Init_collsel_extension()
   else
     MPIDI_Process.optimized.auto_select_colls = MPID_AUTO_SELECT_COLLS_NONE;
 
+#ifndef __BGQ__
   //If collective selection will be disabled, check on fca, if both not required, disable pami alltogether
   if(MPIDI_Process.optimized.auto_select_colls == MPID_AUTO_SELECT_COLLS_NONE && MPIDI_Process.optimized.collectives != MPID_COLL_FCA)
     MPIDI_Process.optimized.collectives = MPID_COLL_OFF;
+#endif
 }
 
 void MPIDI_Collsel_table_generate()
@@ -810,8 +822,12 @@ MPIDI_PAMI_context_init(int* threading, int *size)
   /* Get collective selection advisor and cache it */
   /* --------------------------------------------- */
   /* Context is created, i.e. collective selection extension is initialized in PAMI. Now I can get the
-     advisor if I am not in TUNE mode. If in TUNE mode, I can init collsel and generate the table */
+     advisor if I am not in TUNE mode. If in TUNE mode, I can init collsel and generate the table.
+     This is not supported on BGQ.
+  */
+#ifndef __BGQ_
   MPIDI_Init_collsel_extension();
+#endif
 
 #if (MPIDI_STATISTICS || MPIDI_PRINTENV)
   MPIDI_open_pe_extension();

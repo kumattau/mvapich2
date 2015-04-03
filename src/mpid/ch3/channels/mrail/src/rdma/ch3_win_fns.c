@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -270,7 +270,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     void **base_pp = (void **) base_ptr;
     int i, k, comm_size, rank;
     int  node_size, node_rank;
-    MPID_Comm *node_comm_ptr;
+    MPID_Comm *node_comm_ptr = NULL;
     MPI_Aint *node_sizes;
     void **node_shm_base_addrs;
     MPI_Aint *tmp_buf;

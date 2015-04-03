@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -43,7 +43,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     int     op_type;
     /* op_type, SIGNAL_FOR_PUT or
      * SIGNAL_FOR_GET */
-    int     data_size;
+    MPIDI_msg_sz_t     data_size;
     struct  dreg_entry * mem_entry; /* mem region registered on the fly*/
     void    *target_addr;   /* get use only */
     void    *origin_addr;   /* get use only, tmp buffer for small msg,

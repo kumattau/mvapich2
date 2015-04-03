@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -40,7 +40,7 @@ int MPIDI_CH3I_comm_create (MPID_Comm *comm, void *param)
         comm->coll_fns->Barrier = MPIR_Barrier_MV2;
         comm->coll_fns->Bcast = MPIR_Bcast_MV2;
         comm->coll_fns->Gather = MPIR_Gather_MV2;
-        comm->coll_fns->Gatherv = MPIR_Gatherv;
+        comm->coll_fns->Gatherv = MPIR_Gatherv_MV2;
         comm->coll_fns->Scatter = MPIR_Scatter_MV2;
         comm->coll_fns->Scatterv = MPIR_Scatterv; 
         comm->coll_fns->Allgather = MPIR_Allgather_MV2; 

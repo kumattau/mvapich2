@@ -3,6 +3,61 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-2.1 (04/03/2015)
+
+* Features and Enhancements (since 2.1rc2):
+    - Tuning for EDR adapters
+    - Optimization of collectives for SDSC Comet system
+
+* Bug-Fixes (since 2.1rc2):
+    - Relocate reading environment variables in PSM
+        - Thanks to Adam Moody@LLNL for the suggestion
+    - Fix issue with automatic process mapping
+    - Fix issue with checkpoint restart when full path is not given
+    - Fix issue with Dynamic Process Management
+    - Fix issue in CUDA IPC code path
+    - Fix corner case in CMA runtime detection
+
+MVAPICH2-2.1rc2 (03/12/2015)
+
+* Features and Enhancements (since 2.1rc1):
+    - Based on MPICH-3.1.4
+    - Enhanced startup performance with mpirun_rsh
+    - Checkpoint-Restart Support with DMTCP (Distributed MultiThreaded
+      CheckPointing)
+        - Thanks to the DMTCP project team (http://dmtcp.sourceforge.net/) 
+    - Support for handling very large messages in RMA
+    - Optimize size of buffer requested for control messages in large message
+      transfer
+    - Enhanced automatic detection of atomic support 
+    - Optimized collectives (bcast, reduce, and allreduce) for 4K processes 
+    - Introduce support to sleep for user specified period before aborting
+        - Thanks to Adam Moody@LLNL for the suggestion
+    - Disable PSM from setting CPU affinity
+        - Thanks to Adam Moody@LLNL for providing the patch
+    - Install PSM error handler to print more verbose error messages
+        - Thanks to Adam Moody@LLNL for providing the patch
+    - Introduce retry mechanism to perform psm_ep_open in PSM channel
+        - Thanks to Adam Moody@LLNL for providing the patch
+
+* Bug-Fixes (since 2.1rc1):
+    - Fix failures with shared memory collectives with checkpoint-restart
+    - Fix failures with checkpoint-restart when using internal communication
+      buffers of different size       
+    - Fix undeclared variable error when --disable-cxx is specified with
+      configure
+        - Thanks to Chris Green from FANL for the patch
+    - Fix segfault seen during connect/accept with dynamic processes
+        - Thanks to Neil Spruit for the fix
+    - Fix errors with large messages pack/unpack operations in PSM channel
+    - Fix for bcast collective tuning
+    - Fix assertion errors in one-sided put operations in PSM channel
+    - Fix issue with code getting stuck in infinite loop inside ptmalloc
+        - Thanks to Adam Moody@LLNL for the suggested changes
+    - Fix assertion error in shared memory large message transfers
+        - Thanks to Adam Moody@LLNL for reporting the issue
+    - Fix compilation warnings
+
 MVAPICH2-2.1rc1 (12/18/2014)
 
 * Features and Enhancements (since 2.1a):

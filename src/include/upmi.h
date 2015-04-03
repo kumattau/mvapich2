@@ -1,3 +1,15 @@
+/*
+ * Copyright (c) 2001-2015, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ */
+
 #ifndef UPMI_H_INCLUDED
 #define UPMI_H_INCLUDED
 
@@ -48,6 +60,10 @@ int UPMI_GET_UNIVERSE_SIZE( int *size );
 
 int UPMI_BARRIER( void );
 
+int UPMI_IBARRIER( void );
+
+int UPMI_WAIT( void );
+
 int UPMI_ABORT( int exit_code, const char error_msg[] );
 
 int UPMI_KVS_GET_KEY_LENGTH_MAX( int *length );
@@ -89,7 +105,7 @@ int UPMI_JOB_SPAWN(int count,
                    const int info_keyval_sizes[],
                    const void *info_keyval_vectors[],
                    int preput_keyval_size,
-                   const void *preput_keyval_vector[],
+                   const void *preput_keyval_vector,
                    char jobId[],
                    int jobIdSize,
                    int errors[]);

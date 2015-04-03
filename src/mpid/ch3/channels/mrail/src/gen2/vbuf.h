@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -274,7 +274,6 @@ typedef struct vbuf_pool
 do{                                             \
     rdma_vbuf_pool.free_head = NULL;            \
     rdma_vbuf_pool.region_head = NULL;          \
-    rdma_vbuf_pool.buf_size = 0;                \
     rdma_vbuf_pool.num_allocated = 0;           \
     rdma_vbuf_pool.num_free = 0;                \
     rdma_vbuf_pool.max_num_buf = -1;            \
@@ -655,7 +654,7 @@ static inline void vbuf_init_rput(
 }
 
 static inline void vbuf_init_rma_get(vbuf *v, void *l_addr, uint32_t lkey,
-                       void *r_addr, uint32_t rkey, int len, int rail)
+                       void *r_addr, uint32_t rkey, uint32_t len, int rail)
 {
     v->desc.u.sr.next = NULL;
     /* IBV_WR_RDMA_READ cannot support INLINE */
@@ -676,7 +675,7 @@ static inline void vbuf_init_rma_get(vbuf *v, void *l_addr, uint32_t lkey,
 }
 
 static inline void vbuf_init_rma_put(vbuf *v, void *l_addr, uint32_t lkey,
-                       void *r_addr, uint32_t rkey, int len, int rail)
+                       void *r_addr, uint32_t rkey, uint32_t len, int rail)
 {
     v->desc.u.sr.next = NULL;
     if (likely(len <= rdma_max_inline_size)) {
@@ -759,6 +758,7 @@ vbuf* get_vbuf_by_offset(int offset);
 #if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
 vbuf* get_ud_vbuf(void);
 int allocate_ud_vbufs(int nvbufs);
+int allocate_ud_vbuf_region(int nvbufs);
 void vbuf_init_ud_recv(vbuf* v, unsigned long len, int rail);
 extern vbuf *ud_free_vbuf_head;
 extern int ud_vbuf_n_allocated;

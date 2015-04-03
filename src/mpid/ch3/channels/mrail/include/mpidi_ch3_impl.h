@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -510,6 +510,11 @@ typedef enum{
     SMP_DMA_LIMIC,
     SMP_DMA_CMA
 }smp_dma_flag_t;
+
+typedef enum{
+    ONE_FREE = 1,
+    TWO_FREE
+}smp_ctrl_avail_flag_t;
 
 extern struct smpi_var g_smpi;
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -37,7 +37,7 @@ static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
 #define MV2_STR_NES0         "nes0"
 
 typedef struct _mv2_hca_types_log_t{
-    uint64_t hca_type;
+    mv2_hca_type hca_type;
     char *hca_name;
 }mv2_hca_types_log_t;
 
@@ -51,7 +51,8 @@ static mv2_hca_types_log_t mv2_hca_types_log[] = {
     {MV2_HCA_MLX_CX_DDR,    "MV2_HCA_MLX_CX_DDR"},
     {MV2_HCA_MLX_CX_QDR,    "MV2_HCA_MLX_CX_QDR"},
     {MV2_HCA_MLX_CX_FDR,    "MV2_HCA_MLX_CX_FDR"},
-    {MV2_HCA_MLX_CX_CONNIB,    "MV2_HCA_MLX_CX_CONNIB"},
+    {MV2_HCA_MLX_CX_EDR,    "MV2_HCA_MLX_CX_EDR"},
+    {MV2_HCA_MLX_CX_CONNIB, "MV2_HCA_MLX_CX_CONNIB"},
     {MV2_HCA_MLX_PCI_X,     "MV2_HCA_MLX_PCI_X"},
 
     /* Qlogic Cards */
@@ -181,6 +182,10 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
         }
         /* mlx4, mlx5 */ 
         switch(rate) {
+            case 100:
+                hca_type = MV2_HCA_MLX_CX_EDR;
+                break;
+
             case 56:
                 hca_type = MV2_HCA_MLX_CX_FDR;
                 break;
@@ -329,6 +334,10 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 #endif
         { /* mlx4, mlx5 */ 
             switch(rate) {
+                case 100:
+                    hca_type = MV2_HCA_MLX_CX_EDR;
+                    break;
+
                 case 56:
                     hca_type = MV2_HCA_MLX_CX_FDR;
                     break;

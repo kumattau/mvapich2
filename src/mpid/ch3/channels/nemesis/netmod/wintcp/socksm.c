@@ -2,6 +2,16 @@
 /*
  *  (C) 2006 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
+ *
+ * Copyright (c) 2001-2015, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  */
 
 #define SOCKSM_H_DEFGLOBALS_
@@ -1972,7 +1982,7 @@ static int state_c_tmpvcack_success_handler(MPIU_EXOVERLAPPED *rd_ov)
     }
 
  fn_exit:
-    MPIDI_FUNC_ENTER(MPID_STATE_STATE_C_TMPVCACK_SUCCESS_HANDLER);
+    MPIDI_FUNC_EXIT(MPID_STATE_STATE_C_TMPVCACK_SUCCESS_HANDLER);
     return mpi_errno;
  fn_fail:
     goto fn_exit;

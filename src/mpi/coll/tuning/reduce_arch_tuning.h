@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2014, The Ohio State University. All rights
+ * Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -52,6 +52,7 @@
 #include "reduce/gen2_cma_INTEL_XEON_E5_2680_16_MLX_CX_FDR_1ppn.h"
 #include "reduce/gen2_cma_INTEL_XEON_E5_2680_16_MLX_CX_FDR_2ppn.h"
 #include "reduce/gen2_cma_INTEL_XEON_E5_2680_16_MLX_CX_FDR_16ppn.h"
+#include "reduce/gen2_INTEL_XEON_E5_2680_24_MLX_CX_FDR_24ppn.h"
 #include "reduce/nemesis_RI_1ppn.h"
 #include "reduce/nemesis_RI_2ppn.h"
 #include "reduce/nemesis_RI_8ppn.h"

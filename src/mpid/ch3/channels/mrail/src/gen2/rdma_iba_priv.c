@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -973,9 +973,14 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
     rdma_default_port = ports[0][0];
     /* step 2: create qps for all vc */
     qp_attr.qp_state = IBV_QPS_INIT;
-    qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+    if (g_atomics_support) {
+        qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
         IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
         IBV_ACCESS_REMOTE_ATOMIC;
+    } else {
+        qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
+    }
 
 
     for (i = 0; i < pg_size; i++) {
@@ -1068,9 +1073,14 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
             }
 
             qp_attr.qp_state = IBV_QPS_INIT;
-            qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+            if (g_atomics_support) {
+                qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
                 IBV_ACCESS_REMOTE_ATOMIC;
+            } else {
+                qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+                IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
+            }
 
             qp_attr.port_num = ports[hca_index][port_index];
             set_pkey_index(&qp_attr.pkey_index, hca_index, qp_attr.port_num);
@@ -1690,9 +1700,14 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
     int rail_index = 0;
 
     qp_attr.qp_state = IBV_QPS_INIT;
-    qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+    if (g_atomics_support) {
+        qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
         IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
         IBV_ACCESS_REMOTE_ATOMIC;
+    } else {
+        qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
+    }
 
 
     vc->mrail.num_rails = rdma_num_rails;
@@ -1783,9 +1798,14 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
         vc->mrail.rails[rail_index].recv_cq_hndl = NULL;
 
         qp_attr.qp_state = IBV_QPS_INIT;
-        qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+        if (g_atomics_support) {
+            qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
             IBV_ACCESS_REMOTE_ATOMIC;
+        } else {
+            qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
+        }
 
         qp_attr.port_num =
             mv2_MPIDI_CH3I_RDMA_Process.ports[hca_index][port_index];

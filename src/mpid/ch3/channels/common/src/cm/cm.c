@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -14,6 +14,7 @@
 #include <mpimem.h>
 #include <errno.h>
 #include <string.h>
+#include <inttypes.h>
 #include "cm.h"
 #include "rdma_cm.h"
 #include "mpiutil.h"
@@ -110,6 +111,7 @@ int cm_ud_recv_buf_index;
 int page_size;
 
 extern int *rdma_cm_host_list;
+extern int g_atomics_support;
 
 int mv2_pmi_max_keylen=0;
 int mv2_pmi_max_vallen=0;
@@ -572,6 +574,14 @@ static int cm_get_conn_info(MPIDI_PG_t * pg, int peer)
     MPIU_Snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "MV2-INIT-INFO-%08x", peer);
 
     /* Get necessary info from PMI */
+    if (mv2_use_pmi_ibarrier) {
+        error = UPMI_WAIT();
+        if (error != UPMI_SUCCESS) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    "**pmi_kvs_get", "**pmi_kvs_get %d", error);
+        }
+    }
+
     do {
         error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
         if (error != UPMI_SUCCESS) {
@@ -612,9 +622,10 @@ static int cm_get_conn_info(MPIDI_PG_t * pg, int peer)
                     &(pg->ch.mrail.cm_ud_qpn[peer]), &hca_type);
             }
         }
-        PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %llu\n",
-                    peer, pg->ch.mrail.cm_lid[peer], pg->ch.mrail.cm_ud_qpn[peer],
-                    hca_type);
+        PRINT_DEBUG(DEBUG_CM_verbose > 0,
+                "rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %" PRIu64 "\n",
+                peer, pg->ch.mrail.cm_lid[peer], pg->ch.mrail.cm_ud_qpn[peer],
+                hca_type);
     } else {
         sscanf(mv2_pmi_val, "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016" SCNx64,
                (uint16_t *) & (pg->ch.mrail.cm_lid[peer]),
@@ -870,8 +881,15 @@ int cm_rcv_qp_create(MPIDI_VC_t * vc, uint32_t * qpn)
                     (sizeof(*vc->mrail.srp.credits) * vc->mrail.num_rails));
     }
 
-    attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ |
-                            IBV_ACCESS_REMOTE_ATOMIC;
+    if (g_atomics_support) {
+        attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+        IBV_ACCESS_REMOTE_ATOMIC;
+    } else {
+        attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
+    }
+
     attr.qp_state = IBV_QPS_INIT;
 
     for (rail_index = 0; rail_index < vc->mrail.num_rails; rail_index++) {

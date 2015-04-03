@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -73,12 +73,11 @@
 #endif
 #include "debug_utils.h"
 
-#if defined(CHANNEL_PSM)
-// TODO : expose debug infra structure to PSM interface
-#define DEBUG_SHM_verbose 1
-#define PRINT_DEBUG( COND, FMT, args... )
-#define PRINT_ERROR( FMT, args... )
-#endif
+#ifdef CKPT
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
+shmem_info_t *ckpt_free_head = NULL;
+#endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
+#endif /* CKPT */
 
 typedef unsigned long addrint_t;
 
@@ -95,6 +94,7 @@ int mv2_knomial_2level_bcast_message_size_threshold = 2048;
 int mv2_knomial_2level_bcast_system_size_threshold = 64;
 int mv2_enable_zcpy_bcast=1; 
 int mv2_enable_zcpy_reduce=1; 
+int mv2_gatherv_ssend_threshold = 8192;
 
 int mv2_init_call_once = 0;
 int mv2_mmap_coll_once = 0;
@@ -736,6 +736,94 @@ void MPIDI_CH3I_SHMEM_COLL_Unlink()
         mv2_shmem_coll_file = NULL;
     }
 }
+   
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
+#undef FUNCNAME
+#define FUNCNAME mv2_post_zcpy_mid_request
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+inline int mv2_post_zcpy_mid_request(MPID_Comm *leader_commptr, shmem_info_t * shmem)
+{
+    int mpi_errno = MPI_SUCCESS;
+    /* Post Ibarrier with mid-request */ 
+    mpi_errno = MPIR_Ibarrier_impl(leader_commptr, &(shmem->mid_request));
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    shmem->mid_request_active = 1;
+
+fn_exit:
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME mv2_flush_zcpy_mid_request
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+inline int mv2_flush_zcpy_mid_request(shmem_info_t * shmem)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPI_Status status;
+
+    /* Wait for previous ibarrier with mid-request to complete */
+    mpi_errno = MPIR_Wait_impl(&(shmem->mid_request), &status);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    shmem->mid_request = MPI_REQUEST_NULL;
+    shmem->mid_request_active = 0;
+
+fn_exit:
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME mv2_post_zcpy_end_request
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+inline int mv2_post_zcpy_end_request(MPID_Comm *leader_commptr, shmem_info_t * shmem)
+{
+    int mpi_errno = MPI_SUCCESS;
+    /* Post Ibarrier with mid-request */ 
+    mpi_errno = MPIR_Ibarrier_impl(leader_commptr, &(shmem->end_request));
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    shmem->end_request_active = 1;
+
+fn_exit:
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME mv2_flush_zcpy_end_request
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+inline int mv2_flush_zcpy_end_request(shmem_info_t * shmem)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPI_Status status; 
+
+    /* Wait for previous ibarrier with end-request to complete */ 
+    mpi_errno = MPIR_Wait_impl(&(shmem->end_request), &status);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    shmem->end_request = MPI_REQUEST_NULL;
+    shmem->end_request_active = 0;
+
+fn_exit:
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+#endif /*defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)*/
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Init
@@ -1012,8 +1100,9 @@ int MPIDI_CH3I_SHMEM_COLL_finalize(int local_id, int num_local_nodes)
         pthread_spin_unlock(&shmem_coll->cr_smc_spinlock);
         while (shmem_coll->cr_smc_cnt < num_local_nodes) ;
 
-        if (local_id == 0) {
+        if ((mv2_shmem_coll_obj.mmap_ptr != NULL) && (local_id == 0)) {
             smc_store = MPIU_Malloc(mv2_shmem_coll_size);
+            PRINT_DEBUG(DEBUG_CR_verbose > 1, "mv2_shmem_coll_obj.mmap_ptr = %p\n", mv2_shmem_coll_obj.mmap_ptr);
             MPIU_Memcpy(smc_store, mv2_shmem_coll_obj.mmap_ptr, mv2_shmem_coll_size);
             smc_store_set = 1;
         }
@@ -2182,6 +2271,13 @@ void MV2_Read_env_vars(void)
         if (flag >= 0)
            mv2_enable_zcpy_reduce = flag;
     }
+    
+    if ((value = getenv("MV2_GATHERV_SSEND_THRESHOLD")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag >= 0) {
+            mv2_gatherv_ssend_threshold = flag;
+	}
+    }
 
     if ((value = getenv("MV2_RED_SCAT_SHORT_MSG")) != NULL) {
         flag = (int) atoi(value);
@@ -3201,24 +3297,15 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
         mv2_shm_barrier(shmem);
         if (shmem->local_rank == intra_node_root &&
             leader_commptr->local_size > 1) {
-            MPI_Status status;
 
             if(shmem->end_request_active == 1){ 
-                /* Wait for previous ibarrier with end-request 
-                 * to complete */ 
-                mpi_errno = MPIR_Wait_impl(&(shmem->end_request),
-                                           &status);
+                mpi_errno = mv2_flush_zcpy_end_request(shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                (shmem->end_request) = MPI_REQUEST_NULL;
-                shmem->end_request_active = 0;
             } 
 
             if(shmem->mid_request_active == 0){ 
-                /* Post Ibarrier with mid-request */ 
-                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
-                                      &(shmem->mid_request));
+                mpi_errno = mv2_post_zcpy_mid_request(leader_commptr, shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                shmem->mid_request_active = 1;
             } 
         } 
         shmem->half_full_complete = 1;
@@ -3229,25 +3316,16 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
         mv2_shm_barrier(shmem);
         if (shmem->local_rank == intra_node_root &&
             leader_commptr->local_size > 1) {
-            MPI_Status status; 
 
             if(shmem->mid_request_active == 1){ 
-                /* Wait for previous ibarrier with mid-request 
-                 * to complete */ 
-                mpi_errno = MPIR_Wait_impl(&(shmem->mid_request),
-                                           &status);
+                mpi_errno = mv2_flush_zcpy_mid_request(shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                (shmem->mid_request) = MPI_REQUEST_NULL; 
-                shmem->mid_request_active = 0; 
-            } 
+            }
 
             if(shmem->end_request_active == 0){ 
-                /* Post Ibarrier with mid-request */ 
-                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
-                                               &(shmem->end_request));
+                mpi_errno = mv2_post_zcpy_end_request(leader_commptr, shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                shmem->end_request_active = 1;
-            } 
+            }
         }
         shmem->tail = shmem->read;
         shmem->half_full_complete = 0;
@@ -3290,6 +3368,13 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
 
     if(shmem->buffer_registered == 0) {
        if(shmem_commptr->rank == 0 && leader_commptr->local_size > 1) {
+#ifdef CKPT
+           if (ckpt_free_head != NULL) {
+               shmem->next = ckpt_free_head;
+           }
+           ckpt_free_head = shmem;
+           PRINT_DEBUG(DEBUG_CR_verbose > 1,"Adding shmem region %p\n", shmem);
+#endif /* CKPT */
            mpi_errno = mv2_shm_coll_reg_buffer(shmem->buffer, shmem->size,
                                                shmem->mem_handle, &(shmem->buffer_registered));
            if(mpi_errno) {
@@ -3488,24 +3573,15 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
         mv2_shm_barrier(shmem);
         if (shmem->local_rank == intra_node_root &&
             leader_commptr->local_size > 1) {
-            MPI_Status status;
             
             if(shmem->end_request_active == 1){ 
-                /* Wait for previous ibarrier with end-request 
-                 * to complete */ 
-                mpi_errno = MPIR_Wait_impl(&(shmem->end_request),
-                                           &status);
+                mpi_errno = mv2_flush_zcpy_end_request(shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                (shmem->end_request) = MPI_REQUEST_NULL;
-                shmem->end_request_active = 0;
             } 
 
             if(shmem->mid_request_active == 0){ 
-                /* Post Ibarrier with mid-request */ 
-                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
-                                      &(shmem->mid_request));
+                mpi_errno = mv2_post_zcpy_mid_request(leader_commptr, shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                shmem->mid_request_active = 1;
             } 
         } 
         shmem->half_full_complete = 1; 
@@ -3516,24 +3592,15 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
         mv2_shm_barrier(shmem);
         if (shmem->local_rank == intra_node_root &&
             leader_commptr->local_size > 1) {
-            MPI_Status status; 
 
             if(shmem->mid_request_active == 1){ 
-                /* Wait for previous ibarrier with mid-request 
-                 * to complete */ 
-                mpi_errno = MPIR_Wait_impl(&(shmem->mid_request),
-                                           &status);
+                mpi_errno = mv2_flush_zcpy_mid_request(shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                (shmem->mid_request) = MPI_REQUEST_NULL; 
-                shmem->mid_request_active = 0; 
             } 
 
             if(shmem->end_request_active == 0){ 
-                /* Post Ibarrier with end-request */ 
-                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
-                                               &(shmem->end_request));
+                mpi_errno = mv2_post_zcpy_end_request(leader_commptr, shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                shmem->end_request_active = 1;
             } 
         }
         shmem->tail = shmem->read;
@@ -3571,9 +3638,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
     int slot_len; 
     slot_len = mv2_shm_slot_len + sizeof (shm_slot_t) + sizeof(volatile uint32_t);
     MV2_SHM_ALIGN_LEN(slot_len, MV2_SHM_ALIGN); 
-#ifdef HAVE_CXX_BINDING
     int is_cxx_uop = 0;
-#endif
     int shmem_comm_rank, local_size, local_rank; 
 
     MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_commptr);
@@ -3592,21 +3657,15 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
 
         if (shmem->local_rank == intra_node_root &&
             leader_commptr->local_size > 1) {
-            MPI_Status status;
             
             if(shmem->mid_request_active == 0){
-                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
-                                      &(shmem->mid_request));
+                mpi_errno = mv2_post_zcpy_mid_request(leader_commptr, shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                shmem->mid_request_active = 1;
             } 
 
             if(shmem->end_request_active == 1){
-                mpi_errno = MPIR_Wait_impl(&(shmem->end_request),
-                                           &status);
+                mpi_errno = mv2_flush_zcpy_end_request(shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                (shmem->end_request) = MPI_REQUEST_NULL;
-                shmem->end_request_active = 0;
             }
      
         }
@@ -3627,21 +3686,15 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
 
         if (shmem->local_rank == intra_node_root &&
             leader_commptr->local_size > 1) {
-            MPI_Status status;
             if(shmem->end_request_active == 0){
-                mpi_errno = MPIR_Ibarrier_impl(leader_commptr,
-                                               &(shmem->end_request));
+                mpi_errno = mv2_post_zcpy_end_request(leader_commptr, shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                shmem->end_request_active = 1;
             }
             
             
             if(shmem->mid_request_active == 1){
-                mpi_errno = MPIR_Wait_impl(&(shmem->mid_request),
-                                           &status);
+                mpi_errno = mv2_flush_zcpy_mid_request(shmem);
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                (shmem->mid_request) = MPI_REQUEST_NULL;
-                shmem->mid_request_active = 0;
             }
 
         } 
@@ -3689,6 +3742,14 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
     
         if(leader_commptr->local_size > 1) {
             if(shmem->buffer_registered == 0) {
+#ifdef CKPT
+                if (ckpt_free_head != NULL) {
+                    shmem->next = ckpt_free_head;
+                }
+                ckpt_free_head = shmem;
+                PRINT_DEBUG(DEBUG_CR_verbose > 1,"Adding shmem region %p\n", shmem);
+#endif /* CKPT */
+
                 mpi_errno = mv2_shm_coll_reg_buffer(shmem->buffer, shmem->size,
                                                    shmem->mem_handle, &(shmem->buffer_registered));
                 if(mpi_errno) {   
@@ -4114,6 +4175,9 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     for ( k = 0 ; k < rdma_num_hcas; k++ ) {
         shmem->mem_handle[k] = NULL; 
     } 
+#ifdef CKPT
+    shmem->next = NULL;
+#endif /* CKPT */
 #endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 
     mv2_shm_barrier(shmem);
@@ -4150,19 +4214,14 @@ void mv2_shm_coll_cleanup(shmem_info_t * shmem)
     MPIU_Free(shmem->queue);
 #if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
     int mpi_errno = MPI_SUCCESS;
-    MPI_Status status;
 
     if (shmem->end_request_active) {
-        mpi_errno = MPIR_Wait_impl(&(shmem->end_request),
-                &status);
+        mpi_errno = mv2_flush_zcpy_end_request(shmem);
         if (mpi_errno) PRINT_ERROR("MPIR_Wait_impl failure \n");
-        shmem->end_request_active = 0;
     }
     if (shmem->mid_request_active) {
-        mpi_errno = MPIR_Wait_impl(&(shmem->mid_request),
-                &status);
+        mpi_errno = mv2_flush_zcpy_mid_request(shmem);
         if (mpi_errno) PRINT_ERROR("MPIR_Wait_impl failure \n");
-        shmem->mid_request_active = 0;
     }
 
     if(shmem->local_rank == 0) { 

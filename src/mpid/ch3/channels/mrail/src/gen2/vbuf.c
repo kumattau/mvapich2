@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -70,6 +70,8 @@ MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
 
 static pthread_spinlock_t vbuf_lock;
 
+extern int g_atomics_support;
+
 #if defined(DEBUG)
 void dump_vbuf(char* msg, vbuf* v)
 {
@@ -112,16 +114,16 @@ void mv2_print_vbuf_usage_usage()
 
         PRINT_INFO(DEBUG_MEM_verbose > 0, "[Pool: %d, Size:%lu] num_bufs:%u, tot_mem:%ld kB,"
                     " num_get = %ld, num_freed = %ld\n", i,
-                    rdma_vbuf_pools[i].buf_size, rdma_vbuf_pools[i].num_allocated, 
+                    (long unsigned int)rdma_vbuf_pools[i].buf_size, rdma_vbuf_pools[i].num_allocated,
                     (size/1024),
                     rdma_vbuf_pools[i].num_get, rdma_vbuf_pools[i].num_freed); 
     }
 
 #if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
-    PRINT_INFO(DEBUG_MEM_verbose, "RC VBUFs:%d  UD VBUFs:%d TOT MEM:%d kB\n",
+    PRINT_INFO(DEBUG_MEM_verbose, "RC VBUFs:%d  UD VBUFs:%d TOT MEM:%lu kB\n",
                     vbuf_n_allocated, ud_vbuf_n_allocated, (tot_mem / 1024));
 #else
-    PRINT_INFO(DEBUG_MEM_verbose, "RC VBUFs:%d, TOT MEM:%d kB\n",
+    PRINT_INFO(DEBUG_MEM_verbose, "RC VBUFs:%d, TOT MEM:%lu kB\n",
                     vbuf_n_allocated, (tot_mem / 1024));
 #endif
     PRINT_INFO(DEBUG_MEM_verbose, "Reposted VBUF stats: num_freed = %ld, num_get = %ld\n",
@@ -301,6 +303,59 @@ fn_fail:
     goto fn_exit;
 }    
 
+inline int reregister_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool)
+{
+    int i = 0;
+    int nvbufs = 0;
+    int buf_size = 0;
+    void *vbuf_buffer = NULL;
+    struct vbuf_region *region = NULL;
+
+    PRINT_DEBUG(DEBUG_CR_verbose > 0,"index = %u; initial_count = %u;"
+                "incr_count = %u; buf_size = %u; num_allocated = %u;"
+                "num_free = %u; max_num_buf = %u; num_get = %ld;"
+                "num_freed = %ld; free_head = %p\n",
+                rdma_vbuf_pool->index, rdma_vbuf_pool->initial_count,
+                rdma_vbuf_pool->incr_count, rdma_vbuf_pool->buf_size,
+                rdma_vbuf_pool->num_allocated, rdma_vbuf_pool->num_free,
+                rdma_vbuf_pool->max_num_buf, rdma_vbuf_pool->num_get,
+                rdma_vbuf_pool->num_freed, rdma_vbuf_pool->free_head);
+
+    region      = rdma_vbuf_pool->region_head;
+    buf_size    = rdma_vbuf_pool->buf_size;
+    while (region) {
+        nvbufs = region->count;
+        vbuf_buffer = region->malloc_buf_start;
+        PRINT_DEBUG(DEBUG_CR_verbose > 0,"region_head = %p\n", region);
+    
+#ifdef _ENABLE_CUDA_
+        if (rdma_enable_cuda && (rdma_vbuf_pool->index == MV2_CUDA_VBUF_POOL_OFFSET ||
+            (rdma_eager_cudahost_reg && rdma_vbuf_pool->index <= MV2_RECV_VBUF_POOL_OFFSET))) {
+            ibv_cuda_register(vbuf_buffer, nvbufs * buf_size);
+        }
+#endif
+
+        // for posix_memalign
+        for (i = 0; i < rdma_num_hcas; ++i) {
+            if (g_atomics_support) {
+                region->mem_handle[i] = ibv_reg_mr(ptag_save[i], vbuf_buffer,
+                        nvbufs * buf_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+                        IBV_ACCESS_REMOTE_ATOMIC );
+            } else {
+                region->mem_handle[i] = ibv_reg_mr(ptag_save[i], vbuf_buffer,
+                        nvbufs * buf_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+            }
+            if (!region->mem_handle[i]) {
+                fprintf(stderr, "[%s %d] Cannot register vbuf region\n", __FILE__, __LINE__);
+                return -1;	
+            }
+        }
+        region = region->next;
+    }
+
+    return 0;
+}
+
 int allocate_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool, int nvbufs)
 {
 
@@ -392,9 +447,14 @@ int allocate_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool, int nvbufs)
 
     // for posix_memalign
     for (i = 0; i < rdma_num_hcas; ++i) {
-        region->mem_handle[i] = ibv_reg_mr(ptag_save[i], vbuf_buffer,
-                nvbufs * buf_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
-                IBV_ACCESS_REMOTE_ATOMIC );
+        if (g_atomics_support) {
+            region->mem_handle[i] = ibv_reg_mr(ptag_save[i], vbuf_buffer,
+                    nvbufs * buf_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+                    IBV_ACCESS_REMOTE_ATOMIC );
+        } else {
+            region->mem_handle[i] = ibv_reg_mr(ptag_save[i], vbuf_buffer,
+                    nvbufs * buf_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+        }
         if (!region->mem_handle[i]) {
             fprintf(stderr, "[%s %d] Cannot register vbuf region\n", __FILE__, __LINE__);
             return -1;	
@@ -966,21 +1026,30 @@ void vbuf_reregister_all()
     MPIDI_STATE_DECL(MPID_STATE_VBUF_REREGISTER_ALL);
     MPIDI_FUNC_ENTER(MPID_STATE_VBUF_REREGISTER_ALL);
 
-    for (; i < rdma_num_hcas; ++i)
+    for (i = 0; i < rdma_num_hcas; ++i)
     {
         ptag_save[i] = mv2_MPIDI_CH3I_RDMA_Process.ptag[i];
     }
 
     while (vr)
     {
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"Reregistering vbuf_region_head\n");
         for (i = 0; i < rdma_num_hcas; ++i)
         {
-            vr->mem_handle[i] = ibv_reg_mr(
-                ptag_save[i],
-                vr->malloc_buf_start,
-                vr->count * rdma_vbuf_total_size,
-                IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
-                IBV_ACCESS_REMOTE_ATOMIC);
+            if (g_atomics_support) {
+                vr->mem_handle[i] = ibv_reg_mr(
+                    ptag_save[i],
+                    vr->malloc_buf_start,
+                    vr->count * rdma_vbuf_total_size,
+                    IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+                    IBV_ACCESS_REMOTE_ATOMIC);
+            } else {
+                vr->mem_handle[i] = ibv_reg_mr(
+                    ptag_save[i],
+                    vr->malloc_buf_start,
+                    vr->count * rdma_vbuf_total_size,
+                    IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+            }
 
             if (!vr->mem_handle[i])
             {
@@ -989,6 +1058,15 @@ void vbuf_reregister_all()
         }
 
         vr = vr->next;
+    }
+
+    for(i = 0; i < rdma_num_vbuf_pools; i++) {
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"Reregistering vbuf pool %d, count = %d\n", i, rdma_vbuf_pools[i].initial_count);
+        int err = reregister_vbuf_pool(&rdma_vbuf_pools[i]);
+                                        
+        if (err) {
+            ibv_error_abort(IBV_RETURN_ERR,"Cannot reregister vbuf region\n");
+        }
     }
 
     MPIDI_FUNC_EXIT(MPID_STATE_VBUF_REREGISTER_ALL);

@@ -3,7 +3,7 @@
  *  (C) 2011 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -30,7 +30,7 @@
 #endif
 
 /* helper macros to improve code readability */
-/* we pessimistically assume that MPI_TYPE_NULL may be passed as a "valid" type
+/* we pessimistically assume that MPI_DATATYPE_NULL may be passed as a "valid" type
  * for send/recv when MPI_PROC_NULL is the destination/src */
 #define dtype_add_ref_if_not_builtin(datatype_)                    \
     do {                                                           \
@@ -211,6 +211,8 @@ static int MPIDU_Sched_start_entry(struct MPIDU_Sched *s, size_t idx, struct MPI
         case MPIDU_SCHED_ENTRY_CB:
             if (e->u.cb.cb_type == MPIDU_SCHED_CB_TYPE_1) {
                 mpi_errno = e->u.cb.u.cb_p(r->comm, s->tag, e->u.cb.cb_state);
+                /* Sched entries list can be reallocated inside callback */
+                e = &s->entries[idx];
                 if (mpi_errno) {
                     e->status = MPIDU_SCHED_ENTRY_STATUS_FAILED;
                     MPIU_ERR_POP(mpi_errno);
@@ -218,6 +220,8 @@ static int MPIDU_Sched_start_entry(struct MPIDU_Sched *s, size_t idx, struct MPI
             }
             else if (e->u.cb.cb_type == MPIDU_SCHED_CB_TYPE_2) {
                 mpi_errno = e->u.cb.u.cb2_p(r->comm, s->tag, e->u.cb.cb_state, e->u.cb.cb_state2);
+                /* Sched entries list can be reallocated inside callback */
+                e = &s->entries[idx];
                 if (mpi_errno) {
                     e->status = MPIDU_SCHED_ENTRY_STATUS_FAILED;
                     MPIU_ERR_POP(mpi_errno);
@@ -259,6 +263,8 @@ static int MPIDU_Sched_continue(struct MPIDU_Sched *s)
 
         if (e->status == MPIDU_SCHED_ENTRY_STATUS_NOT_STARTED) {
             mpi_errno = MPIDU_Sched_start_entry(s, i, e);
+            /* Sched entries list can be reallocated inside callback */
+            e = &s->entries[i];
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         }
 

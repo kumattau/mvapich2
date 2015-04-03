@@ -79,6 +79,7 @@ mpi_sources +=                     \
     src/mpi/coll/barrier_osu.c     \
     src/mpi/coll/bcast_osu.c       \
     src/mpi/coll/gather_osu.c      \
+    src/mpi/coll/gatherv_osu.c     \
     src/mpi/coll/reduce_osu.c      \
     src/mpi/coll/scatter_osu.c     \
     src/mpi/coll/scan_osu.c        \

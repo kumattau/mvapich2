@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1216,6 +1216,14 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
     MPIU_Snprintf(mv2_pmi_key, mv2_pmi_max_keylen,
                     "MV2-INIT-INFO-%08x", tgt_rank);
 
+    if (mv2_use_pmi_ibarrier) {
+        mpi_errno = UPMI_WAIT();
+        if (mpi_errno != UPMI_SUCCESS) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    "**pmi_kvs_get", "**pmi_kvs_get %d", mpi_errno);
+        }
+    }
+
     mpi_errno = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val,
                             mv2_pmi_max_vallen);
     if (mpi_errno != UPMI_SUCCESS) {
@@ -1395,7 +1403,13 @@ int MPIDI_CH3I_PMI_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit",
                                     "**pmi_kvs_commit %d", mpi_errno);
     }
-    mpi_errno = UPMI_BARRIER();
+
+    if (mv2_use_pmi_ibarrier) {
+        mpi_errno = UPMI_IBARRIER();
+    } else {
+        mpi_errno = UPMI_BARRIER();
+    }
+
     if (mpi_errno != UPMI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_barrier",
                                     "**pmi_barrier %d", mpi_errno);
@@ -1770,6 +1784,14 @@ int MPIDI_CH3I_CM_Finalize(void)
         if (pg_rank == 0 || DEBUG_MEM_verbose > 1) {
             mv2_print_mem_usage();
             mv2_print_vbuf_usage_usage();
+        }
+    }
+
+    if (mv2_use_pmi_ibarrier) {
+        retval = UPMI_WAIT();
+        if (retval != 0) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    "**pmi_barrier", "**pmi_barrier %d", retval);
         }
     }
 

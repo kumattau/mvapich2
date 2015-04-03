@@ -12,7 +12,7 @@
  * excludes the implied warranties of merchantability, fitness for a
  * particular purpose and non-infringement.
  */
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -45,6 +45,8 @@
 /* Data computed by configure.  This is included *after* mpi.h because we
    do not want mpi.h to depend on any other files or configure flags */
 #include "mpichconf.h"
+
+#include "opa_primitives.h"
 
 /* if we are defining this, we must define it before including mpl.h */
 #if defined(MPICH_DEBUG_MEMINIT)
@@ -2220,8 +2222,11 @@ extern struct MPID_CommOps  *MPID_Comm_fns; /* Communicator creation functions *
 
 
 /* Per process data */
-typedef enum MPIR_MPI_State_t { MPICH_PRE_INIT=0, MPICH_WITHIN_MPI=1,
-               MPICH_POST_FINALIZED=2 } MPIR_MPI_State_t;
+typedef enum MPIR_MPI_State_t {
+    MPICH_PRE_INIT=0,
+    MPICH_WITHIN_MPI,
+    MPICH_POST_FINALIZED
+} MPIR_MPI_State_t;
 
 typedef struct PreDefined_attrs {
     int appnum;          /* Application number provided by mpiexec (MPI-2) */
@@ -4087,6 +4092,9 @@ int MPIR_Bcast_MV2 (void *buffer, int count, MPI_Datatype datatype, int
 int MPIR_Gather_MV2 (const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                  void *recvbuf, int recvcnt, MPI_Datatype recvtype,
                  int root, MPID_Comm *comm_ptr, int *errflag);
+int MPIR_Gatherv_MV2 (const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
+                      void *recvbuf, const int *recvcnts, const int *displs,
+                      MPI_Datatype recvtype, int root, MPID_Comm *comm_ptr, int *errflag);
 int MPIR_Reduce_MV2(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                 MPI_Op op, int root, MPID_Comm *comm_ptr, int *errflag );
 int MPIR_Scatter_MV2(const void *sendbuf, int sendcnt, MPI_Datatype sendtype, 
@@ -4536,7 +4544,7 @@ int MPIR_Cart_map_impl(const MPID_Comm *comm_ptr, int ndims, const int dims[],
                        const int periodic[], int *newrank);
 int MPIR_Close_port_impl(const char *port_name);
 int MPIR_Open_port_impl(MPID_Info *info_ptr, char *port_name);
-void MPIR_Info_get_impl(MPID_Info *info_ptr, const char *key, int valuelen, char *value, int *flag);
+int MPIR_Info_get_impl(MPID_Info *info_ptr, const char *key, int valuelen, char *value, int *flag);
 void MPIR_Info_get_nkeys_impl(MPID_Info *info_ptr, int *nkeys);
 int MPIR_Info_get_nthkey_impl(MPID_Info *info, int n, char *key);
 void MPIR_Info_get_valuelen_impl(MPID_Info *info_ptr, const char *key, int *valuelen, int *flag);

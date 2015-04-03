@@ -1,6 +1,6 @@
 /* Malloc implementation for multiple threads without lock contention. */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -3587,11 +3587,6 @@ public_rEALLOc(Void_t* oldmem, size_t bytes)
   }
 #else
   (void)mutex_lock(&ar_ptr->mutex);
-#endif
-
-#ifndef NO_THREADS
-  /* As in malloc(), remember this arena for the next allocation. */
-  tsd_setspecific(arena_key, (Void_t *)ar_ptr);
 #endif
 
   newp = _int_realloc(ar_ptr, oldmem, bytes);

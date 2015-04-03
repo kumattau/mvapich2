@@ -1,24 +1,44 @@
+/*
+ * Copyright (c) 2001-2015, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ */
 #include "upmi.h"
 #include <stdlib.h>
+#include <pthread.h>
+
+#ifndef SLURM_PMI_CLIENT
+#   define HAVE_PMI2_KVS_IFENCE 1
+#   define HAVE_PMI2_KVS_WAIT   1
+#   define HAVE_PMI_IBARRIER    1
+#   define HAVE_PMI_WAIT        1
+#endif
 
 struct PMI_keyval_t;
 int _size, _rank, _appnum;
-pthread_mutex_t umpi_lock;
+static int _in_ibarrier = 0;
+pthread_mutex_t upmi_lock;
 
 void UPMI_lock_init(void) {
-    pthread_mutex_init(&umpi_lock, NULL);
+    pthread_mutex_init(&upmi_lock, NULL);
 }
 
 void UPMI_lock_destroy(void) {
-    pthread_mutex_destroy(&umpi_lock);
+    pthread_mutex_destroy(&upmi_lock);
 }
 
 void UPMI_lock(void) {
-    pthread_mutex_lock(&umpi_lock);
+    pthread_mutex_lock(&upmi_lock);
 }
 
 void UPMI_unlock(void) {
-    pthread_mutex_unlock(&umpi_lock);
+    pthread_mutex_unlock(&upmi_lock);
 }
 
 int UPMI_INIT( int *spawned ) {
@@ -112,6 +132,56 @@ int UPMI_BARRIER( void ) {
     UPMI_unlock();
     #endif
     return pmi_ret_val;
+}
+
+int UPMI_IBARRIER( void ) { 
+    int rc;
+
+    UPMI_lock();
+    if (!_in_ibarrier) {
+        _in_ibarrier = 1;
+#ifdef USE_PMI2_API
+#   if defined(HAVE_PMI2_KVS_IFENCE) && defined(HAVE_PMI2_KVS_WAIT)
+        rc = PMI2_KVS_Ifence();
+#   else
+        rc = PMI2_KVS_Fence();
+#   endif
+#else
+#   if defined(HAVE_PMI_IBARRIER) && defined(HAVE_PMI_WAIT)
+        rc = PMI_Ibarrier();
+#   else
+        rc = PMI_Barrier();
+#   endif
+#endif
+    } else {
+        rc = UPMI_FAIL;
+    }
+    UPMI_unlock();
+
+    return rc;
+}
+
+int UPMI_WAIT( void ) { 
+    int rc = UPMI_SUCCESS;
+
+    UPMI_lock();
+    if (_in_ibarrier) {
+        _in_ibarrier = 0;
+#ifdef USE_PMI2_API
+#   if defined(HAVE_PMI2_KVS_IFENCE) && defined(HAVE_PMI2_KVS_WAIT)
+        rc = PMI2_KVS_Wait();
+#   endif
+#else
+#   if defined(HAVE_PMI_IBARRIER) && defined(HAVE_PMI_WAIT)
+        rc = PMI_Wait();
+#   endif
+#endif
+    } else {
+        rc = UPMI_SUCCESS;
+    }
+    UPMI_unlock();
+
+    return rc;
 }
 
 int UPMI_ABORT( int exit_code, const char error_msg[] ) { 
@@ -279,7 +349,7 @@ int UPMI_JOB_SPAWN(int count,
                    const int info_keyval_sizes[],
                    const void *info_keyval_vectors[],
                    int preput_keyval_size,
-                   const void *preput_keyval_vector[],
+                   const void *preput_keyval_vector,
                    char jobId[],
                    int jobIdSize,
                    int errors[])
@@ -294,7 +364,7 @@ int UPMI_JOB_SPAWN(int count,
     UPMI_lock();
     pmi_ret_val = PMI_Spawn_multiple( count, cmds, argvs, maxprocs,
                                info_keyval_sizes, (const struct PMI_keyval_t**)info_keyval_vectors,
-                               preput_keyval_size, (const struct PMI_keyval_t*)preput_keyval_vector[0],
+                               preput_keyval_size, (const struct PMI_keyval_t*)preput_keyval_vector,
                                errors );
     UPMI_unlock();
     #endif

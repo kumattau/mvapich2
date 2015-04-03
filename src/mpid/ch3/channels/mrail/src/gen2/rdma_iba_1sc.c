@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -144,12 +144,12 @@ static int Decrease_CC(MPID_Win *, int);
 static int Post_Get_Put_Get_List(MPID_Win *, 
         MPIDI_msg_sz_t , dreg_entry * ,
         MPIDI_VC_t *, vbuf **, void *local_buf[], 
-        void *remote_buf[], void *user_buf[], int length,
+        void *remote_buf[], void *user_buf[], MPIDI_msg_sz_t length,
         uint32_t lkeys[], uint32_t rkeys[], 
         rail_select_t rail_select, int target);
 
 static int Post_Put_Put_Get_List(MPID_Win *, MPIDI_msg_sz_t,  dreg_entry *, 
-        MPIDI_VC_t *, vbuf **, void *local_buf[], void *remote_buf[], int length,
+        MPIDI_VC_t *, vbuf **, void *local_buf[], void *remote_buf[], MPIDI_msg_sz_t length,
         uint32_t lkeys[], uint32_t rkeys[], rail_select_t rail_select, int target);
 
 static int iba_put(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
@@ -662,7 +662,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
         int target_count, MPI_Datatype target_datatype, void *compare_addr,
         void *result_addr, MPID_Win *win_ptr)
 {
-    int complete = 0, size, target_type_size, origin_type_size;
+    MPIDI_msg_sz_t complete = 0, size, target_type_size, origin_type_size;
     MPIDI_VC_t* vc = NULL;
     MPID_Comm *comm_ptr;
     char *local_addr = NULL, *remote_addr = NULL;
@@ -764,7 +764,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                     win_ptr->disp_units[target_rank] * target_disp;
                 aligned = !((intptr_t)remote_addr % 8);
 
-                if (aligned && origin_type_size == 8) {
+                if (g_atomics_support && aligned && origin_type_size == 8) {
                     ++win_ptr->rma_issued;
                     GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                     l_key = v->region->mem_handle[0]->lkey;
@@ -808,7 +808,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                     win_ptr->disp_units[target_rank] * target_disp;
                 aligned = !((intptr_t)remote_addr % 8);
 
-                if (aligned && origin_type_size == 8) {
+                if (g_atomics_support && aligned && origin_type_size == 8) {
                     ++win_ptr->rma_issued;
                     GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                     l_key = v->region->mem_handle[0]->lkey;
@@ -916,7 +916,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
 {
     intptr_t aligned;
     int has_iwarp = 0;
-    int connectIB = 0;
     MPIDI_RMA_Op_t *curr_ptr = NULL;
     MPIDI_RMA_Op_t *head = NULL;
     MPIDI_RMA_Ops_list_t *ops_list;
@@ -932,9 +931,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
 #if defined(RDMA_CM)
     has_iwarp = mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode;
 #endif
-
-    if (mv2_MPIDI_CH3I_RDMA_Process.hca_type == MV2_HCA_MLX_CX_CONNIB)
-         connectIB = 1;
 
     if (SMP_INIT)
     {
@@ -1036,8 +1032,8 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
                     /* IB supports fetch_and_add operation for 8 bytes message
                      * size, so check the data size here 
                      * IB atomic operations require aligned address*/
-                    if (origin_type_size == 8 && curr_ptr->origin_datatype != MPI_DOUBLE
-                        && aligned && !has_iwarp && !connectIB)
+                    if (g_atomics_support && origin_type_size == 8 && curr_ptr->origin_datatype != MPI_DOUBLE
+                        && aligned && !has_iwarp)
                     {
                         iba_fetch_and_add(curr_ptr, win_ptr, origin_type_size);
                         MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
@@ -1057,7 +1053,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
                     /* IB supports compare_and_swap operation for 8 bytes
                      * message size, so check the data size here 
                      * IB atomic operations require aligned address*/
-                    if (origin_type_size == 8 && aligned && !has_iwarp && !connectIB)
+                    if (g_atomics_support && origin_type_size == 8 && aligned && !has_iwarp)
                     {
                         iba_compare_and_swap(curr_ptr, win_ptr, origin_type_size);
                         MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
@@ -1199,7 +1195,6 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     uintptr_t       *post_flag_ptr_send, *post_flag_ptr_recv;
     int             fallback_trigger = 0;
 
-    int h = 0;
     if (mv2_MPIDI_CH3I_RDMA_Process.enable_rma_fast_path == 1)
     {
         (*win_ptr)->enable_fast_path = 1;
@@ -1593,12 +1588,13 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
                             dreg_entry * dreg_tmp,
                             MPIDI_VC_t * vc_ptr, vbuf **allocated_v,
                             void *local_buf[], void *remote_buf[],
-                            int length,
+                            MPIDI_msg_sz_t length,
                             uint32_t lkeys[], uint32_t rkeys[],
                             rail_select_t rail_select, int target)
 {
     int mpi_errno = MPI_SUCCESS;
-    int rail, i, index, count, bytes_per_rail, posting_length;
+    int rail, i, index;
+    MPIDI_msg_sz_t count, bytes_per_rail, posting_length;
     void *local_address, *remote_address;
     vbuf *v;
     MPIDI_VC_t *save_vc = vc_ptr;
@@ -1807,7 +1803,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
                             dreg_entry * dreg_tmp,
                             MPIDI_VC_t * vc_ptr, vbuf **allocated_v,
                             void *local_buf[], void *remote_buf[],
-                            void *user_buf[], int length,
+                            void *user_buf[], MPIDI_msg_sz_t length,
                             uint32_t lkeys[], uint32_t rkeys[],
                             rail_select_t rail_select, int target)
 {

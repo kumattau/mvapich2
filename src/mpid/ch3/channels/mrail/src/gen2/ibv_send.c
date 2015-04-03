@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -733,7 +733,6 @@ int post_hybrid_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 {
-    int hca_num = rail / (rdma_num_ports * rdma_num_qp_per_port);
     char cq_overflow = 0;
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p = v->pheader;
     PACKET_SET_CREDIT(p, vc, rail);
@@ -1170,7 +1169,7 @@ int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t * vc,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_MRAILI_RPUT_COMPLETE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_MRAILI_RPUT_COMPLETE);
 
-    MRAILI_Get_buffer(vc, v, rdma_vbuf_total_size);
+    MRAILI_Get_buffer(vc, v, iov->MPID_IOV_LEN);
     *buf_handle = v;
     DEBUG_PRINT("[eager send]vbuf addr %p\n", v);
     *num_bytes_ptr = MRAILI_Fill_start_buffer(v, iov, n_iov);
@@ -1982,6 +1981,7 @@ int mv2_shm_coll_dereg_buffer(struct ibv_mr *mem_handle[])
                ibv_error_abort(IBV_RETURN_ERR,
                                         "deregistration failed\n");
            }
+           mem_handle[i] = NULL;
        }
    }
    return mpi_errno; 

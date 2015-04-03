@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -209,7 +209,10 @@ start_polling:
         }
 
         if (SMP_INIT) { 
-            MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
+            mpi_errno = MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
         } 
        
         if (smp_completions != MPIDI_CH3I_progress_completion_count) {

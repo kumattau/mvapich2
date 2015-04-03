@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -99,7 +99,17 @@ int MPID_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
 
     (*win_ptr)->base = base;
 
-    mpi_errno = MPIDI_CH3U_Win_fns.create(base, size, disp_unit, info, comm_ptr, win_ptr); 
+    /* FOR CREATE, alloc_shm info is default to set to FALSE */
+    (*win_ptr)->info_args.alloc_shm = FALSE;
+    if (info != NULL) {
+        int alloc_shm_flag = 0;
+        char shm_alloc_value[MPI_MAX_INFO_VAL+1];
+        MPIR_Info_get_impl(info, "alloc_shm", MPI_MAX_INFO_VAL, shm_alloc_value, &alloc_shm_flag);
+        if ((alloc_shm_flag == 1) && (!strncmp(shm_alloc_value, "true", sizeof("true"))))
+            (*win_ptr)->info_args.alloc_shm = TRUE;
+    }
+
+    mpi_errno = MPIDI_CH3U_Win_fns.create(base, size, disp_unit, info, comm_ptr, win_ptr);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
  fn_fail:

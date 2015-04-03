@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -63,7 +63,7 @@ int MPIDI_CH3_Comm_spawn_multiple(int count, char **commands,
             info_keyval_sizes,
             (const void**) info_keyval_vectors,
             1,
-            (const void**) &preput_keyval_vector,
+            (const void*) &preput_keyval_vector,
             NULL,
             0,
             errcodes)) != UPMI_SUCCESS)

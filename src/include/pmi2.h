@@ -3,6 +3,16 @@
  *  (C) 2007 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ */
 
 #ifndef PMI2_H_INCLUDED
 #define PMI2_H_INCLUDED
@@ -296,6 +306,40 @@ int PMI2_KVS_Put(const char key[], const char value[]);
   
 @*/
 int PMI2_KVS_Fence(void);
+
+/*@
+  PMI2_KVS_Ifence - commit all PMI2_KVS_Put calls made before this fence
+
+  Return values:
+  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+
+  Notes:
+  This is a collective call across the job.  It has semantics that are
+  similar to those for MPI_Win_fence and hence is most easily
+  implemented as a barrier across all of the processes in the job.
+  Specifically, all PMI2_KVS_Put operations performed by any process in
+  the same job must be visible to all processes (by using PMI2_KVS_Get)
+  after PMI2_KVS_Wait following a PMI2_KVS_Ifence completes.
+  
+@*/
+int PMI2_KVS_Ifence(void);
+
+/*@
+  PMI2_KVS_Wait - complete previous PMI2_KVS_Ifence
+
+  Return values:
+  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+
+  Notes:
+  This is a collective call across the job.  It has semantics that are
+  similar to those for MPI_Win_fence and hence is most easily
+  implemented as a barrier across all of the processes in the job.
+  Specifically, all PMI2_KVS_Put operations performed by any process in
+  the same job must be visible to all processes (by using PMI2_KVS_Get)
+  after PMI2_KVS_Wait following a PMI2_KVS_Ifence completes.
+  
+@*/
+int PMI2_KVS_Wait(void);
 
 /*@
   PMI2_KVS_Get - returns the value associated with key in the key-value

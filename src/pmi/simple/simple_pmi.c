@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -108,6 +108,8 @@ static int PMII_Set_from_port( int, int );
 static int PMII_Connect_to_pm( char *, int );
 
 static int GetResponse( const char [], const char [], int );
+static int SendResponse( const char [] );
+static int RecvResponse( const char [], const char [], int );
 static int getPMIFD( int * );
 
 #ifdef USE_PMI_PORT
@@ -313,6 +315,28 @@ int PMI_Barrier( void )
 
     if ( PMI_initialized > SINGLETON_INIT_BUT_NO_PM) {
 	err = GetResponse( "cmd=barrier_in\n", "barrier_out", 0 );
+    }
+
+    return err;
+}
+
+int PMI_Ibarrier( void )
+{
+    int err = PMI_SUCCESS;
+
+    if ( PMI_initialized > SINGLETON_INIT_BUT_NO_PM) {
+	err = SendResponse( "cmd=barrier_in\n" );
+    }
+
+    return err;
+}
+
+int PMI_Wait( void )
+{
+    int err = PMI_SUCCESS;
+
+    if ( PMI_initialized > SINGLETON_INIT_BUT_NO_PM) {
+	err = RecvResponse( "cmd=barrier_in\n", "barrier_out", 0 );
     }
 
     return err;
@@ -854,6 +878,55 @@ static int GetResponse( const char request[], const char expectedCmd[],
     if (err) {
 	return err;
     }
+    n = PMIU_readline( PMI_fd, recvbuf, sizeof(recvbuf) );
+    if (n <= 0) {
+	PMIU_printf( 1, "readline failed\n" );
+	return PMI_FAIL;
+    }
+    err = PMIU_parse_keyvals( recvbuf );
+    if (err) {
+	PMIU_printf( 1, "parse_kevals failed %d\n", err );
+	return err;
+    }
+    p = PMIU_getval( "cmd", cmdName, sizeof(cmdName) );
+    if (!p) {
+	PMIU_printf( 1, "getval cmd failed\n" );
+	return PMI_FAIL;
+    }
+    if (strcmp( expectedCmd, cmdName ) != 0) {
+	PMIU_printf( 1, "expecting cmd=%s, got %s\n", expectedCmd, cmdName );
+	return PMI_FAIL;
+    }
+    if (checkRc) {
+	p = PMIU_getval( "rc", cmdName, PMIU_MAXLINE );
+	if ( p && strcmp(cmdName,"0") != 0 ) {
+	    PMIU_getval( "msg", cmdName, PMIU_MAXLINE );
+	    PMIU_printf( 1, "Command %s failed, reason='%s'\n", 
+			 request, cmdName );
+	    return PMI_FAIL;
+	}
+    }
+
+    return err;
+}
+
+static int SendResponse( const char request[] )
+{
+    /* FIXME: This is an example of an incorrect fix - writeline can change
+       the second argument in some cases, and that will break the const'ness
+       of request.  Instead, writeline should take a const item and return
+       an error in the case in which it currently truncates the data. */
+    return PMIU_writeline( PMI_fd, (char *)request );
+}
+
+static int RecvResponse( const char request[], const char expectedCmd[],
+			int checkRc )
+{
+    int err, n;
+    char *p;
+    char recvbuf[PMIU_MAXLINE];
+    char cmdName[PMIU_MAXLINE];
+
     n = PMIU_readline( PMI_fd, recvbuf, sizeof(recvbuf) );
     if (n <= 0) {
 	PMIU_printf( 1, "readline failed\n" );

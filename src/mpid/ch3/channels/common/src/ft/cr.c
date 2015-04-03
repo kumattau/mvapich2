@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -52,6 +52,7 @@
 #include "debug_utils.h"
 
 #include "hwloc_bind.h"
+#include "coll_shmem.h"
 
 #ifdef ENABLE_SCR
 #include "scr.h"
@@ -178,6 +179,10 @@ static int MPICR_max_save_ckpts = 0;
 volatile int MPICR_callback_fin = 0;
 
 extern int mv2_enable_shmem_collectives;
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
+extern shmem_info_t *ckpt_free_head;
+#endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
+
 static pthread_mutex_t MPICR_SMC_lock;
 static pthread_cond_t MPICR_SMC_cond = PTHREAD_COND_INITIALIZER;
 int g_cr_in_progress;
@@ -656,8 +661,10 @@ int CR_Thread_loop()
              * Let the shared memory collectives know that a checkpoint
              * has been requested
              */
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"Request SMC lock\n");
             if (mv2_enable_shmem_collectives)
                 MPIDI_CH3I_SMC_lock();
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"Got SMC lock\n");
 
             pthread_rwlock_wrlock(&MPICR_cs_lock);
             wr_CR_lock_tid = pthread_self();
@@ -1455,6 +1462,33 @@ int CR_IBU_Release_network()
             }
         }
     }
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
+    /* Begin: Free memory registered by zcopy collectives */
+    shmem_info_t * curr = ckpt_free_head;
+    shmem_info_t * next = NULL;
+    while (curr) {
+        if(curr->local_rank == 0) {
+            PRINT_DEBUG(DEBUG_CR_verbose > 1,"Freeing shmem region %p, reg = %d\n", curr, curr->buffer_registered);
+            if(curr->buffer_registered == 1) {
+                mv2_shm_coll_dereg_buffer(curr->mem_handle);
+            }
+            /* Reset pointers for zcopy bcast/reduce */
+            curr->buffer_registered         = 0;
+            curr->bcast_knomial_factor      = -1;
+            curr->bcast_exchange_rdma_keys  = 1;
+            curr->reduce_knomial_factor     = -1;
+            curr->reduce_exchange_rdma_keys = 1;
+
+        }
+        next = curr->next;
+        curr->next = NULL;
+        curr = next;
+    }
+    ckpt_free_head = NULL;
+    /* End: Free memory registered by zcopy collectives */
+#endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
+
+    /* NOTE: dreg_deregister_all MUST come after de-registering shmem region */
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"CR_IBU_Release_network: deregister_all\n");
     dreg_deregister_all();
 

@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -62,8 +62,12 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
                         /* OSU_MVAPICH */
                         mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
 
-    mpi_errno = MPIDI_CH3I_Wait_for_pt_ops_finish(*win_ptr);
-    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (!(*win_ptr)->shm_allocated) {
+        /* when SHM is allocated, we already waited for operation completion in
+         MPIDI_CH3_SHM_Win_free, so we do not need to do it again here. */
+        mpi_errno = MPIDI_CH3I_Wait_for_pt_ops_finish(*win_ptr);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    }
 
 #if defined(CHANNEL_MRAIL)
     /*complete any pending outgoing operations*/
@@ -179,7 +183,7 @@ int MPIDI_Put(const void *origin_addr, int origin_count, MPI_Datatype
 
 #if defined(CHANNEL_MRAIL)
     int transfer_complete = 0;
-    int size, target_type_size;
+    MPIDI_msg_sz_t size, target_type_size;
 #endif
         
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_PUT);
@@ -330,7 +334,7 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
 
 #if defined(CHANNEL_MRAIL)
     int transfer_complete = 0;
-    int size, target_type_size;
+    MPIDI_msg_sz_t size, target_type_size;
 #endif
         
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_GET);

@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -283,7 +283,7 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
 #endif
 		    MPIDI_CH3U_VC_SendClose( vc, i );
 		}
-		else
+		else if(vc->pg != NULL)
 		{
                     MPIDI_PG_release_ref(vc->pg, &inuse);
                     if (inuse == 0)

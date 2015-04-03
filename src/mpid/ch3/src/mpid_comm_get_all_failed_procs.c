@@ -2,6 +2,16 @@
 /*
  *  (C) 2011 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
+ *
+ * Copyright (c) 2001-2015, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  */
 
 #include "mpidimpl.h"
@@ -12,7 +22,7 @@
 #endif
 
 /* Generates a bitarray based on orig_comm where all procs in group are marked with 1 */
-static int *group_to_bitarray(MPID_Group *group, MPID_Comm *orig_comm) {
+static uint32_t *group_to_bitarray(MPID_Group *group, MPID_Comm *orig_comm) {
     uint32_t *bitarray, mask;
     int bitarray_size = (orig_comm->local_size / 8) + (orig_comm->local_size % 8 ? 1 : 0);
     int *group_ranks, *comm_ranks, i, index;
@@ -90,7 +100,7 @@ int MPID_Comm_get_all_failed_procs(MPID_Comm *comm_ptr, MPID_Group **failed_grou
     MPID_Group *local_fail;
     MPIDI_STATE_DECL(MPID_STATE_MPID_COMM_GET_ALL_FAILED_PROCS);
 
-    MPID_MPI_FUNC_ENTER(MPID_STATE_MPID_COMM_GET_ALL_FAILED_PROCS);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPID_COMM_GET_ALL_FAILED_PROCS);
 
     /* Kick the progress engine in case it's been a while so we get all the
      * latest updates about failures */
@@ -152,7 +162,7 @@ int MPID_Comm_get_all_failed_procs(MPID_Comm *comm_ptr, MPID_Group **failed_grou
     MPIU_Free(remote_bitarray);
 
   fn_exit:
-    MPID_MPI_FUNC_EXIT(MPID_STATE_MPID_COMM_GET_ALL_FAILED_PROCS);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPID_COMM_GET_ALL_FAILED_PROCS);
     return mpi_errno;
   fn_fail:
     goto fn_exit;

@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,8 +18,13 @@
 #include "mpidimpl.h"
 #include "mpidrma.h"
 
+#if defined(CHANNEL_NEMESIS_IB)
+#include "ib_process.h"
+#endif
+
 #if defined(CHANNEL_MRAIL)
 #include "dreg.h"
+#include "rdma_impl.h"
 #undef DEBUG_PRINT
 #if defined (DEBUG)
 #define DEBUG_PRINT(args...)                                      \
@@ -200,6 +205,10 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
         MPIU_CHKPMEM_MALLOC(resp_req->dev.user_buf, void *, rreq->dev.user_count * type_size,
                             mpi_errno, "GACC resp. buffer");
 
+        /* atomic read-modify-write for get_acc*/
+        if (win_ptr->shm_allocated == TRUE)
+            MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
+
         if (MPIR_DATATYPE_IS_PREDEFINED(rreq->dev.datatype)) {
             MPIU_Memcpy(resp_req->dev.user_buf, rreq->dev.real_user_buf, 
                         rreq->dev.user_count * type_size);
@@ -212,6 +221,10 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
             MPID_Segment_pack(seg, 0, &last, resp_req->dev.user_buf);
             MPID_Segment_free(seg);
         }
+
+        mpi_errno = do_accumulate_op(rreq);
+        if (win_ptr->shm_allocated == TRUE)
+            MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
 
 #if defined (CHANNEL_PSM)
         resp_req->dev.OnFinal = NULL;
@@ -293,9 +306,7 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
 #else
         get_acc_flag = 1;
 #endif
-    }
-
-    if (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_ACCUM_RESP) {
+    } else if (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_ACCUM_RESP) {
 
 	if (win_ptr->shm_allocated == TRUE)
 	    MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
@@ -563,8 +574,8 @@ int MPIDI_CH3_ReqHandler_GetAccumRespComplete( MPIDI_VC_t *vc,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQHANDLER_GETACCUMRESPCOMPLETE);
     
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_REQHANDLER_GETACCUMRESPCOMPLETE);
-
-    MPIU_Free(rreq->dev.user_buf);
+    if (rreq->dev.user_buf != NULL)
+        MPIU_Free(rreq->dev.user_buf);
 
     MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
 
@@ -861,6 +872,10 @@ int MPIDI_CH3_ReqHandler_FOPComplete( MPIDI_VC_t *vc,
 
     MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
 
+    /* Atomic read-modify-write for FOP */
+    if (win_ptr->shm_allocated == TRUE)
+        MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
+
     /* Copy original data into the send buffer.  If data will fit in the
        header, use that.  Otherwise allocate a temporary buffer.  */
     if (len <= sizeof(fop_resp_pkt->data)) {
@@ -889,12 +904,11 @@ int MPIDI_CH3_ReqHandler_FOPComplete( MPIDI_VC_t *vc,
         uop = MPIR_OP_HDL_TO_FN(rreq->dev.op);
         one = 1;
 
-        if (win_ptr->shm_allocated == TRUE)
-            MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr);
         (*uop)(rreq->dev.user_buf, rreq->dev.real_user_buf, &one, &rreq->dev.datatype);
-        if (win_ptr->shm_allocated == TRUE)
-            MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
     }
+
+    if (win_ptr->shm_allocated == TRUE)
+        MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
 
     /* Send back the original data.  We do this here to ensure that the
        operation is remote complete before responding to the origin. */
@@ -960,6 +974,16 @@ int MPIDI_CH3_ReqHandler_FOPComplete( MPIDI_VC_t *vc,
     /* Free temporary buffer allocated in PktHandler_FOP */
     if (len > sizeof(int) * MPIDI_RMA_FOP_IMMED_INTS && rreq->dev.op != MPI_NO_OP) {
         MPIU_Free(rreq->dev.user_buf);
+        /* Assign user_buf to NULL so that reqHandler_GetAccumRespComplete()
+           will not try to free an empty buffer. */
+        rreq->dev.user_buf = NULL;
+    }
+    else {
+        /* FOP data fit in pkt header and user_buf just points to data area in pkt header
+           in pktHandler_FOP(), and it should be freed when pkt header is freed.
+           Here we assign user_buf to NULL so that reqHandler_GetAccumRespComplete()
+           will not try to free it. */
+        rreq->dev.user_buf = NULL;
     }
 
     *complete = 1;
@@ -1351,7 +1375,7 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
  * current_lock_type to shared/exclusive, so we couldn't set lock type
  * to none in that case. 
  */
-#if defined(CHANNEL_MRAIL)
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
         if (win_ptr->shared_lock_ref_cnt == 0) 
 #endif
             win_ptr->current_lock_type = MPID_LOCK_NONE;

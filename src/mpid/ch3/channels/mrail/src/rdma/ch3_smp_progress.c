@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -48,6 +48,7 @@
 #endif /* defined(MAC_OSX) */
 #if defined _SMP_CMA_ 
 #include <sys/types.h>
+#include <stdint.h>
 #endif 
 
 
@@ -348,10 +349,10 @@ static inline void smpi_complete_recv(unsigned int from_grank,
  * cyclic buffer.
  */
 static inline int smpi_check_avail(int rank, int len,
-    volatile void **pptr_flag)
+    volatile void **pptr_flag, smp_ctrl_avail_flag_t num)
 {
     /* check if avail is less than data size */
-    if(avail[rank] < len + sizeof(int)*3) {
+    if(avail[rank] < num * (len + sizeof(int)*3)) {
         /* update local tail according to shared tail */
         if (s_header_ptr_s[rank] + len + sizeof(int)*3 >=
                 SMPI_LAST_S(g_smpi.my_local_id, rank)) {
@@ -1587,6 +1588,23 @@ void MPIDI_CH3I_SMP_Init_VC(MPIDI_VC_t *vc)
 #endif
 }
 
+#if defined(_SMP_CMA_)
+ssize_t check_cma_usability (pid_t remote_pid, char * rbuffer)
+{
+    char buffer = 1;
+    struct iovec local[1];
+    struct iovec remote[1];
+    int val = 0;
+
+    local[0].iov_base = &buffer;
+    local[0].iov_len = 1;
+    remote[0].iov_base = rbuffer;
+    remote[0].iov_len = 1;
+
+    return process_vm_writev(remote_pid, local, 1, remote, 1, 0);
+}
+#endif /* defined(_SMP_CMA_) */
+
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SMP_Init
 #undef FCNAME
@@ -1601,13 +1619,15 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     struct stat file_status;
     struct stat file_status_pool;
     int pagesize = getpagesize();
-    struct shared_mem *shmem;
+    struct shared_mem * shmem;
     SEND_BUF_T *send_buf = NULL;
 
 #if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     int cu_ipc_offset, cu_ipc_len;
 #endif
-
+#if defined(_SMP_CMA_)
+    int cma_test_buffer_offset;
+#endif /* defined(_SMP_CMA_) */
 #if defined(SOLARIS)
     char *setdir="/tmp";
 #else
@@ -1630,10 +1650,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
 
     if (!rdma_use_smp) {
-        return MPI_SUCCESS;
-    }
-
-    if(MPIDI_CH3I_Process.has_dpm) {
         return MPI_SUCCESS;
     }
 
@@ -1768,6 +1784,10 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     g_size_shmem += SMPI_ALIGN(cu_ipc_len);
 
 #endif
+#if defined(_SMP_CMA_)
+    cma_test_buffer_offset = g_size_shmem;
+    g_size_shmem += SMPI_ALIGN(1);
+#endif /* defined(_SMP_CMA_) */
 
     DEBUG_PRINT("sizeof shm file %d\n", g_size_shmem);
 
@@ -2109,32 +2129,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         }
     }
 
-#if defined(_SMP_CMA_)
-    if(0 == g_smpi.my_local_id){
-        if(g_smp_use_cma){
-            int val;
-            struct iovec local[1];
-            struct iovec remote[1];
-            char send[5];
-            char recv[5];
-
-            local[0].iov_base = recv;
-            local[0].iov_len = 5;
-            remote[0].iov_base = send;
-            remote[0].iov_len = 5;
-
-            val = process_vm_readv(getpid(), local, 1, remote, 1, 0);
-            if (val == -1) {
-                PRINT_ERROR("CMA is not available. Set MV2_SMP_USE_CMA=0 to disable CMA.\n");
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                        "**fail", "**fail %s",
-                        "CMA: (MPIDI_CH3I_SMP_readv_rndv) process_vm_readv fail");
-
-            }
-        }
-    }
-#endif /*for detection*/
-
     /* another synchronization barrier */
     if (0 == g_smpi.my_local_id) {
     wait = 1;
@@ -2172,6 +2166,50 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         }
     }
     }
+
+#if defined(_SMP_CMA_)
+    if (g_smp_use_cma && g_smpi.num_local_nodes > 1) {
+        g_smpi_shmem->cma_test_buffer = (volatile char **)
+            ((char *)shmem + cma_test_buffer_offset);
+
+        switch (g_smpi.my_local_id) {
+            case 0:
+                while (!*g_smpi_shmem->cma_test_buffer);
+                if (-1 != (intptr_t)*g_smpi_shmem->cma_test_buffer) {
+                    if (-1 == check_cma_usability(g_smpi_shmem->pid[1],
+                                (char *)*g_smpi_shmem->cma_test_buffer)) {
+                        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS,
+                                MPI_ERR_OTHER, FCNAME, __LINE__, MPI_ERR_OTHER,
+                                "**fail", "%s: %s", "process_vm_readv",
+                                strerror(errno));
+                        PRINT_ERROR("CMA is not available. Set "
+                                "MV2_SMP_USE_CMA=0 to disable CMA.\n");
+                        goto cleanup_files;
+                    }
+                } else {
+                    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,
+                            MPI_ERR_OTHER, FCNAME, __LINE__, MPI_ERR_OTHER,
+                            "**nomem", "**nomem %s",
+                            "*g_smpi_shmem->cma_test_buffer");
+                    PRINT_ERROR("CMA is not available. Set MV2_SMP_USE_CMA=0 "
+                            "to disable CMA.\n");
+                    goto cleanup_files;
+                }
+                break;
+            case 1:
+                *g_smpi_shmem->cma_test_buffer = MPIU_Calloc(1, 1);
+
+                if (!*g_smpi_shmem->cma_test_buffer) {
+                    *g_smpi_shmem->cma_test_buffer = (char *)-1;
+                } else {
+                    while (!**g_smpi_shmem->cma_test_buffer);
+                    MPIU_Free(*g_smpi_shmem->cma_test_buffer);
+                }
+
+                break;
+        }
+    }
+#endif /* defined(_SMP_CMA_) */
 
     /* Unlinking shared memory files*/
     MPIDI_CH3I_SMP_unlink();
@@ -2736,7 +2774,7 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
         pkt_len = iov[0].MPID_IOV_LEN + sizeof(struct iovec) * creq->dev.iov_count + sizeof(pid_t) + sizeof(MPIDI_msg_sz_t);
 
         /* check if avail is less than data size */
-        if(!smpi_check_avail(vc->smp.local_nodes, pkt_len, (volatile void **)&ptr_flag)) {
+        if(!smpi_check_avail(vc->smp.local_nodes, pkt_len, (volatile void **)&ptr_flag, ONE_FREE)) {
             goto fn_exit;
         }
 
@@ -2784,7 +2822,7 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
         pkt_len = iov[0].MPID_IOV_LEN + sizeof(limic_user) * sreq->dev.iov_count + sizeof(MPIDI_msg_sz_t);
 
         /* check if avail is less than data size */
-        if(!smpi_check_avail(vc->smp.local_nodes, pkt_len, (volatile void **)&ptr_flag)) {
+        if(!smpi_check_avail(vc->smp.local_nodes, pkt_len, (volatile void **)&ptr_flag, ONE_FREE)) {
             goto fn_exit;
         }
 
@@ -2826,7 +2864,7 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
 #endif /* _SMP_LIMIC */
 
     /* check if avail is less than data size */
-    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag))
+    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag, TWO_FREE))
         return;
 
     send_buf_reclaim();
@@ -2968,7 +3006,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data_cuda(MPIDI_VC_t * vc, MPID_Request *req,
             length = 0;
         }
         
-        if(!smpi_check_avail(vc->smp.local_nodes, length, (volatile void **)&ptr_flag)) {
+        if(!smpi_check_avail(vc->smp.local_nodes, length, (volatile void **)&ptr_flag, ONE_FREE)) {
             return 0;
         }
 
@@ -3069,7 +3107,7 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
             s_header_ptr_s[vc->smp.local_nodes]);
 
     /* check if avail is less than data size */
-    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag))
+    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag, ONE_FREE))
         return;
 
 #if defined(_ENABLE_CUDA_)
@@ -3249,7 +3287,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
     *num_bytes_ptr = 0;
    
     /* check if avail is less than data size */
-    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag))
+    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag, ONE_FREE))
         return mpi_errno;
 
 #if defined(_ENABLE_CUDA_)
@@ -3474,7 +3512,7 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
     *num_bytes_ptr = 0;
 
     /* check if avail is less than data size */
-    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag))
+    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag, ONE_FREE))
         return;
 
     ptr_head = (volatile void *) ((unsigned long) ptr_flag + sizeof(int));
@@ -3615,7 +3653,7 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
             s_header_ptr_s[vc->smp.local_nodes]);
 
     /* check if avail is less than data size */
-    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag))
+    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag, ONE_FREE))
         return;
 
     ptr_head = (volatile void *) ((unsigned long) ptr_flag + sizeof(int));
@@ -5336,7 +5374,7 @@ void MPIDI_CH3I_SMP_send_comp(void *header,
         s_header_ptr_s[vc->smp.local_nodes]);
 
         /* check if avail is less than data size */
-    if(!smpi_check_avail(vc->smp.local_nodes, pkt_sz, (volatile void **)&ptr_flag))
+    if(!smpi_check_avail(vc->smp.local_nodes, pkt_sz, (volatile void **)&ptr_flag, ONE_FREE))
     {
         /* queue the message */
         creq = create_request(&pkt, pkt_sz, 0);

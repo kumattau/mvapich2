@@ -3,6 +3,16 @@
  *  (C) 2007 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ */
 
 #include "pmi2compat.h"
 #include "simple2pmi.h"
@@ -665,6 +675,49 @@ int PMI2_KVS_Fence(void)
 fn_exit:
     PMI2U_Free(cmd.command);
     freepairs(cmd.pairs, cmd.nPairs);
+    return pmi2_errno;
+fn_fail:
+    goto fn_exit;
+}
+
+int PMI2_KVS_Ifence(void)
+{
+    int pmi2_errno = PMI2_SUCCESS;
+    PMI2_Command cmd = {0};
+
+    PMI2U_printf("[BEGIN PMI2_KVS_Ifence]");
+
+    pmi2_errno = PMIi_WriteSimpleCommandStr(PMI2_fd, &cmd, KVSFENCE_CMD, NULL);
+    if (pmi2_errno) PMI2U_ERR_POP(pmi2_errno);
+
+fn_exit:
+    free(cmd.command);
+    freepairs(cmd.pairs, cmd.nPairs);
+    PMI2U_printf("[END PMI2_KVS_Ifence]");
+    return pmi2_errno;
+fn_fail:
+    goto fn_exit;
+}
+
+int PMI2_KVS_Wait(void)
+{
+    int pmi2_errno = PMI2_SUCCESS;
+    PMI2_Command cmd = {0};
+    int rc;
+    const char *errmsg;
+
+    PMI2U_printf("[BEGIN PMI2_KVS_Wait]");
+
+    pmi2_errno = PMIi_ReadCommandExp(PMI2_fd, &cmd, KVSFENCERESP_CMD, &rc,
+            &errmsg);
+    if (pmi2_errno) PMI2U_ERR_POP(pmi2_errno);
+    PMI2U_ERR_CHKANDJUMP1(rc, pmi2_errno, PMI2_ERR_OTHER, "**pmi2_kvsfence",
+            "**pmi2_kvsfence %s", errmsg ? errmsg : "unknown");
+
+fn_exit:
+    free(cmd.command);
+    freepairs(cmd.pairs, cmd.nPairs);
+    PMI2U_printf("[END PMI2_KVS_Wait]");
     return pmi2_errno;
 fn_fail:
     goto fn_exit;

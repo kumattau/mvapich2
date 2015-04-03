@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1683,6 +1683,8 @@ int get_socket_id (int ib_socket, int cpu_socket, int num_sockets,
     return rdma_local_id % num_sockets;
 }
 
+extern int mv2_user_defined_mapping;
+
 #undef FUNCNAME
 #define FUNCNAME smpi_setaffinity
 #undef FCNAME
@@ -1866,7 +1868,7 @@ int smpi_setaffinity(int my_local_id)
                 char *cp = NULL;
                 int i, j = 0, k;
 
-                if (!SMP_ONLY) {
+                if (!SMP_ONLY && !mv2_user_defined_mapping) {
                     int num_cpus = hwloc_get_nbobjs_by_type(topology,
                             HWLOC_OBJ_PU);
                     int depth_sockets = hwloc_get_type_depth(topology,
@@ -1955,7 +1957,7 @@ int smpi_setaffinity(int my_local_id)
 
                     if (j == my_local_id) {
                         if (level == LEVEL_CORE) {
-                            if (SMP_ONLY) {
+                            if (SMP_ONLY || mv2_user_defined_mapping) {
                                 hwloc_bitmap_only(cpuset, atol(tp_str));
                             } else {
                                 hwloc_bitmap_only(cpuset,
@@ -1963,7 +1965,7 @@ int smpi_setaffinity(int my_local_id)
                                         + (selected_socket * cpu_socket));
                             }
                         } else {
-                            if (SMP_ONLY) {
+                            if (SMP_ONLY || mv2_user_defined_mapping) {
                                 hwloc_bitmap_from_ulong(cpuset, atol(tp_str));
                             } else {
                                 hwloc_bitmap_from_ulong(cpuset,

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -14,6 +14,7 @@
 #include "psm_vbuf.h"
 #include <dirent.h>
 #include "coll_shmem.h"
+#include "debug_utils.h"
 #include <mv2_arch_hca_detect.h>
 
 volatile unsigned int MPIDI_CH3I_progress_completion_count = 0; //ODOT: what is this ?
@@ -31,6 +32,11 @@ uint32_t                ipath_progress_yield_count;
 size_t                  ipath_max_transfer_size = DEFAULT_IPATH_MAX_TRANSFER_SIZE;
 int g_mv2_show_env_info = 0;
 mv2_arch_hca_type g_mv2_arch_hca_type = 0;
+
+/* Number of retry attempts if psm_ep_open fails */
+static int mv2_psm_ep_open_retry_count = 10;
+/* Number of seconds to sleep between psm_ep_open retries */
+static int mv2_psm_ep_open_retry_secs  = 10;
 
 static char    scratch[WRBUFSZ];
 static char             *kvsid;
@@ -182,6 +188,15 @@ mv2_arch_hca_type MV2_get_arch_hca_type(void)
     return g_mv2_arch_hca_type;
 }
 
+/* print error string to stderr, flush stderr, and return error */
+static psm_error_t mv2_psm_err_handler(psm_ep_t ep, const psm_error_t error,
+        const char* error_string, psm_error_token_t token)
+{
+    /* print error and flush stderr */
+    PRINT_ERROR("PSM error handler: %s : %s\n",
+                psm_error_get_string(error), error_string);
+    return error;
+}
 
 #undef FUNCNAME
 #define FUNCNAME psm_doinit
@@ -189,11 +204,13 @@ mv2_arch_hca_type MV2_get_arch_hca_type(void)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
 {
+    char *flag = NULL;
     int verno_major, verno_minor;
     int pg_size, mpi_errno;
     int heterogeneity = 0; 
     psm_epid_t myid, *epidlist = NULL;
     psm_error_t *errs = NULL, err;
+    struct psm_ep_open_opts psm_opts;
 
     /* Override split_type */
     MPID_Comm_fns = &comm_fns;
@@ -245,7 +262,9 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     }
 
     psm_preinit(pg_size);
-    psm_error_register_handler(NULL, PSM_ERRHANDLER_NO_HANDLER);
+
+    /* override global error handler so we can print error messages */
+    psm_error_register_handler(NULL, mv2_psm_err_handler);
 
     err = psm_init(&verno_major, &verno_minor);
     if(err != PSM_OK) {
@@ -253,8 +272,61 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psminit");
     }
 
-    if((err = psm_ep_open(psm_uuid, NULL, &psmdev_cw.ep, &myid)) != PSM_OK) {
-        fprintf(stderr, "psm_ep_open failed with error %s\n", psm_error_get_string(err));
+    /* By default, PSM sets cpu affinity on a process if it's not
+     * already set.  We disable cpu affinity in PSM here.  MVAPICH
+     * or the process launcher will set affinity, unless the user
+     * disabled it, but in that case, he probably doesn't want
+     * PSM to set it either.  In particular, we don't want PSM to
+     * set affinity on singleton MPI jobs (single-process MPI run
+     * w/o mpirun), since PSM will bind all such jobs to core 0. */
+    psm_ep_open_opts_get_defaults(&psm_opts);
+    psm_opts.affinity = PSM_EP_OPEN_AFFINITY_SKIP;
+
+    /* number of times to retry psm_ep_open upon failure */
+    if ((flag = getenv("MV2_PSM_EP_OPEN_RETRY_COUNT")) != NULL) {
+        int value = atoi(flag);
+
+        if (value >= 0) {
+            mv2_psm_ep_open_retry_count = value;
+        } else {
+            PRINT_ERROR("MV2_WARNING: Attempted to set "
+                    "MV2_PSM_EP_OPEN_RETRY_COUNT to invalid value [%s]\n",
+                    flag);
+            PRINT_ERROR("MV2_WARNING: Using default value of `%d' instead\n",
+                    mv2_psm_ep_open_retry_count);
+        }
+    }
+
+    /* sleep time in seconds between open retries */
+    if ((flag = getenv("MV2_PSM_EP_OPEN_RETRY_SECS")) != NULL) {
+        int value = atoi(flag);
+
+        if (value > 0) {
+            mv2_psm_ep_open_retry_secs = value;
+        } else {
+            PRINT_ERROR("MV2_WARNING: Attempted to set "
+                    "MV2_PSM_EP_OPEN_RETRY_SECS to invalid value [%s]\n",
+                    flag);
+            PRINT_ERROR("MV2_WARNING: Using default value of `%d' instead\n",
+                    mv2_psm_ep_open_retry_secs);
+        }
+    }
+
+    int attempts = 0;
+    do {
+        if (err != PSM_OK) {
+            PRINT_ERROR("MV2_WARNING: Failed to open an end-point: %s,"
+                        " retry attempt %d of %d in %d seconds\n",
+                        psm_error_get_string(err), attempts,
+                        mv2_psm_ep_open_retry_count, mv2_psm_ep_open_retry_secs);
+            sleep(mv2_psm_ep_open_retry_secs);
+        }
+        err = psm_ep_open(psm_uuid, &psm_opts, &psmdev_cw.ep, &myid);
+        attempts++;
+    } while ((err != PSM_OK) && (attempts <= mv2_psm_ep_open_retry_count));
+    if (err != PSM_OK) {
+        fprintf(stderr, "psm_ep_open failed with error %s\n",
+                psm_error_get_string(err));
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psmepopen");
     }
     epidlist = (psm_epid_t *)MPIU_Malloc(pg_size * sizeof(psm_epid_t));

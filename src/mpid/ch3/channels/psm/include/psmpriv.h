@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -143,7 +143,7 @@ int psm_try_complete(MPID_Request *req);
 int psm_progress_wait(int blocking);
 int psm_map_error(psm_error_t psmerr);
 MPID_Request *psm_create_req();
-void psm_update_mpistatus(MPI_Status *, psm_mq_status_t);
+void psm_update_mpistatus(MPI_Status *, psm_mq_status_t, int);
 psm_error_t psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m, 
                   int dest, void *buf, MPIDI_msg_sz_t buflen);
 int psm_1sided_input(MPID_Request *req, int inlen);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1325,7 +1325,7 @@ void cuda_cleanup()
         cudaipc_finalize();
     }
 
-    if (rdma_cuda_ipc && rdma_cuda_enable_ipc_cache && !cudaipc_stage_buffered) {
+    if (rdma_cuda_ipc && cudaipc_cache_list != NULL) {
         int i;
         for (i = 0; i < cudaipc_num_local_procs; i++) {
             cudaipc_flush_regcache(i, num_cudaipc_cache_entries[i]);

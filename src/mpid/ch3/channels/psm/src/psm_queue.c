@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -67,7 +67,7 @@ void psm_complete_req(MPID_Request *req, psm_mq_status_t psmstat)
 
     assert(psmstat.context == req);
     if((&req->status) != MPI_STATUS_IGNORE) {
-        psm_update_mpistatus(&(req->status), psmstat);
+        psm_update_mpistatus(&(req->status), psmstat, 1);
     }
     MPID_cc_decr(req->cc_ptr, &count);
 //    MPIU_Object_release_ref(req, &inuse);
@@ -312,7 +312,7 @@ psm_error_t psm_probe(int src, int tag, int context, MPI_Status *stat)
     if(psmerr == PSM_OK) {
         DBG("one psm probe completed\n");
         if(stat != MPI_STATUS_IGNORE) {
-            psm_update_mpistatus(stat, gblstatus);
+            psm_update_mpistatus(stat, gblstatus, 0);
         }
     }
 
@@ -342,8 +342,10 @@ void psm_pe_yield()
 #define FUNCNAME psm_update_mpistatus
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void psm_update_mpistatus(MPI_Status *stat, psm_mq_status_t psmst)
+void psm_update_mpistatus(MPI_Status *stat, psm_mq_status_t psmst, int append)
 {
+    int old_nbytes = 0;
+
     stat->MPI_TAG = (psmst.msg_tag >> SRC_RANK_BITS) & TAG_MASK;
     switch(psmst.error_code) {
         case PSM_OK:    
@@ -356,7 +358,11 @@ void psm_update_mpistatus(MPI_Status *stat, psm_mq_status_t psmst)
             break;
     }           
     stat->MPI_SOURCE = psmst.msg_tag & SRC_RANK_MASK;
-    MPIR_STATUS_SET_COUNT(*stat, psmst.nbytes);
+
+    if (append) {
+        old_nbytes = MPIR_STATUS_GET_COUNT(*stat);
+    }
+    MPIR_STATUS_SET_COUNT(*stat, psmst.nbytes + old_nbytes);
 }
 
 /* if PSM_DEBUG is enabled, we will dump some counters */

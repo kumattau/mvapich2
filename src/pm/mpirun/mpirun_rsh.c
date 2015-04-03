@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -51,6 +51,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <assert.h>
+#include <linux/limits.h>
 
 #include <src/db/text.h>
 
@@ -75,6 +76,7 @@ char *wd;                       /* working directory of current process */
 #define DEFAULT_FAST_SSH_THRESHOLD 800
 char mpirun_host[MAX_HOST_LEN + 1]; /* hostname of current process */
 char mpirun_hostip[MAX_HOST_LEN + 1]; /* ip address of current process */
+char mpirun_path[PATH_MAX] = { '\0' }; /* PATH of mpirun_rsh binary */
 
 /* xxx need to add checking for string overflow, do this more carefully ... */
 
@@ -1220,6 +1222,11 @@ int getpath(char *buf, int buf_len)
     pid = getpid();
     snprintf(&link[0], sizeof(link), "/proc/%i/exe", pid);
 
+    if (mpirun_path[0] != '\0') {
+        strcpy(buf, mpirun_path);
+        return strlen(mpirun_path);
+    }
+
     len = readlink(&link[0], buf, buf_len);
     if (len == -1) {
         buf[0] = 0;
@@ -1229,6 +1236,7 @@ int getpath(char *buf, int buf_len)
         while (len && buf[--len] != '/') ;
         if (buf[len] == '/')
             buf[len] = 0;
+        strcpy(mpirun_path, buf);
         return len;
     }
 }
@@ -1266,7 +1274,7 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
 {
     char *mpispawn_env, *tmp, *ld_library_path;
     char *name, *value;
-    int i, tmp_i;
+    int i, tmp_i, getpath_status;
     char pathbuf[PATH_MAX];
 
     if ((ld_library_path = getenv("LD_LIBRARY_PATH"))) {
@@ -1504,6 +1512,8 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
         goto allocation_error;
     }
 
+    getpath_status = (getpath(pathbuf, PATH_MAX) && file_exists(pathbuf));
+
     dbg("%d forks to be done, with env:=  %s\n", pglist->npgs, mpispawn_env);
 
     for (i = 0; i < pglist->npgs; i++) {
@@ -1735,7 +1745,7 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
                     nargv[arg_offset++] = SSH_ARG;
                 }
             }
-            if (getpath(pathbuf, PATH_MAX) && file_exists(pathbuf)) {
+            if (getpath_status) {
                 command = mkstr("cd %s; %s %s %s %s/mpispawn 0", wd, ENV_CMD, mpispawn_env, env, pathbuf);
             } else if (use_dirname) {
                 command = mkstr("cd %s; %s %s %s %s/mpispawn 0", wd, ENV_CMD, mpispawn_env, env, binary_dirname);
@@ -1816,7 +1826,7 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
 {
     char *mpispawn_env, *tmp, *ld_library_path;
     char *name, *value;
-    int j, i, n, tmp_i, numBytes = 0;
+    int j, i, n, tmp_i, numBytes = 0, getpath_status;
     FILE *host_list_file_fp;
     char pathbuf[PATH_MAX];
     char *host_list = NULL;
@@ -2090,6 +2100,8 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
 
     i = 0;                      /* Spawn root mpispawn */
     {
+        getpath_status = (getpath(pathbuf, PATH_MAX) && file_exists(pathbuf));
+
         if (!(pglist->data[i].pid = fork())) {
             /*
              * We're no longer the mpirun_rsh process but a child process
@@ -2207,7 +2219,7 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
                 goto allocation_error;
             }
 
-            if (getpath(pathbuf, PATH_MAX) && file_exists(pathbuf)) {
+            if (getpath_status) {
                 command = mkstr("cd %s; %s %s %s %s/mpispawn %d", wd, ENV_CMD, mpispawn_env, env, pathbuf, pglist->npgs);
             } else if (use_dirname) {
                 command = mkstr("cd %s; %s %s %s %s/mpispawn %d", wd, ENV_CMD, mpispawn_env, env, binary_dirname, pglist->npgs);

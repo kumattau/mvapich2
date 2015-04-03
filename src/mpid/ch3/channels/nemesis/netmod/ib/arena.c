@@ -1,7 +1,7 @@
 
 /* Malloc implementation for multiple threads without lock contention. */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -264,11 +264,9 @@ ptmalloc_unlock_all2 __MALLOC_P((void))
 
   if(__malloc_initialized < 1)
     return;
-#if defined _LIBC || defined MALLOC_HOOKS
   tsd_setspecific(arena_key, save_arena);
   __malloc_hook = save_malloc_hook;
   __free_hook = save_free_hook;
-#endif
   for(ar_ptr = &main_arena;;) {
     (void)mutex_init(&ar_ptr->mutex);
     ar_ptr = ar_ptr->next;

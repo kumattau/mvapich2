@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -47,8 +47,9 @@
 #define MV2_HCA_MLX_CX_DDR          5
 #define MV2_HCA_MLX_CX_QDR          6
 #define MV2_HCA_MLX_CX_FDR          7
-#define MV2_HCA_MLX_PCI_X           8
-#define MV2_HCA_MLX_CX_CONNIB       9
+#define MV2_HCA_MLX_CX_EDR          8
+#define MV2_HCA_MLX_PCI_X           9
+#define MV2_HCA_MLX_CX_CONNIB       10
 #define MV2_HCA_MLX_END             1000
 
 /* Qlogic Cards */

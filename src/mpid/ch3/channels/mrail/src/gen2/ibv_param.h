@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -110,6 +110,7 @@ extern int rdma_large_msg_rail_sharing_threshold;
 extern int mv2_on_demand_ud_info_exchange;
 extern int mv2_homogeneous_cluster;
 extern int mv2_show_env_info;
+extern int mv2_use_pmi_ibarrier;
 extern int mv2_show_runlog_level;
 /* HSAM Definitions */
 
@@ -140,6 +141,7 @@ extern int max_rdma_connect_attempts;
 extern int rdma_cm_connect_retry_interval;
 extern int rdma_num_rails_per_hca;
 extern int rdma_process_binding_rail_offset;
+extern int g_atomics_support;
 
 /* Use of LIMIC of RMA Communication */
 extern int limic_put_threshold;
@@ -269,7 +271,9 @@ extern int rdma_default_async_thread_stack_size;
 #ifndef MAX_NUM_PORTS
 #define MAX_NUM_PORTS                   (2)
 #endif
-#define MAX_NUM_QP_PER_PORT             (4)
+#ifndef MAX_NUM_QP_PER_PORT
+#define MAX_NUM_QP_PER_PORT             (2)
+#endif
 #define RDMA_QOS_MAX_NUM_SLS	        (15)
 #define RDMA_QOS_DEFAULT_NUM_SLS	    (8)
 #define RDMA_DEFAULT_NUM_SA_QUERY_RETRIES   (20)
@@ -633,6 +637,7 @@ typedef enum mv2_env_param_id {
     /* debug */
     MV2_DEBUG_CORESIZE,
     MV2_DEBUG_SHOW_BACKTRACE,
+    MV2_ABORT_SLEEP_SECONDS,
     MV2_SHOW_ENV_INFO,
     MV2_SYSREPORT,
     TOTALVIEW,

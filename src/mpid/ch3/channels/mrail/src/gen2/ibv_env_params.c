@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1824,6 +1824,14 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_TYPE_INVALID,
     MV2_PARAM_GROUP_debugger,
     "MV2_DEBUG_SHOW_BACKTRACE",
+    NULL,
+    0,
+    NULL    },
+{
+    MV2_ABORT_SLEEP_SECONDS,
+    MV2_PARAM_TYPE_INVALID,
+    MV2_PARAM_GROUP_debugger,
+    "MV2_ABORT_SLEEP_SECONDS",
     NULL,
     0,
     NULL    },

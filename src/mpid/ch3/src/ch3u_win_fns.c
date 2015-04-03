@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -178,7 +178,8 @@ int MPIDI_CH3U_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *i
     mpi_errno = MPIDI_CH3U_Win_create_gather(base, size, disp_unit, info, comm_ptr, win_ptr);
     if (mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
 
-    if (MPIDI_CH3U_Win_fns.detect_shm != NULL) {
+    if ((*win_ptr)->info_args.alloc_shm == TRUE
+            && MPIDI_CH3U_Win_fns.detect_shm != NULL) {
         /* Detect if shared buffers are specified for the processes in the
          * current node. If so, enable shm RMA.*/
         mpi_errno = MPIDI_CH3U_Win_fns.detect_shm(win_ptr);

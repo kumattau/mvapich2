@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1293,7 +1293,7 @@ static inline int MPIDI_CH3I_Wait_for_pt_ops_finish(MPID_Win *win_ptr)
     }
 
  fn_exit:
-    MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WAIT_FOR_PT_OPS_FINISH);
+    MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WAIT_FOR_PT_OPS_FINISH);
     return mpi_errno;
  fn_fail:
     goto fn_exit;

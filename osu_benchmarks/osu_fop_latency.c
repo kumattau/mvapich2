@@ -1,6 +1,6 @@
 #define BENCHMARK "OSU MPI_Fetch_and_op latency Test"
 /*
- * Copyright (C) 2003-2014 the Network-Based Computing Laboratory
+ * Copyright (C) 2003-2015 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University.            
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)

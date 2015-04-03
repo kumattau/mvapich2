@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -624,6 +624,62 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
         }
         MPIU_Free(table_ptrs);
         return 0;
+      }
+      else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+			     MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24, MV2_HCA_MLX_CX_FDR) && !heterogeneity) {
+	/*Comet Table*/
+	mv2_scatter_indexed_num_ppn_conf = 1;
+	mv2_scatter_indexed_thresholds_table
+	  = MPIU_Malloc(sizeof(mv2_scatter_indexed_tuning_table *)
+			* mv2_scatter_indexed_num_ppn_conf);
+	table_ptrs = MPIU_Malloc(sizeof(mv2_scatter_indexed_tuning_table *)
+				 * mv2_scatter_indexed_num_ppn_conf);
+	mv2_size_scatter_indexed_tuning_table = MPIU_Malloc(sizeof(int) *
+							  mv2_scatter_indexed_num_ppn_conf);
+	mv2_scatter_indexed_table_ppn_conf = MPIU_Malloc(mv2_scatter_indexed_num_ppn_conf * sizeof(int));
+      
+	mv2_scatter_indexed_table_ppn_conf[0] = 24;
+	mv2_scatter_indexed_tuning_table mv2_tmp_scatter_indexed_thresholds_table_24ppn[] =
+	    GEN2__INTEL_XEON_E5_2680_24__MLX_CX_FDR__24PPN;
+	/*
+	mv2_scatter_indexed_tuning_table mv2_tmp_cma_scatter_indexed_thresholds_table_24ppn[] =
+	    GEN2_CMA__INTEL_XEON_E5_2680_24__MLX_CX_FDR__24PPN;
+#if defined(_SMP_CMA_)
+	if (g_smp_use_cma) {
+	  mv2_size_scatter_indexed_tuning_table[0] = 6;
+	  table_ptrs[0] = mv2_tmp_cma_scatter_indexed_thresholds_table_24ppn;
+	}
+	else {
+	  mv2_size_scatter_indexed_tuning_table[0] = 6;
+	  table_ptrs[0] = mv2_tmp_scatter_indexed_thresholds_table_24ppn;
+	}
+#else
+	*/
+	mv2_size_scatter_indexed_tuning_table[0] = 6;
+	table_ptrs[0] = mv2_tmp_scatter_indexed_thresholds_table_24ppn;
+	/*
+#endif
+	*/
+	
+	agg_table_sum = 0;
+	for (i = 0; i < mv2_scatter_indexed_num_ppn_conf; i++) {
+	  agg_table_sum += mv2_size_scatter_indexed_tuning_table[i];
+	}
+	mv2_scatter_indexed_thresholds_table[0] =
+	  MPIU_Malloc(agg_table_sum * sizeof (mv2_scatter_indexed_tuning_table));
+	MPIU_Memcpy(mv2_scatter_indexed_thresholds_table[0], table_ptrs[0],
+		    (sizeof(mv2_scatter_indexed_tuning_table)
+		     * mv2_size_scatter_indexed_tuning_table[0]));
+	for (i = 1; i < mv2_scatter_indexed_num_ppn_conf; i++) {
+	  mv2_scatter_indexed_thresholds_table[i] =
+	    mv2_scatter_indexed_thresholds_table[i - 1]
+	    + mv2_size_scatter_indexed_tuning_table[i - 1];
+	  MPIU_Memcpy(mv2_scatter_indexed_thresholds_table[i], table_ptrs[i],
+		      (sizeof(mv2_scatter_indexed_tuning_table)
+		       * mv2_size_scatter_indexed_tuning_table[i]));
+	}
+	MPIU_Free(table_ptrs);
+	return 0;
       }
       else {
 	/*Stampede Table*/

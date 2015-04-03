@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -271,7 +271,8 @@ extern int mv2_bcast_scatter_ring_overlap;
 extern int mv2_bcast_scatter_ring_overlap_msg_upperbound;
 extern int mv2_bcast_scatter_ring_overlap_cores_lowerbound;
 extern int mv2_enable_zcpy_bcast; 
-extern int mv2_enable_zcpy_reduce; 
+extern int mv2_enable_zcpy_reduce;
+extern int mv2_gatherv_ssend_threshold;
 
 /* Used inside reduce_osu.c */
 extern int mv2_enable_shmem_reduce;
@@ -450,6 +451,9 @@ typedef struct shm_info_t {
     MPI_Request   end_request; 
     int half_full_complete; 
     struct ibv_mr *mem_handle[MAX_NUM_HCAS]; /* mem hndl for entire region */
+#ifdef CKPT
+    struct shm_info_t *next;
+#endif /* CKPT */
 #endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 } shmem_info_t;
 
@@ -485,6 +489,8 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                          int expected_send_count, int dst,
                          int knomial_degree,
                          MPID_Comm * comm_ptr, int *errflag);
+extern inline int mv2_flush_zcpy_mid_request(shmem_info_t * shmem);
+extern inline int mv2_flush_zcpy_end_request(shmem_info_t * shmem);
 #endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_shmem_coll_calls);

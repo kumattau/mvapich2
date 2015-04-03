@@ -17,6 +17,8 @@ for pm_name in $pm_names ; do
     fi
 done
 
+AS_IF([test "X$build_slurm" = "Xyes"],
+    [AC_DEFINE([SLURM_PMI_CLIENT], [1], [Define if using slurm pmi client])])
 AM_CONDITIONAL([BUILD_PM_SLURM],[test "X$build_slurm" = "Xyes"])
 AM_CONDITIONAL([BUILD_PM_OTHER],[test "X$build_pm_other" = "Xyes"])
 
@@ -39,6 +41,7 @@ if test "x$with_pmi" = "xsimple" -o "x$with_pmi" = "xpmi1"; then
              [PAC_PREPEND_FLAG([-lpmi],[LIBS])
               PAC_PREPEND_FLAG([-lpmi], [WRAPPER_LIBS])],
              [AC_MSG_ERROR([could not find the slurm libpmi.  Configure aborted])])
+    AC_CHECK_FUNCS([PMI_Ibarrier PMI_Wait])
 elif test "x$with_pmi" = "xpmi2/simple" -o "x$with_pmi" = "xpmi2"; then
     USE_PMI2_API=yes
     AC_CHECK_HEADER([slurm/pmi2.h], [], [AC_MSG_ERROR([could not find slurm/pmi2.h.  Configure aborted])])
@@ -46,6 +49,7 @@ elif test "x$with_pmi" = "xpmi2/simple" -o "x$with_pmi" = "xpmi2"; then
              [PAC_PREPEND_FLAG([-lpmi2],[LIBS])
               PAC_PREPEND_FLAG([-lpmi2], [WRAPPER_LIBS])],
              [AC_MSG_ERROR([could not find the slurm libpmi2.  Configure aborted])])
+    AC_CHECK_FUNCS([PMI2_KVS_Ifence PMI2_KVS_Wait])
 else
     AC_MSG_ERROR([Selected PMI ($with_pmi) is not compatible with slurm])
 fi

@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -173,6 +173,9 @@ struct shared_mem {
 
     /* the receives queues */
     char *pool;
+#ifdef _SMP_CMA_
+    volatile char * volatile * cma_test_buffer;
+#endif
 };
 
 /* structure for a buffer in the sending buffer pool */

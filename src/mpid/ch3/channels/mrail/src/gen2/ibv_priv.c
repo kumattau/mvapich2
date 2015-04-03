@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2014, The Ohio State University. All rights
+/* Copyright (c) 2001-2015, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,11 +25,21 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
+extern int g_atomics_support;
+
 struct ibv_mr * register_memory(void * buf, size_t len, int hca_num)
 {
-    struct ibv_mr * mr = ibv_reg_mr(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_num], buf, len,
+    struct ibv_mr * mr;
+
+    if (g_atomics_support) {
+        mr = ibv_reg_mr(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_num], buf, len,
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
             IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
+    } else {
+        mr = ibv_reg_mr(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_num], buf, len,
+            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+            IBV_ACCESS_REMOTE_READ);
+    }
     DEBUG_PRINT("register return mr %p, buf %p, len %d\n", mr, buf, len);
     return mr;
 }
