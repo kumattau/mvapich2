@@ -17,10 +17,12 @@
 #include <dirent.h>
 
 extern int ib_socket_bind;
+extern unsigned int mv2_enable_affinity;
+#define MV2_MAX_NUM_SOCKETS_PER_NODE    (16)
 
 typedef struct {
     int num_hca;
-    int closest[16];
+    int closest[MV2_MAX_NUM_SOCKETS_PER_NODE];
 } tab_socket_t;
 
 typedef enum {
@@ -49,8 +51,10 @@ typedef struct {
 extern policy_type_t policy;
 extern level_type_t level;
 extern hwloc_topology_t topology;
+extern int mv2_user_defined_mapping;
 extern unsigned int mv2_enable_affinity;
 extern unsigned int mv2_enable_leastload;
+extern unsigned int mv2_hca_aware_process_mapping;
 
 extern int s_cpu_mapping_line_max;
 extern char *s_cpu_mapping;

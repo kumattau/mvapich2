@@ -897,7 +897,7 @@ int MPID_Get_max_node_id(MPID_Comm *comm, MPID_Node_id_t *max_id_p)
     return MPI_SUCCESS;
 }
 
-#if !defined(USE_PMI2_API)
+#if !(defined(USE_PMI2_API) || defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM))
 /* this function is not used in pmi2 */
 static int publish_node_id(MPIDI_PG_t *pg, int our_pg_rank)
 {
@@ -945,8 +945,7 @@ fn_exit:
 fn_fail:
     goto fn_exit;
 }
-#endif
-
+#endif /* #if !(defined(USE_PMI2_API) || defined(CHANNEL_MRAIL) || defi... */
 
 #define parse_error() MPIU_ERR_INTERNALANDJUMP(mpi_errno, "parse error")
 /* advance _c until we find a non whitespace character */
@@ -1501,14 +1500,17 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 {
     int mpi_errno = MPI_SUCCESS;
     int pmi_errno;
-    int i, j;
+    int i;
     char *key;
     char *value;
     int key_max_sz;
     int val_max_sz;
     char *kvs_name;
+#if !defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM)
+    int j;
     char **node_names;
     char *node_name_buf;
+#endif
     int no_local = 0;
     int odd_even_cliques = 0;
     int pmi_version = MPIU_DEFAULT_PMI_VERSION, pmi_subversion = MPIU_DEFAULT_PMI_SUBVERSION;

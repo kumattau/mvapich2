@@ -716,6 +716,8 @@ int MPIR_Reduce_shmem_MV2(const void *sendbuf,
     MPID_Op *op_ptr;
     char *shmem_buf = NULL;
     void *local_buf = NULL;
+    char *tmp_buf = NULL;
+    int buf_allocated = 0;
     MPI_Aint true_lb, true_extent, extent;
 #ifdef HAVE_CXX_BINDING
     int is_cxx_uop = 0;
@@ -730,6 +732,12 @@ int MPIR_Reduce_shmem_MV2(const void *sendbuf,
     shmem_comm_rank = comm_ptr->dev.ch.shmem_comm_rank;
 
     if (sendbuf != MPI_IN_PLACE && local_rank == 0) {
+	/* if local_rank == 0 and not root then the recvbuf may not be valid*/
+	if (sendbuf == recvbuf || recvbuf == NULL) {
+	    tmp_buf = recvbuf;
+	    recvbuf = MPIU_Malloc(count * MPIR_MAX(extent, true_extent));
+	    buf_allocated = 1;
+	}
         mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf, count,
                                    datatype);
         if (mpi_errno) {
@@ -795,6 +803,10 @@ int MPIR_Reduce_shmem_MV2(const void *sendbuf,
                                                 shmem_comm_rank);
     }
 
+    if (buf_allocated) {
+	MPIU_Free(recvbuf);
+	recvbuf = tmp_buf;
+    }
   fn_exit:
     if (mpi_errno_ret)
         mpi_errno = mpi_errno_ret;
@@ -1334,8 +1346,20 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
                      } 
                  } 
             } else {
-                in_buf  = (void *)sendbuf; 
-                out_buf = NULL;
+               if (my_rank != root) {
+                   in_buf  = (void *)sendbuf;
+                   out_buf = NULL;
+               }
+               else {
+                   if (sendbuf !=  MPI_IN_PLACE) {
+                       in_buf  = (void *)sendbuf;
+                       out_buf = (void *)recvbuf;
+                   }
+                   else {
+                       in_buf  = (void *)recvbuf;
+                       out_buf = (void *)recvbuf;
+                   }
+               }
             }
 
 	    if (count * (MPIR_MAX(extent, true_extent)) < SHMEM_COLL_BLOCK_SIZE) {

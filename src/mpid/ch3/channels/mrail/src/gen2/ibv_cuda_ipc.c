@@ -453,14 +453,19 @@ void cudaipc_init_dynamic (MPIDI_VC_t *vc)
     /*check if peer device is IPC accessible*/
     my_device_id = cudaipc_shared_device_id[cudaipc_my_local_id];
     peer_device_id = cudaipc_shared_device_id[vc->smp.local_rank];   
-
-    if (my_device_id == peer_device_id) {
-        vc->smp.can_access_peer = CUDA_IPC_ENABLED;
-    } else {
-        CUDA_CHECK(cudaDeviceCanAccessPeer(&vc->smp.can_access_peer, 
+    if(rdma_enable_ipc_share_gpu){    
+        if (my_device_id == peer_device_id) {
+            vc->smp.can_access_peer = CUDA_IPC_ENABLED;
+        } else {
+            CUDA_CHECK(cudaDeviceCanAccessPeer(&vc->smp.can_access_peer, 
                            my_device_id, peer_device_id));
-        vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
-    }
+            vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
+        }
+    }else{
+        CUDA_CHECK(cudaDeviceCanAccessPeer(&vc->smp.can_access_peer,
+                           my_device_id, peer_device_id));
+            vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
+    }    
     
     if (vc->smp.can_access_peer == CUDA_IPC_ENABLED && cudaipc_stage_buffered) {
         /*compute the local and peer indices*/

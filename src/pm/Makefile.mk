@@ -36,6 +36,10 @@ include $(top_srcdir)/src/pm/remshell/Makefile.mk
 ## other.
 
 # has its own full automake setup, not Makefile.mk
+src_pm_mpirun_src_hostfile_libhostfile_a_YFLAGS = -d -p hostfile_yy
+src_pm_mpirun_src_slurm_libnodelist_a_YFLAGS = -d -p nodelist_yy
+src_pm_mpirun_src_slurm_libtasklist_a_YFLAGS = -d -p tasklist_yy
+
 if BUILD_PM_MPIRUN
 include $(top_srcdir)/src/pm/mpirun/Makefile.mk
 endif BUILD_PM_MPIRUN

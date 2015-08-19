@@ -1808,7 +1808,8 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
                             rail_select_t rail_select, int target)
 {
      int mpi_errno = MPI_SUCCESS;
-     int i, rail, index, count, bytes_per_rail, posting_length;
+     int i, rail, index;
+     MPIDI_msg_sz_t posting_length, bytes_per_rail, count;
      void *local_address, *remote_address;
      vbuf *v;
      MPIDI_VC_t *save_vc = vc_ptr;
@@ -1988,7 +1989,7 @@ fn_fail:
 int MRAILI_Handle_one_sided_completions(vbuf * v)                            
 {
     dreg_entry      	          *dreg_tmp;
-    int                           size;
+    MPIDI_msg_sz_t                size;
     int                           mpi_errno = MPI_SUCCESS;
     void                          *target_addr, *origin_addr;
     MPID_Win                      *list_win_ptr;

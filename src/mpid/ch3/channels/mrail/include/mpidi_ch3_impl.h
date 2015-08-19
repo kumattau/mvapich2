@@ -356,6 +356,9 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc);
  * from a VC */
 int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc);
 void MPIDI_CH3I_Cleanup_after_connection(MPIDI_VC_t *vc);
+int MPIDI_CH3I_MRAIL_CM_Alloc(MPIDI_PG_t * pg);
+int MPIDI_CH3I_MRAIL_CM_Dealloc(MPIDI_PG_t * pg);
+
 /*flag to check if cq_poll is success in the progressing loop*/
 int cq_poll_completion;
 
@@ -486,7 +489,7 @@ enum {
 
 /* management informations */
 struct smpi_var {
-    void *mmap_ptr;
+    volatile void *mmap_ptr;
     void *send_buf_pool_ptr;
     unsigned int my_local_id;
     unsigned int num_local_nodes;

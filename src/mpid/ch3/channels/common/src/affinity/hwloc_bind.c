@@ -41,6 +41,7 @@
 
 unsigned int mv2_enable_affinity = 1;
 unsigned int mv2_enable_leastload = 0;
+unsigned int mv2_hca_aware_process_mapping = 1;
 
 typedef enum {
     CPU_FAMILY_NONE = 0,
@@ -118,8 +119,8 @@ int get_ib_socket(struct ibv_device * ibdev)
      * The hwloc object "string" will have the form "Socket#n" so we are
      * looking at the 8th char to detect which socket is.
      */
-    hwloc_obj_snprintf(string, sizeof(string), topology, osdev, "#", 1);
-    return atoi(&string[7]);
+    hwloc_obj_type_snprintf(string, sizeof(string), osdev, 1);
+    return osdev->os_index;
 
 free_and_return:
     hwloc_bitmap_free(set);
@@ -1683,7 +1684,130 @@ int get_socket_id (int ib_socket, int cpu_socket, int num_sockets,
     return rdma_local_id % num_sockets;
 }
 
-extern int mv2_user_defined_mapping;
+#undef FUNCNAME
+#define FUNCNAME mv2_get_cpu_core_closest_to_hca
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int mv2_get_cpu_core_closest_to_hca(int my_local_id, int total_num_cores,
+                                    int num_sockets, int depth_sockets)
+{
+    int i = 0, k = 0;
+    int ib_hca_selected = 0;
+    int selected_socket = 0;
+    int cores_per_socket = 0;
+    tab_socket_t *tab_socket = NULL;
+    int linelen = strlen(custom_cpu_mapping);
+
+    if (linelen < custom_cpu_mapping_line_max) {
+        custom_cpu_mapping_line_max = linelen;
+    }
+
+    cores_per_socket = total_num_cores / num_sockets;
+
+    /*
+     * Make ib_hca_selected global or make this section a function
+     */
+    if (FIXED_MAPPING == rdma_rail_sharing_policy) {
+        ib_hca_selected = rdma_process_binding_rail_offset /
+                            rdma_num_rails_per_hca;
+    } else {
+        ib_hca_selected = 0;
+    }
+
+    tab_socket = (tab_socket_t*)MPIU_Malloc(num_sockets * sizeof(tab_socket_t));
+    if (NULL == tab_socket) {
+        fprintf(stderr, "could not allocate the socket table\n");
+        return -1;
+    }
+
+    for (i = 0; i < num_sockets; i++) {
+        tab_socket[i].num_hca = 0;
+
+        for(k = 0; k < num_sockets; k++) {
+            tab_socket[i].closest[k] = -1;
+        }
+    }
+
+    for (i = 0; i < rdma_num_hcas; i++) {
+        struct ibv_device * ibdev = mv2_MPIDI_CH3I_RDMA_Process.ib_dev[i];
+        int socket_id = get_ib_socket(ibdev);
+        /*
+         * Make this information available globally
+         */
+        if (i == ib_hca_selected) {
+            ib_socket_bind = socket_id;
+        }
+        tab_socket[socket_id].num_hca++;
+    }
+
+    hwloc_obj_t obj_src;
+    hwloc_obj_t objs[num_sockets];
+    char string[20];
+
+    for (i = 0; i < num_sockets; i++) {
+        obj_src = hwloc_get_obj_by_type(topology, HWLOC_OBJ_SOCKET,i);
+        hwloc_get_closest_objs(topology, obj_src, (hwloc_obj_t *)&objs,
+                                num_sockets - 1);
+
+        for (k = 0; k < num_sockets - 1; k++) {
+            hwloc_obj_type_snprintf(string, sizeof(string),
+                                objs[k], 1);
+            tab_socket[i].closest[k] = objs[k]->os_index;
+        }
+    }
+
+    selected_socket = get_socket_id(ib_socket_bind, cores_per_socket,
+                                    num_sockets, tab_socket);
+    MPIU_Free(tab_socket);
+
+    return selected_socket;
+}
+
+#undef FUNCNAME
+#define FUNCNAME mv2_get_assigned_cpu_core
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int mv2_get_assigned_cpu_core(int my_local_id, char *cpu_mapping, int max_cpu_map_len, char *tp_str)
+{
+    int i = 0, j = 0;
+    char *cp = NULL;
+    char *tp = cpu_mapping;
+    long N_CPUs_online = sysconf(_SC_NPROCESSORS_ONLN);
+
+    while (*tp != '\0') {
+        i = 0;
+        cp = tp;
+
+        while (*cp != '\0' && *cp != ':' && i < max_cpu_map_len) {
+            ++cp;
+            ++i;
+        }
+
+        if (j == my_local_id) {
+            strncpy(tp_str, tp, i);
+            if (atoi(tp) < 0 || atoi(tp) >= N_CPUs_online) {
+                fprintf(stderr,
+                        "Warning! : Core id %d does not exist on this architecture! \n",
+                        atoi(tp));
+                fprintf(stderr, "CPU Affinity is undefined \n");
+                mv2_enable_affinity = 0;
+                return -1;
+            }
+            tp_str[i] = '\0';
+            return 0;
+        }
+
+        if (*cp == '\0') {
+            break;
+        }
+
+        tp = cp;
+        ++tp;
+        ++j;
+    }
+
+    return -1;
+}
 
 #undef FUNCNAME
 #define FUNCNAME smpi_setaffinity
@@ -1691,11 +1815,8 @@ extern int mv2_user_defined_mapping;
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int smpi_setaffinity(int my_local_id)
 {
-    int cpu_socket;
-    int selected_ib;
-    int selected_socket;
+    int selected_socket = 0;
     int mpi_errno = MPI_SUCCESS;
-    tab_socket_t * tab_socket;
 
     hwloc_cpuset_t cpuset;
     MPIDI_STATE_DECL(MPID_STATE_SMPI_SETAFFINITY);
@@ -1708,122 +1829,99 @@ int smpi_setaffinity(int my_local_id)
     }
 
     if (mv2_enable_affinity > 0) {
+        long N_CPUs_online = sysconf(_SC_NPROCESSORS_ONLN);
+
+        if (N_CPUs_online < 1) {
+            MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+                                      MPI_ERR_OTHER,
+                                      "**fail", "%s: %s", "sysconf",
+                                      strerror(errno));
+        }
+
         hwloc_topology_load(topology);
         cpuset = hwloc_bitmap_alloc();
-        if (s_cpu_mapping) {
-            /* If the user has specified how to map the processes,
-             * use it */
-            char *tp = s_cpu_mapping;
-            char *cp = NULL;
-            int j = 0;
-            int i;
-            char tp_str[s_cpu_mapping_line_max + 1];
-            long N_CPUs_online = sysconf(_SC_NPROCESSORS_ONLN);
 
-            if (N_CPUs_online < 1) {
-                MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
-                                          MPI_ERR_OTHER,
-                                          "**fail", "%s: %s", "sysconf",
-                                          strerror(errno));
+        /* Call the cpu_mapping function to find out about how the
+         * processors are numbered on the different sockets.
+         * The hardware information gathered from this function
+         * is required to determine the best set of intra-node thresholds.
+         * However, since the user has specified a mapping pattern,
+         * we are not going to use any of our proposed binding patterns
+         */
+        mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online, topology);
+        if (mpi_errno != MPI_SUCCESS) {
+            /* In case, we get an error from the hwloc mapping function */
+            mpi_errno = get_cpu_mapping(N_CPUs_online);
+        }
+
+        if (s_cpu_mapping) {
+            /* If the user has specified how to map the processes, use it */
+            char tp_str[s_cpu_mapping_line_max + 1];
+
+            mpi_errno = mv2_get_assigned_cpu_core(my_local_id, s_cpu_mapping,
+                                                    s_cpu_mapping_line_max, tp_str);
+            if (mpi_errno != 0) {
+                fprintf(stderr, "Error parsing CPU mapping string\n");
+                mv2_enable_affinity = 0;
+                MPIU_Free(s_cpu_mapping);
+                s_cpu_mapping = NULL;
+                goto fn_fail;
             }
 
-            /* Call the cpu_mapping function to find out about how the
-             * processors are numbered on the different sockets.
-             * The hardware information gathered from this function
-             * is required to determine the best set of intra-node thresholds.
-             * However, since the user has specified a mapping pattern,
-             * we are not going to use any of our proposed binding patterns
-             */
-
-            mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online, topology);
-
-            while (*tp != '\0') {
-                i = 0;
-                cp = tp;
-
-                while (*cp != '\0' && *cp != ':' && i < s_cpu_mapping_line_max) {
-                    ++cp;
-                    ++i;
-                }
-
-                strncpy(tp_str, tp, i);
-                if (atoi(tp) < 0 || atoi(tp) >= N_CPUs_online) {
-                    fprintf(stderr,
-                            "Warning! : Core id %d does not exist on this architecture! \n",
-                            atoi(tp));
-                    fprintf(stderr, "CPU Affinity is undefined \n");
-                    mv2_enable_affinity = 0;
-                    MPIU_Free(s_cpu_mapping);
-                    goto fn_fail;
-                }
-                tp_str[i] = '\0';
-
-                if (j == my_local_id) {
-                    // parsing of the string
-                    char *token = tp_str;
-                    int cpunum = 0;
-                    while (*token != '\0') {
-                        if (isdigit(*token)) {
-                            cpunum = first_num_from_str(&token);
-                            if (cpunum >= N_CPUs_online) {
-                                fprintf(stderr,
-                                        "Warning! : Core id %d does not exist on this architecture! \n",
-                                        cpunum);
-                                fprintf(stderr, "CPU Affinity is undefined \n");
-                                mv2_enable_affinity = 0;
-                                MPIU_Free(s_cpu_mapping);
-                                goto fn_fail;
-                            }
-                            hwloc_bitmap_set(cpuset, cpunum);
-                        } else if (*token == ',') {
-                            token++;
-                        } else if (*token == '-') {
-                            token++;
-                            if (!isdigit(*token)) {
-                                fprintf(stderr,
-                                        "Warning! : Core id %c does not exist on this architecture! \n",
-                                        *token);
-                                fprintf(stderr, "CPU Affinity is undefined \n");
-                                mv2_enable_affinity = 0;
-                                MPIU_Free(s_cpu_mapping);
-                                goto fn_fail;
-                            } else {
-                                int cpuend = first_num_from_str(&token);
-                                if (cpuend >= N_CPUs_online || cpuend < cpunum) {
-                                    fprintf(stderr,
-                                            "Warning! : Core id %d does not exist on this architecture! \n",
-                                            cpuend);
-                                    fprintf(stderr, "CPU Affinity is undefined \n");
-                                    mv2_enable_affinity = 0;
-                                    MPIU_Free(s_cpu_mapping);
-                                    goto fn_fail;
-                                }
-                                int cpuval;
-                                for (cpuval = cpunum + 1; cpuval <= cpuend; cpuval++)
-                                    hwloc_bitmap_set(cpuset, cpuval);
-                            }
-                        } else if (*token != '\0') {
+            // parsing of the string
+            char *token = tp_str;
+            int cpunum = 0;
+            while (*token != '\0') {
+                if (isdigit(*token)) {
+                    cpunum = first_num_from_str(&token);
+                    if (cpunum >= N_CPUs_online) {
+                        fprintf(stderr,
+                                "Warning! : Core id %d does not exist on this architecture! \n",
+                                cpunum);
+                        fprintf(stderr, "CPU Affinity is undefined \n");
+                        mv2_enable_affinity = 0;
+                        MPIU_Free(s_cpu_mapping);
+                        goto fn_fail;
+                    }
+                    hwloc_bitmap_set(cpuset, cpunum);
+                } else if (*token == ',') {
+                    token++;
+                } else if (*token == '-') {
+                    token++;
+                    if (!isdigit(*token)) {
+                        fprintf(stderr,
+                                "Warning! : Core id %c does not exist on this architecture! \n",
+                                *token);
+                        fprintf(stderr, "CPU Affinity is undefined \n");
+                        mv2_enable_affinity = 0;
+                        MPIU_Free(s_cpu_mapping);
+                        goto fn_fail;
+                    } else {
+                        int cpuend = first_num_from_str(&token);
+                        if (cpuend >= N_CPUs_online || cpuend < cpunum) {
                             fprintf(stderr,
-                                    "Warning! Error parsing the given CPU mask! \n");
+                                    "Warning! : Core id %d does not exist on this architecture! \n",
+                                    cpuend);
                             fprintf(stderr, "CPU Affinity is undefined \n");
                             mv2_enable_affinity = 0;
                             MPIU_Free(s_cpu_mapping);
                             goto fn_fail;
                         }
+                        int cpuval;
+                        for (cpuval = cpunum + 1; cpuval <= cpuend; cpuval++)
+                            hwloc_bitmap_set(cpuset, cpuval);
                     }
-                    // then attachement
-                    hwloc_set_cpubind(topology, cpuset, 0);
-                    break;
+                } else if (*token != '\0') {
+                    fprintf(stderr,
+                            "Warning! Error parsing the given CPU mask! \n");
+                    fprintf(stderr, "CPU Affinity is undefined \n");
+                    mv2_enable_affinity = 0;
+                    MPIU_Free(s_cpu_mapping);
+                    goto fn_fail;
                 }
-
-                if (*cp == '\0') {
-                    break;
-                }
-
-                tp = cp;
-                ++tp;
-                ++j;
             }
+            // then attachement
+            hwloc_set_cpubind(topology, cpuset, 0);
 
             MPIU_Free(s_cpu_mapping);
             s_cpu_mapping = NULL;
@@ -1832,24 +1930,6 @@ int smpi_setaffinity(int my_local_id)
              * use the data available in /proc/cpuinfo file to decide
              * on the best cpu mapping pattern
              */
-            long N_CPUs_online = sysconf(_SC_NPROCESSORS_ONLN);
-
-            if (N_CPUs_online < 1) {
-                MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
-                                          MPI_ERR_OTHER,
-                                          "**fail", "%s: %s", "sysconf", strerror(errno)
-);
-            }
-
-            /* Call the cpu_mapping function to find out about how the
-             * processors are numbered on the different sockets.
-             */
-            mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online, topology);
-            if (mpi_errno != MPI_SUCCESS) {
-                /* In case, we get an error from the hwloc mapping function */
-                mpi_errno = get_cpu_mapping(N_CPUs_online);
-            }
-
             if (mpi_errno != MPI_SUCCESS || custom_cpu_mapping == NULL) {
                 /* For some reason, we were not able to retrieve the cpu mapping
                  * information. We are falling back on the linear mapping.
@@ -1862,133 +1942,62 @@ int smpi_setaffinity(int my_local_id)
                  * We have all the information that we need. We will bind the
                  * processes to the cpu's now
                  */
-                int linelen = strlen(custom_cpu_mapping);
                 char tp_str[custom_cpu_mapping_line_max + 1];
-                char *tp = custom_cpu_mapping;
-                char *cp = NULL;
-                int i, j = 0, k;
 
+                mpi_errno = mv2_get_assigned_cpu_core(my_local_id, custom_cpu_mapping,
+                        custom_cpu_mapping_line_max, tp_str);
+                if (mpi_errno != 0) {
+                    fprintf(stderr, "Error parsing CPU mapping string\n");
+                    mv2_enable_affinity = 0;
+                    goto fn_fail;
+                }
+
+                int cores_per_socket = 0;
                 if (!SMP_ONLY && !mv2_user_defined_mapping) {
-                    int num_cpus = hwloc_get_nbobjs_by_type(topology,
-                            HWLOC_OBJ_PU);
-                    int depth_sockets = hwloc_get_type_depth(topology,
-                            HWLOC_OBJ_SOCKET);
-                    int num_sockets = hwloc_get_nbobjs_by_depth(topology,
-                            depth_sockets);
-
-                    if (linelen < custom_cpu_mapping_line_max) {
-                        custom_cpu_mapping_line_max = linelen;
+                    char *value = NULL;
+                    if ((value = getenv("MV2_HCA_AWARE_PROCESS_MAPPING")) != NULL) {
+                        mv2_hca_aware_process_mapping = !!atoi(value);
                     }
+                    if (likely(mv2_hca_aware_process_mapping)) {
+                        int num_cpus = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_PU);
+                        int depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
+                        int num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
 
-                    cpu_socket = num_cpus/num_sockets;
-
-                    /*
-                     * Make selected_ib global or make this section a function
-                     */
-                    if (FIXED_MAPPING == rdma_rail_sharing_policy) {
-                        selected_ib = rdma_process_binding_rail_offset /
-                            rdma_num_rails_per_hca;
-                    }
-
-                    else {
-                        selected_ib = 0;
-                    }
-
-                    tab_socket = (tab_socket_t*)MPIU_Malloc(num_sockets *
-                            sizeof(tab_socket_t));
-                    if (NULL == tab_socket) {
-                        fprintf(stderr, "could not allocate the socket "
-                                "table\n");
-                    }
-
-                    for (i = 0; i < num_sockets; i++) {
-                        tab_socket[i].num_hca = 0;
-
-                        for(k = 0; k < num_sockets; k++) {
-                            tab_socket[i].closest[k] = -1;
+                        selected_socket = mv2_get_cpu_core_closest_to_hca(my_local_id, num_cpus,
+                                num_sockets, depth_sockets);
+                        if (selected_socket < 0) {
+                            fprintf(stderr, "Error getting closest socket\n");
+                            mv2_enable_affinity = 0;
+                            goto fn_fail;
                         }
+                        cores_per_socket = num_cpus/num_sockets;
                     }
-
-                    for (i = 0; i < rdma_num_hcas; i++) {
-                        struct ibv_device * ibdev = mv2_MPIDI_CH3I_RDMA_Process.ib_dev[i];
-                        tab_socket[get_ib_socket(ibdev)].num_hca++;
-                    }
-
-                    hwloc_obj_t obj_src;
-                    hwloc_obj_t objs[num_sockets];
-                    char string[20];
-
-                    for (i = 0; i < num_sockets; i++) {
-                        obj_src = hwloc_get_obj_by_type(topology,
-                                HWLOC_OBJ_SOCKET,i);
-                        hwloc_get_closest_objs(topology, obj_src,
-                                (hwloc_obj_t *)&objs, num_sockets - 1);
-
-                        for (k = 0; k < num_sockets - 1; k++) {
-                            hwloc_obj_snprintf(string, sizeof(string),
-                                    topology, objs[k], "#", 1);
-                            tab_socket[i].closest[k] = atoi(&string[7]);
-                        }
-                    }
-
-                    /*
-                     * Make this information available globally
-                     */
-                    ib_socket_bind = get_ib_socket(
-                                mv2_MPIDI_CH3I_RDMA_Process.ib_dev[selected_ib]);
-                    i = ib_socket_bind;
-
-                    selected_socket = get_socket_id(ib_socket_bind, cpu_socket,
-                            num_sockets, tab_socket);
-                    MPIU_Free(tab_socket);
                 }
 
-                while (*tp != '\0') {
-                    i = 0;
-                    cp = tp;
-
-                    while (*cp != '\0' && *cp != ':' && i < custom_cpu_mapping_line_max) {
-                        ++cp;
-                        ++i;
+                if (level == LEVEL_CORE) {
+                    if (SMP_ONLY || mv2_user_defined_mapping || !mv2_hca_aware_process_mapping) {
+                        hwloc_bitmap_only(cpuset, atol(tp_str));
+                    } else {
+                        hwloc_bitmap_only(cpuset,
+                                (atol(tp_str) % cores_per_socket)
+                                + (selected_socket * cores_per_socket));
                     }
-
-                    strncpy(tp_str, tp, i);
-                    tp_str[i] = '\0';
-
-                    if (j == my_local_id) {
-                        if (level == LEVEL_CORE) {
-                            if (SMP_ONLY || mv2_user_defined_mapping) {
-                                hwloc_bitmap_only(cpuset, atol(tp_str));
-                            } else {
-                                hwloc_bitmap_only(cpuset,
-                                        (atol(tp_str) % cpu_socket)
-                                        + (selected_socket * cpu_socket));
-                            }
-                        } else {
-                            if (SMP_ONLY || mv2_user_defined_mapping) {
-                                hwloc_bitmap_from_ulong(cpuset, atol(tp_str));
-                            } else {
-                                hwloc_bitmap_from_ulong(cpuset,
-                                        (atol(tp_str) % cpu_socket)
-                                        + (selected_socket * cpu_socket));
-                            }
-                        }
-                        hwloc_set_cpubind(topology, cpuset, 0);
-                        break;
+                } else {
+                    if (SMP_ONLY || mv2_user_defined_mapping || !mv2_hca_aware_process_mapping) {
+                        hwloc_bitmap_from_ulong(cpuset, atol(tp_str));
+                    } else {
+                        hwloc_bitmap_from_ulong(cpuset,
+                                (atol(tp_str) % cores_per_socket)
+                                + (selected_socket * cores_per_socket));
                     }
-
-                    if (*cp == '\0') {
-                        break;
-                    }
-
-                    tp = cp;
-                    ++tp;
-                    ++j;
                 }
+                hwloc_set_cpubind(topology, cpuset, 0);
             }
 
             MPIU_Free(custom_cpu_mapping);
         }
+        /* Free cpuset */
+        hwloc_bitmap_free(cpuset);
     }
 
   fn_exit:

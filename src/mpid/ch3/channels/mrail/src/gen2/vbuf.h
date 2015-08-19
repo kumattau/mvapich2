@@ -127,10 +127,12 @@ typedef enum {
     (p->type ==  MPIDI_CH3_PKT_FLOW_CNTL_UPDATE || \
         p->type ==  MPIDI_CH3_PKT_NOOP)
 
+#ifdef _MCST_SUPPORT_
 #define IS_MCAST_MSG(p) \
     (p->type == MPIDI_CH3_PKT_MCST || \
         p->type == MPIDI_CH3_PKT_MCST_INIT || \
             (mcast_use_mcast_nack && p->type == MPIDI_CH3_PKT_MCST_NACK))
+#endif /*_MCST_SUPPORT_*/
 
 #define SET_PKT_LEN_HEADER(_v, _wc) {                                       \
     if(IB_TRANSPORT_UD == (_v)->transport) {                                \

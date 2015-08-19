@@ -3,6 +3,41 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.2a (08/17/2015)
+
+* Features and Enhancements (since 2.1 GA):
+
+  - Based on MPICH 3.1.4
+  - Support for backing on-demand UD CM information with shared memory
+    for minimizing memory footprint
+  - Reorganized HCA-aware process mapping
+  - Dynamic identification of maximum read/atomic operations supported by HCA
+  - Enabling support for intra-node communications in RoCE mode without
+    shared memory
+  - Updated to hwloc 1.11.0
+  - Updated to sm_20 kernel optimizations for MPI Datatypes
+  - Automatic detection and tuning for 24-core Haswell architecture
+
+* Bug Fixes (since MVAPICH 2.1 GA):
+
+  - Fix for error with multi-vbuf design for GPU based communication
+  - Fix bugs with hybrid UD/RC/XRC communications
+  - Fix for MPICH putfence/getfence for large messages
+  - Fix for error in collective tuning framework
+  - Fix validation failure with Alltoall with IN_PLACE option
+     - Thanks for Mahidhar Tatineni @SDSC for the report
+  - Fix bug with MPI_Reduce with IN_PLACE option
+     - Thanks to Markus Geimer for the report
+  - Fix for compilation failures with multicast disabled
+     - Thanks to Devesh Sharma @Emulex for the report
+  - Fix bug with MPI_Bcast
+  - Fix IPC selection for shared GPU mode systems
+  - Fix for build time warnings and memory leaks
+  - Fix issues with Dynamic Process Management
+     - Thanks to Neil Spruit for the report
+   - Fix bug in architecture detection code
+     - Thanks to Adam Moody @LLNL for the report
+
 MVAPICH2-2.1 (04/03/2015)
 
 * Features and Enhancements (since 2.1rc2):

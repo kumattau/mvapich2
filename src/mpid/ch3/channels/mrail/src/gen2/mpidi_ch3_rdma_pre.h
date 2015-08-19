@@ -443,15 +443,38 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
 /* add this structure to the implemenation specific macro */
 #define MPIDI_CH3I_VC_RDMA_DECL MPIDI_CH3I_MRAIL_VC mrail;
 
-typedef struct MPIDI_CH3I_MRAIL_PG {
-    struct ibv_ah   **cm_ah;        /*Array of address handles of peers */
-    uint32_t        *cm_ud_qpn;     /*Array of ud pqn of peers */
-    uint16_t        *cm_lid;        /*Array of lid of all procs */
-    union ibv_gid    *cm_gid;        /*Array of gid of all procs */
+/* Macro to get UD_CM variable */
+#define MV2_GET_UD_CM_INFO(_pg, _peer, _field, _output)                 \
+do {                                                                    \
+    (_output) = (_pg)->ch.mrail.cm_shmem->ud_cm[(_peer)].##(_field); \
+} while (0);
+
+typedef struct MPIDI_CH3I_MRAIL_UD_CM {
+    uint32_t        cm_ud_qpn;     /* UD QPN of peer */
+    uint16_t        cm_lid;        /* LID of peer */
+    union ibv_gid   cm_gid;       /* GID of peer */
+    mv2_arch_hca_type arch_hca_type;
 #ifdef _ENABLE_XRC_
-    uint32_t        *xrc_hostid;
+    uint32_t        xrc_hostid;
 #endif
-} MPIDI_CH3I_MRAIL_PG_t;
+} MPIDI_CH3I_MRAIL_UD_CM_t;
+
+typedef struct MPIDI_CH3I_MRAIL_CM_SHMEM_Region {
+    volatile int                *pid;
+    pthread_spinlock_t          *cm_shmem_lock;
+    MPIDI_CH3I_MRAIL_UD_CM_t    *ud_cm;
+#ifdef _ENABLE_UD_
+    mv2_ud_exch_info_t          **remote_ud_info;
+#endif /*_ENABLE_UD_ */
+} MPIDI_CH3I_MRAIL_CM_SHMEM_Region_t;
+
+typedef struct MPIDI_CH3I_MRAIL_CM {
+    int cm_shmem_fd;
+    char *cm_shmem_file;
+    volatile void *cm_shmem_mmap_ptr;
+    struct ibv_ah   **cm_ah;        /* Address handle of peer */
+    MPIDI_CH3I_MRAIL_CM_SHMEM_Region_t cm_shmem;
+} MPIDI_CH3I_MRAIL_CM_t;
 
 #ifdef _ENABLE_XRC_
 #define USE_XRC (rdma_use_xrc)
@@ -460,7 +483,7 @@ typedef struct MPIDI_CH3I_MRAIL_PG {
 void MPICM_lock(void);
 void MPICM_unlock(void);
 
-#define MPIDI_CH3I_RDMA_PG_DECL MPIDI_CH3I_MRAIL_PG_t mrail;
+#define MPIDI_CH3I_RDMA_PG_DECL MPIDI_CH3I_MRAIL_CM_t *mrail;
 
 /* structure MPIDI_CH3I_RDMA_Ops_list is the queue pool to record every
  * issued signaled RDMA write and RDMA read operation. The address of

@@ -39,6 +39,15 @@ osu_put_bibw            - Bi-directional Bandwidth Test for Put with Active
 osu_put_bw              - Bandwidth Test for Put with Active Synchronization
 osu_put_latency         - Latency Test for Put with Active Synchronization
 
+MPI-3
+-----
+osu_iallgather          - MPI_Iallgather Latency Test
+osu_ialltoall           - MPI_Ialltoall Latency Test
+osu_ibarrier            - MPI_Ibarrier Latency Test
+osu_ibcast              - MPI_Ibcast Latency Test
+osu_igather             - MPI_Igather Latency Test
+osu_iscatter            - MPI_Iscatter Latency Test
+
 Latency Test
     * The latency tests are carried out in a ping-pong fashion. The sender
     * sends a message with a certain data size to the receiver and waits for a
@@ -290,10 +299,23 @@ Collective Latency Tests
     * "-m" option can be used to set the maximum message length to be used in a
            benchmark. In the default version, the benchmarks report the
            latencies for up to 1MB message lengths. 
+    * "-x" can be used to set the number of warmup iterations to skip for each
+           message length.
     * "-i" can be used to set the number of iterations to run for each message
            length. 
     * "-M" can be used to set per process maximum memory consumption.  By
            default the benchmarks are limited to 512MB allocations.
+
+Non-Blocking Collective Latency Tests
+    * In addition to the blocking collective latency tests mentioned above, we
+    * provide several non-blocking collectives: MPI_Iallgather, MPI_Ialltoall,
+    * MPI_Ibarrier, MPI_Ibcast, MPI_Igather, MPI_Iscatter.  These evaluate the
+    * same metrics as the blocking operations as well as the additional metric
+    * `overlap'.  This is defined as the amount of computation that can be
+    * performed while the communication progresses in the background.
+    * These benchmarks have the additional option:
+    * "-t" set the number of MPI_Test() calls during the dummy computation, set
+           CALLS to 100, 1000, or any number > 0.
 
 
 CUDA and OpenACC Extensions to OMB

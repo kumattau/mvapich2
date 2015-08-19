@@ -16,7 +16,9 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#ifdef _OSU_MVAPICH_
 #include <infiniband/verbs.h>
+#endif
 
 // Define a prefix to distinguish output from different processes
 // - prefix: string
@@ -25,8 +27,10 @@ extern void set_output_prefix( char* prefix );
 // Get the output prefix
 extern const char *get_output_prefix();
 
+#ifdef _OSU_MVAPICH_
 // Dump device capabilities
 extern inline void dump_device_cap(struct ibv_device_attr dev_attr);
+#endif
 
 // Common print function
 #define _COMMON_PRINT_( FMT, args... ) \

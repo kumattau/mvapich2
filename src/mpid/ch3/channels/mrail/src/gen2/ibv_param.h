@@ -111,6 +111,7 @@ extern int mv2_on_demand_ud_info_exchange;
 extern int mv2_homogeneous_cluster;
 extern int mv2_show_env_info;
 extern int mv2_use_pmi_ibarrier;
+extern int mv2_shmem_backed_ud_cm;
 extern int mv2_show_runlog_level;
 /* HSAM Definitions */
 
@@ -168,6 +169,7 @@ extern int rdma_cuda_kernel_dt_opt;
 extern int cuda_initialized; 
 #if defined(HAVE_CUDA_IPC)
 extern int rdma_cuda_ipc;
+extern int rdma_enable_ipc_share_gpu;
 extern int rdma_cuda_smp_ipc;
 extern int rdma_cuda_enable_ipc_cache;
 extern int rdma_cuda_ipc_threshold;
@@ -429,6 +431,7 @@ typedef enum mv2_env_param_id {
     PMI_VERSION,
     PMI_PORT,
     PARENT_ROOT_PORT_NAME,
+    MV2_SHMEM_BACKED_UD_CM,
     /* QoS */
     MV2_3DTORUS_SUPPORT,
     MV2_NUM_SA_QUERY_RETRIES,
@@ -539,6 +542,7 @@ typedef enum mv2_env_param_id {
     MV2_USER_CONFIG,
     MV2_USE_RING_STARTUP,
     MV2_HOMOGENEOUS_CLUSTER,
+    MV2_UNIVERSE_SIZE,
     /* pt-pt */
     MV2_COALESCE_THRESHOLD,
     MV2_DREG_CACHE_LIMIT,
@@ -588,6 +592,7 @@ typedef enum mv2_env_param_id {
     MV2_USE_HWLOC_CPU_BINDING,
     MV2_CPU_MAPPING,
     MV2_ENABLE_AFFINITY,
+    MV2_HCA_AWARE_PROCESS_MAPPING,
     MV2_ENABLE_LEASTLOAD,
     MV2_LIMIC_GET_THRESHOLD,
     MV2_LIMIC_PUT_THRESHOLD,

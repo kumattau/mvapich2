@@ -228,6 +228,14 @@ mv2_env_param_list_t  param_list[] = {
     NULL,
     0,
     NULL    },
+{
+    MV2_SHMEM_BACKED_UD_CM,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_launcher,
+    "MV2_SHMEM_BACKED_UD_CM",
+    &mv2_shmem_backed_ud_cm,
+    0,
+    NULL    },
 /* QoS */
 {
     MV2_3DTORUS_SUPPORT,
@@ -1080,6 +1088,14 @@ mv2_env_param_list_t  param_list[] = {
     &mv2_homogeneous_cluster,
     0,
     NULL    },
+{
+    MV2_UNIVERSE_SIZE,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_startup,
+    "MV2_UNIVERSE_SIZE",
+    NULL,
+    0,
+    NULL    },
 /* pt-pt */
 /* pt-pt */
 {
@@ -1457,6 +1473,14 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_GROUP_intranode,
     "MV2_ENABLE_AFFINITY",
     &mv2_enable_affinity,
+    1,
+    NULL    },
+{
+    MV2_HCA_AWARE_PROCESS_MAPPING,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_intranode,
+    "MV2_HCA_AWARE_PROCESS_MAPPING",
+    &mv2_hca_aware_process_mapping,
     1,
     NULL    },
 {

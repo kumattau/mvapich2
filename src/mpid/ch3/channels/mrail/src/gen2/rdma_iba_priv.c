@@ -486,11 +486,14 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int i = 0, j = 0;
     int num_devices = 0;
-    int network_type = 0;
     int num_usable_hcas = 0;
     int mpi_errno = MPI_SUCCESS;
     struct ibv_device *ib_dev = NULL;
     struct ibv_device **dev_list = NULL;
+#ifdef RDMA_CM
+    int network_type = MV2_NETWORK_CLASS_UNKNOWN;
+#endif /*RDMA_CM*/
+
 #ifdef CRC_CHECK
     gen_crc_table();
 #endif
@@ -2251,94 +2254,6 @@ int rdma_ud_post_buffers(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     return mpi_errno;
 }
 
-int mv2_ud_get_remote_info(MPIDI_PG_t * pg, int pg_rank, int pg_size)
-{
-    int error, mpi_errno = MPI_SUCCESS, i;
-    /* Width of one "lid:qpn:" entry (8 + 1 + 8 + 1 = 18) */
-    int offset    = 18;
-    int hca_index = 0;
-    char *ptr     = NULL;
-    char temp1[512];
-    char temp2[32];
-    mv2_ud_exch_info_t my_info, **all_info;
-
-    all_info = (mv2_ud_exch_info_t **) MPIU_Malloc(pg_size *
-                                           sizeof(mv2_ud_exch_info_t*));
-    for (i = 0; i < pg_size; i++) {
-        all_info[i] = (mv2_ud_exch_info_t *) MPIU_Malloc(rdma_num_hcas *
-                                           sizeof(mv2_ud_exch_info_t));
-    }
-
-    /*Just put lid for default port and ud_qpn is sufficient */
-    MPIU_Snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "ud_%08d", pg_rank);
-
-    memset(temp1, 0, sizeof(temp1));
-    memset(temp2, 0, sizeof(temp2));
-
-    for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-        my_info.lid = mv2_MPIDI_CH3I_RDMA_Process.lids[hca_index][0];
-        my_info.qpn = mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_index]->qp->qp_num;
-
-        if (hca_index != 0) {
-            strcat(temp1, ":");
-        }
-        sprintf(temp2, "%08hx:%08x", my_info.lid, my_info.qpn);
-        strcat(temp1, temp2);
-    
-        PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d Put lids: %d ud_qp: %d\n",
-                    pg_rank, my_info.lid, my_info.qpn);
-    }
-    MPIU_Strncpy(mv2_pmi_val, temp1, mv2_pmi_max_vallen);
-
-    error = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
-    if (error != UPMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                  "**pmi_kvs_put", "**pmi_kvs_put %d", error);
-    }
-
-    error = UPMI_KVS_COMMIT(pg->ch.kvs_name);
-    if (error != UPMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                  "**pmi_kvs_commit", "**pmi_kvs_commit %d",
-                                  error);
-    }
-
-    error = UPMI_BARRIER();
-    if (error != UPMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                  "**pmi_barrier", "**pmi_barrier %d", error);
-    }
-
-    for (i = 0; i < pg_size; i++) {
-        if (pg_rank == i) {
-            continue;
-        }
-
-        MPIU_Snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "ud_%08d", i);
-
-        error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
-        if (error != UPMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                      "**pmi_kvs_get", "**pmi_kvs_get %d",
-                                      error);
-        }
-
-        for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-            ptr = (char*) mv2_pmi_val + (hca_index * offset);
-            sscanf(ptr, "%08hx:%08x", &(all_info[i][hca_index].lid), &(all_info[i][hca_index].qpn));
-            PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d, hca:%d Get lid:%d ud_qpn:%d\n", i, hca_index,
-                        all_info[i][hca_index].lid, all_info[i][hca_index].qpn);
-        }
-    }
-    mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info = all_info;
-
-  fn_exit:
-    return mpi_errno;
-  fn_fail:
-    goto fn_exit;
-
-}
-
 int MPIDI_CH3I_UD_Generate_addr_handle_for_rank(MPIDI_PG_t * pg, int tgt_rank)
 {
     int hca_index   = 0;
@@ -2350,7 +2265,7 @@ int MPIDI_CH3I_UD_Generate_addr_handle_for_rank(MPIDI_PG_t * pg, int tgt_rank)
 
     for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
         mv2_ud_set_vc_info(&vc->mrail.ud[hca_index],
-                           &mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[tgt_rank][hca_index],
+                           &pg->ch.mrail->cm_shmem.remote_ud_info[tgt_rank][hca_index],
                            mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_index],
                            mv2_MPIDI_CH3I_RDMA_Process.ports[hca_index][0]);
     }

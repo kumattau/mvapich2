@@ -99,18 +99,6 @@ extern int finalize_coll_comm;
         polling_set_c_tail = polling_set_c[x].prev; \
     }
 
-#if defined(DEBUG)
-#define DEBUG_PRINT(args...) \
-    do {                                                          \
-	int rank;                                                 \
-	UPMI_GET_RANK(&rank);                                      \
-	MPIU_Error_printf("[%d][%s:%d] ", rank, __FILE__, __LINE__);\
-	MPIU_Error_printf(args);                                    \
-    } while (0)
-#else /* defined(DEBUG) */
-#define DEBUG_PRINT(args...)
-#endif /* defined(DEBUG) */
-
 #define SMP_EXIT_ERR -1
 #define smp_error_abort(code, message) do {                     \
     if (errno) {                                                \
@@ -158,7 +146,6 @@ struct shared_mem *g_smpi_shmem;
 static struct shared_buffer_pool s_sh_buf_pool;
 static SEND_BUF_T** s_buffer_head = NULL;
 static SEND_BUF_T* s_my_buffer_head = NULL;
-static char s_hostname[HOSTNAME_LEN];
 int SMP_INIT = 0;
 int SMP_ONLY = 0;
 static void** s_current_ptr = NULL;
@@ -493,17 +480,17 @@ inline int MPIDI_CH3I_SMP_attach_shm_pool()
     }
 
     for (i = 0; i < s_smp_num_send_buffer; ++i) {
-       send_buf = SMPI_MY_BUF_POOL_PTR(i);
-       send_buf->myindex = i;
-       send_buf->next = i+1;
-       send_buf->busy = 0;
-       send_buf->len = 0;
-       send_buf->has_next = 0;
-       send_buf->msg_complete = 0;
+        send_buf = SMPI_MY_BUF_POOL_PTR(i); 
+        send_buf->myindex = i;
+        send_buf->next = i+1;
+        send_buf->busy = 0;
+        send_buf->len = 0;
+        send_buf->has_next = 0;
+        send_buf->msg_complete = 0;
 
-       for (j = 0; j < s_smp_block_size; j += pagesize) {
-           tmpchar = *((char *) &send_buf->buf + j);
-       }
+        for (j = 0; j < s_smp_block_size; j += pagesize) {
+            tmpchar = *((char *) &send_buf->buf + j);
+        }
     }
     send_buf->next = -1;
 
@@ -631,7 +618,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
 
     MPID_Request* rreq = NULL;
         MPID_Request_get_ptr(((MPIDI_CH3_Pkt_rndv_r3_data_t*) pkt)->receiver_req_id, rreq);
-    DEBUG_PRINT("R3 data received, don't need to proceed\n");
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "R3 data received, don't need to proceed\n");
     vc->smp.recv_active = rreq;
     goto fn_exit;
     } else if (pkt->type == MPIDI_CH3_PKT_RGET_FINISH) {
@@ -646,8 +633,8 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
      */
     else if (pkt->type == MPIDI_CH3_PKT_CM_SUSPEND) {
 		vc->mrail.suspended_rails_recv++;
-		DEBUG_PRINT("%s (pid %p):[%d <= %d]: get CM_SUSPEND vcstate=%d, send=%d,recv=%d\n", __func__, 
-			pthread_self(), MPIDI_Process.my_pg_rank, vc->pg_rank, vc->ch.state,
+		PRINT_DEBUG(DEBUG_SHM_verbose>1, "%s (pid %ld):[%d <= %d]: get CM_SUSPEND vcstate=%d, send=%d,recv=%d\n",
+            __func__, pthread_self(), MPIDI_Process.my_pg_rank, vc->pg_rank, vc->ch.state,
 			vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv );
 
 		if( vc->mrail.suspended_rails_send > 0 && 
@@ -656,7 +643,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
 			vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDED;
 			vc->mrail.suspended_rails_send = 0;
 			vc->mrail.suspended_rails_recv = 0;
-			DEBUG_PRINT("%s [%d vc_%d]: turn to SUSPENDED\n", __func__, 
+			PRINT_DEBUG(DEBUG_SHM_verbose>1, "%s [%d vc_%d]: turn to SUSPENDED\n", __func__, 
 				MPIDI_Process.my_pg_rank, vc->pg_rank );
 		}
 		else{
@@ -673,7 +660,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
      * for the shared memory channel
      */
     else if (pkt->type == MPIDI_CH3_PKT_CM_REACTIVATION_DONE) {
-		DEBUG_PRINT("%s (pid %p):[%d <= %d]: get CM_REACT, vcstate=%d\n", __func__, 
+		PRINT_DEBUG(DEBUG_SHM_verbose>1, "%s (pid %ld):[%d <= %d]: get CM_REACT, vcstate=%d\n", __func__, 
 			pthread_self(), MPIDI_Process.my_pg_rank, vc->pg_rank, vc->ch.state);
     if (vc->ch.state == MPIDI_CH3I_VC_STATE_SUSPENDED) {
         vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
@@ -844,7 +831,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
                 MPIU_ERR_POP(mpi_errno);
             }
 
-            DEBUG_PRINT("shm_writev returned %d", nb);
+            PRINT_DEBUG(DEBUG_SHM_verbose>1, "shm_writev returned %d", nb);
 
             if (nb > 0)
             {
@@ -872,14 +859,14 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
 							  if( !MPIDI_CH3I_SMP_SendQ_empty(vc) ){
                             	  MPIDI_CH3I_SMP_SendQ_dequeue(vc);
 							  }
-                              DEBUG_PRINT("Dequeue request from sendq %p, now head %p\n",
+                              PRINT_DEBUG(DEBUG_SHM_verbose>1, "Dequeue request from sendq %p, now head %p\n",
                                 req, vc->smp.sendq_head);
 #ifdef CKPT
 						      MPIDI_CH3I_MRAILI_Pkt_comm_header* p = 
 								 (MPIDI_CH3I_MRAILI_Pkt_comm_header*)(&(req->dev.pending_pkt));
 						      if( p->type >= MPIDI_CH3_PKT_CM_SUSPEND && 
 							     p->type <= MPIDI_CH3_PKT_CR_REMOTE_UPDATE ){
-							     DEBUG_PRINT("%s [%d vc_%d]: imm-write msg %s(%d)\n", __func__,
+							     PRINT_DEBUG(DEBUG_SHM_verbose>1, "%s [%d vc_%d]: imm-write msg %s(%d)\n", __func__,
 							     MPIDI_Process.my_pg_rank, vc->pg_rank, 
 							     MPIDI_CH3_Pkt_type_to_string[p->type],p->type );
 						      }
@@ -894,7 +881,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
 								    vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDED;
 								    vc->mrail.suspended_rails_send = 0;
 								    vc->mrail.suspended_rails_recv =0;
-                    				DEBUG_PRINT("%s[%d <= %d]:turn to SUSPENDED, \
+                    				PRINT_DEBUG(DEBUG_SHM_verbose>1, "%s[%d <= %d]:turn to SUSPENDED, \
                                        send-act=%p, sendq-head=%p\n", __func__, 
 									   MPIDI_Process.my_pg_rank, vc->pg_rank, 
 									   vc->smp.send_active,vc->smp.sendq_head);
@@ -1110,9 +1097,8 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                 MPIU_ERR_POP(mpi_errno);
             }
 
-            DEBUG_PRINT("request to fill: iovlen %d, iov[0].len %d, [1] %d, nb %d\n",
-                    vc->smp.recv_active->dev.iov_count -
-                    vc->smp.recv_active->dev.iov_offset,
+            PRINT_DEBUG(DEBUG_SHM_verbose>1, "request to fill: iovlen %ld, iov[0].len %ld, [1] %ld, nb %ld\n",
+                    vc->smp.recv_active->dev.iov_count - vc->smp.recv_active->dev.iov_offset,
                     vc->smp.recv_active->dev.iov[vc->smp.recv_active->dev.iov_offset].MPID_IOV_LEN,
                     vc->smp.recv_active->dev.iov[vc->smp.recv_active->dev.iov_offset + 1].MPID_IOV_LEN, nb);
 
@@ -1127,9 +1113,9 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                     } else
 #endif
                     {
-                        DEBUG_PRINT("adjust iov finished, handle req\n");
+                        PRINT_DEBUG(DEBUG_SHM_verbose>1, "adjust iov finished, handle req\n");
                         mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, vc->smp.recv_active, &complete);
-                        DEBUG_PRINT("finished handle req, complete %d\n", complete);
+                        PRINT_DEBUG(DEBUG_SHM_verbose>1, "finished handle req, complete %d\n", complete);
 
                         if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -1372,9 +1358,8 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
             {
                 MPIU_ERR_POP(mpi_errno);
             }
-        DEBUG_PRINT("request to fill: iovlen %d, iov[0].len %d, [1] %d, nb %d\n",
-            vc->smp.recv_active->dev.iov_count -
-            vc->smp.recv_active->dev.iov_offset,
+        PRINT_DEBUG(DEBUG_SHM_verbose>1, "request to fill: iovlen %ld, iov[0].len %ld, [1] %ld, nb %ld\n",
+            vc->smp.recv_active->dev.iov_count - vc->smp.recv_active->dev.iov_offset,
             vc->smp.recv_active->dev.iov[vc->smp.recv_active->dev.iov_offset].MPID_IOV_LEN,
             vc->smp.recv_active->dev.iov[vc->smp.recv_active->dev.iov_offset + 1].MPID_IOV_LEN, nb);
         if (nb > 0) {
@@ -1388,9 +1373,9 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
            } else
 #endif
            {
-               DEBUG_PRINT("adjust iov finished, handle req\n");
+               PRINT_DEBUG(DEBUG_SHM_verbose>1, "adjust iov finished, handle req\n");
                mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, vc->smp.recv_active, &complete);
-               DEBUG_PRINT("finished handle req, complete %d\n", complete);
+               PRINT_DEBUG(DEBUG_SHM_verbose>1, "finished handle req, complete %d\n", complete);
 
                if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -1557,6 +1542,9 @@ void MPIDI_CH3I_set_smp_only()
 
     if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
         rdma_use_blocking = !!atoi(value);
+    }
+    /* Disable SMP if blocking is enabled */
+    if (rdma_use_blocking) {
         rdma_use_smp = 0;
     }
 
@@ -1594,7 +1582,6 @@ ssize_t check_cma_usability (pid_t remote_pid, char * rbuffer)
     char buffer = 1;
     struct iovec local[1];
     struct iovec remote[1];
-    int val = 0;
 
     local[0].iov_base = &buffer;
     local[0].iov_len = 1;
@@ -1606,6 +1593,209 @@ ssize_t check_cma_usability (pid_t remote_pid, char * rbuffer)
 #endif /* defined(_SMP_CMA_) */
 
 #undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_CM_SHMEM_Sync
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_CM_SHMEM_Sync(volatile int *bar_array, int my_local_id, int num_local_procs)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int i = 0, wait = 0, pid = 0;
+
+    if (0 == my_local_id) {
+        PRINT_DEBUG(DEBUG_CM_verbose>0, "Before barrier\n");
+        wait = 1;
+        while (wait) {
+            wait = 0;
+            for (i = 1; i < num_local_procs; ++i) {
+                if (bar_array[i] == 0) {
+                    wait = 1;
+                }
+            }
+        }
+
+        PRINT_DEBUG(DEBUG_CM_verbose>1, "Non-root processes have arrived\n");
+        pid = getpid();
+        if (0 == pid) {
+            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                    "getpid", strerror(errno));
+            return mpi_errno;
+        }
+
+        bar_array[my_local_id] = pid;
+        WRITEBAR();
+    } else {
+        PRINT_DEBUG(DEBUG_CM_verbose>1, "Before barrier\n");
+        while (bar_array[0] != 0);
+        while (bar_array[0] == 0) {
+            bar_array[my_local_id] = getpid();
+            WRITEBAR();
+        }
+        PRINT_DEBUG(DEBUG_CM_verbose>1, "Root has arrived\n");
+        for (i = 0; i < num_local_procs; ++i) {
+            if (bar_array[i] <= 0) {
+                mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                        FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                        "getpid", strerror(errno));
+                return mpi_errno;
+            }
+        }
+    }
+
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "Barrier done\n");
+
+    return mpi_errno;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_CM_Destroy_region
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_CM_Destroy_region(MPIDI_PG_t *pg)
+{
+    int mpi_errno = MPI_SUCCESS;
+    size_t cm_shmem_file_size = 0;
+
+    MPIDI_STATE_DECL(MPIDI_CH3I_CM_DESTROY_REGION);
+    MPIDI_FUNC_ENTER(MPIDI_CH3I_CM_DESTROY_REGION);
+
+    /* Identify size of shared mem file size for storing UD CM info */
+    cm_shmem_file_size = pg->size * sizeof(MPIDI_CH3I_MRAIL_UD_CM_t);
+
+    /* Unmap UD_CM SHMEM region */
+    if (pg->ch.mrail->cm_shmem_mmap_ptr != NULL) {
+        munmap(pg->ch.mrail->cm_shmem_mmap_ptr, cm_shmem_file_size);
+    }
+    /* Unlink and close */
+    if (pg->ch.mrail->cm_shmem_fd != -1) {
+        close(pg->ch.mrail->cm_shmem_fd);
+        unlink(pg->ch.mrail->cm_shmem_file);
+    }
+    /* Free filename variable */
+    if (pg->ch.mrail->cm_shmem_file != NULL) {
+        MPIU_Free(pg->ch.mrail->cm_shmem_file);
+    }
+    pg->ch.mrail->cm_shmem_fd         = -1;
+    pg->ch.mrail->cm_shmem_file       = NULL;
+    pg->ch.mrail->cm_shmem_mmap_ptr   = NULL;
+
+    MPIDI_FUNC_EXIT(MPIDI_CH3I_CM_DESTROY_REGION);
+    return mpi_errno;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_CM_Create_region
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_CM_Create_region(MPIDI_PG_t *pg)
+{
+    int pid_len = 0, lock_len = 0, ud_cm_len = 0, ud_len = 0;
+    int mpi_errno = MPI_SUCCESS;
+    size_t cm_shmem_file_size = 0;
+
+    MPIDI_STATE_DECL(MPIDI_CH3I_CM_CREATE_REGION);
+    MPIDI_FUNC_ENTER(MPIDI_CH3I_CM_CREATE_REGION);
+
+    /* Identify size of shared mem file size for storing UD CM info */
+    pid_len = sizeof(int) * pg->ch.num_local_processes;
+    pid_len = (pid_len + SMPI_CACHE_LINE_SIZE) -
+                (pid_len % SMPI_CACHE_LINE_SIZE);
+    lock_len = sizeof(pthread_spinlock_t);
+    lock_len = (lock_len + SMPI_CACHE_LINE_SIZE) -
+                (lock_len % SMPI_CACHE_LINE_SIZE);
+    ud_cm_len = sizeof(MPIDI_CH3I_MRAIL_UD_CM_t) * pg->size;
+    ud_cm_len = (ud_cm_len + SMPI_CACHE_LINE_SIZE) -
+                (ud_cm_len % SMPI_CACHE_LINE_SIZE);
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        ud_len = (sizeof(mv2_ud_exch_info_t) * pg->size * rdma_num_hcas);
+        ud_len = (ud_len + SMPI_CACHE_LINE_SIZE) -
+                    (ud_len % SMPI_CACHE_LINE_SIZE);
+    }
+#endif /* _ENABLE_UD_ */
+    cm_shmem_file_size = pid_len + lock_len + ud_cm_len + ud_len;
+
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "Setting up shmem segment of size %ld\n",
+                cm_shmem_file_size);
+    /* Call helper function to create shmem region */
+    mpi_errno = MPIDI_CH3I_SHMEM_Helper_fn(pg, pg->ch.local_process_id,
+                                            &pg->ch.mrail->cm_shmem_file,
+                                            "cm_shmem",
+                                            &pg->ch.mrail->cm_shmem_fd,
+                                            cm_shmem_file_size);
+    if (mpi_errno != MPI_SUCCESS) {
+       MPIU_ERR_POP(mpi_errno);
+    }
+
+    /* Mmap UD_CM SHMEM region */
+    pg->ch.mrail->cm_shmem_mmap_ptr = mmap(0, cm_shmem_file_size,
+                                            (PROT_READ | PROT_WRITE),
+                                            (MAP_SHARED),
+                                            pg->ch.mrail->cm_shmem_fd, 0);
+    if (pg->ch.mrail->cm_shmem_mmap_ptr == (void *) -1) {
+        mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                                         FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                                         "%s: %s", "mmap", strerror(errno));
+        goto fn_fail;
+    }
+
+    /* Assign SHMEM region to accessible variable */
+    pg->ch.mrail->cm_shmem.pid = (int*)
+                ((char*)pg->ch.mrail->cm_shmem_mmap_ptr);
+    pg->ch.mrail->cm_shmem.cm_shmem_lock = (pthread_spinlock_t*)
+                ((char*)pg->ch.mrail->cm_shmem_mmap_ptr + pid_len);
+    pg->ch.mrail->cm_shmem.ud_cm = (MPIDI_CH3I_MRAIL_UD_CM_t*)
+                ((char*)pg->ch.mrail->cm_shmem_mmap_ptr + pid_len + lock_len);
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        int i = 0, j = 0;
+        MPIU_Assert(rdma_num_hcas>0);
+        char *base_addr = (char*)pg->ch.mrail->cm_shmem_mmap_ptr +
+                            pid_len + lock_len + ud_cm_len;
+        for (i = 0; i < pg->size; i++) {
+            pg->ch.mrail->cm_shmem.remote_ud_info[i] = (mv2_ud_exch_info_t *)
+                ((char*)base_addr + i*rdma_num_hcas*sizeof(mv2_ud_exch_info_t));
+            /* Initialize UD Data SHMEM region */
+            for (j = 0; j < rdma_num_hcas; ++j) {
+                pg->ch.mrail->cm_shmem.remote_ud_info[i][j].lid = UINT16_MAX;
+                pg->ch.mrail->cm_shmem.remote_ud_info[i][j].qpn = UINT32_MAX;
+            }
+        }
+        PRINT_DEBUG(DEBUG_CM_verbose>1, "cm_shmem.pid = %p, cm_shmem.ud_cm = %p,"
+                " cm_shmem.remote_ud_info = %p\n", pg->ch.mrail->cm_shmem.pid,
+                pg->ch.mrail->cm_shmem.ud_cm,
+                pg->ch.mrail->cm_shmem.remote_ud_info);
+    }
+#else
+    PRINT_DEBUG(DEBUG_CM_verbose>1, "cm_shmem.pid = %p, cm_shmem.ud_cm = %p\n",
+                pg->ch.mrail->cm_shmem.pid, pg->ch.mrail->cm_shmem.ud_cm);
+#endif /* _ENABLE_UD_ */
+
+    /* Initialize UD_CM SHMEM region */
+    if (pg->ch.local_process_id == 0) {
+        MPIU_Memset(pg->ch.mrail->cm_shmem.ud_cm, 0, ud_cm_len);
+        pthread_spin_init(pg->ch.mrail->cm_shmem.cm_shmem_lock,
+                            PTHREAD_PROCESS_SHARED);
+    }
+
+    /* Synchronization barrier */
+    mpi_errno = MPIDI_CH3I_CM_SHMEM_Sync(pg->ch.mrail->cm_shmem.pid,
+                                            pg->ch.local_process_id,
+                                            pg->ch.num_local_processes);
+    if (mpi_errno != MPI_SUCCESS) {
+        goto fn_fail;
+    }
+
+fn_exit:
+    MPIDI_FUNC_EXIT(MPIDI_CH3I_CM_CREATE_REGION);
+    return mpi_errno;
+
+fn_fail:
+    mpi_errno = MPIDI_CH3I_CM_Destroy_region(pg);
+    goto fn_exit;
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SMP_Init
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -1614,13 +1804,10 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_INIT);
     int mpi_errno = MPI_SUCCESS;
-    unsigned int i, j, pid, wait;
+    unsigned int i;
     int sh_size, pid_len, st_len;
-    struct stat file_status;
-    struct stat file_status_pool;
     int pagesize = getpagesize();
-    struct shared_mem * shmem;
-    SEND_BUF_T *send_buf = NULL;
+    volatile struct shared_mem * shmem;
 
 #if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     int cu_ipc_offset, cu_ipc_len;
@@ -1628,13 +1815,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #if defined(_SMP_CMA_)
     int cma_test_buffer_offset;
 #endif /* defined(_SMP_CMA_) */
-#if defined(SOLARIS)
-    char *setdir="/tmp";
-#else
-    char *setdir="/dev/shm";
-#endif
-    char *shmem_dir, *shmdir;
-    size_t pathlen;
 #if defined(_X86_64_)
     volatile char tmpchar ATTRIBUTE((unused));
 #endif /* defined(_X86_64_) */
@@ -1657,41 +1837,17 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
      * Do the initializations here. These will be needed on restart
      * after a checkpoint has been taken.
      */
-
-    if ((shmdir = getenv("MV2_SHMEM_DIR")) != NULL) {
-        shmem_dir = shmdir;
-    } else {
-        shmem_dir = setdir;
-    }
-    pathlen = strlen(shmem_dir);
-
-    if (gethostname(s_hostname, sizeof(char) * HOSTNAME_LEN) < 0) {
-       MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-           "%s: %s", "gethostname", strerror(errno));
-    }
-
-    DEBUG_PRINT("gethostname: %s\n", s_hostname);
-
-    if ((mpi_errno = smpi_exchange_info(pg)) != MPI_SUCCESS)
-    {
+    if ((mpi_errno = smpi_exchange_info(pg)) != MPI_SUCCESS) {
         MPIU_ERR_POP(mpi_errno);
     }
 
-    DEBUG_PRINT("finished exchange info\n");
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "finished exchange info\n");
 
     /* Convert to bytes */
     g_smp_eagersize = g_smp_eagersize + 1;
 
-#if defined(DEBUG)
-    int my_rank;
-    UPMI_GET_RANK(&my_rank);
-
-    if (my_rank == 0)
-    {
-        DEBUG_PRINT("smp eager size %d\n, smp queue length %d\n",
-            g_smp_eagersize, s_smpi_length_queue);
-    }
-#endif /* defined(DEBUG) */
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "smp eager size %d\n, smp queue length %d\n",
+                g_smp_eagersize, s_smpi_length_queue);
 
     if (g_smp_eagersize > s_smpi_length_queue / 2) {
        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -1700,6 +1856,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
            "and MV2_SMPI_LENGTH_QUEUE are set in KBytes.");
     }
 
+    /* Initialize variables before setting up shmem regions */
     g_smpi.fd = -1;
     g_smpi.fd_pool = -1; 
     g_smpi.mmap_ptr = NULL; 
@@ -1707,77 +1864,22 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     g_smpi.available_queue_length =
           (s_smpi_length_queue - g_smp_eagersize - sizeof(int));
 
-    /* add pid for unique file name */
-    shmem_file =
-        (char *) MPIU_Malloc(sizeof(char) * (pathlen + HOSTNAME_LEN + 26 + PID_CHAR_LEN));
-    if(!shmem_file) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-            "**nomem %s", "shmem_file");
-    }
-
-    pool_file =
-        (char *) MPIU_Malloc (sizeof (char) * (pathlen + HOSTNAME_LEN + 26 + PID_CHAR_LEN));
-    if(!pool_file) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-            "**nomem %s", "pool_file");
-    }
-
-    /* unique shared file name */
-    sprintf(shmem_file, "%s/ib_shmem-%s-%s-%d.tmp",
-        shmem_dir, pg->ch.kvs_name, s_hostname, getuid());
-    DEBUG_PRINT("shemfile %s\n", shmem_file);
-
-    sprintf (pool_file, "%s/ib_pool-%s-%s-%d.tmp", shmem_dir, pg->ch.kvs_name,
-        s_hostname, getuid ());
-    DEBUG_PRINT("shemfile %s\n", pool_file);
-
-    /* open the shared memory file */
-    g_smpi.fd = open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
-    if (g_smpi.fd < 0) {
-        /* fallback */
-        sprintf(shmem_file, "/tmp/ib_shmem-%s-%s-%d.tmp",
-                pg->ch.kvs_name, s_hostname, getuid());
-
-        DEBUG_PRINT("shemfile %s\n", shmem_file);
-
-        sprintf (pool_file, "/tmp/ib_pool-%s-%s-%d.tmp", pg->ch.kvs_name,
-                s_hostname, getuid ());
-        DEBUG_PRINT("shemfile %s\n", pool_file);
-
-        g_smpi.fd =
-            open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
-        if (g_smpi.fd < 0) {
-            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-                    "%s: %s", "open", strerror(errno));
-        }
-    }
-
-    g_smpi.fd_pool =
-        open (pool_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
-    if (g_smpi.fd_pool < 0) {
-        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
-                    "%s: %s", "open",
-                    strerror(errno)); 
-        goto cleanup_files;
-    }
-
-    /* compute the size of this file */
+    /* Compute the size of shmem files */
     pid_len = g_smpi.num_local_nodes * sizeof(int);
     /* pid_len need to be padded to cache aligned, in order to make sure the
-     * following flow control structures cache aligned. */
+     * following flow control structures cache aligned.
+     */
     pid_len = pid_len + SMPI_CACHE_LINE_SIZE - (pid_len % SMPI_CACHE_LINE_SIZE);
     st_len = sizeof(smpi_shared_tails) * g_smpi.num_local_nodes * 
-          (g_smpi.num_local_nodes - 1);
+                (g_smpi.num_local_nodes - 1);
     sh_size = sizeof(struct shared_mem) + pid_len 
-          + SMPI_ALIGN(st_len) + SMPI_CACHE_LINE_SIZE * 3;
+                + SMPI_ALIGN(st_len) + SMPI_CACHE_LINE_SIZE * 3;
 
     g_size_shmem = (SMPI_CACHE_LINE_SIZE + sh_size + pagesize 
           + (g_smpi.num_local_nodes * (g_smpi.num_local_nodes - 1) 
           * (SMPI_ALIGN(s_smpi_length_queue + pagesize))));
 
 #if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-
     cu_ipc_len = sizeof(smpi_cu_ipc_attr) * g_smpi.num_local_nodes *
         (g_smpi.num_local_nodes - 1);
     cu_ipc_offset = g_size_shmem;
@@ -1789,107 +1891,26 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     g_size_shmem += SMPI_ALIGN(1);
 #endif /* defined(_SMP_CMA_) */
 
-    DEBUG_PRINT("sizeof shm file %d\n", g_size_shmem);
-
     g_size_pool =
     SMPI_ALIGN ((sizeof (SEND_BUF_T) + s_smp_block_size) 
                 * s_smp_num_send_buffer + pagesize) 
                 * g_smpi.num_local_nodes + SMPI_CACHE_LINE_SIZE;
 	
-    DEBUG_PRINT("sizeof pool file %d\n", g_size_pool);
-    if (g_smpi.my_local_id == 0) 
-    {
-       DEBUG_PRINT("%s[%d]: size_shmem=%d, size_pool = %d\n", 
-          __func__, MPIDI_Process.my_pg_rank, g_size_shmem, g_size_pool);
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "size_shmem=%d, size_pool = %d\n", 
+                g_size_shmem, g_size_pool);
+
+    /* Call helper function to create shmem region */
+    mpi_errno = MPIDI_CH3I_SHMEM_Helper_fn(pg, g_smpi.my_local_id, &shmem_file,
+                                        "ib_shmem", &g_smpi.fd, g_size_shmem);
+    if (mpi_errno != MPI_SUCCESS) {
+       goto cleanup_files;
     }
-    /* initialization of the shared memory file */
-    /* just set size, don't really allocate memory, to allow intelligent memory
-     * allocation on NUMA arch */
-    if (g_smpi.my_local_id == 0) {
-       if (ftruncate(g_smpi.fd, 0)) {
-           /* to clean up tmp shared file */
-           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER, 
-                       FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
-                       "%s: %s", "ftruncate",
-                       strerror(errno));
-           goto cleanup_files;
-       }
- 
-       /* set file size, without touching pages */
-       if (ftruncate(g_smpi.fd, g_size_shmem)) {
-           /* to clean up tmp shared file */
-           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                       FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
-                       "%s: %s", "ftruncate",
-                       strerror(errno));
-           goto cleanup_files;
-       }
- 
-       if (ftruncate (g_smpi.fd_pool, 0)) {
-           /* to clean up tmp shared file */
-           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                       FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
-                       "%s: %s", "ftruncate",
-                       strerror(errno)); 
-           goto cleanup_files;
-       }
- 
-       if (ftruncate (g_smpi.fd_pool, g_size_pool)) {
-           /* to clean up tmp shared file */
-           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                       FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
-                       "%s: %s", "ftruncate",
-                       strerror(errno)); 
-           goto cleanup_files;
-       }
 
-#if !defined(_X86_64_)
-       {
-           char *buf;
-           buf = (char *) MPIU_Calloc(g_size_shmem + 1, sizeof(char));
-           if (write(g_smpi.fd, buf, g_size_shmem) != g_size_shmem) {
-              mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                        FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 
-                       "%s: %s", "write",
-                       strerror(errno));
-              MPIU_Free(buf);
-              goto cleanup_files;
-           }
-           MPIU_Free(buf);
-       }
- 
-       {
-           char *buf;
-           buf = (char *) MPIU_Calloc (g_size_pool + 1, sizeof (char));
-           if (write (g_smpi.fd_pool, buf, g_size_pool) != g_size_pool) {
-              mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                        FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 
-                        "%s: %s", "write",
-                        strerror(errno)); 
-              MPIU_Free(buf);
-              goto cleanup_files;
-           }
-           MPIU_Free(buf);
-       }
-#endif /* !defined(_X86_64_) */
-
-       if (lseek(g_smpi.fd, 0, SEEK_SET) != 0) {
-           /* to clean up tmp shared file */
-           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                      FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
-                      "%s: %s", "lseek",
-                      strerror(errno)); 
-           goto cleanup_files;
-       }
- 
-       if (lseek (g_smpi.fd_pool, 0, SEEK_SET) != 0) {
-           /* to clean up tmp shared file */
-           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                      FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 
-                       "%s: %s", "lseek",
-                       strerror(errno)); 
-           goto cleanup_files;
-       }
+    /* Call helper function to create shmem region */
+    mpi_errno = MPIDI_CH3I_SHMEM_Helper_fn(pg, g_smpi.my_local_id, &pool_file,
+                                        "ib_pool", &g_smpi.fd_pool, g_size_pool);
+    if (mpi_errno != MPI_SUCCESS) {
+       goto cleanup_files;
     }
 
     if (mv2_enable_shmem_collectives) {
@@ -1903,22 +1924,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         }
     }
 
-    DEBUG_PRINT("process arrives before sync stage\n");
-    /* synchronization between local processes */
-    do {
-       if (fstat(g_smpi.fd, &file_status) != 0 ||
-           fstat (g_smpi.fd_pool, &file_status_pool) != 0) {
-             /* to clean up tmp shared file */
-             mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
-                   "%s: %s", "fstat",
-                   strerror(errno));
-             goto cleanup_files;
-       }
-       usleep(1);
-    } while (file_status.st_size != g_size_shmem ||
-         file_status_pool.st_size != g_size_pool);
-
     g_smpi_shmem = (struct shared_mem *) MPIU_Malloc(sizeof(struct shared_mem));
     if(!g_smpi_shmem) {
        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
@@ -1926,7 +1931,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
        goto cleanup_files;
     }
 
-    DEBUG_PRINT("before mmap\n");
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "before mmap\n");
 
     /* mmap of the shared memory file */
     g_smpi.mmap_ptr = mmap(0, g_size_shmem,
@@ -1949,90 +1954,14 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
 
     if(!g_smp_delay_shmem_pool_init) {
-        g_smpi.send_buf_pool_ptr = mmap (0, g_size_pool, 
-                (PROT_READ | PROT_WRITE), (MAP_SHARED), g_smpi.fd_pool, 0);
-        if (g_smpi.send_buf_pool_ptr == (void *) -1) {
+        mpi_errno = MPIDI_CH3I_SMP_attach_shm_pool();
+        if (mpi_errno != MPI_SUCCESS) {
             /* to clean up tmp shared file */
             mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                     FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", "%s: %s", 
                     "mmap", strerror(errno));
             goto cleanup_files;
         }
-
-        s_buffer_head = (SEND_BUF_T **) MPIU_Malloc(sizeof(SEND_BUF_T *) * g_smpi.num_local_nodes);
-        if(!s_buffer_head) {
-            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                    FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-            goto cleanup_files;
-        }
-
-        for(i=0; i < g_smpi.num_local_nodes; ++i) {
-            s_buffer_head[i] = (SEND_BUF_T *)((unsigned long)g_smpi.send_buf_pool_ptr +
-                    SMPI_ALIGN((sizeof(SEND_BUF_T) + s_smp_block_size) * s_smp_num_send_buffer +
-                        pagesize) * i);
-
-            if (((long) s_buffer_head[i] & (SMPI_CACHE_LINE_SIZE - 1)) != 0) {
-                /* to clean up tmp shared file */
-                mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                        FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s", 
-                        "error in shifting mmaped pool");
-                goto cleanup_files;
-            }
-        }
-        s_my_buffer_head = s_buffer_head[g_smpi.my_local_id];
-
-        s_sh_buf_pool.free_head = 0;
-
-        s_sh_buf_pool.send_queue = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
-        if(!s_sh_buf_pool.send_queue) {
-            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                    FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-            goto cleanup_files;
-        }
-
-        s_sh_buf_pool.tail = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
-        if(!s_sh_buf_pool.tail) {
-            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                    FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-            goto cleanup_files;
-        }
-
-        for (i = 0; i < g_smpi.num_local_nodes; ++i) {
-            s_sh_buf_pool.send_queue[i] = s_sh_buf_pool.tail[i] = -1;
-        }
-
-#if defined(_X86_64_)
-        for (i = 0; i < s_smp_num_send_buffer; ++i) {
-            send_buf = SMPI_MY_BUF_POOL_PTR(i); 
-            send_buf->myindex = i;
-            send_buf->next = i+1;
-            send_buf->busy = 0;
-            send_buf->len = 0;
-            send_buf->has_next = 0;
-            send_buf->msg_complete = 0;
-
-            for (j = 0; j < s_smp_block_size; j += pagesize) {
-                tmpchar = *((char *) &send_buf->buf + j);
-            }
-        }
-        send_buf->next = -1;
-#else /* defined(_X86_64_) */
-        if (0 == g_smpi.my_local_id) {
-            for(j = 0; j < g_smpi.num_local_nodes; ++j){
-                for (i = 0; i < s_smp_num_send_buffer; ++i) {
-                    send_buf = SMPI_BUF_POOL_PTR(j, i);
-                    send_buf->myindex = i;
-                    send_buf->next = i+1;
-                    send_buf->busy = 0;
-                    send_buf->len = 0;
-                    send_buf->has_next = 0;
-                    send_buf->msg_complete = 0;
-                }
-                send_buf->next = -1;
-            }
-        }
-#endif /* defined(_X86_64_) */
-        mv2_shmem_pool_init = 1;
     }
 
     /* Initialize shared_mem pointers */
@@ -2129,42 +2058,11 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         }
     }
 
-    /* another synchronization barrier */
-    if (0 == g_smpi.my_local_id) {
-    wait = 1;
-    while (wait) {
-        wait = 0;
-        for (i = 1; i < g_smpi.num_local_nodes; ++i) {
-        if (g_smpi_shmem->pid[i] == 0) {
-            wait = 1;
-        }
-        }
-    }
-
-    pid = getpid();
-    if (0 == pid) {
-        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-              FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
-              "getpid", strerror(errno));
+    /* Another synchronization barrier */
+    mpi_errno = MPIDI_CH3I_CM_SHMEM_Sync(g_smpi_shmem->pid, g_smpi.my_local_id,
+                                            g_smpi.num_local_nodes);
+    if (mpi_errno != MPI_SUCCESS) {
         goto cleanup_files;
-    }
-
-    g_smpi_shmem->pid[g_smpi.my_local_id] = pid;
-    WRITEBAR();
-    } else {
-    while (g_smpi_shmem->pid[0] != 0);
-    while (g_smpi_shmem->pid[0] == 0) {
-        g_smpi_shmem->pid[g_smpi.my_local_id] = getpid();
-        WRITEBAR();
-    }
-    for (i = 0; i < g_smpi.num_local_nodes; ++i) {
-        if (g_smpi_shmem->pid[i] <= 0) {
-           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-               FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
-               "getpid", strerror(errno));
-           goto cleanup_files;
-        }
-    }
     }
 
 #if defined(_SMP_CMA_)
@@ -2203,14 +2101,13 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
                     *g_smpi_shmem->cma_test_buffer = (char *)-1;
                 } else {
                     while (!**g_smpi_shmem->cma_test_buffer);
-                    MPIU_Free(*g_smpi_shmem->cma_test_buffer);
+                    MPIU_Free((void*)*g_smpi_shmem->cma_test_buffer);
                 }
 
                 break;
         }
     }
 #endif /* defined(_SMP_CMA_) */
-
     /* Unlinking shared memory files*/
     MPIDI_CH3I_SMP_unlink();
     if (mv2_enable_shmem_collectives){
@@ -2899,7 +2796,7 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     }
 #endif /* _SMP_CMA_ */
 fn_exit:
-    DEBUG_PRINT("writev_rndv_header returns bytes %d\n", *num_bytes_ptr);
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "writev_rndv_header returns bytes %d\n", *num_bytes_ptr);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_HEADER);
     return;
 
@@ -3141,10 +3038,8 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
     do {
     pkt_len = 0;
     for (; i < n;) {
-        DEBUG_PRINT
-        ("i %d, iov[i].len %d, (len-offset) %d, pkt_avail %d\n", i,
-         iov[i].MPID_IOV_LEN, (iov[i].MPID_IOV_LEN - offset),
-         pkt_avail);
+        PRINT_DEBUG(DEBUG_SHM_verbose>1, "i %d, iov[i].len %ld, (len-offset) %ld, pkt_avail %d\n",
+                    i, iov[i].MPID_IOV_LEN, (iov[i].MPID_IOV_LEN - offset), pkt_avail);
 
         if(has_sent >= s_smp_batch_size)
         break;
@@ -3228,12 +3123,10 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
         }
     }
 
-    DEBUG_PRINT("current pkt consumed, pkt_len %d\n", pkt_len);
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "current pkt consumed, pkt_len %d\n", pkt_len);
     *num_bytes_ptr += pkt_len;
 
     if (i == n || has_sent >= s_smp_batch_size) {
-        DEBUG_PRINT("counter value, in %d, out %d\n",
-            SMPI_TOTALIN(0, 1), SMPI_TOTALOUT(0, 1));
         break;
     }
 
@@ -3254,7 +3147,7 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
     smpi_complete_send(vc->smp.local_nodes, len, *num_bytes_ptr, ptr, ptr_head, ptr_flag);
 
 fn_exit:
-    DEBUG_PRINT("writev_rndv_data_cont returns bytes %d\n", *num_bytes_ptr);
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "writev_rndv_data_cont returns bytes %d\n", *num_bytes_ptr);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_DATA_CONT);
 }
 
@@ -3316,10 +3209,8 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
     do {
     pkt_len = 0;
     for (; i < n;) {
-        DEBUG_PRINT
-        ("i %d, iov[i].len %d, (len-offset) %d, pkt_avail %d\n", i,
-         iov[i].MPID_IOV_LEN, (iov[i].MPID_IOV_LEN - offset),
-         pkt_avail);
+        PRINT_DEBUG(DEBUG_SHM_verbose>1, "i %d, iov[i].len %ld, (len-offset) %ld, pkt_avail %d\n",
+                    i, iov[i].MPID_IOV_LEN, (iov[i].MPID_IOV_LEN - offset), pkt_avail);
         if(has_sent >= s_smp_batch_size)
         break;
         ++has_sent;
@@ -3403,12 +3294,10 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
         }
     }
 
-    DEBUG_PRINT("current pkt consumed, pkt_len %d\n", pkt_len);
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "current pkt consumed, pkt_len %d\n", pkt_len);
     *num_bytes_ptr += pkt_len;
 
     if (i == n || has_sent >= s_smp_batch_size) {
-        DEBUG_PRINT("counter value, in %d, out %d\n",
-            SMPI_TOTALIN(0, 1), SMPI_TOTALOUT(0, 1));
         break;
     }
 
@@ -3427,7 +3316,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
     smpi_complete_send(vc->smp.local_nodes, len, *num_bytes_ptr, ptr, ptr_head, ptr_flag);
 
 fn_exit:
-    DEBUG_PRINT("writev_rndv_data returns bytes %d\n", *num_bytes_ptr);
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "writev_rndv_data returns bytes %d\n", *num_bytes_ptr);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WRITE_RNDV_DATA);
     return mpi_errno;
 
@@ -3578,7 +3467,7 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
 
     *num_bytes_ptr += pkt_len;
 
-    DEBUG_PRINT("writev returns bytes %d\n", *num_bytes_ptr);
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "writev returns bytes %d\n", *num_bytes_ptr);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_WRITEV);
 }
 
@@ -4218,8 +4107,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
     s_current_bytes[recv_vc_ptr->smp.local_nodes] =
         s_total_bytes[recv_vc_ptr->smp.local_nodes];
 
-    DEBUG_PRINT
-        ("current byte %d, total bytes %d, iovlen %d, iov[0].len %d\n",
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "current byte %ld, total bytes %ld, iovlen %d, iov[0].len %ld\n",
          s_current_bytes[recv_vc_ptr->smp.local_nodes],
          s_total_bytes[recv_vc_ptr->smp.local_nodes], iovlen,
          iov[0].MPID_IOV_LEN);
@@ -4240,7 +4128,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
 
     if (current_index != -1) {
     /** last smp packet has not been drained up yet **/
-    DEBUG_PRINT("iov_off %d, current bytes %d, iov len %d\n",
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "iov_off %d, current bytes %ld, iov len %ld\n",
         iov_off, s_current_bytes[recv_vc_ptr->smp.local_nodes],
         iov[iov_off].MPID_IOV_LEN);
 
@@ -4404,26 +4292,13 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
         }
     }
     *num_bytes_ptr += received_bytes;
-    DEBUG_PRINT
-        ("current bytes %d, num_bytes %d, iov_off %d, iovlen %d\n",
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "current bytes %ld, num_bytes %ld, iov_off %d, iovlen %d\n",
          s_current_bytes[recv_vc_ptr->smp.local_nodes], *num_bytes_ptr,
          iov_off, iovlen);
 
     if (0 == s_current_bytes[recv_vc_ptr->smp.local_nodes]) {
         READBAR();
         s_current_ptr[recv_vc_ptr->smp.local_nodes] = NULL;
-        DEBUG_PRINT("total in %d, total out %d\n",
-            SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id),
-            SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id));
-
-        DEBUG_PRINT("total in %d, total out %d\n",
-            SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id),
-            SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id));
-
         s_total_bytes[recv_vc_ptr->smp.local_nodes] = 0;
     }
     received_bytes = 0;
@@ -4440,7 +4315,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
 #endif
 
 fn_exit:
-    DEBUG_PRINT("return with nb %d\n", *num_bytes_ptr);
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "return with nb %ld\n", *num_bytes_ptr);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_READV_RNDV_CONT);
     return mpi_errno;
 
@@ -4499,21 +4374,11 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     if (0 == s_current_bytes[recv_vc_ptr->smp.local_nodes]) {
     READBAR();
     s_current_ptr[recv_vc_ptr->smp.local_nodes] = NULL;
-    DEBUG_PRINT("total in %d, total out %d\n",
-        SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id),
-        SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes,
-                    g_smpi.my_local_id));
 
     smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
         g_smpi.my_local_id,
         s_total_bytes[recv_vc_ptr->smp.local_nodes]);
 
-    DEBUG_PRINT("total in %d, total out %d\n",
-        SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id),
-        SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id));
     s_total_bytes[recv_vc_ptr->smp.local_nodes] = 0;
     }
 #if defined(_SMP_CMA_) 
@@ -4684,8 +4549,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     s_total_bytes[recv_vc_ptr->smp.local_nodes];
     smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
         g_smpi.my_local_id,0);
-    DEBUG_PRINT
-    ("current byte %d, total bytes %d, iovlen %d, iov[0].len %d\n",
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "current byte %ld, total bytes %ld, iovlen %d, iov[0].len %ld\n",
      s_current_bytes[recv_vc_ptr->smp.local_nodes],
      s_total_bytes[recv_vc_ptr->smp.local_nodes], iovlen,
      iov[0].MPID_IOV_LEN);
@@ -4694,7 +4558,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
     if (current_index != -1) {
     /** last smp packet has not been drained up yet **/
-    DEBUG_PRINT("iov_off %d, current bytes %d, iov len %d\n",
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "iov_off %ld, current bytes %ld, iov len %ld\n",
         iov_off, s_current_bytes[recv_vc_ptr->smp.local_nodes],
         iov[iov_off].MPID_IOV_LEN);
 
@@ -4869,25 +4733,13 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         }
     }
     *num_bytes_ptr += received_bytes;
-    DEBUG_PRINT
-        ("current bytes %d, num_bytes %d, iov_off %d, iovlen %d\n",
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "current bytes %ld, num_bytes %ld, iov_off %ld, iovlen %d\n",
          s_current_bytes[recv_vc_ptr->smp.local_nodes], *num_bytes_ptr,
          iov_off, iovlen);
 
     if (0 == s_current_bytes[recv_vc_ptr->smp.local_nodes]) {
         READBAR();
         s_current_ptr[recv_vc_ptr->smp.local_nodes] = NULL;
-        DEBUG_PRINT("total in %d, total out %d\n",
-            SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id),
-            SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id));
-
-        DEBUG_PRINT("total in %d, total out %d\n",
-            SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id),
-            SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id));
 
         s_total_bytes[recv_vc_ptr->smp.local_nodes] = 0;
     }
@@ -4904,7 +4756,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     }
 #endif
 fn_exit:
-    DEBUG_PRINT("return with nb %d\n", *num_bytes_ptr);
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "return with nb %ld\n", *num_bytes_ptr);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_READ_RNDV);
     return mpi_errno;
 
@@ -5117,7 +4969,7 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         WRITEBAR();
     }
 fn_exit:
-    DEBUG_PRINT("return with nb %d\n", *num_bytes_ptr);
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "return with nb %ld\n", *num_bytes_ptr);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_READV);
     return mpi_errno;
 }
@@ -5200,7 +5052,7 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
     MPIDI_PG_Get_vc(pg, pg_rank, &vc);
     g_smpi.my_local_id = vc->smp.local_nodes;
 
-    DEBUG_PRINT("num local nodes %d, my local id %d\n",
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "num local nodes %d, my local id %d\n",
         g_smpi.num_local_nodes, g_smpi.my_local_id);
 
     g_smpi.l2g_rank = (unsigned int *) MPIU_Malloc(g_smpi.num_local_nodes * sizeof(int));

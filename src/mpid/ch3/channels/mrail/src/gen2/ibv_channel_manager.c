@@ -614,7 +614,12 @@ inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, int receiving, st
 	if (is_send_completion) {
 #ifdef _ENABLE_UD_
         p = v->pheader;
-        if (rdma_enable_hybrid && !IS_MCAST_MSG(p)) {
+        if (rdma_enable_hybrid
+#ifdef _MCST_SUPPORT_
+            && !IS_MCAST_MSG(p)
+#endif
+           )
+        {
             if(v->transport == IB_TRANSPORT_RC  || 
                 (v->pheader && IS_CNTL_MSG(p))) {
                 MRAILI_Process_send(v);

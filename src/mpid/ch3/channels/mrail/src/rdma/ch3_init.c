@@ -27,6 +27,7 @@ MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 int (*check_cq_overflow) (MPIDI_VC_t *c, int rail);
 int (*perform_blocking_progress) (int hca_num, int num_cqs);
 void (*handle_multiple_cqs) (int num_cqs, int cq_choice, int is_send_completion);
+extern int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank);
 
 int mv2_user_defined_mapping = FALSE;
 
@@ -247,8 +248,6 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     for (i = 0; i < MAX_NUM_HCAS; ++i) {
         mv2_MPIDI_CH3I_RDMA_Process.ud_rails[i] = NULL;
     }
-    mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info = NULL;
-
     if ((value = getenv("MV2_HYBRID_ENABLE_THRESHOLD")) != NULL) {
         rdma_hybrid_enable_threshold = atoi(value);
     }
@@ -356,13 +355,42 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         MPIU_ERR_POP(mpi_errno);
     }
 
-    /* get parameters from the job-launcher */
+    /* Get parameters from the job-launcher */
     rdma_get_pm_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
 
     /* Check for SMP only */
     MPIDI_CH3I_set_smp_only();
 
     if (!SMP_ONLY) {
+        /*
+         * Identify local rank and number of local processes
+         */
+        if (pg->ch.local_process_id == -1) {
+            mpi_errno = MPIDI_Get_local_host(pg, pg_rank);
+            if (mpi_errno) {
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                        "**fail %s", "MPIDI_Get_local_host");
+            }
+        }
+
+        rdma_local_id = MPIDI_Get_local_process_id(pg);
+        rdma_num_local_procs = MPIDI_Num_local_processes(pg);
+
+        /* Reading the values from user first and then allocating the memory */
+        mpi_errno = rdma_get_control_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
+        if (mpi_errno) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                    "**fail %s", "rdma_get_control_parameters");
+        }
+        /* Set default values for parameters */
+        rdma_set_default_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
+        /* Read user defined values for parameters */
+        rdma_get_user_parameters(pg_size, pg_rank);
+
+        /* Allocate structures to store CM information
+         * This MUST come after reading env vars */
+        mpi_errno = MPIDI_CH3I_MRAIL_CM_Alloc(pg);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
 #if !defined(DISABLE_PTMALLOC)
         if (mvapich2_minit()) {
@@ -740,7 +768,9 @@ int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_PG_Init(MPIDI_PG_t * pg)
 {
-    return MPIDI_CH3I_MRAIL_PG_Init(pg);
+    pg->ch.mrail = NULL;
+
+    return MPI_SUCCESS;
 }
 
 /* This routine is a hook for any operations that need to be performed before
@@ -751,7 +781,7 @@ int MPIDI_CH3_PG_Init(MPIDI_PG_t * pg)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_PG_Destroy(struct MPIDI_PG *pg)
 {
-    return MPIDI_CH3I_MRAIL_PG_Destroy(pg);
+    return MPIDI_CH3I_MRAIL_CM_Dealloc(pg);
 }
 
 /* This routine is a hook for any operations that need to be performed before

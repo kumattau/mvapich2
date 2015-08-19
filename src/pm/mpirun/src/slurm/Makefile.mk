@@ -13,9 +13,6 @@
 AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/common/include
 AM_CPPFLAGS += -I$(top_srcdir)/src/pm/mpirun  -I$(top_srcdir)/src/pm/mpirun/src -I$(top_srcdir)/src/pm/mpirun/src/slurm
 
-src_pm_mpirun_src_slurm_libnodelist_a_YFLAGS = -d -p nodelist_yy
-src_pm_mpirun_src_slurm_libtasklist_a_YFLAGS = -d -p tasklist_yy
-
 noinst_LIBRARIES += src/pm/mpirun/src/slurm/libslurm.a 	\
 					src/pm/mpirun/src/slurm/libnodelist.a 	\
 					src/pm/mpirun/src/slurm/libtasklist.a

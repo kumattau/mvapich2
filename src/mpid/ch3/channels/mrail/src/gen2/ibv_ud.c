@@ -163,7 +163,7 @@ int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *send_ud_ctx)
     v->flags |= UD_VBUF_SEND_INPROGRESS;
 
     if (unlikely(vc->mrail.ud == NULL)) {
-        if (likely(vc->pg->ch.mrail.cm_lid[vc->pg_rank] == 0)) {
+        if (likely(vc->pg->ch.mrail->cm_shmem.ud_cm[vc->pg_rank].cm_lid == 0)) {
             MPICM_lock();
             PRINT_DEBUG(DEBUG_CM_verbose>0, "Calling MPIDI_CH3I_PMI_Get_Init_Info for %d\n", vc->pg_rank);
             MPIDI_CH3I_PMI_Get_Init_Info(vc->pg, vc->pg_rank, NULL);
@@ -199,7 +199,7 @@ void mv2_send_control_msg(MPIDI_VC_t *vc, vbuf *v)
     MV2_UD_RESET_CREDITS(vc, v);
 
     if (unlikely(vc->mrail.ud == NULL)) {
-        if (likely(vc->pg->ch.mrail.cm_lid[vc->pg_rank] == 0)) {
+        if (likely(vc->pg->ch.mrail->cm_shmem.ud_cm[vc->pg_rank].cm_lid == 0)) {
             MPICM_lock();
             PRINT_DEBUG(DEBUG_CM_verbose>0, "Calling MPIDI_CH3I_PMI_Get_Init_Info for %d\n", vc->pg_rank);
             MPIDI_CH3I_PMI_Get_Init_Info(vc->pg, vc->pg_rank, NULL);

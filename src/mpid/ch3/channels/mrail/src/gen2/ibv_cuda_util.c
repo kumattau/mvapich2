@@ -1003,6 +1003,10 @@ void cuda_get_user_parameters() {
     if ((value = getenv("MV2_CUDA_IPC")) != NULL) {
         rdma_cuda_ipc = atoi(value);
     }
+    
+    if ((value = getenv("MV2_CUDA_IPC_SHARE_GPU")) != NULL) {
+        rdma_enable_ipc_share_gpu = atoi(value);
+    }
 
     if ((value = getenv("MV2_CUDA_SMP_IPC")) != NULL) {
         rdma_cuda_smp_ipc = atoi(value);
@@ -1136,18 +1140,26 @@ void cuda_init (MPIDI_PG_t * pg)
         MPIDI_Comm_get_vc(comm_world, i, &vc);
         vc->smp.can_access_peer = CUDA_IPC_UNINITIALIZED;
         if (vc->smp.local_rank != -1) {
-            /*if both processes are using the same device, IPC works 
-              but cudaDeviceCanAccessPeer returns 0, or
-              else decide based on result of cudaDeviceCanAccessPeer*/
-            if (device[my_rank] == device[i]) { 
-                vc->smp.can_access_peer = CUDA_IPC_ENABLED;
-            } else {
-                cudaerr = cudaDeviceCanAccessPeer(&vc->smp.can_access_peer, device[my_rank], device[i]);
-                if (cudaerr != cudaSuccess) {
-                    ibv_error_abort(GEN_EXIT_ERR,"cudaDeviceCanAccessPeer failed");
-                }
-                vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
-            }
+                if(rdma_enable_ipc_share_gpu){
+                /*if both processes are using the same device, IPC works 
+                    but cudaDeviceCanAccessPeer returns 0, or
+                    else decide based on result of cudaDeviceCanAccessPeer*/
+                    if (device[my_rank] == device[i]) { 
+                        vc->smp.can_access_peer = CUDA_IPC_ENABLED;
+                    } else {
+                        cudaerr = cudaDeviceCanAccessPeer(&vc->smp.can_access_peer, device[my_rank], device[i]);
+                        if (cudaerr != cudaSuccess) {
+                            ibv_error_abort(GEN_EXIT_ERR,"cudaDeviceCanAccessPeer failed");
+                        }
+                        vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
+                    }
+                }else{
+                    cudaerr = cudaDeviceCanAccessPeer(&vc->smp.can_access_peer, device[my_rank], device[i]);
+                        if (cudaerr != cudaSuccess) {
+                            ibv_error_abort(GEN_EXIT_ERR,"cudaDeviceCanAccessPeer failed");
+                        }
+                        vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
+               }     
             if (vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
                 has_cudaipc_peer = 1;
             }

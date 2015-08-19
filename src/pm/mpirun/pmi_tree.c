@@ -928,7 +928,16 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
             goto invalid_cmd;
     case 17:                   /* get_universe_size */
         if (0 == strcmp(command, "get_universe_size")) {
-            sprintf(resp, "cmd=universe_size size=%d rc=0\n", N);
+            char *uni_size_str = NULL;
+            int uni_size_value = -1; /* MPIR_UNIVERSE_SIZE_NOT_SET defined in mpiimpl.h */
+            if ((uni_size_str = getenv("MV2_UNIVERSE_SIZE")) != NULL) {
+                uni_size_value = atoi(uni_size_str);
+                if (uni_size_value <= 0) {
+                    uni_size_value = -1; /* MPIR_UNIVERSE_SIZE_NOT_SET defined in mpiimpl.h */
+                }
+            }
+
+            sprintf(resp, "cmd=universe_size size=%d rc=0\n", uni_size_value);
             writeline(fd, resp, strlen(resp));
         } else
             goto invalid_cmd;

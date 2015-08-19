@@ -74,7 +74,6 @@ int MPID_Comm_spawn_multiple(int count, char *array_of_commands[],
 #   endif
     
 fn_fail:
-fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_COMM_SPAWN_MULTIPLE);
     return mpi_errno;
 }

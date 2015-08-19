@@ -130,6 +130,7 @@ void mv2_print_mem_usage()
     }
 }
 
+#ifdef _OSU_MVAPICH_
 inline void dump_device_cap(struct ibv_device_attr dev_attr)
 {
     PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of supported QPs                                                               : %6d\n", dev_attr.max_qp);
@@ -165,3 +166,4 @@ inline void dump_device_cap(struct ibv_device_attr dev_attr)
     PRINT_DEBUG(DEBUG_INIT_verbose>1, "Maximum number of partitions                                                                  : %6d\n", dev_attr.max_pkeys);
     PRINT_DEBUG(DEBUG_INIT_verbose>0, "Maximum number of QPs which can be attached to multicast groups                               : %6d\n", dev_attr.max_total_mcast_qp_attach);
 }
+#endif

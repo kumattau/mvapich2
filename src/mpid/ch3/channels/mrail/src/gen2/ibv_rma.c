@@ -48,7 +48,7 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
     /* This function will register the local buf, send rdma write to target, and send
      * get_resp_kt as rput finsh. Currently, we assume the local buffer is contiguous,
      * datatype cases will be considered later */
-    int nbytes;
+    MPIDI_msg_sz_t nbytes;
     int rail;
     vbuf *v;
     MPIDI_STATE_DECL(MPIDI_STATE_GEN2_RNDV_RPUT);

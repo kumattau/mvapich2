@@ -35,9 +35,6 @@ int MPID_Issend(const void * buf, int count, MPI_Datatype datatype, int rank, in
     MPID_Datatype * dt_ptr;
     MPID_Request * sreq;
     MPIDI_VC_t * vc=0;
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif    
 #if !defined(CHANNEL_MRAIL)
     int eager_threshold = -1;
 #endif

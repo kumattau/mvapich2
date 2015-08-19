@@ -107,10 +107,10 @@ int MPIR_Alltoall_inplace_MV2(
     MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
     
     if(sendbuf != MPI_IN_PLACE) {
-	mpi_errno = MPIR_Localcopy((char *)((char *)recvbuf + (rank * recvcount * recvtype_extent)),
-				   recvcount, recvtype,
-				   (char *)sendbuf,
-				   recvcount, recvtype);
+       mpi_errno = MPIR_Localcopy((char *)sendbuf,
+                                  recvcount * recvtype_extent * comm_size, recvtype,
+                                  (char *)recvbuf,
+                                  recvcount * recvtype_extent * comm_size, recvtype);
     }
 
     /* check if multiple threads are calling this collective function */

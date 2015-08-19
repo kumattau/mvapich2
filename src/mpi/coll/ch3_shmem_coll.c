@@ -826,6 +826,144 @@ fn_fail:
 #endif /*defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)*/
 
 #undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SHMEM_Helper_fn
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
+                                char *prefix, int *fd, size_t file_size)
+{
+    int mpi_errno = MPI_SUCCESS;
+    size_t pathlen = 0;
+    char *shmem_dir = NULL, *shmdir = NULL;
+    struct stat file_status;
+#if defined(SOLARIS)
+    char *setdir = "/tmp";
+#else
+    char *setdir = "/dev/shm";
+#endif
+
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_HELPER_FN);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_HELPER_FN);
+
+    PRINT_DEBUG(DEBUG_SHM_verbose>0, "Set up shmem for %s\n", prefix);
+
+    /* Obtain prefix to create shared file name */
+    if ((shmdir = getenv("MV2_SHMEM_DIR")) != NULL) {
+        shmem_dir = shmdir;
+    } else {
+        shmem_dir = setdir;
+    }
+    /*Find length of prefix */
+    pathlen = strlen(shmem_dir);
+
+    /* Get hostname to create unique shared file name */
+    if (gethostname(mv2_hostname, sizeof (char) * HOSTNAME_LEN) < 0) {
+        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
+                                  "gethostname", strerror(errno));
+    }
+ 
+    /* Get KVS name to create unique shared file name */
+    MPIDI_PG_GetConnKVSname(&mv2_kvs_name);
+
+    /* Allocate memory for unique file name */
+    *filename = (char *) MPIU_Malloc(sizeof (char) *
+                            (pathlen + HOSTNAME_LEN + 26 + PID_CHAR_LEN));
+    if (!*filename) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                                  "**nomem %s", "mv2_shmem_coll_file");
+    }
+
+    /* Create unique shared file name */
+    sprintf(*filename, "%s/%s-%s-%s-%d.tmp",
+            shmem_dir, prefix, mv2_kvs_name, mv2_hostname, getuid());
+
+    /* Open the shared memory file */
+    *fd = open(*filename, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+    if (*fd < 0) {
+        /* Fallback */
+        sprintf(*filename, "/tmp/%s-%s-%s-%d.tmp",
+                prefix, mv2_kvs_name, mv2_hostname, getuid());
+
+        *fd = open(*filename, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+        if (*fd < 0) {
+            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+                                      "**fail", "%s: %s", "open", strerror(errno));
+        }
+    }
+    PRINT_DEBUG(DEBUG_SHM_verbose>0, "Shmem file opened for %s\n", prefix);
+
+    if (local_id == 0) {
+        PRINT_DEBUG(DEBUG_SHM_verbose>0, "Set file size for %s\n", prefix);
+        if (ftruncate(*fd, 0)) {
+            /* to clean up tmp shared file */
+            mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                                             FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                                             "%s: %s", "ftruncate", strerror(errno));
+            goto fn_fail;
+        }
+
+        /* set file size, without touching pages */
+        if (ftruncate(*fd, file_size)) {
+            /* to clean up tmp shared file */
+            mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                                             FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                                             "%s: %s", "ftruncate", strerror(errno));
+            goto fn_fail;
+        }
+
+        PRINT_DEBUG(DEBUG_SHM_verbose>0, "Call MPIU_Calloc for %s\n", prefix);
+/* Ignoring optimal memory allocation for now */
+#if !defined(_X86_64_)
+        {
+            char *buf = (char *) MPIU_Calloc(file_size + 1, sizeof (char));
+
+            if (write(*fd, buf, file_size) != file_size) {
+                mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                                                 FCNAME, __LINE__, MPI_ERR_OTHER,
+                                                 "**fail", "%s: %s", "write",
+                                                 strerror(errno));
+                MPIU_Free(buf);
+                goto fn_fail;
+            }
+            MPIU_Free(buf);
+        }
+#endif                          /* !defined(_X86_64_) */
+
+        PRINT_DEBUG(DEBUG_SHM_verbose>0, "Call lseek for %s\n", prefix);
+        if (lseek(*fd, 0, SEEK_SET) != 0) {
+            /* to clean up tmp shared file */
+            mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                                             FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                                             "%s: %s", "lseek", strerror(errno));
+            goto fn_fail;
+        }
+    }
+
+    PRINT_DEBUG(DEBUG_SHM_verbose>0, "Wait for local sync for %s\n", prefix);
+    /* Synchronization between local processes */
+    do {
+       if (fstat(*fd, &file_status) != 0) {
+           /* to clean up tmp shared file */
+           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                   "%s: %s", "fstat",
+                   strerror(errno));
+           goto fn_fail;
+       }
+       usleep(1);
+    } while (file_status.st_size != file_size);
+
+    PRINT_DEBUG(DEBUG_SHM_verbose>0, "Finished set up shmem for %s\n", prefix);
+
+  fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_HELPER_FN);
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Init
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -835,118 +973,26 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_INIT);
     int mpi_errno = MPI_SUCCESS;
     char *value;
-    MPIDI_VC_t *vc = NULL;
 
     if (mv2_init_call_once == 1)
         return mpi_errno;
 
     mv2_init_call_once = 1;
 
-#if defined(SOLARIS)
-    char *setdir = "/tmp";
-#else
-    char *setdir = "/dev/shm";
-#endif
-    char *shmem_dir, *shmdir;
-    size_t pathlen;
-
-    if ((shmdir = getenv("MV2_SHMEM_DIR")) != NULL) {
-        shmem_dir = shmdir;
-    } else {
-        shmem_dir = setdir;
-    }
-    pathlen = strlen(shmem_dir);
-
     mv2_shmem_coll_num_procs = pg->ch.num_local_processes;
     if ((value = getenv("MV2_SHMEM_COLL_NUM_PROCS")) != NULL) {
         mv2_shmem_coll_num_procs = (int) atoi(value);
     }
-    if (gethostname(mv2_hostname, sizeof (char) * SHMEM_COLL_HOSTNAME_LEN) < 0) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
-                                  "gethostname", strerror(errno));
-    }
 
-    UPMI_GET_RANK(&mv2_my_rank);
-    MPIDI_PG_Get_vc(pg, mv2_my_rank, &vc);
-
-    /* add pid for unique file name */
-    mv2_shmem_coll_file = (char *) MPIU_Malloc(pathlen +
-                                               sizeof (char) * (SHMEM_COLL_HOSTNAME_LEN +
-                                                                26 + PID_CHAR_LEN));
-    if (!mv2_shmem_coll_file) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                                  "**nomem %s", "mv2_shmem_coll_file");
-    }
-
-    MPIDI_PG_GetConnKVSname(&mv2_kvs_name);
-    /* unique shared file name */
-    sprintf(mv2_shmem_coll_file, "%s/ib_shmem_coll-%s-%s-%d.tmp",
-            shmem_dir, mv2_kvs_name, mv2_hostname, getuid());
-
-    /* open the shared memory file */
-    mv2_shmem_coll_obj.fd = open(mv2_shmem_coll_file, O_RDWR | O_CREAT,
-                                 S_IRWXU | S_IRWXG | S_IRWXO);
-    if (mv2_shmem_coll_obj.fd < 0) {
-        /* Fallback */
-        sprintf(mv2_shmem_coll_file, "/tmp/ib_shmem_coll-%s-%s-%d.tmp",
-                mv2_kvs_name, mv2_hostname, getuid());
-
-        mv2_shmem_coll_obj.fd = open(mv2_shmem_coll_file, O_RDWR | O_CREAT,
-                                     S_IRWXU | S_IRWXG | S_IRWXO);
-        if (mv2_shmem_coll_obj.fd < 0) {
-            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
-                                      "**fail", "%s: %s", "open", strerror(errno));
-        }
-    }
-
-    mv2_shmem_coll_size = SHMEM_ALIGN(SHMEM_COLL_BUF_SIZE +
-                                      getpagesize()) + SHMEM_CACHE_LINE_SIZE;
-
-    if (local_id == 0) {
-        if (ftruncate(mv2_shmem_coll_obj.fd, 0)) {
-            /* to clean up tmp shared file */
-            mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
-                                             FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
-                                             "%s: %s", "ftruncate", strerror(errno));
-            goto cleanup_files;
-        }
-
-        /* set file size, without touching pages */
-        if (ftruncate(mv2_shmem_coll_obj.fd, mv2_shmem_coll_size)) {
-            /* to clean up tmp shared file */
-            mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
-                                             FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
-                                             "%s: %s", "ftruncate", strerror(errno));
-            goto cleanup_files;
-        }
-
-/* Ignoring optimal memory allocation for now */
-#if !defined(_X86_64_)
-        {
-            char *buf = (char *) MPIU_Calloc(mv2_shmem_coll_size + 1,
-                                             sizeof (char));
-
-            if (write(mv2_shmem_coll_obj.fd, buf, mv2_shmem_coll_size) !=
-                mv2_shmem_coll_size) {
-                mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
-                                                 FCNAME, __LINE__, MPI_ERR_OTHER,
-                                                 "**fail", "%s: %s", "write",
-                                                 strerror(errno));
-                MPIU_Free(buf);
-                goto cleanup_files;
-            }
-            MPIU_Free(buf);
-        }
-#endif                          /* !defined(_X86_64_) */
-
-        if (lseek(mv2_shmem_coll_obj.fd, 0, SEEK_SET) != 0) {
-            /* to clean up tmp shared file */
-            mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
-                                             FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
-                                             "%s: %s", "lseek", strerror(errno));
-            goto cleanup_files;
-        }
-
+    /* Find out the size of the region to create */
+    mv2_shmem_coll_size = SHMEM_ALIGN(SHMEM_COLL_BUF_SIZE + getpagesize())
+                                + SHMEM_CACHE_LINE_SIZE;
+    /* Call helper function to create shmem region */
+    mpi_errno = MPIDI_CH3I_SHMEM_Helper_fn(pg, local_id, &mv2_shmem_coll_file,
+                                "ib_shmem_coll", &mv2_shmem_coll_obj.fd,
+                                mv2_shmem_coll_size);
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIU_ERR_POP(mpi_errno);
     }
 
     if (mv2_tune_parameter == 1) {
@@ -957,9 +1003,8 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_INIT);
     return mpi_errno;
 
-  cleanup_files:
-    MPIDI_CH3I_SHMEM_COLL_Cleanup();
   fn_fail:
+    MPIDI_CH3I_SHMEM_COLL_Cleanup();
     goto fn_exit;
 }
 

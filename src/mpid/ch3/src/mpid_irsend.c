@@ -36,7 +36,7 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
     MPI_Aint dt_true_lb;
     MPID_Datatype * dt_ptr;
     MPID_Request * sreq;
-    MPIDI_VC_t * vc;
+    MPIDI_VC_t * vc = NULL;
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif    

@@ -1,5 +1,5 @@
-# Copyright © 2009-2014 Inria.  All rights reserved.
-# Copyright © 2009      Université Bordeaux 1
+# Copyright © 2009-2015 Inria.  All rights reserved.
+# Copyright © 2009      Université Bordeaux
 # Copyright © 2009-2014 Cisco Systems, Inc.  All rights reserved.
 # See COPYING in top-level directory.
 
@@ -9,7 +9,7 @@ ACLOCAL_AMFLAGS = -I ./config
 
 SUBDIRS = src include
 if HWLOC_BUILD_STANDALONE
-SUBDIRS += utils tests
+SUBDIRS += tests utils
 # We need doc/ if HWLOC_BUILD_DOXYGEN, or during make install if HWLOC_INSTALL_DOXYGEN.
 # There's no INSTALL_SUBDIRS, so always enter doc/ and check HWLOC_BUILD/INSTALL_DOXYGEN there
 SUBDIRS += doc
@@ -34,12 +34,12 @@ endif
 
 #
 # "make distcheck" requires that tarballs are able to be able to "make
-# dist", so we have to include config/distscript.csh.
+# dist", so we have to include config/distscript.sh.
 #
 EXTRA_DIST = \
         README VERSION COPYING AUTHORS \
         config/hwloc_get_version.sh \
-        config/distscript.csh
+        config/distscript.sh
 
 # Only install entire visual studio subdirectory if we're building in standalone mode
 if HWLOC_BUILD_STANDALONE
@@ -48,7 +48,7 @@ endif
 
 if HWLOC_BUILD_STANDALONE
 dist-hook:
-	env LS_COLORS= csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(HWLOC_VERSION)"
+	sh "$(top_srcdir)/config/distscript.sh" "$(top_srcdir)" "$(distdir)" "$(HWLOC_VERSION)"
 endif HWLOC_BUILD_STANDALONE
 
 #

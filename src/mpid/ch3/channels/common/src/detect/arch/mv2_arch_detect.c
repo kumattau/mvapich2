@@ -68,6 +68,7 @@ static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 #define INTEL_E5_2630_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2630 v2 @ 2.60GHz"
 #define INTEL_E5_2680_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2680 v2 @ 2.80GHz"
 #define INTEL_E5_2690_V2_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2690 v2 @ 3.00GHz"
+#define INTEL_E5_2690_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz"
 #define INTEL_E5_2698_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2698 v3 @ 2.30GHz"
 #define INTEL_E5_2660_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2660 v3 @ 2.60GHz"
 #define INTEL_E5_2680_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2680 v3 @ 2.50GHz"
@@ -95,6 +96,7 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12,"MV2_ARCH_INTEL_XEON_E5_2630_V2_2S_12"},
     {MV2_ARCH_INTEL_XEON_E5_2680_V2_2S_20,"MV2_ARCH_INTEL_XEON_E5_2680_V2_2S_20"},
     {MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20,"MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20"},
+    {MV2_ARCH_INTEL_XEON_E5_2690_V3_2S_24,"MV2_ARCH_INTEL_XEON_E5_2690_V3_2S_24"},
     {MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32,"MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32"},
     {MV2_ARCH_INTEL_XEON_E5_2660_V3_2S_20,"MV2_ARCH_INTEL_XEON_E5_2660_V3_2S_20"},
     {MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24,"MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24"},
@@ -318,6 +320,8 @@ mv2_arch_type mv2_get_arch_type()
 		                    if(NULL != strstr(model_name, INTEL_E5_2680_V3_MODEL_NAME)) {
 		                        arch_type = MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24;
                             }
+                        } else if(NULL != strstr(model_name, INTEL_E5_2690_V3_MODEL_NAME)){
+                            arch_type = MV2_ARCH_INTEL_XEON_E5_2690_V3_2S_24;
                         }
 				    } else if(32 == num_cpus){
 				        if(INTEL_XEON_E5_2698_V3_MODEL == g_mv2_cpu_model) {

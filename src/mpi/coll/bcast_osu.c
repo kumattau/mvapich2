@@ -2649,17 +2649,13 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
             /* We are now done with the inter-node phase */
             if (comm_ptr->dev.ch.intra_node_done == 0) {
 
-                if (MV2_Bcast_intra_node_function == &MPIR_Knomial_Bcast_intra_node_MV2) {
-                    root = INTRA_NODE_ROOT;
-                }
-
                 if (!is_contig || !is_homogeneous) {
                     mpi_errno = MV2_Bcast_intra_node_function(tmp_buf, nbytes,
-                                                              MPI_BYTE, root, shmem_commptr,
+                                                              MPI_BYTE, INTRA_NODE_ROOT, shmem_commptr,
                                                               errflag);
                 } else {
                     mpi_errno = MV2_Bcast_intra_node_function(buffer, count,
-                                                              datatype, root, shmem_commptr,
+                                                              datatype, INTRA_NODE_ROOT, shmem_commptr,
                                                               errflag);
 
                 }
@@ -2916,17 +2912,13 @@ int MPIR_Bcast_tune_intra_MV2(void *buffer,
             /* We are now done with the inter-node phase */
             if (comm_ptr->dev.ch.intra_node_done == 0) {
 
-                if (MV2_Bcast_intra_node_function == &MPIR_Knomial_Bcast_intra_node_MV2) {
-                    root = INTRA_NODE_ROOT;
-                }
-
                 if (!is_contig || !is_homogeneous) {
                     mpi_errno = MV2_Bcast_intra_node_function(tmp_buf, nbytes,
-                                                              MPI_BYTE, root, shmem_commptr,
+                                                              MPI_BYTE, INTRA_NODE_ROOT, shmem_commptr,
                                                               errflag);
                 } else {
                     mpi_errno = MV2_Bcast_intra_node_function(buffer, count,
-                                                              datatype, root, shmem_commptr,
+                                                              datatype, INTRA_NODE_ROOT, shmem_commptr,
                                                               errflag);
 
                 }

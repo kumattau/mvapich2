@@ -695,7 +695,7 @@ int post_hybrid_send(MPIDI_VC_t* vc, vbuf* v, int rail)
                 && ((mv2_MPIDI_CH3I_RDMA_Process.rc_connections + rdma_hybrid_pending_rc_conn)
                     < rdma_hybrid_max_rc_conn)
                 && vc->mrail.rely.ext_window.head == NULL
-                && !(vc->state & (MPIDI_VC_STATE_LOCAL_CLOSE | MPIDI_VC_STATE_CLOSE_ACKED))) {
+                && !(vc->state == MPIDI_VC_STATE_LOCAL_CLOSE || vc->state == MPIDI_VC_STATE_CLOSE_ACKED)) {
                 /* This is hack to create RC channel usig CM protocol.
                 ** Need to handle this by sending REQ/REP on UD channel itself
                 */
@@ -744,6 +744,9 @@ int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
     p->rail        = rail;
 #ifdef _ENABLE_UD_
     p->src.rank    = MPIDI_Process.my_pg_rank;
+    while (vc->mrail.rails[rail].qp_hndl->state != IBV_QPS_RTS) {
+        MPID_Progress_test();
+    }
 #else
     p->src.vc_addr = vc->mrail.remote_vc_addr;
 #endif

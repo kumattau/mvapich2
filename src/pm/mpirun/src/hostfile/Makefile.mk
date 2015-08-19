@@ -12,7 +12,6 @@
 
 AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/common/include
 AM_CPPFLAGS += -I$(top_srcdir)/src/pm/mpirun -I$(top_srcdir)/src/pm/mpirun/src -I$(top_srcdir)/src/pm/mpirun/src/hostfile
-AM_YFLAGS = -d -p hostfile_yy
 
 noinst_LIBRARIES += src/pm/mpirun/src/hostfile/libhostfile.a
 

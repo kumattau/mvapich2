@@ -1730,9 +1730,9 @@ int CR_IBU_Rebuild_network()
     }
 
     for (i = 0; i < pg_size; ++i) {
-        pg->ch.mrail.cm_lid[i] = lid_all[i];
-        memcpy(&pg->ch.mrail.cm_gid[i], &gid_all[i], sizeof(union ibv_gid));
-        pg->ch.mrail.cm_ud_qpn[i] = ud_qpn_all[i];
+        pg->ch.mrail->cm_shmem.ud_cm[i].cm_lid = lid_all[i];
+        memcpy(&pg->ch.mrail->cm_shmem.ud_cm[i].cm_gid, &gid_all[i], sizeof(union ibv_gid));
+        pg->ch.mrail->cm_shmem.ud_cm[i].cm_ud_qpn = ud_qpn_all[i];
     }
 
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"Exchanging parameters done\n");

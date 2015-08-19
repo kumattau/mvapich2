@@ -32,7 +32,8 @@
 /* For mv2_system_report */
 #include "sysreport.h"
 
-extern int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank);
+extern int MPIDI_CH3I_CM_Create_region(MPIDI_PG_t *pg);
+extern int MPIDI_CH3I_CM_Destroy_region(MPIDI_PG_t *pg);
 
 /* global rdma structure for the local process */
 mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
@@ -40,81 +41,119 @@ char ufile[512];
 int ring_setup_done = 0;
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_MRAIL_PG_Init
+#define FUNCNAME MPIDI_CH3I_MRAIL_CM_Alloc
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_MRAIL_PG_Init(MPIDI_PG_t * pg)
+int MPIDI_CH3I_MRAIL_CM_Alloc(MPIDI_PG_t * pg)
 {
-    int mpi_errno = MPI_SUCCESS;
+    char *value     = NULL;
+    int mpi_errno   = MPI_SUCCESS;
 
-    pg->ch.mrail.cm_ah = NULL;
-    pg->ch.mrail.cm_ud_qpn = NULL;
-    pg->ch.mrail.cm_lid = NULL;
-    pg->ch.mrail.cm_gid = NULL;
-#ifdef _ENABLE_XRC_
-    pg->ch.mrail.xrc_hostid = NULL;
-#endif
-
-    pg->ch.mrail.cm_ah = MPIU_Malloc(pg->size * sizeof(struct ibv_ah *));
-    if (!pg->ch.mrail.cm_ah) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
-                                  "**nomem %s", "cm_ah");
+    if ((value = getenv("MV2_SHMEM_BACKED_UD_CM")) != NULL) {
+        mv2_shmem_backed_ud_cm = !!atoi(value);
     }
-    MPIU_Memset(pg->ch.mrail.cm_ah, 0, pg->size * sizeof(struct ibv_ah *));
 
-    pg->ch.mrail.cm_ud_qpn = MPIU_Malloc(pg->size * sizeof(uint32_t));
-    if (!pg->ch.mrail.cm_ud_qpn) {
+    pg->ch.mrail = MPIU_Malloc(sizeof(MPIDI_CH3I_MRAIL_CM_t));
+    if (pg->ch.mrail == NULL) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
-                                  "**nomem %s", "cm_ud_qpn");
+                "**nomem %s", "ud_cm mrail");
     }
-    MPIU_Memset(pg->ch.mrail.cm_ud_qpn, 0, pg->size * sizeof(uint32_t));
+    MPIU_Memset(pg->ch.mrail, 0, sizeof(MPIDI_CH3I_MRAIL_CM_t));
 
-    pg->ch.mrail.cm_lid = MPIU_Malloc(pg->size * sizeof(uint16_t));
-    if (!pg->ch.mrail.cm_lid) {
+    pg->ch.mrail->cm_ah = MPIU_Malloc(pg->size * sizeof(struct ibv_ah *));
+    if (pg->ch.mrail->cm_ah == NULL) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
-                                  "**nomem %s", "cm_lid");
+                "**nomem %s", "cm_ah");
     }
-    MPIU_Memset(pg->ch.mrail.cm_lid, 0, pg->size * sizeof(uint16_t));
+    MPIU_Memset(pg->ch.mrail->cm_ah, 0, pg->size * sizeof(struct ibv_ah *));
 
-    pg->ch.mrail.cm_gid = MPIU_Malloc(pg->size * sizeof(union ibv_gid));
-    if (!pg->ch.mrail.cm_gid) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
-                                  "**nomem %s", "cm_gid");
+#ifdef _ENABLE_UD_
+    pg->ch.mrail->cm_shmem.remote_ud_info = NULL;
+    if (rdma_enable_hybrid) {
+        pg->ch.mrail->cm_shmem.remote_ud_info = (mv2_ud_exch_info_t **)
+                        MPIU_Malloc(pg->size * sizeof(mv2_ud_exch_info_t*));
+        if (pg->ch.mrail->cm_shmem.remote_ud_info == NULL) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+                    "**nomem %s", "remote_ud_info");
+        }
     }
-    MPIU_Memset(pg->ch.mrail.cm_gid, 0, pg->size * sizeof(union ibv_gid));
+#endif /* _ENABLE_UD_ */
 
-#ifdef _ENABLE_XRC_
-    pg->ch.mrail.xrc_hostid = MPIU_Malloc(pg->size * sizeof(uint32_t));
-    if (!pg->ch.mrail.xrc_hostid) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
-                                  "**nomem %s", "xrc_hostid");
+    if (mv2_shmem_backed_ud_cm) {
+        mpi_errno = MPIDI_CH3I_CM_Create_region(pg);
+    } else {
+        pg->ch.mrail->cm_shmem.ud_cm =
+                MPIU_Malloc(pg->size * sizeof(MPIDI_CH3I_MRAIL_UD_CM_t));
+        if (pg->ch.mrail->cm_shmem.ud_cm == NULL) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+                    "**nomem %s", "ud_cm");
+        }
+        MPIU_Memset(pg->ch.mrail->cm_shmem.ud_cm, 0,
+                    pg->size * sizeof(MPIDI_CH3I_MRAIL_UD_CM_t));
+#ifdef _ENABLE_UD_
+        if (rdma_enable_hybrid) {
+            int i = 0;
+            for (i = 0; i < pg->size; i++) {
+                pg->ch.mrail->cm_shmem.remote_ud_info[i] = (mv2_ud_exch_info_t *)
+                            MPIU_Malloc(rdma_num_hcas * sizeof(mv2_ud_exch_info_t));
+            }
+        }
+#endif /* _ENABLE_UD_ */
     }
-    MPIU_Memset(pg->ch.mrail.xrc_hostid, 0, pg->size * sizeof(uint32_t));
-#endif
 
   fn_fail:
     return mpi_errno;
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_MRAIL_PG_Destroy
+#define FUNCNAME MPIDI_CH3I_MRAIL_CM_Dealloc
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_MRAIL_PG_Destroy(MPIDI_PG_t * pg)
+int MPIDI_CH3I_MRAIL_CM_Dealloc(MPIDI_PG_t * pg)
 {
-    if (pg->ch.mrail.cm_ah)
-        MPIU_Free(pg->ch.mrail.cm_ah);
-    if (pg->ch.mrail.cm_ud_qpn)
-        MPIU_Free(pg->ch.mrail.cm_ud_qpn);
-    if (pg->ch.mrail.cm_lid)
-        MPIU_Free(pg->ch.mrail.cm_lid);
-    if (pg->ch.mrail.cm_gid)
-        MPIU_Free(pg->ch.mrail.cm_gid);
-#ifdef _ENABLE_XRC_
-    if (pg->ch.mrail.xrc_hostid)
-        MPIU_Free(pg->ch.mrail.xrc_hostid);
-#endif
-    return MPI_SUCCESS;
+    int mpi_errno   = MPI_SUCCESS;
+
+    if (pg->ch.mrail == NULL) {
+        /* Nothing to do */
+        goto fn_exit;
+    }
+
+    if (mv2_shmem_backed_ud_cm) {
+        mpi_errno = MPIDI_CH3I_CM_Destroy_region(pg);
+    } else {
+        if (pg->ch.mrail->cm_shmem.ud_cm) {
+            MPIU_Free(pg->ch.mrail->cm_shmem.ud_cm);
+            pg->ch.mrail->cm_shmem.ud_cm = NULL;
+        }
+#ifdef _ENABLE_UD_
+        if (pg->ch.mrail->cm_shmem.remote_ud_info) {
+            int i = 0;
+            for (i = 0; i < pg->size; ++i) {
+                MPIU_Free(pg->ch.mrail->cm_shmem.remote_ud_info[i]);
+            }
+        }
+#endif /* _ENABLE_UD_ */
+    }
+
+#ifdef _ENABLE_UD_
+    if (pg->ch.mrail->cm_shmem.remote_ud_info) {
+        MPIU_Free(pg->ch.mrail->cm_shmem.remote_ud_info);
+        pg->ch.mrail->cm_shmem.remote_ud_info = NULL;
+    }
+#endif /* _ENABLE_UD_ */
+
+    if (pg->ch.mrail->cm_ah) {
+        MPIU_Free(pg->ch.mrail->cm_ah);
+        pg->ch.mrail->cm_ah = NULL;
+    }
+
+    if (pg->ch.mrail) {
+        MPIU_Free(pg->ch.mrail);
+        pg->ch.mrail = NULL;
+    }
+
+fn_exit:
+    return mpi_errno;
 }
 
 static inline uint16_t get_local_lid(struct ibv_context *ctx, int port)
@@ -157,30 +196,6 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_INIT);
 
     pg_size = MPIDI_PG_Get_size(pg);
-
-    /* Host ids exchanges through PMI in MPIDI_Get_local_host for
-     ** mpirun_rsh. for all other launchers do it here */
-    if (pg->ch.local_process_id == -1) {
-        mpi_errno = MPIDI_Get_local_host(pg, pg_rank);
-        if (mpi_errno) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s", "MPIDI_Get_local_host");
-        }
-    }
-
-    rdma_local_id = MPIDI_Get_local_process_id(pg);
-    rdma_num_local_procs = MPIDI_Num_local_processes(pg);
-
-    /* Reading the values from user first and
-     * then allocating the memory */
-    if ((mpi_errno =
-         rdma_get_control_parameters(&mv2_MPIDI_CH3I_RDMA_Process)) !=
-        MPI_SUCCESS) {
-        MPIU_ERR_POP(mpi_errno);
-    }
-
-    rdma_set_default_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
-    rdma_get_user_parameters(pg_size, pg_rank);
 
     if (!mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
         rdma_r3_threshold = rdma_r3_threshold_nocache;
@@ -1080,7 +1095,6 @@ static int mv2_xrc_unlink_file(MPIDI_PG_t * pg)
     MPIDI_FUNC_EXIT(MPID_STATE_CH3I_MV2_XRC_UNLINK_FILE);
     return mpi_errno;
 }
-
 #endif /* _ENABLE_XRC_ */
 
 #undef FUNCNAME
@@ -1097,24 +1111,12 @@ int MPIDI_CH3I_Ring_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
     mv2_process_init_info_t *all_info = NULL;
 #ifdef _ENABLE_UD_
     int hca_index = 0;
-    mv2_ud_exch_info_t **ud_all_info = NULL;
 #endif /* _ENABLE_UD_ */
 
     MPIDI_STATE_DECL(MPIDI_CH3I_RING_EXCHANGE_INIT_INFO);
     MPIDI_FUNC_ENTER(MPIDI_CH3I_RING_EXCHANGE_INIT_INFO);
 
     pg_size = MPIDI_PG_Get_size(pg);
-
-#ifdef _ENABLE_UD_
-    if (rdma_enable_hybrid) {
-        ud_all_info = (mv2_ud_exch_info_t **)
-                    MPIU_Malloc(pg_size * sizeof(mv2_ud_exch_info_t*));
-        for (i = 0; i < pg_size; i++) {
-            ud_all_info[i] = (mv2_ud_exch_info_t *)
-                    MPIU_Malloc(rdma_num_hcas * sizeof(mv2_ud_exch_info_t));
-        }
-    }
-#endif /* _ENABLE_UD_ */
 
     /* Setup IB ring */
     mpi_errno = rdma_setup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process,
@@ -1147,36 +1149,32 @@ int MPIDI_CH3I_Ring_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
     }
 
     for (i = 0; i < pg_size; i++) {
-        pg->ch.mrail.cm_lid[i] = all_info[i].lid[0][0];
-        memcpy(&pg->ch.mrail.cm_gid[i], &all_info[i].gid[0][0],
+        pg->ch.mrail->cm_shmem.ud_cm[i].cm_lid = all_info[i].lid[0][0];
+        memcpy(&pg->ch.mrail->cm_shmem.ud_cm[i].cm_gid, &all_info[i].gid[0][0],
                 sizeof(union ibv_gid));
         arch_hca_type_all[i] = all_info[i].my_arch_hca_type;
-        pg->ch.mrail.cm_ud_qpn[i] = all_info[i].ud_cm_qpn;
+        pg->ch.mrail->cm_shmem.ud_cm[i].cm_ud_qpn = all_info[i].ud_cm_qpn;
 #ifdef _ENABLE_XRC_
         if (USE_XRC) {
-            pg->ch.mrail.xrc_hostid[i] = all_info[i].hostid;
+            pg->ch.mrail->cm_shmem.ud_cm[i].xrc_hostid = all_info[i].hostid;
         }
 #endif
 #ifdef _ENABLE_UD_
         if (rdma_enable_hybrid) {
             for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-                ud_all_info[i][hca_index].lid =
+                pg->ch.mrail->cm_shmem.remote_ud_info[i][hca_index].lid =
                                             all_info[i].lid[hca_index][0];
-                ud_all_info[i][hca_index].qpn =
+                pg->ch.mrail->cm_shmem.remote_ud_info[i][hca_index].qpn =
                                             all_info[i].ud_data_qpn[hca_index];
                 PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d, hca:%d Get lid:%d"
                             " ud_qpn:%d\n", i, hca_index,
-                            ud_all_info[i][hca_index].lid, ud_all_info[i][hca_index].qpn);
+                            pg->ch.mrail->cm_shmem.remote_ud_info[i][hca_index].lid,
+                            pg->ch.mrail->cm_shmem.remote_ud_info[i][hca_index].qpn);
             }
         }
 #endif /* _ENABLE_UD_ */
     }
 
-#ifdef _ENABLE_UD_
-    if (rdma_enable_hybrid) {
-        mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info = ud_all_info;
-    }
-#endif /* _ENABLE_UD_ */
   fn_exit:
     MPIU_Free(all_info);
     PRINT_DEBUG(DEBUG_CM_verbose > 0, "Done MPIDI_CH3I_Ring_Exchange_Init_Info() \n");
@@ -1206,7 +1204,6 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
 #endif /*_ENABLE_UD_*/
     int hostid      = 0;
     int mpi_errno   = MPI_SUCCESS;
-    mv2_arch_hca_type arch_hca_type;
 
     MPIU_Assert(mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup == 0);
 
@@ -1224,6 +1221,41 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
         }
     }
 
+    if (mv2_shmem_backed_ud_cm) {
+        if (pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid != 0
+                && pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type != 0L) {
+            /* Some local process already got UD CM info */
+            PRINT_DEBUG(DEBUG_CM_verbose > 0, "Already have UD CM info for %d (non-lock)\n", tgt_rank);
+            PRINT_DEBUG(DEBUG_CM_verbose > 0, "Saved rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %ld\n",
+                    tgt_rank, pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid,
+                    pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn, 
+                    pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type);
+            if (arch_hca_type_all != NULL) {
+                arch_hca_type_all[tgt_rank] =
+                    pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type;
+            }
+            return UPMI_SUCCESS;
+        }
+        /* No process on this node has this information */
+        pthread_spin_lock(pg->ch.mrail->cm_shmem.cm_shmem_lock);
+        /* Some process could've concurrently been requesting this information
+         * Double check this has not happened */
+        if (pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid != 0
+                && pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type != 0L) {
+            /* Some local process already got UD CM info */
+            PRINT_DEBUG(DEBUG_CM_verbose > 0, "Already have UD CM info for %d (lock)\n", tgt_rank);
+            PRINT_DEBUG(DEBUG_CM_verbose > 0, "Saved rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %ld\n",
+                    tgt_rank, pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid,
+                    pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn, 
+                    pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type);
+            if (arch_hca_type_all != NULL) {
+                arch_hca_type_all[tgt_rank] =
+                    pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type;
+            }
+            goto fn_exit;
+        }
+    }
+
     mpi_errno = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val,
                             mv2_pmi_max_vallen);
     if (mpi_errno != UPMI_SUCCESS) {
@@ -1235,60 +1267,68 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
     if (use_iboeth) {
         sscanf(mv2_pmi_val,
             "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016" SCNx64,
-            (uint16_t *) &(pg->ch.mrail.cm_lid[tgt_rank]),
-            &(pg->ch.mrail.cm_ud_qpn[tgt_rank]), &arch_hca_type,
-            &hostid, &(pg->ch.mrail.cm_gid[tgt_rank].global.subnet_prefix),
-            &(pg->ch.mrail.cm_gid[tgt_rank].global.interface_id));
+            (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
+            &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn), 
+            &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type),
+            &hostid, &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_gid.global.subnet_prefix),
+            &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_gid.global.interface_id));
     } else {
 #ifdef _ENABLE_XRC_
         if (USE_XRC) {
             if (mv2_homogeneous_cluster) {
                 sscanf(mv2_pmi_val, "%08hx:%08x:%08x",
-                    (uint16_t *) &(pg->ch.mrail.cm_lid[tgt_rank]),
-                    &(pg->ch.mrail.cm_ud_qpn[tgt_rank]), &hostid);
+                    (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
+                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn), &hostid);
             } else {
                 sscanf(mv2_pmi_val, "%08hx:%08x:%016lx:%08x",
-                    (uint16_t *) &(pg->ch.mrail.cm_lid[tgt_rank]),
-                    &(pg->ch.mrail.cm_ud_qpn[tgt_rank]), &arch_hca_type,
+                    (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
+                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn), 
+                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type),
                     &hostid);
             }
-            pg->ch.mrail.xrc_hostid[tgt_rank] = hostid;
+            pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].xrc_hostid = hostid;
         } else
 #endif /* _ENABLE_XRC_ */
         {
             if (mv2_homogeneous_cluster) {
                 sscanf(mv2_pmi_val, "%08hx:%08x",
-                    (uint16_t *) &(pg->ch.mrail.cm_lid[tgt_rank]),
-                    &(pg->ch.mrail.cm_ud_qpn[tgt_rank]));
+                    (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
+                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn));
             } else {
                 sscanf(mv2_pmi_val, "%08hx:%08x:%016lx",
-                    (uint16_t *) &(pg->ch.mrail.cm_lid[tgt_rank]),
-                    &(pg->ch.mrail.cm_ud_qpn[tgt_rank]), &arch_hca_type);
+                    (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
+                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn), 
+                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type));
             }
         }
         PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %ld\n",
-                    tgt_rank, pg->ch.mrail.cm_lid[tgt_rank], pg->ch.mrail.cm_ud_qpn[tgt_rank],
-                    arch_hca_type);
+                    tgt_rank, pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid,
+                    pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn, 
+                    pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type);
     }
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid) {
         for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
             ptr = (char*) (mv2_pmi_val + mv2_ud_start_offset) + (hca_index * ud_width);
             sscanf(ptr, ":%08hx:%08x",
-                    &(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[tgt_rank][hca_index].lid),
-                    &(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[tgt_rank][hca_index].qpn));
+                    &(pg->ch.mrail->cm_shmem.remote_ud_info[tgt_rank][hca_index].lid),
+                    &(pg->ch.mrail->cm_shmem.remote_ud_info[tgt_rank][hca_index].qpn));
             PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d, hca:%d Get lid:%d"
                         " ud_qpn:%d\n", tgt_rank, hca_index,
-                        mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[tgt_rank][hca_index].lid,
-                        mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[tgt_rank][hca_index].qpn);
+                        pg->ch.mrail->cm_shmem.remote_ud_info[tgt_rank][hca_index].lid,
+                        pg->ch.mrail->cm_shmem.remote_ud_info[tgt_rank][hca_index].qpn);
         }
     }
 #endif /* _ENABLE_UD_ */
 
     if (arch_hca_type_all != NULL) {
-        arch_hca_type_all[tgt_rank] = arch_hca_type;
+        arch_hca_type_all[tgt_rank] =
+            pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type;
     }
   fn_exit:
+    if (mv2_shmem_backed_ud_cm) {
+        pthread_spin_unlock(pg->ch.mrail->cm_shmem.cm_shmem_lock);
+    }
     PRINT_DEBUG(DEBUG_CM_verbose > 0, "Done MPIDI_CH3I_PMI_Get_Init_Info() \n");
 
     MPIDI_FUNC_EXIT(MPIDI_CH3I_PMI_GET_INIT_INFO);
@@ -1365,12 +1405,6 @@ int MPIDI_CH3I_PMI_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
     if (rdma_enable_hybrid) {
         mv2_ud_start_offset = strlen(mv2_pmi_val);
 
-        mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info = (mv2_ud_exch_info_t **)
-                    MPIU_Malloc(pg_size * sizeof(mv2_ud_exch_info_t*));
-        for (i = 0; i < pg_size; i++) {
-            mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[i] = (mv2_ud_exch_info_t *)
-                    MPIU_Malloc(rdma_num_hcas * sizeof(mv2_ud_exch_info_t));
-        }
         memset(temp1, 0, sizeof(temp1));
         memset(temp2, 0, sizeof(temp2));
 
@@ -1382,14 +1416,14 @@ int MPIDI_CH3I_PMI_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
             PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d Put lids: %d ud_qp: %d\n",
                         pg_rank, my_info->lid[hca_index][0],
                         my_info->ud_data_qpn[hca_index]);
-            mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[pg_rank][hca_index].lid = my_info->lid[hca_index][0];
-            mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[pg_rank][hca_index].qpn = my_info->ud_data_qpn[hca_index];
+            pg->ch.mrail->cm_shmem.remote_ud_info[pg_rank][hca_index].lid = my_info->lid[hca_index][0];
+            pg->ch.mrail->cm_shmem.remote_ud_info[pg_rank][hca_index].qpn = my_info->ud_data_qpn[hca_index];
         }
         MPIU_Strnapp(mv2_pmi_val, temp1, mv2_pmi_max_vallen);
     }
 #endif /* _ENABLE_UD_ */
 
-    PRINT_DEBUG(DEBUG_CM_verbose > 0, "Put: Init info: %s\n Len: %lu\n",
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "Put: Init info: %s. Len: %lu\n",
                 mv2_pmi_val, strlen(mv2_pmi_val));
 
     mpi_errno = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
@@ -1487,7 +1521,7 @@ int MPIDI_CH3I_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank)
     }
 #endif /*_ENABLE_XRC_*/
 
-    my_proc_info.ud_cm_qpn          =  cm_ud_qp->qp_num;
+    my_proc_info.ud_cm_qpn          = cm_ud_qp->qp_num;
     my_proc_info.my_arch_hca_type   = mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type;
     MPIU_Memcpy(&my_proc_info.lid, &mv2_MPIDI_CH3I_RDMA_Process.lids,
            sizeof(uint16_t) * MAX_NUM_HCAS * MAX_NUM_PORTS);
@@ -1506,14 +1540,20 @@ int MPIDI_CH3I_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank)
 #endif /*_ENABLE_UD_*/
 
     /* Initialize local PG structure */
-    pg->ch.mrail.cm_lid[pg_rank]    = my_proc_info.lid[0][0];
-    pg->ch.mrail.cm_ud_qpn[pg_rank] = my_proc_info.ud_cm_qpn;
-    MPIU_Memcpy(&pg->ch.mrail.cm_gid[pg_rank], &my_proc_info.gid, sizeof(union ibv_gid));
+    pthread_spin_lock(pg->ch.mrail->cm_shmem.cm_shmem_lock);
+    pg->ch.mrail->cm_shmem.ud_cm[pg_rank].arch_hca_type = my_proc_info.my_arch_hca_type;
+    pg->ch.mrail->cm_shmem.ud_cm[pg_rank].cm_ud_qpn = my_proc_info.ud_cm_qpn;
+    pg->ch.mrail->cm_shmem.ud_cm[pg_rank].cm_lid    = my_proc_info.lid[0][0];
+    if (use_iboeth) {
+        MPIU_Memcpy(&pg->ch.mrail->cm_shmem.ud_cm[pg_rank].cm_gid,
+                    &my_proc_info.gid, sizeof(union ibv_gid));
+    }
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
-        pg->ch.mrail.xrc_hostid[pg_rank]    = my_proc_info.hostid;
+        pg->ch.mrail->cm_shmem.ud_cm[pg_rank].xrc_hostid    = my_proc_info.hostid;
     }
 #endif
+    pthread_spin_unlock(pg->ch.mrail->cm_shmem.cm_shmem_lock);
 
     if (pg_size == 1) {
         /* With only one process, we don't need to do anything else */
@@ -1564,30 +1604,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     MPIDI_FUNC_ENTER(MPID_STATE_CH3I_CM_INIT);
 
     pg_size = MPIDI_PG_Get_size(pg);
-
-    /* 
-     * Identify local rank and number of local processes
-     */
-    if (pg->ch.local_process_id == -1) {
-        mpi_errno = MPIDI_Get_local_host(pg, pg_rank);
-        if (mpi_errno) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s", "MPIDI_Get_local_host");
-        }
-    }
-
-    rdma_local_id = MPIDI_Get_local_process_id(pg);
-    rdma_num_local_procs = MPIDI_Num_local_processes(pg);
-
-    /* Reading the values from user first and then allocating the memory */
-    mpi_errno = rdma_get_control_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
-    if (mpi_errno) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s", "rdma_get_control_parameters");
-    }
-
-    rdma_set_default_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
-    rdma_get_user_parameters(pg_size, pg_rank);
 
     /* Initialize parameters for XRC */
 #ifdef _ENABLE_XRC_
@@ -1910,12 +1926,6 @@ int MPIDI_CH3I_CM_Finalize(void)
                 mv2_ud_destroy_ctx(mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_index]);
             }
         }
-        if (mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info) {
-            for (i = 0; i < pg_size; ++i) {
-                MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info[i]);
-            }
-            MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.remote_ud_info);
-        }
 
         if (rdma_use_ud_zcopy && mv2_MPIDI_CH3I_RDMA_Process.zcopy_info.rndv_qp_pool) {
             mv2_ud_zcopy_info_t *zcopy_info =
@@ -2029,20 +2039,6 @@ int MPIDI_CH3I_RDMA_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     if (!using_mpirun_rsh) {
         rdma_cm_exchange_hostid(pg, pg_rank, pg_size);
     }
-
-    rdma_local_id = MPIDI_Get_local_process_id(pg);
-    rdma_num_local_procs = MPIDI_Num_local_processes(pg);
-
-    /* Reading the values from user first and
-     * then allocating the memory */
-    mpi_errno = rdma_get_control_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
-    if (mpi_errno) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s", "rdma_get_control_parameters");
-    }
-
-    rdma_set_default_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
-    rdma_get_user_parameters(pg_size, pg_rank);
 
     for (i = 0; i < rdma_num_hcas; i++) {
         pthread_mutex_init(&mv2_MPIDI_CH3I_RDMA_Process.async_mutex_lock[i], 0);

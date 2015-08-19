@@ -87,8 +87,9 @@ void clear_xrc_hash(void);
 void add_vc_xrc_hash(MPIDI_VC_t * vc);
 int cm_send_xrc_cm_msg(MPIDI_VC_t * vc, MPIDI_VC_t * orig_vc);
 int cm_qp_reuse(MPIDI_VC_t * vc, MPIDI_VC_t * orig);
-
 #endif /* _ENABLE_XRC_ */
+int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
+                                    mv2_arch_hca_type *arch_hca_type_all);
 
 #define MV2_QP_NEW      0
 #define MV2_QP_REUSE    1

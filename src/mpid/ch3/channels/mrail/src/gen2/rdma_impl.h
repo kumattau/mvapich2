@@ -140,7 +140,6 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
 #ifdef _ENABLE_UD_
     /* UD specific parameters */
     mv2_ud_ctx_t                *ud_rails[MAX_NUM_HCAS];
-    mv2_ud_exch_info_t          **remote_ud_info;
     message_queue_t             unack_queue;
     mv2_ud_zcopy_info_t         zcopy_info;
     uint32_t                    rc_connections;

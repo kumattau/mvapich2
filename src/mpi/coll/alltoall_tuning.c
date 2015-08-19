@@ -2192,7 +2192,7 @@ int MV2_Alltoall_is_define(char *mv2_user_alltoall)
       if (nb_element == 1) {
         mv2_tmp_alltoall_indexed_thresholds_table[0].numproc = 1;
         mv2_tmp_alltoall_indexed_thresholds_table[0].size_table = 1;
-        mv2_tmp_alltoall_indexed_thresholds_table[0].algo_table[0].msg_sz = 0;
+        mv2_tmp_alltoall_indexed_thresholds_table[0].algo_table[0].msg_sz = 1;
         switch (atoi(mv2_user_alltoall)) {
         case ALLTOALL_BRUCK_MV2:
 	  mv2_tmp_alltoall_indexed_thresholds_table[0].algo_table[0].MV2_pt_Alltoall_function =

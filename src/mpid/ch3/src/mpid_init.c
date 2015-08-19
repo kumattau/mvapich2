@@ -51,6 +51,7 @@ pthread_mutex_t MVAPICH2_sync_ckpt_lock;
 pthread_cond_t MVAPICH2_sync_ckpt_cond;
 int MVAPICH2_Sync_Checkpoint();
 #endif /* CKPT */
+extern unsigned int mv2_enable_affinity;
 #endif /* CHANNEL_MRAIL */
 
 
@@ -256,7 +257,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     int val;
 #if defined(CHANNEL_MRAIL)
     char *value;
-    int blocking_val;
 #endif /* defined(CHANNEL_MRAIL) */
 
     MPIDI_STATE_DECL(MPID_STATE_MPID_INIT);
@@ -506,37 +506,27 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 #if defined(CHANNEL_MRAIL)
         /* If user has enabled blocking mode progress,
          * then we cannot support MPI_THREAD_MULTIPLE */
-        if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
-            blocking_val = !!atoi(value);
+        if (rdma_use_blocking) {
+            int thread_warning = 1;
 
-            if (blocking_val) {
-                int thread_warning = 1;
-
-                if ((value = getenv("MV2_USE_THREAD_WARNING")) != NULL) {
-                    thread_warning = !!atoi(value);
-                }
-
-                if (0 == pg_rank && MPI_THREAD_MULTIPLE == requested
-                        && thread_warning) {
-                    fprintf(stderr, "WARNING: Requested MPI_THREAD_MULTIPLE, \n"
-                            "  but MV2_USE_BLOCKING=1 only supports MPI_THREAD_SERIALIZED.\n"
-                            "  Use MV2_USE_THREAD_WARNING=0 to suppress this error message\n");
-                }
-
-                *provided = (MPICH_THREAD_LEVEL < requested) ?
-                    MPICH_THREAD_LEVEL : MPI_THREAD_SERIALIZED;
+            if ((value = getenv("MV2_USE_THREAD_WARNING")) != NULL) {
+                thread_warning = !!atoi(value);
             }
+            if (0 == pg_rank && MPI_THREAD_MULTIPLE == requested
+                    && thread_warning) {
+                fprintf(stderr, "WARNING: Requested MPI_THREAD_MULTIPLE, \n"
+                        "  but MV2_USE_BLOCKING=1 only supports MPI_THREAD_SERIALIZED.\n"
+                        "  Use MV2_USE_THREAD_WARNING=0 to suppress this error message\n");
+            }
+            *provided = (MPICH_THREAD_LEVEL < requested) ?
+                MPICH_THREAD_LEVEL : MPI_THREAD_SERIALIZED;
         }
-
-        int affinity_env = 1;
         int show_cpu_binding = 0;
-
         /*
          * Check to see if the user has explicitly disabled affinity.  If not
          * then affinity will be enabled barring any errors.
          */
-        MPL_env2bool("MV2_ENABLE_AFFINITY", &affinity_env);
-        if (affinity_env) {
+        if (mv2_enable_affinity) {
             /*
              * Affinity will be enabled, MPI_THREAD_SINGLE will be the provided
              * MPICH_THREAD_LEVEL in this case.
@@ -548,7 +538,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
             mv2_show_cpu_affinity(pg);
         }
 #endif /* defined(CHANNEL_MRAIL) */
-
     }
 #if defined(CHANNEL_MRAIL) && defined(CKPT)
     MPIDI_Process.use_sync_ckpt = 1;

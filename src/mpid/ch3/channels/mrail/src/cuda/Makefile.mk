@@ -13,8 +13,8 @@
 ## 	-maxrregcount values
 
 NVCC = nvcc
-NVCFLAGS = -cuda -arch sm_13 -maxrregcount 32
-SUFFIXES = .cu .cpp
+NVCFLAGS = -cuda -arch sm_20 -maxrregcount 32
+SUFFIXES += .cu .cpp
 .cu.cpp:
 	$(NVCC) $(NVCFLAGS) $(INCLUDES) $(CPPFLAGS) --output-file $@ $<
 
