@@ -28,7 +28,7 @@
 #endif
 
 /* Enable the use of data within the message packet for small messages */
-#if NEMESIS_BUILD
+#if defined(CHANNEL_MRAIL) || defined(NEMESIS_BUILD)
 #define USE_EAGER_SHORT
 #define MPIDI_EAGER_SHORT_INTS 4
 /* FIXME: This appears to assume that sizeof(int) == 4 (or at least >= 4) */
@@ -228,7 +228,7 @@ typedef struct MPIDI_CH3_Pkt_eagershort_send
 #endif /* defined(CHANNEL_MRAIL) */
     MPIDI_Message_match match;
     MPIDI_msg_sz_t data_sz;
-    int  data[MPIDI_EAGER_SHORT_INTS];    /* FIXME: Experimental for now */
+    char data[MPIDI_EAGER_SHORT_SIZE];    /* FIXME: Experimental for now */
 }
 MPIDI_CH3_Pkt_eagershort_send_t;
 #endif /* defined(USE_EAGER_SHORT) */

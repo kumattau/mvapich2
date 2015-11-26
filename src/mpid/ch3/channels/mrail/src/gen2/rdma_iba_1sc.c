@@ -1348,6 +1348,23 @@ MPIDI_CH3I_RDMA_win_create (void *base,
         goto fn_exit;
     }
 
+    win_elem_t *new_element = (win_elem_t *) MPIU_Malloc(sizeof(win_elem_t));
+    new_element->next = NULL;
+
+    if (mv2_win_list) {                                                                               
+        new_element->prev = mv2_win_list->prev;                                                         
+        mv2_win_list->prev->next = new_element;                                                     
+        mv2_win_list->prev = new_element;                                                            
+        new_element->next = NULL;                                                              
+    } else {                                                                                  
+        mv2_win_list = new_element;                                                                         
+        mv2_win_list->prev = new_element;                                                           
+        mv2_win_list->next = NULL;                                                             
+    }                          
+
+    new_element->win_base = (*win_ptr)->win_dreg_entry;
+    new_element->complete_counter = (*win_ptr)->completion_counter_dreg_entry;
+    new_element->post_flag = (*win_ptr)->post_flag_dreg_entry; 
     ret = MPIR_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, cc_ptrs_exchange,
              rdma_num_rails*sizeof(uintptr_t), MPI_BYTE, comm_ptr, &errflag);
     if (ret != MPI_SUCCESS) {
@@ -1526,9 +1543,24 @@ fn_exit:
 
 void MPIDI_CH3I_RDMA_win_free(MPID_Win** win_ptr)
 {
-    if ((*win_ptr)->win_dreg_entry != NULL) {
-        dreg_unregister((*win_ptr)->win_dreg_entry);
+    win_elem_t * curr_ptr, *tmp;
+    curr_ptr = mv2_win_list;
+
+    while(curr_ptr != NULL) {
+        if (curr_ptr->win_base != NULL) {
+            dreg_unregister((dreg_entry *)curr_ptr->win_base);
+        }
+        if (curr_ptr->complete_counter) {
+            dreg_unregister((dreg_entry *)curr_ptr->complete_counter);
+        }
+        if (curr_ptr->post_flag != NULL) {
+            dreg_unregister((dreg_entry *)curr_ptr->post_flag);
+        }
+        tmp = curr_ptr;
+        curr_ptr = curr_ptr->next;
+        MPIU_Free(tmp);
     }
+    mv2_win_list = NULL;
 
     MPIU_Free((*win_ptr)->win_rkeys);
     MPIU_Free((*win_ptr)->completion_counter_rkeys);
@@ -1537,14 +1569,6 @@ void MPIDI_CH3I_RDMA_win_free(MPID_Win** win_ptr)
     MPIU_Free((*win_ptr)->remote_post_flags);
     MPIU_Free((*win_ptr)->put_get_list);
     MPIU_Free((*win_ptr)->put_get_list_size_per_process);
-
-    if ((*win_ptr)->completion_counter_dreg_entry != NULL) {
-        dreg_unregister((*win_ptr)->completion_counter_dreg_entry);
-    }
-
-    if ((*win_ptr)->post_flag_dreg_entry != NULL) {
-        dreg_unregister((*win_ptr)->post_flag_dreg_entry);
-    }
 
     MPIU_Free((void *) (*win_ptr)->completion_counter);
     MPIU_Free((void *) (*win_ptr)->all_completion_counter);

@@ -246,29 +246,6 @@ int MPIDI_CH3I_MRAILI_Register_channels(MPIDI_VC_t *vc, int num, vbuf *(*func[])
     return MPI_SUCCESS;    
 }
 
-int MPIDI_CH3I_MRAILI_Get_next_vbuf_local(MPIDI_VC_t* vc, vbuf** vbuf_handle, int is_blocking)
-{
-    int type = T_CHANNEL_NO_ARRIVE;
-    int i = 0;
-    *vbuf_handle = NULL;
-
-    for (; i < vc->mrail.num_rails; ++i)
-    {
-        if (vc->mrail.rails[i].send_wqes_avail < RDMA_LOW_WQE_THRESHOLD)
-        {
-            break;
-        }
-    }
-
-    if (i != vc->mrail.num_rails)
-    {
-        vbuf* unused;
-        MPIDI_CH3I_MRAILI_Cq_poll(&unused, vc, 1, is_blocking);
-    }
-
-    return type;
-}
-
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAILI_Get_next_vbuf
 #undef FCNAME
@@ -282,25 +259,6 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
     MPIDI_STATE_DECL(MPID_GEN2_MPIDI_CH3I_MRAILI_GET_NEXT_VBUF);
     MPIDI_FUNC_ENTER(MPID_GEN2_MPIDI_CH3I_MRAILI_GET_NEXT_VBUF);
 
-    type = MPIDI_CH3I_MRAILI_Test_pkt(vbuf_ptr);
-
-    switch(type)
-    { 
-    case T_CHANNEL_CONTROL_MSG_ARRIVE:
-    case T_CHANNEL_EXACT_ARRIVE:
-            *vc_ptr = (*vbuf_ptr)->vc;
-        goto fn_exit;
-    case T_CHANNEL_OUT_OF_ORDER_ARRIVE:
-            type = T_CHANNEL_NO_ARRIVE;
-            *vbuf_ptr = NULL;
-        break;
-    }
-
-    if (num_rdma_buffer == 0)
-    {
-        goto fn_exit;
-    }
-
     int i = 0;
     MPIDI_VC_t* vc = NULL;
     int seq;
@@ -309,105 +267,109 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
     volatile VBUF_FLAG_TYPE* head = NULL;
 
     /* no msg is queued, poll rdma polling set */
-    for (; i < mv2_MPIDI_CH3I_RDMA_Process.polling_group_size; ++i)
+    for (i = 0; i < mv2_MPIDI_CH3I_RDMA_Process.polling_group_size; ++i)
     {
         vc = mv2_MPIDI_CH3I_RDMA_Process.polling_set[i];
-        seq  = GetSeqNumVbuf(vc->mrail.cmanager.msg_channels[INDEX_LOCAL(&vc->mrail.cmanager,0)].v_queue_head);
+        v = &(vc->mrail.rfp.RDMA_recv_buf[vc->mrail.rfp.p_RDMA_recv]);
+        head = v->head_flag;
 
-        if (seq == PKT_IS_NULL)
+        if (*head && vc->mrail.rfp.p_RDMA_recv != vc->mrail.rfp.p_RDMA_recv_tail)
         {
-            v = &(vc->mrail.rfp.RDMA_recv_buf[vc->mrail.rfp.p_RDMA_recv]);
-            head = v->head_flag;
-
-            if (*head && vc->mrail.rfp.p_RDMA_recv != vc->mrail.rfp.p_RDMA_recv_tail)
-            {
-                size = (*head & FAST_RDMA_SIZE_MASK);
-                tail = (VBUF_FLAG_TYPE *) (v->buffer + size);
-                /* If the tail has not received yet, than go ahead and
-                ** poll next connection */
-                if (*head != *tail) {
-                    continue;
-                }
-                
-                PRINT_DEBUG(DEBUG_CHM_verbose, "Get one!\n");
-
-                if (++vc->mrail.rfp.p_RDMA_recv >= num_rdma_buffer)
-                {
-                    vc->mrail.rfp.p_RDMA_recv = 0;
-                }
-
-                v->pheader = v->buffer;
-                v->content_size = size;
-                *head = 0;
-
-                seq = GetSeqNumVbuf(v);
-
-#ifdef _ENABLE_UD_
-                if (rdma_enable_hybrid){
-                    v->seqnum = seq;
-                    type = T_CHANNEL_HYBRID_MSG_ARRIVE;
-                    *vbuf_ptr = v;
-                    *vc_ptr = v->vc;
-                    PRINT_DEBUG(DEBUG_UD_verbose>1,"received seqnum:%d expected:%d vc_ptr:%p\n",seq, vc->mrail.seqnum_next_torecv, v->vc);
-                    goto fn_exit;
-                } 
-                else
-#endif
-                {
-                    if (seq == vc->mrail.seqnum_next_torecv)
-                    {
-                        MPIR_T_PVAR_COUNTER_INC(MV2,
-                                mv2_rdmafp_exact_recv_count, 1);
-                        PRINT_DEBUG(DEBUG_CHM_verbose, "Get one exact seq: %d\n", seq);
-                        type = T_CHANNEL_EXACT_ARRIVE;
-                        ++vc->mrail.seqnum_next_torecv;
-                        *vbuf_ptr = v;
-                        *vc_ptr = v->vc;
-                        goto fn_exit;
-                    }
-                    else if (seq == PKT_NO_SEQ_NUM)
-                    {
-                        MPIR_T_PVAR_COUNTER_INC(MV2,
-                                mv2_rdmafp_ctrl_packet_count, 1);
-                        type = T_CHANNEL_CONTROL_MSG_ARRIVE;
-                        PRINT_DEBUG(DEBUG_CHM_verbose, "[vbuf_local]: get control msg\n");
-                        *vbuf_ptr = v;
-                        *vc_ptr = v->vc;
-                        goto fn_exit;
-                    }
-                    else
-                    {
-                        MPIR_T_PVAR_COUNTER_INC(MV2,
-                                mv2_rdmafp_out_of_order_packet_count, 1);
-                        PRINT_DEBUG(DEBUG_CHM_verbose, "Get one out of order seq: %d, expecting %d\n",
-                                seq, vc->mrail.seqnum_next_torecv);
-                        VQUEUE_ENQUEUE(&vc->mrail.cmanager, INDEX_LOCAL(&vc->mrail.cmanager, 0), v);
-                        continue;
-                    }
-                }
-            }
-            else
-            {
+            size = (*head & FAST_RDMA_SIZE_MASK);
+            tail = (VBUF_FLAG_TYPE *) (v->buffer + size);
+            /* If the tail has not received yet, than go ahead and
+            ** poll next connection */
+            if (*head != *tail) {
                 continue;
             }
-        } 
-        if (seq == vc->mrail.seqnum_next_torecv)
-        {
+            
+            PRINT_DEBUG(DEBUG_CHM_verbose, "Get one!\n");
+
+            if (++vc->mrail.rfp.p_RDMA_recv >= num_rdma_buffer)
+            {
+                vc->mrail.rfp.p_RDMA_recv = 0;
+            }
+
+            v->pheader = v->buffer;
+            v->content_size = size;
+            *head = 0;
+
+            seq = GetSeqNumVbuf(v);
+
+#ifdef _ENABLE_UD_
+            if (rdma_enable_hybrid){
+                v->seqnum = seq;
+                type = T_CHANNEL_HYBRID_MSG_ARRIVE;
+                *vbuf_ptr = v;
+                *vc_ptr = v->vc;
+                PRINT_DEBUG(DEBUG_UD_verbose>1,"received seqnum:%d expected:%d vc_ptr:%p\n",seq, vc->mrail.seqnum_next_torecv, v->vc);
+                goto fn_exit;
+            } 
+            else
+#endif
+            {
+                if (seq == vc->mrail.seqnum_next_torecv)
+                {
+                    MPIR_T_PVAR_COUNTER_INC(MV2,
+                            mv2_rdmafp_exact_recv_count, 1);
+                    PRINT_DEBUG(DEBUG_CHM_verbose, "Get one exact seq: %d\n", seq);
+                    type = T_CHANNEL_EXACT_ARRIVE;
+                    ++vc->mrail.seqnum_next_torecv;
+                    *vbuf_ptr = v;
+                    *vc_ptr = v->vc;
+                    goto fn_exit;
+                }
+                else if (seq == PKT_NO_SEQ_NUM)
+                {
+                    MPIR_T_PVAR_COUNTER_INC(MV2,
+                            mv2_rdmafp_ctrl_packet_count, 1);
+                    type = T_CHANNEL_CONTROL_MSG_ARRIVE;
+                    PRINT_DEBUG(DEBUG_CHM_verbose, "[vbuf_local]: get control msg\n");
+                    *vbuf_ptr = v;
+                    *vc_ptr = v->vc;
+                    goto fn_exit;
+                }
+                else
+                {
+                    MPIR_T_PVAR_COUNTER_INC(MV2,
+                            mv2_rdmafp_out_of_order_packet_count, 1);
+                    PRINT_DEBUG(DEBUG_CHM_verbose, "Get one out of order seq: %d, expecting %d\n",
+                            seq, vc->mrail.seqnum_next_torecv);
+                    VQUEUE_ENQUEUE(&vc->mrail.cmanager, INDEX_LOCAL(&vc->mrail.cmanager, 0), v);
+                    goto out_of_order_handling;
+                }
+            }
+        }
+out_of_order_handling:
+        /* No packets in regular flow. Look for out of order packets */
+        seq  = GetSeqNumVbuf(vc->mrail.cmanager.msg_channels[INDEX_LOCAL(&vc->mrail.cmanager,0)].v_queue_head);
+        if (seq == vc->mrail.seqnum_next_torecv) {
             *vbuf_ptr = VQUEUE_DEQUEUE(&vc->mrail.cmanager, INDEX_LOCAL(&vc->mrail.cmanager, 0));
             *vc_ptr = (*vbuf_ptr)->vc;
             ++vc->mrail.seqnum_next_torecv;
             type = T_CHANNEL_EXACT_ARRIVE;
             MPIR_T_PVAR_COUNTER_INC(MV2, mv2_ibv_channel_exact_recv_count, 1);
             goto fn_exit;
-        }
-        else if (seq == PKT_NO_SEQ_NUM)
-        {
+        } else if (seq == PKT_NO_SEQ_NUM) {
             *vbuf_ptr = VQUEUE_DEQUEUE(&vc->mrail.cmanager, INDEX_LOCAL(&vc->mrail.cmanager, 0));
             *vc_ptr = (*vbuf_ptr)->vc;
             type = T_CHANNEL_CONTROL_MSG_ARRIVE;
             goto fn_exit;
         }
 
+    }
+    /* Check for out of order packets */
+    type = MPIDI_CH3I_MRAILI_Test_pkt(vbuf_ptr);
+    switch(type)
+    {
+    case T_CHANNEL_CONTROL_MSG_ARRIVE:
+    case T_CHANNEL_EXACT_ARRIVE:
+            *vc_ptr = (*vbuf_ptr)->vc;
+        goto fn_exit;
+    case T_CHANNEL_OUT_OF_ORDER_ARRIVE:
+            type = T_CHANNEL_NO_ARRIVE;
+            *vbuf_ptr = NULL;
+        break;
     }
 
 fn_exit:
@@ -431,13 +393,11 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
 
     *vbuf_handle = NULL;
 
-    if (blocking) {
-        PRINT_DEBUG(DEBUG_CHM_verbose,
-                "{entering} solve_out_of_order next expected %d, channel %d, head %p (%d)\n", 
-                vc->mrail.seqnum_next_torecv, cmanager->num_channels, 
-                cmanager->msg_channels[0].v_queue_head,
-                GetSeqNumVbuf(cmanager->msg_channels[0].v_queue_head));
-    }
+    PRINT_DEBUG((blocking&&DEBUG_CHM_verbose),
+            "{entering} solve_out_of_order next expected %d, channel %d, head %p (%d)\n",
+            vc->mrail.seqnum_next_torecv, cmanager->num_channels,
+            cmanager->msg_channels[0].v_queue_head,
+            GetSeqNumVbuf(cmanager->msg_channels[0].v_queue_head));
 
     for (; i < cmanager->num_channels; ++i)
     {
@@ -501,24 +461,19 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
         if (type != T_CHANNEL_NO_ARRIVE) {
             switch(type) {
                 case (T_CHANNEL_EXACT_ARRIVE):
+                case (T_CHANNEL_CONTROL_MSG_ARRIVE):
                     goto fn_exit;
                 case (T_CHANNEL_OUT_OF_ORDER_ARRIVE):
                     continue;
-                case (T_CHANNEL_CONTROL_MSG_ARRIVE):
-                    goto fn_exit;
                 default:
                     ibv_error_abort(GEN_ASSERT_ERR, "Unexpected return type\n");
                     break;
             }
-        } else {
-
         }
-    } 
-fn_exit:
-    if (blocking) {
-        PRINT_DEBUG(DEBUG_CHM_verbose, "{return} solve_out_of_order, type %d, next expected %d\n", 
-                type, vc->mrail.seqnum_next_torecv);
     }
+fn_exit:
+    PRINT_DEBUG((blocking&&DEBUG_CHM_verbose), "{return} solve_out_of_order, type %d, next expected %d\n", 
+                type, vc->mrail.seqnum_next_torecv);
     MPIDI_FUNC_EXIT(MPID_GEN2_MPIDI_CH3I_MRAILIWAITING_MSG);
     return type;
 }
@@ -535,12 +490,13 @@ inline void handle_multiple_cqs_for_iwarp(int num_cqs, int cq_choice, int is_sen
             }
         } 
     } else {
-        if(is_send_completion && 
-               (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq > 0)) {
-              mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
-        } else {
-             PRINT_DEBUG(DEBUG_CHM_verbose,
-                 "Possibly received a duplicate send completion event\n");
+        if (is_send_completion) {
+            if (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq > 0) {
+                mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
+            } else {
+                PRINT_DEBUG(DEBUG_CHM_verbose,
+                        "Possibly received a duplicate send completion event\n");
+            }
         }     
     }
 
@@ -552,7 +508,9 @@ inline void handle_multiple_cqs_for_ib(int num_cqs, int cq_choice, int is_send_c
     return;
 }
 
-inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, int receiving, struct ibv_wc wc, int num_cqs, int cq_choice, int hca_num)
+static inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
+        int receiving, struct ibv_wc wc, int num_cqs, int cq_choice,
+        int hca_num)
 {
     vbuf *v = NULL;
     int type = T_CHANNEL_NO_ARRIVE;
@@ -567,49 +525,31 @@ inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, int receiving, st
 
     if (unlikely(wc.status != IBV_WC_SUCCESS)) {
         if (wc.opcode == IBV_WC_SEND ||
-           wc.opcode == IBV_WC_RDMA_WRITE ||
-           wc.opcode == IBV_WC_FETCH_ADD ) {
+            wc.opcode == IBV_WC_RDMA_WRITE ||
+            wc.opcode == IBV_WC_FETCH_ADD ) {
             PRINT_ERROR("Send desc error in msg to %d, wc_opcode=%d\n", vc->pg_rank, wc.opcode );
         } else {
     		PRINT_ERROR("Recv desc error in msg from %d, wc_opcode=%d\n",vc->pg_rank, wc.opcode);
 		}
         PRINT_ERROR("Msg from %d: wc.status=%d, wc.wr_id=%p, wc.opcode=%d, vbuf->phead->type=%d = %s\n",
-            vc->pg_rank, wc.status, v, wc.opcode,
-            ((MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader)->type, 
-            MPIDI_CH3_Pkt_type_to_string[((MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader)->type]);
+                    vc->pg_rank, wc.status, v, wc.opcode,
+                    ((MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader)->type,
+                    MPIDI_CH3_Pkt_type_to_string[((MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader)->type]);
 
         ibv_va_error_abort(IBV_STATUS_ERR,
-                "[] Got completion with error %d, "
-                "vendor code=0x%x, dest rank=%d\n",
-                wc.status,    
-                wc.vendor_err, 
-                ((MPIDI_VC_t *)v->vc)->pg_rank
-                );
+                "[] Got completion with error %d, vendor code=0x%x, dest rank=%d\n",
+                wc.status, wc.vendor_err, ((MPIDI_VC_t *)v->vc)->pg_rank);
     }
 
-    is_send_completion = (wc.opcode == IBV_WC_SEND
-        || wc.opcode == IBV_WC_RDMA_WRITE
-        || wc.opcode == IBV_WC_RDMA_READ
-        || wc.opcode == IBV_WC_FETCH_ADD
-        || wc.opcode == IBV_WC_COMP_SWAP);
+    is_send_completion = (wc.opcode == IBV_WC_SEND ||
+                          wc.opcode == IBV_WC_RDMA_WRITE ||
+                          wc.opcode == IBV_WC_RDMA_READ ||
+                          wc.opcode == IBV_WC_FETCH_ADD ||
+                          wc.opcode == IBV_WC_COMP_SWAP);
 
     /* iWARP has the need for multiple CQ's, IB does not */
     handle_multiple_cqs(num_cqs, cq_choice, is_send_completion);
 
-    if(!is_send_completion && (mv2_MPIDI_CH3I_RDMA_Process.has_srq
-                        || v->transport == IB_TRANSPORT_UD)) {
-        SET_PKT_LEN_HEADER(v, wc);
-        SET_PKT_HEADER_OFFSET(v);
-        p = v->pheader;
-#ifdef _ENABLE_UD_
-        MPIDI_PG_Get_vc(MPIDI_Process.my_pg, p->src.rank, &vc);
-#else
-        vc = (MPIDI_VC_t *)p->src.vc_addr;
-#endif
-        v->vc = vc;
-        v->rail = p->rail;
-    }
-	            
 	/* get the VC and increase its wqe */
 	if (is_send_completion) {
 #ifdef _ENABLE_UD_
@@ -643,162 +583,175 @@ inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, int receiving, st
         }
             type = T_CHANNEL_NO_ARRIVE;
             *vbuf_handle = NULL;
-	} else if ((NULL == vc_req || vc_req == vc) && 0 == receiving ) {
-	    /* In this case, we should return the vbuf 
-	     * any way if it is next expected*/
-	    int seqnum = GetSeqNumVbuf(v);
-	    *vbuf_handle = v; 
-        SET_PKT_LEN_HEADER(v, wc);
-        SET_PKT_HEADER_OFFSET(v);
-        v->seqnum =  seqnum;
-        p = v->pheader;
-        PRINT_DEBUG(DEBUG_CHM_verbose>1,"Received from rank:%d seqnum :%d "
-                "ack:%d size:%d type:%d trasport :%d \n",vc->pg_rank, 
-                v->seqnum, p->acknum, v->content_size, p->type, v->transport);
-
+    } else {
+        /* This is a receive completion */
+        if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
+#ifdef _ENABLE_UD_
+                   || v->transport == IB_TRANSPORT_UD
+#endif
+           ) {
+            SET_PKT_LEN_HEADER(v, wc);
+            SET_PKT_HEADER_OFFSET(v);
+            p = v->pheader;
+#ifdef _ENABLE_UD_
+            MPIDI_PG_Get_vc(MPIDI_Process.my_pg, p->src.rank, &vc);
+#else
+            vc = (MPIDI_VC_t *)p->src.vc_addr;
+#endif
+            v->vc = vc;
+            v->rail = p->rail;
+        }
+        if (likely(NULL == vc_req || vc_req == vc)) {
+            /* In this case, we should return the vbuf
+             * any way if it is next expected*/
+            int seqnum = GetSeqNumVbuf(v);
+            *vbuf_handle = v;
+            SET_PKT_LEN_HEADER(v, wc);
+            SET_PKT_HEADER_OFFSET(v);
+            v->seqnum =  seqnum;
+            p = v->pheader;
+            PRINT_DEBUG(DEBUG_CHM_verbose>1,"Received from rank:%d seqnum :%d "
+                    "ack:%d size:%d type:%d trasport :%d \n",vc->pg_rank,
+                    v->seqnum, p->acknum, v->content_size, p->type, v->transport);
 #ifdef _MCST_SUPPORT_
-        if (IS_MCAST_MSG(p)) {
-            mv2_process_mcast_msg(v);
-            return T_CHANNEL_NO_ARRIVE;
-        }
+            if (IS_MCAST_MSG(p)) {
+                mv2_process_mcast_msg(v);
+                return T_CHANNEL_NO_ARRIVE;
+            }
 #endif
 #ifdef _ENABLE_UD_
-        if (v->transport == IB_TRANSPORT_UD)
-        {
-            mv2_ud_ctx_t *ud_ctx = 
-                mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_num];
-            --ud_ctx->num_recvs_posted;
-            if(ud_ctx->num_recvs_posted < ud_ctx->credit_preserve) {
-                ud_ctx->num_recvs_posted += mv2_post_ud_recv_buffers(
-                        (rdma_default_max_ud_recv_wqe - ud_ctx->num_recvs_posted), ud_ctx);
+            if (v->transport == IB_TRANSPORT_UD)
+            {
+                mv2_ud_ctx_t *ud_ctx =
+                    mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_num];
+                --ud_ctx->num_recvs_posted;
+                if(ud_ctx->num_recvs_posted < ud_ctx->credit_preserve) {
+                    ud_ctx->num_recvs_posted += mv2_post_ud_recv_buffers(
+                            (rdma_default_max_ud_recv_wqe - ud_ctx->num_recvs_posted), ud_ctx);
+                }
             }
-        }
-        else
+            else
 #endif 
-        if (likely(mv2_MPIDI_CH3I_RDMA_Process.has_srq)) {
-	        /* Check if we need to release the SRQ limit thread */
-	        if (unlikely(mv2_MPIDI_CH3I_RDMA_Process.
-	                srq_zero_post_counter[hca_num] >= 1)) {
-	            pthread_mutex_lock(
-	                    &mv2_MPIDI_CH3I_RDMA_Process.
-	                    srq_post_mutex_lock[hca_num]);
-	            mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num] = 0;
-	            pthread_cond_signal(&mv2_MPIDI_CH3I_RDMA_Process.
-	                    srq_post_cond[hca_num]);
-	            pthread_mutex_unlock(
-	                    &mv2_MPIDI_CH3I_RDMA_Process.
-	                    srq_post_mutex_lock[hca_num]);
-	        }
-	    }
-	    else
-	    {
-	        --vc->mrail.srp.credits[v->rail].preposts;
-	
-	        needed = rdma_prepost_depth + rdma_prepost_noop_extra
-	                 + MIN(rdma_prepost_rendezvous_extra,
-	                       vc->mrail.srp.credits[v->rail].
-	                       rendezvous_packets_expected);
-	    }
-#ifdef _ENABLE_UD_
-        if (rdma_enable_hybrid){
-            if (IS_CNTL_MSG(p)){
-                type = T_CHANNEL_CONTROL_MSG_ARRIVE;
-                MPIR_T_PVAR_COUNTER_INC(MV2,
-                        mv2_ibv_channel_ctrl_packet_count, 1);
-            } else {
-                type = T_CHANNEL_HYBRID_MSG_ARRIVE;
-            }
-        }
-        else
-#endif
-        {
-            if (seqnum == PKT_NO_SEQ_NUM){
-                type = T_CHANNEL_CONTROL_MSG_ARRIVE;
-                MPIR_T_PVAR_COUNTER_INC(MV2,
-                        mv2_ibv_channel_ctrl_packet_count, 1);
-            } else if (seqnum == vc->mrail.seqnum_next_torecv) {
-                vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
-                ++vc->mrail.seqnum_next_torecv;
-                type = T_CHANNEL_EXACT_ARRIVE;
-                PRINT_DEBUG(DEBUG_CHM_verbose, "[channel manager] get one with exact seqnum\n");
-            } else {
-                type = T_CHANNEL_OUT_OF_ORDER_ARRIVE;
-                VQUEUE_ENQUEUE(&vc->mrail.cmanager, 
-                        INDEX_GLOBAL(&vc->mrail.cmanager, v->rail),
-                        v);
-                PRINT_DEBUG(DEBUG_CHM_verbose, "get recv %d (%d)\n", seqnum,
-                        vc->mrail.seqnum_next_torecv);
-            }
-        }
-	    if (unlikely(!mv2_MPIDI_CH3I_RDMA_Process.has_srq && v->transport != IB_TRANSPORT_UD)) {
-              
-	        if (PKT_IS_NOOP(v)) {
-	            PREPOST_VBUF_RECV(vc, v->rail);
-	            /* noops don't count for credits */
-	            --vc->mrail.srp.credits[v->rail].local_credit;
-	        } 
-	        else if ((vc->mrail.srp.credits[v->rail].preposts 
-                     < rdma_rq_size) &&
-	                 (vc->mrail.srp.credits[v->rail].preposts + 
-	                 rdma_prepost_threshold < needed))
-	        {
-	            do {
-	                PREPOST_VBUF_RECV(vc, v->rail);
-	            } while (vc->mrail.srp.credits[v->rail].preposts 
-                         < rdma_rq_size &&
-	                     vc->mrail.srp.credits[v->rail].preposts 
-                         < needed);
-	        }
-	
-	        MRAILI_Send_noop_if_needed(vc, v->rail);
-	    }
-	
-	    if (type == T_CHANNEL_CONTROL_MSG_ARRIVE || 
-	            type == T_CHANNEL_EXACT_ARRIVE ||
-                type == T_CHANNEL_HYBRID_MSG_ARRIVE || 
-	            type == T_CHANNEL_OUT_OF_ORDER_ARRIVE) {
-	        goto fn_exit;
-	    }
-	} else {
-	    /* Commenting out the assert - possible coding error
-	     * MPIU_Assert(0);
-	     */
-	    /* Now since this is not the packet we want, we have to 
-         * enqueue it */
-	    type = T_CHANNEL_OUT_OF_ORDER_ARRIVE;
-	    *vbuf_handle = NULL;
-	    v->content_size = wc.byte_len;
-	    VQUEUE_ENQUEUE(&vc->mrail.cmanager,
-	            INDEX_GLOBAL(&vc->mrail.cmanager, v->rail),
-	            v);
-        if (v->transport != IB_TRANSPORT_UD) {
-            if (unlikely(!mv2_MPIDI_CH3I_RDMA_Process.has_srq)) {
-                --vc->mrail.srp.credits[v->rail].preposts;
+                if (likely(mv2_MPIDI_CH3I_RDMA_Process.has_srq)) {
+                    /* Check if we need to release the SRQ limit thread */
+                    if (unlikely(mv2_MPIDI_CH3I_RDMA_Process.
+                                srq_zero_post_counter[hca_num] >= 1)) {
+                        pthread_mutex_lock(
+                                &mv2_MPIDI_CH3I_RDMA_Process.
+                                srq_post_mutex_lock[hca_num]);
+                        mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num] = 0;
+                        pthread_cond_signal(&mv2_MPIDI_CH3I_RDMA_Process.
+                                srq_post_cond[hca_num]);
+                        pthread_mutex_unlock(
+                                &mv2_MPIDI_CH3I_RDMA_Process.
+                                srq_post_mutex_lock[hca_num]);
+                    }
+                }
+                else
+                {
+                    --vc->mrail.srp.credits[v->rail].preposts;
 
-                needed = rdma_prepost_depth + rdma_prepost_noop_extra
-                    + MIN(rdma_prepost_rendezvous_extra,
-                            vc->mrail.srp.credits[v->rail].
-                            rendezvous_packets_expected);
+                    needed = rdma_prepost_depth + rdma_prepost_noop_extra
+                        + MIN(rdma_prepost_rendezvous_extra,
+                                vc->mrail.srp.credits[v->rail].
+                                rendezvous_packets_expected);
+                }
+#ifdef _ENABLE_UD_
+            if (rdma_enable_hybrid){
+                if (IS_CNTL_MSG(p)){
+                    type = T_CHANNEL_CONTROL_MSG_ARRIVE;
+                    MPIR_T_PVAR_COUNTER_INC(MV2,
+                            mv2_ibv_channel_ctrl_packet_count, 1);
+                } else {
+                    type = T_CHANNEL_HYBRID_MSG_ARRIVE;
+                }
+            }
+            else
+#endif
+            {
+                if (seqnum == PKT_NO_SEQ_NUM){
+                    type = T_CHANNEL_CONTROL_MSG_ARRIVE;
+                    MPIR_T_PVAR_COUNTER_INC(MV2,
+                            mv2_ibv_channel_ctrl_packet_count, 1);
+                } else if (seqnum == vc->mrail.seqnum_next_torecv) {
+                    vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
+                    ++vc->mrail.seqnum_next_torecv;
+                    type = T_CHANNEL_EXACT_ARRIVE;
+                    PRINT_DEBUG(DEBUG_CHM_verbose, "[channel manager] get one with exact seqnum\n");
+                } else {
+                    type = T_CHANNEL_OUT_OF_ORDER_ARRIVE;
+                    VQUEUE_ENQUEUE(&vc->mrail.cmanager,
+                            INDEX_GLOBAL(&vc->mrail.cmanager, v->rail),
+                            v);
+                    PRINT_DEBUG(DEBUG_CHM_verbose, "get recv %d (%d)\n", seqnum,
+                            vc->mrail.seqnum_next_torecv);
+                }
+            }
+            if (unlikely(!mv2_MPIDI_CH3I_RDMA_Process.has_srq && v->transport != IB_TRANSPORT_UD)) {
 
                 if (PKT_IS_NOOP(v)) {
                     PREPOST_VBUF_RECV(vc, v->rail);
+                    /* noops don't count for credits */
                     --vc->mrail.srp.credits[v->rail].local_credit;
                 }
-                else if ((vc->mrail.srp.credits[v->rail].preposts 
+                else if ((vc->mrail.srp.credits[v->rail].preposts
                             < rdma_rq_size) &&
-                        (vc->mrail.srp.credits[v->rail].preposts + 
-                         rdma_prepost_threshold < needed)) {
+                        (vc->mrail.srp.credits[v->rail].preposts +
+                         rdma_prepost_threshold < needed))
+                {
                     do {
                         PREPOST_VBUF_RECV(vc, v->rail);
-                    } while (vc->mrail.srp.credits[v->rail].preposts 
-                            < rdma_rq_size && 
-                            vc->mrail.srp.credits[v->rail].preposts 
+                    } while (vc->mrail.srp.credits[v->rail].preposts
+                            < rdma_rq_size &&
+                            vc->mrail.srp.credits[v->rail].preposts
                             < needed);
                 }
+
                 MRAILI_Send_noop_if_needed(vc, v->rail);
             }
+            if (type == T_CHANNEL_CONTROL_MSG_ARRIVE ||
+                type == T_CHANNEL_EXACT_ARRIVE ||
+                type == T_CHANNEL_HYBRID_MSG_ARRIVE ||
+                type == T_CHANNEL_OUT_OF_ORDER_ARRIVE) {
+                goto fn_exit;
+            }
+        } else {
+            /* Now since this is not the packet we want, enqueue it */
+            type = T_CHANNEL_OUT_OF_ORDER_ARRIVE;
+            *vbuf_handle = NULL;
+            v->content_size = wc.byte_len;
+            VQUEUE_ENQUEUE(&vc->mrail.cmanager,
+                    INDEX_GLOBAL(&vc->mrail.cmanager, v->rail),
+                    v);
+            if (v->transport != IB_TRANSPORT_UD) {
+                if (unlikely(!mv2_MPIDI_CH3I_RDMA_Process.has_srq)) {
+                    --vc->mrail.srp.credits[v->rail].preposts;
+
+                    needed = rdma_prepost_depth + rdma_prepost_noop_extra
+                        + MIN(rdma_prepost_rendezvous_extra,
+                                vc->mrail.srp.credits[v->rail].
+                                rendezvous_packets_expected);
+
+                    if (PKT_IS_NOOP(v)) {
+                        PREPOST_VBUF_RECV(vc, v->rail);
+                        --vc->mrail.srp.credits[v->rail].local_credit;
+                    }
+                    else if ((vc->mrail.srp.credits[v->rail].preposts
+                                < rdma_rq_size) &&
+                            (vc->mrail.srp.credits[v->rail].preposts +
+                             rdma_prepost_threshold < needed)) {
+                        do {
+                            PREPOST_VBUF_RECV(vc, v->rail);
+                        } while (vc->mrail.srp.credits[v->rail].preposts
+                                < rdma_rq_size &&
+                                vc->mrail.srp.credits[v->rail].preposts
+                                < needed);
+                    }
+                    MRAILI_Send_noop_if_needed(vc, v->rail);
+                }
+            }
         }
-	}
+    }
 
 fn_exit:
     return type;
@@ -941,7 +894,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll_iwarp(vbuf **vbuf_handle,
 
     *vbuf_handle = NULL;
 
-    if (!receiving && !vc_req) {
+    if (!vc_req) {
         type = MPIDI_CH3I_MRAILI_Test_pkt(vbuf_handle);
         if (type == T_CHANNEL_EXACT_ARRIVE 
                 || type == T_CHANNEL_CONTROL_MSG_ARRIVE)
@@ -1045,13 +998,6 @@ int MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf **vbuf_handle,
 
     *vbuf_handle = NULL;
 
-    if (!receiving && !vc_req) {
-        type = MPIDI_CH3I_MRAILI_Test_pkt(vbuf_handle);
-        if (type == T_CHANNEL_EXACT_ARRIVE 
-                || type == T_CHANNEL_CONTROL_MSG_ARRIVE)
-            goto fn_exit;
-    }
-
     for (i = 0; i < rdma_num_hcas; ++i) {
         chosen_cq = mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i];
 
@@ -1070,6 +1016,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf **vbuf_handle,
                 goto fn_exit;
             }
         } else {
+get_blocking_message:
             memset(wc[i], 0, sizeof(struct ibv_wc)*RDMA_MAX_CQE_ENTRIES_PER_POLL);
 	        ne = ibv_poll_cq(chosen_cq, rdma_num_cqes_per_poll, wc[i]);
 
@@ -1078,7 +1025,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf **vbuf_handle,
     	    } else if (ne) {         
                 curr_cqe[i] = 0;
                 num_cqes[i] = ne;
-    
+
                 do {
                     type = handle_cqe(vbuf_handle, vc_req, receiving, wc[i][curr_cqe[i]],
                                         num_cqs, cq_choice, i);
@@ -1094,12 +1041,13 @@ int MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf **vbuf_handle,
     	        *vbuf_handle = NULL;
     	        type = T_CHANNEL_NO_ARRIVE;
     	        ++nspin;
-    	
+
     	        /* Blocking mode progress */
     	        if (unlikely(rdma_use_blocking && is_blocking &&
                             nspin >= rdma_blocking_spin_count_threshold)) {
                     perform_blocking_progress(i, num_cqs);
     	            nspin = 0;
+                    goto get_blocking_message;
     	        }
 
 			    if (unlikely(mv2_srq_repost_pool.num_free >= rdma_credit_preserve &&
@@ -1108,6 +1056,13 @@ int MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf **vbuf_handle,
     	            nspin = 0;
 			    }
     	    }
+        }
+    }
+    if (!vc_req) {
+        type = MPIDI_CH3I_MRAILI_Test_pkt(vbuf_handle);
+        if (type == T_CHANNEL_EXACT_ARRIVE ||
+            type == T_CHANNEL_CONTROL_MSG_ARRIVE) {
+            goto fn_exit;
         }
     }
 fn_exit:

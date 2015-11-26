@@ -289,7 +289,8 @@ MPIDI_CH3I_CA_END_RDMA
 enum REQ_TYPE {
     REQUEST_NORMAL,
     REQUEST_RNDV_R3_HEADER,
-    REQUEST_RNDV_R3_DATA
+    REQUEST_RNDV_R3_DATA,
+    REQUEST_LIGHT
 };
 
 /*
@@ -411,6 +412,9 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
     MPIU_SHMW_Hnd_t shm_mutex_segment_handle; /* handle to interprocess mutex memory    \
                                                  region */                              \
     int *shm_l2g_rank;                                                                  
+
+extern int mv2_create_dummy_request();
+extern int mv2_free_dummy_request();
 #endif /* defined(CHANNEL_MRAIL) */
 
 #endif /* !defined(MPICH_MPIDI_CH3_PRE_H_INCLUDED) */

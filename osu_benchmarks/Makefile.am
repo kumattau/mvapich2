@@ -8,6 +8,12 @@
  # copyright file COPYRIGHT in the top level OMB directory.
  #
 
+NVCC = nvcc
+NVCFLAGS = -cuda -maxrregcount 32
+SUFFIXES = .cu .cpp
+.cu.cpp:
+	$(NVCC) $(NVCFLAGS) $(INCLUDES) $(CPPFLAGS) --output-file $@ $<
+
 pkglibexec_PROGRAMS =		\
     osu_alltoallv		\
     osu_allgatherv		\
@@ -28,9 +34,9 @@ pkglibexec_PROGRAMS =		\
     osu_mbw_mr			\
     osu_multi_lat		\
     osu_acc_latency		\
-	osu_get_acc_latency \
-	osu_cas_latency     \
-	osu_fop_latency     \
+    osu_get_acc_latency 	\
+    osu_cas_latency     	\
+    osu_fop_latency     	\
     osu_get_bw			\
     osu_get_latency		\
     osu_latency_mt		\
@@ -44,7 +50,12 @@ pkglibexec_PROGRAMS =		\
     osu_ialltoall		\
     osu_ibarrier		\
     osu_igather			\
-    osu_iscatter
+    osu_iscatter		\
+    osu_iscatterv		\
+    osu_igatherv		\
+    osu_iallgatherv		\
+    osu_ialltoallv		\
+    osu_ialltoallw
 
 osu_bw_SOURCES = osu_bw.c osu_pt2pt.c osu_pt2pt.h
 osu_bibw_SOURCES = osu_bibw.c osu_pt2pt.c osu_pt2pt.h
@@ -80,17 +91,49 @@ osu_allgather_SOURCES = osu_allgather.c osu_coll.c osu_coll.h
 osu_iallgather_SOURCES = osu_iallgather.c osu_coll.c osu_coll.h
 osu_scatter_SOURCES = osu_scatter.c osu_coll.c osu_coll.h
 osu_iscatter_SOURCES = osu_iscatter.c osu_coll.c osu_coll.h
+osu_iscatterv_SOURCES = osu_iscatterv.c osu_coll.c osu_coll.h
+osu_igatherv_SOURCES = osu_igatherv.c osu_coll.c osu_coll.h
+osu_iallgatherv_SOURCES = osu_iallgatherv.c osu_coll.c osu_coll.h
+osu_ialltoallv_SOURCES = osu_ialltoallv.c osu_coll.c osu_coll.h
+osu_ialltoallw_SOURCES = osu_ialltoallw.c osu_coll.c osu_coll.h
+
 
 AM_CPPFLAGS = -DFIELD_WIDTH=18 -DFLOAT_PRECISION=2
 
 if BUILD_MRAIL_CUDA
 dist_pkglibexec_SCRIPTS = get_local_rank
 AM_CPPFLAGS += -D_ENABLE_CUDA_
+
+osu_alltoall_SOURCES += kernel.cu
+osu_alltoallv_SOURCES += kernel.cu
+osu_allgather_SOURCES += kernel.cu
+osu_allgatherv_SOURCES += kernel.cu
+osu_barrier_SOURCES += kernel.cu
+osu_bcast_SOURCES += kernel.cu
+osu_scatter_SOURCES += kernel.cu
+osu_scatterv_SOURCES += kernel.cu
+osu_gather_SOURCES += kernel.cu
+osu_gatherv_SOURCES += kernel.cu
+osu_allreduce_SOURCES += kernel.cu
+osu_reduce_SOURCES += kernel.cu
+osu_reduce_scatter_SOURCES += kernel.cu
+osu_ialltoall_SOURCES += kernel.cu
+osu_ialltoallv_SOURCES += kernel.cu
+osu_ialltoallw_SOURCES += kernel.cu
+osu_iallgather_SOURCES += kernel.cu
+osu_iallgatherv_SOURCES += kernel.cu
+osu_ibarrier_SOURCES += kernel.cu
+osu_ibcast_SOURCES += kernel.cu
+osu_iscatter_SOURCES += kernel.cu
+osu_iscatterv_SOURCES += kernel.cu
+osu_igather_SOURCES += kernel.cu
+osu_igatherv_SOURCES += kernel.cu
 endif
 
 if BUILD_MRAIL_OPENACC
 AM_CPPFLAGS += -D_ENABLE_OPENACC_
 AM_CFLAGS = -acc
+AM_CXXFLAGS = -acc
 endif
 
 EXTRA_DIST = README CHANGES

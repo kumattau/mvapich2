@@ -344,7 +344,7 @@ void psm_pe_yield()
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 void psm_update_mpistatus(MPI_Status *stat, psm_mq_status_t psmst, int append)
 {
-    int old_nbytes = 0;
+    MPIDI_msg_sz_t old_nbytes = 0;
 
     stat->MPI_TAG = (psmst.msg_tag >> SRC_RANK_BITS) & TAG_MASK;
     switch(psmst.error_code) {

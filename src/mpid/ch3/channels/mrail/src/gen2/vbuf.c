@@ -214,7 +214,7 @@ void deallocate_vbuf_region(void)
         MPIU_Memalign_Free(curr->malloc_start);
 
         if (rdma_enable_hugepage && curr->shmid >= 0) {
-            shmdt(curr->malloc_buf_start);
+            MPIU_shmdt(curr->malloc_buf_start);
         } else {
             MPIU_Memalign_Free(curr->malloc_buf_start);
         }
@@ -251,7 +251,7 @@ void deallocate_vbuf_region(void)
 #endif
                 
             if (rdma_enable_hugepage && curr->shmid >= 0) {
-                shmdt(curr->malloc_buf_start);
+                MPIU_shmdt(curr->malloc_buf_start);
             } else {
                 MPIU_Memalign_Free(curr->malloc_buf_start);
             }
@@ -303,7 +303,7 @@ fn_fail:
     goto fn_exit;
 }    
 
-inline int reregister_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool)
+static inline int reregister_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool)
 {
     int i = 0;
     int nvbufs = 0;
@@ -622,7 +622,7 @@ vbuf* get_vbuf_by_offset(int offset)
     return(v);
 }
 
-inline void release_vbuf(vbuf* v)
+void release_vbuf(vbuf* v)
 {
     vbuf_pool_t *rdma_vbuf_pool = v->pool_index;
 

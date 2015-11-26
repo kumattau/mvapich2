@@ -27,11 +27,6 @@ extern void set_output_prefix( char* prefix );
 // Get the output prefix
 extern const char *get_output_prefix();
 
-#ifdef _OSU_MVAPICH_
-// Dump device capabilities
-extern inline void dump_device_cap(struct ibv_device_attr dev_attr);
-#endif
-
 // Common print function
 #define _COMMON_PRINT_( FMT, args... ) \
 do { fprintf( stderr, "[%s][%s] "FMT, get_output_prefix(), __func__, ##args ); } while(0)

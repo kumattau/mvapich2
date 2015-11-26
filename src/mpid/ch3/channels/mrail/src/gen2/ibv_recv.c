@@ -113,6 +113,14 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
         }
         break;
 #endif
+#ifdef USE_EAGER_SHORT
+    case (MPIDI_CH3_PKT_EAGERSHORT_SEND):
+        {
+            *pkt = vstart;
+            *header_size = sizeof(MPIDI_CH3_Pkt_eagershort_send_t);
+        }
+        break;
+#endif /*USE_EAGER_SHORT*/
     case (MPIDI_CH3_PKT_EAGER_SEND):
         {
             DEBUG_PRINT("[recv: parse header] pkt eager send\n");
@@ -376,8 +384,8 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
         }
     }
 
-    DEBUG_PRINT("Before set credit, vc: %p, v->rail: %d, "
-            "pkt: %p, pheader: %p\n", vc, v->rail, pkt, v->pheader);
+    PRINT_DEBUG(DEBUG_CHM_verbose>1, "Before set credit, vc: %p, v->rail: %d, "
+                "pkt: %p, pheader: %p\n", vc, v->rail, pkt, v->pheader);
 
     SET_CREDIT((&(((MPIDI_CH3_Pkt_t *) 
                         (*pkt))->eager_send)), vc, (v->rail),v->transport);
@@ -630,6 +638,10 @@ int MPIDI_CH3I_MRAILI_Recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
         vc->mrail.rfp.in_polling_set          = 1;
         vc->mrail.state &= ~(MRAILI_RFP_CONNECTING);
         vc->mrail.state |= MRAILI_RFP_CONNECTED;
+        if (mv2_use_eager_fast_send &&
+            !(SMP_INIT && (vc->smp.local_nodes >= 0))) {
+            vc->eager_fast_rfp_fn = mv2_eager_fast_rfp_send;
+        }
     } else {
         ibv_va_error_abort(GEN_EXIT_ERR,
                 "Invalid reply data received. reply_data: pkt->reply_data%d\n",

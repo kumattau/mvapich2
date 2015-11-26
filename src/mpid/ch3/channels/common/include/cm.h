@@ -101,6 +101,7 @@ extern int mv2_pmi_max_keylen;
 extern int mv2_pmi_max_vallen;
 extern char *mv2_pmi_key;
 extern char *mv2_pmi_val;
+extern char *mv2_pmi_iallgather_buf;
 
 /*
  * mv2_allocate_pmi_keyval

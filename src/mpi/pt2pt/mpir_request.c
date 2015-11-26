@@ -82,6 +82,9 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr,
 	}
 	case MPID_REQUEST_RECV:
 	{
+#ifdef CHANNEL_MRAIL
+        MPIU_Assert(request_ptr->ch.reqtype != REQUEST_LIGHT);
+#endif
 	    MPIR_Request_extract_status(request_ptr, status);
 	    mpi_errno = request_ptr->status.MPI_ERROR;
 	    MPID_Request_release(request_ptr);
@@ -91,6 +94,9 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr,
 			
 	case MPID_PREQUEST_SEND:
 	{
+#ifdef CHANNEL_MRAIL
+        MPIU_Assert(request_ptr->ch.reqtype != REQUEST_LIGHT);
+#endif
 	    if (request_ptr->partner_request != NULL)
 	    {
 		MPID_Request * prequest_ptr = request_ptr->partner_request;
@@ -159,6 +165,9 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr,
 	
 	case MPID_PREQUEST_RECV:
 	{
+#ifdef CHANNEL_MRAIL
+        MPIU_Assert(request_ptr->ch.reqtype != REQUEST_LIGHT);
+#endif
 	    if (request_ptr->partner_request != NULL)
 	    {
 		MPID_Request * prequest_ptr = request_ptr->partner_request;
@@ -195,6 +204,9 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr,
 
 	case MPID_UREQUEST:
 	{
+#ifdef CHANNEL_MRAIL
+        MPIU_Assert(request_ptr->ch.reqtype != REQUEST_LIGHT);
+#endif
             int rc;
             
             rc = MPIR_Grequest_query(request_ptr);
@@ -218,6 +230,9 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr,
         case MPID_COLL_REQUEST:
         case MPID_WIN_REQUEST:
         {
+#ifdef CHANNEL_MRAIL
+        MPIU_Assert(request_ptr->ch.reqtype != REQUEST_LIGHT);
+#endif
             MPIR_Request_extract_status(request_ptr, status);
             MPID_Request_release(request_ptr);
             *request = MPI_REQUEST_NULL;

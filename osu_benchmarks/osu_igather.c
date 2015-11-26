@@ -120,18 +120,17 @@ int main(int argc, char *argv[])
 
         latency = (timer * 1e6) / options.iterations;
 
-        /* per process comm. latency, fed to dummy_compute */
         latency_in_secs = timer/options.iterations;
 
-        init_arrays();
+        init_arrays(latency_in_secs);
 
         MPI_Barrier(MPI_COMM_WORLD);
 
         timer = 0.0; tcomp_total = 0; tcomp = 0;
         init_total = 0.0; wait_total = 0.0;
-	test_time = 0.0, test_total = 0.0;
+	    test_time = 0.0, test_total = 0.0;
 
-	/* for loop with dummy_compute */
+	    /* for loop with dummy_compute */
         for(i=0; i < options.iterations + options.skip ; i++) {
             t_start = MPI_Wtime();
 

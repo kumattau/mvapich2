@@ -21,6 +21,7 @@
 #include "sysreport.h"
 #include "smp_smpi.h"
 #include "mv2_utils.h"
+#include "upmi.h"
 
 
 /*
@@ -70,7 +71,7 @@ cvars:
 #define INLINE_THRESHOLD_ADJUST  (40)
 extern const char MPIR_Version_string[];
 extern unsigned int mv2_enable_affinity;
-inline void rdma_get_vbuf_user_parameters(int num_proc, int me);
+static inline void rdma_get_vbuf_user_parameters(int num_proc, int me);
 
 /*
  * ==============================================================
@@ -180,6 +181,7 @@ int mv2_on_demand_ud_info_exchange = 1;
 int mv2_homogeneous_cluster = 0;
 int mv2_show_env_info = 0;
 int mv2_use_pmi_ibarrier = 0;
+int mv2_use_pmi_iallgather = 0;
 int mv2_shmem_backed_ud_cm = 1;
 
 /* If this number of eager sends are already outstanding
@@ -259,6 +261,7 @@ int mcast_comm_init_retries = 128;
 int mcast_nspin_threshold = 1200;
 int mcast_skip_loopback = 1;
 #endif
+int mv2_use_eager_fast_send= 1;
 
 /* Max number of entries on the RecvQ of QPs per connection.
  * computed to be:
@@ -361,6 +364,7 @@ int rdma_cuda_allgather_fgp = 1;
 int rdma_cuda_init_context = 1;
 int rdma_check_cuda_attribute = 0;
 #endif /*#ifdef _ENABLE_CUDA_ */
+int mv2_enable_progress_affinity = 0;
 
 typedef enum _mv2_user_defined_mapping_policies {
 
@@ -1248,6 +1252,7 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
          * up/down */
         proc->has_hsam = 0;
     }
+    /* End : HSAM Parameters */
 
     proc->has_apm = (value =
                      getenv("MV2_USE_APM")) != NULL ? (int) atoi(value) : 0;
@@ -1277,8 +1282,10 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             rdma_small_msg_rail_sharing_policy =
             rdma_get_rail_sharing_policy(value);
     }
-
-    /* End : HSAM Parameters */
+    /* If there is only one process per node, allow it use all HCAs */
+    if (rdma_num_nodes_in_job == pg_size) {
+        rdma_multirail_usage_policy = MV2_MRAIL_SHARING;
+    }
 
 #if defined(RDMA_CM)
     if ((value = getenv("MV2_USE_IWARP_MODE")) != NULL) {
@@ -1298,6 +1305,7 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = getenv("MV2_SUPPORT_DPM")) && !!atoi(value)) {
         proc->use_rdma_cm = 0;
         proc->use_iwarp_mode = 0;
+        mv2_use_eager_fast_send = 0;
         mv2_on_demand_ud_info_exchange = 0;    /* Trac #780 */
     }
 
@@ -1337,12 +1345,26 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         MPIU_ERR_POP(mpi_errno);
     }
 
+    /* Heterogeniety detection for HCAs */
+    int i = 0;
+    int heterogeneous = 0;
+    uint64_t node_guid[MAX_NUM_HCAS];
+    mv2_hca_type    hca_type[MAX_NUM_HCAS];
+    for (i = 0; i < rdma_num_hcas; ++i) {
+        hca_type[i] = mv2_new_get_hca_type(proc->nic_context[i], proc->ib_dev[i], &node_guid[i]);
+        if (i && (hca_type[i] != hca_type[i-1])) {
+            heterogeneous = 1;
+        }
+    }
     /* Get Arch and HCA type */
-    uint64_t node_guid;
-    proc->hca_type = mv2_new_get_hca_type(proc->nic_context[0], proc->ib_dev[0], &node_guid);
-    proc->arch_hca_type = mv2_new_get_arch_hca_type(proc->nic_context[0], proc->ib_dev[0], &node_guid);
+    if (heterogeneous) {
+        proc->hca_type = MV2_HCA_UNKWN;
+    } else {
+        proc->hca_type = hca_type[0];
+    }
+    proc->arch_hca_type = mv2_new_get_arch_hca_type(proc->hca_type);
     proc->arch_type = MV2_GET_ARCH(proc->arch_hca_type);
-    proc->node_guid = node_guid;
+    proc->node_guid = node_guid[0];
 
     if (rdma_num_nodes_in_job == 0) {
         UPMI_GET_SIZE(&size);
@@ -3966,6 +3988,13 @@ void rdma_get_user_parameters(int num_proc, int me)
                               "ibv_param.h to overide the option\n",
                               MAX_NUM_QP_PER_PORT, "MAX_NUM_QP_PER_PORT");
         }
+#ifdef _ENABLE_UD_
+        if (rdma_enable_only_ud || rdma_enable_hybrid) {
+            rdma_num_qp_per_port = 1;
+            PRINT_INFO((me==0), "Cannot have more than one QP with UD_ONLY / Hybrid mode.\n");
+            PRINT_INFO((me==0), "Resetting MV2_NUM_QP_PER_PORT to 1.\n");
+        }
+#endif /* _ENABLE_UD_ */
     }
 
     if ((value = getenv("MV2_PIN_POOL_SIZE")) != NULL) {
@@ -4289,7 +4318,7 @@ void rdma_get_user_parameters(int num_proc, int me)
 
 }
 
-inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
+static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
 {
     char *value = NULL;
 
@@ -4607,6 +4636,19 @@ void rdma_get_pm_parameters(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
     }
 
     if (mv2_use_pmi_ibarrier) {
+        mv2_on_demand_ud_info_exchange = 1;
+        proc->has_ring_startup = 0;
+    }
+
+#endif
+
+#if defined(HAVE_PMI2_IALLGATHER) && defined(HAVE_PMI2_IALLGATHER_WAIT)
+    if ((value = getenv("MV2_USE_PMI_IALLGATHER")) != NULL) {
+        mv2_use_pmi_iallgather = !!atoi(value);
+    }
+
+    if (mv2_use_pmi_iallgather) {
+        mv2_use_pmi_ibarrier = 0;
         mv2_on_demand_ud_info_exchange = 1;
         proc->has_ring_startup = 0;
     }

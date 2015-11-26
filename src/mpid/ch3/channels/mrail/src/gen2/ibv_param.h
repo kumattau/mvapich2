@@ -107,6 +107,8 @@ extern int rdma_med_msg_rail_sharing_threshold;
 extern int rdma_large_msg_rail_sharing_threshold;
 
 
+extern int mv2_use_pmi_ibarrier;
+extern int mv2_use_pmi_iallgather;
 extern int mv2_on_demand_ud_info_exchange;
 extern int mv2_homogeneous_cluster;
 extern int mv2_show_env_info;
@@ -237,11 +239,13 @@ extern int mcast_comm_init_retries;
 extern int mcast_nspin_threshold;
 extern int mcast_skip_loopback;
 #endif
+extern int mv2_enable_progress_affinity;
+extern int mv2_use_eager_fast_send;
 
 extern int rdma_default_async_thread_stack_size;
 
 #define PKEY_MASK 0x7fff        /* the last bit is reserved */
-#define RDMA_MAX_CQE_ENTRIES_PER_POLL   (64)
+#define RDMA_MAX_CQE_ENTRIES_PER_POLL   (96)
 #define RDMA_PIN_POOL_SIZE              (2*1024*1024)
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (40000)
 #define RDMA_DEFAULT_IWARP_CQ_SIZE      (8192)
@@ -306,7 +310,7 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_CONNECT_INTERVAL   (100)
 
 #define DEFAULT_SMALL_VBUF_SIZE          (256)
-#define DEFAULT_MEDIUM_VBUF_SIZE         (2048)
+#define DEFAULT_MEDIUM_VBUF_SIZE         (5120)
 
 #ifdef _ENABLE_CUDA_
 #define DEFAULT_CUDA_VBUF_SIZES          {DEFAULT_SMALL_VBUF_SIZE, DEFAULT_MEDIUM_VBUF_SIZE, rdma_vbuf_total_size, rdma_cuda_block_size, rdma_cuda_block_size}

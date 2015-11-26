@@ -409,7 +409,7 @@ set_device_memory (void * ptr, int data, size_t size)
 #endif
 #ifdef _ENABLE_OPENACC_
         case openacc:
-#pragma acc parallel options.loop deviceptr(p)
+#pragma acc parallel copyin(size) deviceptr(p)
             for(i = 0; i < size; i++) {
                 p[i] = data;
             }

@@ -3,6 +3,34 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.2b (11/12/2015)
+
+* Features and Enhancements (since 2.2a):
+    - Enhanced performance for small messages
+    - Enhanced startup performance with SLURM
+        - Support for PMIX_Iallgather and PMIX_Ifence
+    - Support to enable affinity with asynchronous progress thread
+    - Enhanced support for MPIT based performance variables
+    - Tuned VBUF size for performance
+    - Improved startup performance for QLogic PSM-CH3 channel
+        - Thanks to Maksym Planeta@TU Dresden for the patch
+
+* Bug Fixes (since 2.2a):
+    - Fix issue with MPI_Get_count in QLogic PSM-CH3 channel with very large
+      messages (>2GB)
+    - Fix issues with shared memory collectives and checkpoint-restart
+    - Fix hang with checkpoint-restart
+    - Fix issue with unlinking shared memory files
+    - Fix memory leak with MPIT
+    - Fix minor typos and usage of inline and static keywords
+        - Thanks to Maksym Planeta@TU Dresden for the patch and suggestions
+    - Fix missing MPIDI_FUNC_EXIT
+        - Thanks to Maksym Planeta@TU Dresden for the patch
+    - Remove unused code
+        - Thanks to Maksym Planeta@TU Dresden for the patch
+    - Continue with warning if user asks to enable XRC when the system does not
+      support XRC
+
 MVAPICH2 2.2a (08/17/2015)
 
 * Features and Enhancements (since 2.1 GA):
@@ -18,7 +46,7 @@ MVAPICH2 2.2a (08/17/2015)
   - Updated to sm_20 kernel optimizations for MPI Datatypes
   - Automatic detection and tuning for 24-core Haswell architecture
 
-* Bug Fixes (since MVAPICH 2.1 GA):
+* Bug Fixes (since 2.1 GA):
 
   - Fix for error with multi-vbuf design for GPU based communication
   - Fix bugs with hybrid UD/RC/XRC communications

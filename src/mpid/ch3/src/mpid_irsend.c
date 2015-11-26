@@ -160,8 +160,6 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
            a ready send, so the receiver won't know to send an error
            if the receive has not been posted */
 #if defined(CHANNEL_MRAIL)
-	MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
-	MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_RSEND);
 	mpi_errno = MPIDI_CH3_RndvSend( &sreq, buf, count, datatype, dt_contig,
 	                                data_sz, dt_true_lb, rank, tag, comm,
 	                                context_offset );

@@ -13,16 +13,10 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-#ifndef SLURM_PMI_CLIENT
-#   define HAVE_PMI2_KVS_IFENCE 1
-#   define HAVE_PMI2_KVS_WAIT   1
-#   define HAVE_PMI_IBARRIER    1
-#   define HAVE_PMI_WAIT        1
-#endif
-
 struct PMI_keyval_t;
 int _size, _rank, _appnum;
 static int _in_ibarrier = 0;
+static int _in_iallgather = 0;
 pthread_mutex_t upmi_lock;
 
 void UPMI_lock_init(void) {
@@ -175,6 +169,48 @@ int UPMI_WAIT( void ) {
 #   if defined(HAVE_PMI_IBARRIER) && defined(HAVE_PMI_WAIT)
         rc = PMI_Wait();
 #   endif
+#endif
+    } else {
+        rc = UPMI_SUCCESS;
+    }
+    UPMI_unlock();
+
+    return rc;
+}
+
+int UPMI_IALLGATHER( const char value[] ) {
+    int rc;
+
+    UPMI_lock();
+    if (!_in_iallgather) {
+        _in_iallgather = 1;
+#ifdef USE_PMI2_API
+#   if defined(HAVE_PMI2_IALLGATHER) && defined(HAVE_PMI2_IALLGATHER_WAIT)
+        rc = PMI2_Iallgather(value);
+#   else
+        rc = UPMI_FAIL;
+#   endif
+#endif
+    } else {
+        rc = UPMI_FAIL;
+    }
+    UPMI_unlock();
+
+    return rc;
+}
+
+int UPMI_IALLGATHER_WAIT( void *buf ) { 
+    int rc = UPMI_SUCCESS;
+
+    UPMI_lock();
+    if (_in_iallgather) {
+        _in_iallgather = 0;
+#ifdef USE_PMI2_API
+#   if defined(HAVE_PMI2_IALLGATHER) && defined(HAVE_PMI2_IALLGATHER_WAIT)
+        rc = PMI2_Iallgather_wait(buf);
+#   endif
+#else
+        rc = UPMI_FAIL;
 #endif
     } else {
         rc = UPMI_SUCCESS;

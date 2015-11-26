@@ -1574,11 +1574,29 @@ extern MPIU_Object_alloc_t MPID_Request_mem;
 /* Preallocated request objects */
 extern MPID_Request MPID_Request_direct[];
 
+#ifdef CHANNEL_MRAIL
+#define MPIR_Request_add_ref( _req ) \
+    do { if ((_req)->ch.reqtype != REQUEST_LIGHT) MPIU_Object_add_ref( _req ); } while (0)
+#else
 #define MPIR_Request_add_ref( _req ) \
     do { MPIU_Object_add_ref( _req ); } while (0)
+#endif
 
-#define MPIR_Request_release_ref( _req, _inuse ) \
-    do { MPIU_Object_release_ref( _req, _inuse ); } while (0)
+#ifdef CHANNEL_MRAIL
+#define MPIR_Request_release_ref( _req, _inuse )    \
+do {                                                \
+    if ((_req)->ch.reqtype == REQUEST_LIGHT) {      \
+        *(_inuse)=0;                                \
+    } else {                                        \
+        MPIU_Object_release_ref( _req, _inuse );    \
+    }                                               \
+} while (0)
+#else
+#define MPIR_Request_release_ref( _req, _inuse )    \
+do {                                                \
+    MPIU_Object_release_ref( _req, _inuse );        \
+} while (0)
+#endif
 
 /* These macros allow us to implement a sendq when debugger support is
    selected.  As there is extra overhead for this, we only do this
@@ -4062,11 +4080,11 @@ extern MPIR_Op_check_dtype_fn *MPIR_Op_check_dtype_table[];
 #define MPIR_OP_HDL_TO_DTYPE_FN(op) MPIR_Op_check_dtype_table[((op)&0xf) - 1]
 
 #if !defined MPIR_MIN
-#define MPIR_MIN(a,b) (((a)>(b))?(b):(a))
+#define MPIR_MIN(a,b) ((a != a && b != b) ? a : ((a != a && b == b) ? b : ((a == a && b != b) ? a : (((a)>(b))?(b):(a)))))
 #endif /* MPIR_MIN */
 
 #if !defined MPIR_MAX
-#define MPIR_MAX(a,b) (((b)>(a))?(b):(a))
+#define MPIR_MAX(a,b) ((a != a && b != b) ? a : ((a != a && b == b) ? b : ((a == a && b != b) ? a : (((b)>(a))?(b):(a)))))
 #endif /* MPIR_MAX */
 
 #ifdef _OSU_MVAPICH_

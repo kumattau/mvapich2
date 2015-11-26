@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2002-2015 the Network-Based Computing Laboratory
- * (NBCL), The Ohio State University.
+ * (NBCL), The Ohio State University. 
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
  *
@@ -68,16 +68,19 @@
 #   define FLOAT_PRECISION 2
 #endif
 
+static int is_alloc = 1;
 static int iterations = 1000;
 static int iterations_large = 100;
 static int print_size = 0;
-static uint64_t max_mem_limit = MAX_MEM_LIMIT;
-static int process_args (int argc, char *argv[], int rank, int * size,
+static uint64_t max_mem_limit = MAX_MEM_LIMIT; 
+static int process_args (int argc, char *argv[], int rank, int * size, 
                          int * full) __attribute__((unused));
 static void print_header (int rank, int full) __attribute__((unused));
+static void print_header_nbc (int rank, int full);
 static void print_data (int rank, int full, int size, double avg_time, double
         min_time, double max_time, int iterations) __attribute__((unused));
-void compute_on_host();
+static void print_data_nbc (int rank, int full, int size, double ovrl, double
+        cpu, double comm, double wait, double init, int iterations);
 
 void
 calculate_and_print_stats(int rank, int size, int numprocs,
@@ -87,28 +90,23 @@ calculate_and_print_stats(int rank, int size, int numprocs,
 
 static void print_usage(int rank, const char * prog, int has_size)
 {
-    if (rank!=0)
+    if (rank!=0) 
         return;
-
+    
     if (has_size) {
-        fprintf(stdout, " USAGE : %s [-m SIZE] [-i ITER] [-x SKIP] [-f] [-hv] [-M SIZE]\n", prog);
+        fprintf(stdout, " USAGE : %s [-m SIZE] [-i ITER] [-f] [-hv] [-M SIZE]\n", prog);
         fprintf(stdout, "  -m : Set maximum message size to SIZE.\n");
         fprintf(stdout, "       By default, the value of SIZE is 1MB.\n");
         fprintf(stdout, "  -i : Set number of iterations per message size to ITER.\n");
         fprintf(stdout, "       By default, the value of ITER is 1000 for small messages\n");
-        fprintf(stdout, "       and 10 for large messages.\n");
-        fprintf(stdout, "  -x : Set number of warmup iterations (skip) per message size to ITER.\n");
-        fprintf(stdout, "       By default, the value of SKIP is 200 for small messages\n");
-        fprintf(stdout, "       and 10 for large messages.\n");
-        fprintf(stdout, "  -M : Set maximum memory consumption (per process) to SIZE. \n");
+        fprintf(stdout, "       and 100 for large messages.\n");
+        fprintf(stdout, "  -M : Set maximum memory consumption (per process) to SIZE. \n"); 
         fprintf(stdout, "       By default, the value of SIZE is 512MB.\n");
     }
     else {
-        fprintf(stdout, " USAGE : %s [-i ITER] [-x SKIP] [-f] [-hv] \n", prog);
+        fprintf(stdout, " USAGE : %s [-i ITER] [-f] [-hv] \n", prog);
         fprintf(stdout, "  -i : Set number of iterations to ITER.\n");
         fprintf(stdout, "       By default, the value of ITER is 1000.\n");
-        fprintf(stdout, "  -x : Set number of iterations to SKIP.\n");
-        fprintf(stdout, "       By default, the value of SKIP is 200.\n");
     }
 
     fprintf(stdout, "  -f : Print full format listing.  With this option\n");
@@ -117,6 +115,9 @@ static void print_usage(int rank, const char * prog, int has_size)
 
     fprintf(stdout, "  -t : Set the number of MPI_Test() calls\n");
     fprintf(stdout, "       during dummy computation.\n");
+     
+    fprintf(stdout, "  -r : Set the compute target. Use 1 (default) to execute on\n");
+    fprintf(stdout, "       CPU, use 2 on GPU, and use 3 for both.\n");
 
     fprintf(stdout, "  -h : Print this help.\n");
     fprintf(stdout, "  -v : Print version info.\n");
@@ -130,7 +131,7 @@ static void print_version()
     fflush(stdout);
 }
 
-static int process_args (int argc, char *argv[], int rank, int * size,
+static int process_args (int argc, char *argv[], int rank, int * size, 
                          int * full)
 {
     int c;
@@ -180,17 +181,17 @@ static int process_args (int argc, char *argv[], int rank, int * size,
                 *full = 1;
                 break;
 
-            case 'M':
-                max_mem_limit = atoll(optarg);
+            case 'M': 
+                max_mem_limit = atoll(optarg); 
                 if (max_mem_limit < MAX_MEM_LOWER_LIMIT) {
-                    max_mem_limit = MAX_MEM_LOWER_LIMIT;
-                    if(rank == 0)
-                        fprintf(stderr,"Requested memory limit too low. ");
-                    if(rank == 0)
-                        fprintf(stderr,"Reverting to default lower-limit "
-                                "value %d\n", MAX_MEM_LOWER_LIMIT);
+                    max_mem_limit = MAX_MEM_LOWER_LIMIT; 
+                    if(rank == 0) 
+                        fprintf(stderr,"Requested memory limit too low. "); 
+                    if(rank == 0) 
+                        fprintf(stderr,"Reverting to default lower-limit " 
+                                "value %d\n", MAX_MEM_LOWER_LIMIT); 
                 }
-                break;
+                break; 
 
             default:
                 if (rank == 0) {
@@ -232,7 +233,7 @@ static void print_header (int rank, int full)
     }
 }
 
-static void print_data (int rank, int full, int size, double avg_time,
+static void print_data (int rank, int full, int size, double avg_time, 
                         double min_time, double max_time, int iterations)
 {
     if(rank == 0) {
@@ -246,7 +247,7 @@ static void print_data (int rank, int full, int size, double avg_time,
         }
 
         if (full) {
-            fprintf(stdout, "%*.*f%*.*f%*d\n",
+            fprintf(stdout, "%*.*f%*.*f%*d\n", 
                     FIELD_WIDTH, FLOAT_PRECISION, min_time,
                     FIELD_WIDTH, FLOAT_PRECISION, max_time,
                     12, iterations);
@@ -259,6 +260,7 @@ static void print_data (int rank, int full, int size, double avg_time,
         fflush(stdout);
     }
 }
+
 
 enum po_ret_type {
     po_cuda_not_avail,
@@ -275,27 +277,42 @@ enum accel_type {
     openacc
 };
 
+enum target_type {
+    cpu,
+    gpu,
+    both
+};
+
 struct {
     enum accel_type accel;
+    enum target_type target;
     int show_size;
     int show_full;
     size_t max_message_size;
     size_t iterations;
     size_t iterations_large;
+    size_t max_mem_limit;
     size_t skip;
     size_t skip_large;
-    size_t max_mem_limit;
     int num_probes;
+    int device_array_size;
 } options;
+
 
 /*
  * Non-blocking Collectives
  */
 double call_test(int * num_tests, MPI_Request** request);
+void allocate_device_arrays(int n);
 double dummy_compute(double target_secs, MPI_Request *request);
-void init_arrays();
+void init_arrays(double seconds);
 double do_compute_and_probe(double seconds, MPI_Request *request);
 double test_time;
+void free_host_arrays();
+
+#ifdef _ENABLE_CUDA_
+void free_device_arrays();
+#endif
 
 /*
  * Option Processing
@@ -311,7 +328,7 @@ void print_version_message (int rank);
 void print_preamble (int rank);
 void print_preamble_nbc (int rank);
 void print_stats (int rank, int size, double avg, double min, double max);
-void print_stats_nbc (int rank, int size, double ovrl, double cpu, double comm,
+void print_stats_nbc (int rank, int size, double ovrl, double cpu, double comm, 
 		      			  double wait, double init, double test);
 /*
  * Memory Management

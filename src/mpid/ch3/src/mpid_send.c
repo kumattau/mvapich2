@@ -104,6 +104,17 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
     MPIDI_Datatype_get_info(count, datatype, dt_contig, data_sz, dt_ptr, 
 			    dt_true_lb);
 
+#ifdef USE_EAGER_SHORT
+    if ((data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= vc->eager_fast_max_msg_sz) &&
+        vc->eager_fast_fn && dt_contig) {
+	    mpi_errno = MPIDI_CH3_EagerContigShortSend( &sreq, 
+					       MPIDI_CH3_PKT_EAGERSHORT_SEND,
+					       (char *)buf + dt_true_lb,
+					       data_sz, rank, tag, comm, 
+					       context_offset );
+        goto fn_exit;
+    }
+#endif
 
     if (data_sz == 0)
     {
@@ -199,16 +210,6 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 
     /* FIXME: flow control: limit number of outstanding eager messages
        containing data and need to be buffered by the receiver */
-#ifdef USE_EAGER_SHORT
-    if (dt_contig && data_sz <= MPIDI_EAGER_SHORT_SIZE) {
-	mpi_errno = MPIDI_CH3_EagerContigShortSend( &sreq, 
-					       MPIDI_CH3_PKT_EAGERSHORT_SEND,
-					       (char *)buf + dt_true_lb,
-					       data_sz, rank, tag, comm, 
-					       context_offset );
-    }
-    else
-#endif
 #if defined(CHANNEL_PSM)
     if(vc->force_eager)
         goto eager_send;

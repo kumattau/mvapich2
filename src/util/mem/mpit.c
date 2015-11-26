@@ -545,3 +545,22 @@ MPIT_memalign_free (void * ptr, int lineno, char const * filename)
     Real_Free(ptr);
     increment_counter(0 - oldsize);
 }
+
+void
+MPIT_shmdt (void * ptr, int lineno, char const * filename)
+{
+    increment_memalign_free_counter();
+    size_t oldsize = 0;
+
+    if (ptr) {
+        MPIT_MEMORY_T * mptr = oracle_find(ptr);
+
+        if (mptr) {
+            oldsize = mptr->size;
+            oracle_delete(mptr);
+        }
+    }
+
+    shmdt(ptr);
+    increment_counter(0 - oldsize);
+}

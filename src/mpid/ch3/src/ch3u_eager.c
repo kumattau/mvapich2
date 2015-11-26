@@ -292,46 +292,80 @@ int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p,
     MPIDI_CH3_Pkt_eagershort_send_t * const eagershort_pkt = 
 	&upkt.eagershort_send;
     MPID_Request *sreq = *sreq_p;
+    MPID_IOV iov[MPID_IOV_LIMIT];
 #if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
-    
-    /*    printf( "Sending short eager\n"); fflush(stdout); */
-    MPIDI_Pkt_init(eagershort_pkt, reqtype);
-    eagershort_pkt->match.parts.rank	     = comm->rank;
-    eagershort_pkt->match.parts.tag	     = tag;
-    eagershort_pkt->match.parts.context_id = comm->context_id + context_offset;
-    eagershort_pkt->data_sz	     = data_sz;
     
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
        "sending contiguous short eager message, data_sz=" MPIDI_MSG_SZ_FMT,
 					data_sz));
 	    
-    MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
-    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
-    MPIDI_Pkt_set_seqnum(eagershort_pkt, seqnum);
-
-    /* Copy the payload. We could optimize this if data_sz & 0x3 == 0 
-       (copy (data_sz >> 2) ints, inline that since data size is 
-       currently limited to 4 ints */
+#if defined(CHANNEL_MRAIL)
     {
-	unsigned char * restrict p = 
-	    (unsigned char *)eagershort_pkt->data;
-	unsigned char const * restrict bufp = (unsigned char *)buf;
-	int i;
-	for (i=0; i<data_sz; i++) {
-	    *p++ = *bufp++;
-	}
-    }
+        MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
 
-    MPIU_DBG_MSGPKT(vc,tag,eagershort_pkt->match.parts.context_id,rank,data_sz,
-		    "EagerShort");
-    MPIU_THREAD_CS_ENTER(CH3COMM,vc);
-    mpi_errno = MPIDI_CH3_iStartMsg(vc, eagershort_pkt, sizeof(*eagershort_pkt), sreq_p);
-    MPIU_THREAD_CS_EXIT(CH3COMM,vc);
-    if (mpi_errno != MPI_SUCCESS) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|eagermsg");
+        if (vc->eager_fast_rfp_fn &&
+            !(unlikely(num_rdma_buffer < 2 ||
+             vc->mrail.rfp.phead_RDMA_send == vc->mrail.rfp.ptail_RDMA_send ||
+             vc->mrail.rfp.RDMA_send_buf[vc->mrail.rfp.phead_RDMA_send].padding == BUSY_FLAG ||
+             ((data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t)) > MRAIL_MAX_RDMA_FP_SIZE))
+            )) {
+            mpi_errno = vc->eager_fast_rfp_fn(vc, buf, data_sz, rank, 
+				                                tag, comm, context_offset);
+        } else {
+            mpi_errno = vc->eager_fast_fn(vc, buf, data_sz, rank, 
+				                            tag, comm, context_offset, sreq_p);
+        }
+        if (sreq) {
+            MPIU_Object_set_ref(sreq, 1);
+            MPID_cc_set(&sreq->cc, 0);
+        }
+        /* Message was queued. Will resend later */
+        mpi_errno = MPI_SUCCESS;
     }
+#else
+    {
+        MPIDI_Pkt_init(eagershort_pkt, reqtype);
+        eagershort_pkt->data_sz                 = data_sz;
+        eagershort_pkt->match.parts.tag         = tag;
+        eagershort_pkt->match.parts.rank        = comm->rank;
+        eagershort_pkt->match.parts.context_id  = comm->context_id + context_offset;
+
+        iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)eagershort_pkt;
+        iov[0].MPID_IOV_LEN = sizeof(*eagershort_pkt);
+
+        iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) buf;
+        iov[1].MPID_IOV_LEN = data_sz;
+
+        MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(eagershort_pkt, seqnum);
+
+        /*    printf( "Sending short eager\n"); fflush(stdout); */
+        /* Copy the payload. We could optimize this if data_sz & 0x3 == 0 
+           (copy (data_sz >> 2) ints, inline that since data size is 
+           currently limited to 4 ints */
+        {
+            unsigned char * restrict p = (unsigned char *)eagershort_pkt->data;
+            unsigned char const * restrict bufp = (unsigned char *)buf;
+            int i;
+            for (i=0; i<data_sz; i++) {
+                *p++ = *bufp++;
+            }
+        }
+    
+        MPIU_DBG_MSGPKT(vc,tag,eagershort_pkt->match.parts.context_id,rank,data_sz,
+    		    "EagerShort");
+        MPIU_THREAD_CS_ENTER(CH3COMM,vc);
+            mpi_errno = MPIDI_CH3_iStartMsg(vc, eagershort_pkt,
+                                            sizeof(*eagershort_pkt), sreq_p);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|eagermsg");
+            }
+    }
+#endif
+    MPIU_THREAD_CS_EXIT(CH3COMM,vc);
     sreq = *sreq_p;
     if (sreq != NULL) {
 	/*printf( "Surprise, did not complete send of eagershort (starting connection?)\n" ); 

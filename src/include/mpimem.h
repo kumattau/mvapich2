@@ -309,6 +309,7 @@ extern char *strdup( const char * );
 #       define MPIU_Realloc(a,b)    MPIT_realloc(a, b, __LINE__, __FILE__)
 #       define MPIU_Memalign(a,b,c) MPIT_memalign(a, b, c, __LINE__, __FILE__)
 #       define MPIU_Memalign_Free(a) MPIT_memalign_free(a, __LINE__, __FILE__)
+#       define MPIU_shmdt(a)        MPIT_shmdt(a, __LINE__, __FILE__)
 #   else /* ENABLE_PVAR_MV2 */
 /*
  * Forward declaration of function used to call the real free function
@@ -316,6 +317,7 @@ extern char *strdup( const char * );
 void Real_Free (void * ptr);
 #       define MPIU_Memalign(a,b,c) posix_memalign(a, b, c)
 #       define MPIU_Memalign_Free(a) Real_Free(a)
+#       define MPIU_shmdt(a) shmdt(a)
 #   endif /* ENABLE_PVAR_MV2 */
 #endif /* _OSU_MVAPICH_ */
 

@@ -341,7 +341,6 @@ struct coll_runtime mv2_coll_param = { MPIR_ALLGATHER_SHORT_MSG,
 };
 
 #if defined(CKPT)
-extern void Wait_for_CR_Completion();
 void *smc_store;
 int smc_store_set;
 #endif
@@ -742,7 +741,7 @@ void MPIDI_CH3I_SHMEM_COLL_Unlink()
 #define FUNCNAME mv2_post_zcpy_mid_request
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-inline int mv2_post_zcpy_mid_request(MPID_Comm *leader_commptr, shmem_info_t * shmem)
+static inline int mv2_post_zcpy_mid_request(MPID_Comm *leader_commptr, shmem_info_t * shmem)
 {
     int mpi_errno = MPI_SUCCESS;
     /* Post Ibarrier with mid-request */ 
@@ -762,7 +761,7 @@ fn_fail:
 #define FUNCNAME mv2_flush_zcpy_mid_request
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-inline int mv2_flush_zcpy_mid_request(shmem_info_t * shmem)
+static inline int mv2_flush_zcpy_mid_request(shmem_info_t * shmem)
 {
     int mpi_errno = MPI_SUCCESS;
     MPI_Status status;
@@ -785,7 +784,7 @@ fn_fail:
 #define FUNCNAME mv2_post_zcpy_end_request
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-inline int mv2_post_zcpy_end_request(MPID_Comm *leader_commptr, shmem_info_t * shmem)
+static inline int mv2_post_zcpy_end_request(MPID_Comm *leader_commptr, shmem_info_t * shmem)
 {
     int mpi_errno = MPI_SUCCESS;
     /* Post Ibarrier with mid-request */ 
@@ -805,7 +804,7 @@ fn_fail:
 #define FUNCNAME mv2_flush_zcpy_end_request
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-inline int mv2_flush_zcpy_end_request(shmem_info_t * shmem)
+static inline int mv2_flush_zcpy_end_request(shmem_info_t * shmem)
 {
     int mpi_errno = MPI_SUCCESS;
     MPI_Status status; 
@@ -3414,11 +3413,16 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
     if(shmem->buffer_registered == 0) {
        if(shmem_commptr->rank == 0 && leader_commptr->local_size > 1) {
 #ifdef CKPT
-           if (ckpt_free_head != NULL) {
+           shmem->prev = NULL;
+           shmem->next = NULL;
+           if (ckpt_free_head) {
+               ckpt_free_head->prev = shmem;
                shmem->next = ckpt_free_head;
            }
            ckpt_free_head = shmem;
-           PRINT_DEBUG(DEBUG_CR_verbose > 1,"Adding shmem region %p\n", shmem);
+           PRINT_DEBUG(DEBUG_CR_verbose > 1,
+                   "Adding shmem region=%p, prev=%p, next=%p\n",
+                   shmem, shmem->prev, shmem->next);
 #endif /* CKPT */
            mpi_errno = mv2_shm_coll_reg_buffer(shmem->buffer, shmem->size,
                                                shmem->mem_handle, &(shmem->buffer_registered));
@@ -3788,11 +3792,16 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
         if(leader_commptr->local_size > 1) {
             if(shmem->buffer_registered == 0) {
 #ifdef CKPT
-                if (ckpt_free_head != NULL) {
-                    shmem->next = ckpt_free_head;
-                }
-                ckpt_free_head = shmem;
-                PRINT_DEBUG(DEBUG_CR_verbose > 1,"Adding shmem region %p\n", shmem);
+               shmem->prev = NULL;
+               shmem->next = NULL;
+               if (ckpt_free_head) {
+                   ckpt_free_head->prev = shmem;
+                   shmem->next = ckpt_free_head;
+               }
+               ckpt_free_head = shmem;
+               PRINT_DEBUG(DEBUG_CR_verbose > 1,
+                       "Adding shmem region=%p, prev=%p, next=%p\n",
+                       shmem, shmem->prev, shmem->next);
 #endif /* CKPT */
 
                 mpi_errno = mv2_shm_coll_reg_buffer(shmem->buffer, shmem->size,
@@ -4232,8 +4241,6 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     /* unlink the shmem file */
     if (shmem->file_name != NULL) {
         unlink(shmem->file_name);
-        MPIU_Free(shmem->file_name);
-        shmem->file_name = NULL;
     }
 
   fn_exit:
@@ -4271,6 +4278,20 @@ void mv2_shm_coll_cleanup(shmem_info_t * shmem)
 
     if(shmem->local_rank == 0) { 
         if(shmem->buffer_registered == 1) { 
+#ifdef CKPT
+            PRINT_DEBUG(DEBUG_CR_verbose > 1,
+                    "Cleaning up shmem=%p, prev=%p, next=%p\n",
+                    shmem, shmem->prev, shmem->next);
+            if (shmem->prev) {
+                shmem->prev->next = shmem->next;
+            }
+            if (shmem->next) {
+                shmem->next->prev = shmem->prev;
+            }
+            if (shmem == ckpt_free_head) {
+                ckpt_free_head = shmem->next;
+            }
+#endif /* CKPT */
             mv2_shm_coll_dereg_buffer(shmem->mem_handle); 
         } 
         shmem->buffer_registered = 0; 
@@ -4298,7 +4319,6 @@ void mv2_shm_coll_cleanup(shmem_info_t * shmem)
         close(shmem->file_fd);
     }
     if (shmem->file_name != NULL) {
-        unlink(shmem->file_name);
         MPIU_Free(shmem->file_name);
         shmem->file_name = NULL;
     }

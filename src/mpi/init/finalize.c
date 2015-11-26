@@ -287,6 +287,9 @@ int MPI_Finalize( void )
     if (mpi_errno) {
 	MPIU_ERR_POP(mpi_errno);
     }
+#ifdef CHANNEL_MRAIL
+    mv2_free_dummy_request();
+#endif
 
     /* Call the low-priority (post Finalize) callbacks */
     MPIR_Call_finalize_callbacks( 0, MPIR_FINALIZE_CALLBACK_PRIO-1 );

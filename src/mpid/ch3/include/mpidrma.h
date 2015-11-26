@@ -20,6 +20,7 @@
 
 #include "mpl_utlist.h"
 #include "mpidi_ch3_impl.h"
+#include <datatype.h>
 
 #if defined(CHANNEL_MRAIL)
 #define MPIDI_CH3I_SHM_win_mutex_lock(win, rank) pthread_mutex_lock(&win->shm_win_mutex[rank]);

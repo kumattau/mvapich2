@@ -178,6 +178,8 @@ static int restart_count = 0;
 static int MPICR_max_save_ckpts = 0;
 volatile int MPICR_callback_fin = 0;
 
+extern int mv2_init_call_once;
+extern int mv2_mmap_coll_once;
 extern int mv2_enable_shmem_collectives;
 #if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
 extern shmem_info_t *ckpt_free_head;
@@ -2047,6 +2049,9 @@ int CR_IBU_Reactivate_channels()
                                           __FILE__, __LINE__, retval);
         return (retval);
     }
+
+    mv2_init_call_once = 0;
+    mv2_mmap_coll_once = 0;
 
     /* Reinitialize the SMP channel */
     PRINT_DEBUG(DEBUG_CR_verbose, "MPIDI_CH3I_SMP_init()\n");

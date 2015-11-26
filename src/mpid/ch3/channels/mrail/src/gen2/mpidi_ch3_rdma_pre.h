@@ -443,12 +443,6 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
 /* add this structure to the implemenation specific macro */
 #define MPIDI_CH3I_VC_RDMA_DECL MPIDI_CH3I_MRAIL_VC mrail;
 
-/* Macro to get UD_CM variable */
-#define MV2_GET_UD_CM_INFO(_pg, _peer, _field, _output)                 \
-do {                                                                    \
-    (_output) = (_pg)->ch.mrail.cm_shmem->ud_cm[(_peer)].##(_field); \
-} while (0);
-
 typedef struct MPIDI_CH3I_MRAIL_UD_CM {
     uint32_t        cm_ud_qpn;     /* UD QPN of peer */
     uint16_t        cm_lid;        /* LID of peer */
@@ -467,6 +461,20 @@ typedef struct MPIDI_CH3I_MRAIL_CM_SHMEM_Region {
     mv2_ud_exch_info_t          **remote_ud_info;
 #endif /*_ENABLE_UD_ */
 } MPIDI_CH3I_MRAIL_CM_SHMEM_Region_t;
+
+/* Macro to lock/unlock ud cm region */
+#define MV2_LOCK_MRAIL_UD_CM_SHMEM_REGION(_pg)                  \
+do {                                                            \
+  if (mv2_shmem_backed_ud_cm) {                                 \
+    pthread_spin_lock((_pg)->ch.mrail->cm_shmem.cm_shmem_lock); \
+  }                                                             \
+} while(0);
+#define MV2_UNLOCK_MRAIL_UD_CM_SHMEM_REGION(_pg)                  \
+do {                                                              \
+  if (mv2_shmem_backed_ud_cm) {                                   \
+    pthread_spin_unlock((_pg)->ch.mrail->cm_shmem.cm_shmem_lock); \
+  }                                                               \
+} while(0);
 
 typedef struct MPIDI_CH3I_MRAIL_CM {
     int cm_shmem_fd;

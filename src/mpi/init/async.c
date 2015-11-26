@@ -27,6 +27,12 @@ static MPIU_Thread_mutex_t progress_mutex;
 static MPIU_Thread_cond_t progress_cond;
 static volatile int progress_thread_done = 0;
 
+#if defined(CHANNEL_MRAIL)
+extern int mv2_my_async_cpu_id;
+extern int mv2_enable_progress_affinity;
+extern int smpi_set_progress_thread_affinity();
+#endif /* defined(CHANNEL_MRAIL) */
+
 /* We can use whatever tag we want; we use a different communicator
  * for communicating with the progress thread. */
 #define WAKE_TAG 100
@@ -54,6 +60,11 @@ static void progress_fn(void * data)
     }
 #endif
 
+#if defined(CHANNEL_MRAIL)
+    if (mv2_enable_progress_affinity && mv2_my_async_cpu_id >= 0) {
+        smpi_set_progress_thread_affinity();
+    }
+#endif /* defined(CHANNEL_MRAIL) */
     /* FIXME: We assume that waiting on some request forces progress
      * on all requests. With fine-grained threads, will this still
      * work as expected? We can imagine an approach where a request on

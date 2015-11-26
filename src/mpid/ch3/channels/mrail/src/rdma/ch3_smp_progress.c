@@ -51,7 +51,16 @@
 #include <stdint.h>
 #endif 
 
-
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_smp_eager_sent);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_smp_rndv_sent);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_smp_eager_received);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_smp_rndv_received);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_smp_eager_total_buffer);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_smp_rndv_total_buffer);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_smp_eager_avail_buffer);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_smp_rndv_avail_buffer);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_smp_eager_buffer_max_use);
+MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_smp_rndv_buffer_max_use);
 
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_smp_read_progress_poll);
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_smp_write_progress_poll);
@@ -71,8 +80,13 @@ static int is_fair_polling = 0;
 
 int g_smp_polling_th = 200;
 int g_smp_priority_polling = 1;
+static size_t cm_shmem_file_size = 0;
 
 extern int finalize_coll_comm;
+extern MPID_Request * create_eagercontig_request(MPIDI_VC_t * vc,
+                         MPIDI_CH3_Pkt_type_t reqtype,
+                         const void * buf, MPIDI_msg_sz_t data_sz, int rank,
+                         int tag, MPID_Comm * comm, int context_offset);
 
 #define ENQUEUE_p(x) \
     if(!polling_set_p_head) { \
@@ -170,6 +184,8 @@ int s_smpi_length_queue;
 int s_smp_num_send_buffer;
 int s_smp_batch_size;
 int s_smp_block_size;
+unsigned long eager_buffer_max_usage = 0;
+unsigned long rndv_buffer_max_usage = 0;
 
 #if defined(_ENABLE_CUDA_)
 int s_smp_cuda_pipeline = 1;
@@ -382,6 +398,8 @@ static inline int smpi_check_avail(int rank, int len,
     return 1;
 }
 
+static inline int MPIDI_CH3I_SMP_attach_shm_pool_inline();
+
 void MPIDI_CH3I_SMP_cleanup() 
 { 
     /*clean up pool file*/
@@ -419,7 +437,12 @@ void MPIDI_CH3I_SMP_cleanup()
 #define FUNCNAME MPIDI_CH3I_SMP_attach_shm_pool
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-inline int MPIDI_CH3I_SMP_attach_shm_pool()
+int MPIDI_CH3I_SMP_attach_shm_pool()
+{
+    return MPIDI_CH3I_SMP_attach_shm_pool_inline();
+}
+
+static inline int MPIDI_CH3I_SMP_attach_shm_pool_inline()
 {
     int mpi_errno = MPI_SUCCESS;
     int i, j;
@@ -526,6 +549,32 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_PROGRESS_HEADER);
     int mpi_errno = MPI_SUCCESS;
 
+    if (pkt->type == MPIDI_CH3_PKT_EAGER_SEND_CONTIG) {
+        MPIDI_msg_sz_t buflen = s_total_bytes[vc->smp.local_nodes] -
+            sizeof(MPIDI_CH3_Pkt_eager_send_t);
+        if ((mpi_errno = MPIDI_CH3_PktHandler_EagerSend_Contig(
+                        vc,
+                        pkt,
+                        &buflen,
+                        &vc->smp.recv_active)) != MPI_SUCCESS)
+        {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        if (!vc->smp.recv_active) {
+            s_current_ptr[vc->smp.local_nodes] = NULL;
+            s_current_bytes[vc->smp.local_nodes] = 0;        
+            smpi_complete_recv(vc->smp.local_nodes,
+                    g_smpi.my_local_id,
+#if defined(_ENABLE_CUDA) && defined(HAVE_CUDA_IPC)
+                    sizeof(MPIDI_CH3_Pkt_eager_send_t));
+#else
+                    s_total_bytes[vc->smp.local_nodes]);
+#endif
+            s_total_bytes[vc->smp.local_nodes] = 0;
+        }
+        goto fn_exit;
+    }
 #if defined(_SMP_LIMIC_) || defined(_SMP_CMA_) 
     if (MPIDI_CH3_PKT_SMP_DMA_COMP == pkt->type)
     {
@@ -670,32 +719,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
     }
 #endif /* defined(CKPT) */
 
-    if (pkt->type == MPIDI_CH3_PKT_EAGER_SEND_CONTIG) {
-        MPIDI_msg_sz_t buflen = s_total_bytes[vc->smp.local_nodes] -
-            sizeof(MPIDI_CH3_Pkt_eager_send_t);
-        if ((mpi_errno = MPIDI_CH3_PktHandler_EagerSend_Contig(
-                        vc,
-                        pkt,
-                        &buflen,
-                        &vc->smp.recv_active)) != MPI_SUCCESS)
-        {
-            MPIU_ERR_POP(mpi_errno);
-        }
-
-        if (!vc->smp.recv_active) {
-            s_current_ptr[vc->smp.local_nodes] = NULL;
-            s_current_bytes[vc->smp.local_nodes] = 0;        
-            smpi_complete_recv(vc->smp.local_nodes,
-                    g_smpi.my_local_id,
-#if defined(_ENABLE_CUDA) && defined(HAVE_CUDA_IPC)
-                    sizeof(MPIDI_CH3_Pkt_eager_send_t));
-#else
-                    s_total_bytes[vc->smp.local_nodes]);
-#endif
-            s_total_bytes[vc->smp.local_nodes] = 0;
-            goto fn_exit;
-        }
-    } else {
+    if (pkt->type != MPIDI_CH3_PKT_EAGER_SEND_CONTIG) {
         MPIDI_msg_sz_t buflen = sizeof(MPIDI_CH3_Pkt_t);
 
         if ((mpi_errno = MPIDI_CH3U_Handle_recv_pkt(
@@ -1596,10 +1620,13 @@ ssize_t check_cma_usability (pid_t remote_pid, char * rbuffer)
 #define FUNCNAME MPIDI_CH3I_CM_SHMEM_Sync
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_CM_SHMEM_Sync(volatile int *bar_array, int my_local_id, int num_local_procs)
+int MPIDI_CH3I_CM_SHMEM_Sync(volatile int * volatile bar_array, int my_local_id, int num_local_procs)
 {
     int mpi_errno = MPI_SUCCESS;
     int i = 0, wait = 0, pid = 0;
+
+    /* Sanity check */
+    while (bar_array == NULL);
 
     if (0 == my_local_id) {
         PRINT_DEBUG(DEBUG_CM_verbose>0, "Before barrier\n");
@@ -1648,19 +1675,42 @@ int MPIDI_CH3I_CM_SHMEM_Sync(volatile int *bar_array, int my_local_id, int num_l
 }
 
 #undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_CM_Unlink_region
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_CM_Unlink_region(MPIDI_PG_t *pg)
+{
+    int mpi_errno = MPI_SUCCESS;
+
+    MPIDI_STATE_DECL(MPIDI_CH3I_CM_UNLINK_REGION);
+    MPIDI_FUNC_ENTER(MPIDI_CH3I_CM_UNLINK_REGION);
+
+    /* Unlink */
+    if (pg->ch.mrail->cm_shmem_fd != -1) {
+        unlink(pg->ch.mrail->cm_shmem_file);
+        pg->ch.mrail->cm_shmem_fd         = -1;
+        pg->ch.mrail->cm_shmem_mmap_ptr   = NULL;
+    }
+    /* Free filename variable */
+    if (pg->ch.mrail->cm_shmem_file != NULL) {
+        MPIU_Free(pg->ch.mrail->cm_shmem_file);
+        pg->ch.mrail->cm_shmem_file       = NULL;
+    }
+
+    MPIDI_FUNC_EXIT(MPIDI_CH3I_CM_UNLINK_REGION);
+    return mpi_errno;
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_CM_Destroy_region
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_CM_Destroy_region(MPIDI_PG_t *pg)
 {
     int mpi_errno = MPI_SUCCESS;
-    size_t cm_shmem_file_size = 0;
 
     MPIDI_STATE_DECL(MPIDI_CH3I_CM_DESTROY_REGION);
     MPIDI_FUNC_ENTER(MPIDI_CH3I_CM_DESTROY_REGION);
-
-    /* Identify size of shared mem file size for storing UD CM info */
-    cm_shmem_file_size = pg->size * sizeof(MPIDI_CH3I_MRAIL_UD_CM_t);
 
     /* Unmap UD_CM SHMEM region */
     if (pg->ch.mrail->cm_shmem_mmap_ptr != NULL) {
@@ -1691,7 +1741,6 @@ int MPIDI_CH3I_CM_Create_region(MPIDI_PG_t *pg)
 {
     int pid_len = 0, lock_len = 0, ud_cm_len = 0, ud_len = 0;
     int mpi_errno = MPI_SUCCESS;
-    size_t cm_shmem_file_size = 0;
 
     MPIDI_STATE_DECL(MPIDI_CH3I_CM_CREATE_REGION);
     MPIDI_FUNC_ENTER(MPIDI_CH3I_CM_CREATE_REGION);
@@ -1785,6 +1834,8 @@ int MPIDI_CH3I_CM_Create_region(MPIDI_PG_t *pg)
     if (mpi_errno != MPI_SUCCESS) {
         goto fn_fail;
     }
+    /* Unlinking shared memory files*/
+    MPIDI_CH3I_CM_Unlink_region(pg);
 
 fn_exit:
     MPIDI_FUNC_EXIT(MPIDI_CH3I_CM_CREATE_REGION);
@@ -1879,6 +1930,14 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
           + (g_smpi.num_local_nodes * (g_smpi.num_local_nodes - 1) 
           * (SMPI_ALIGN(s_smpi_length_queue + pagesize))));
 
+    MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_eager_total_buffer, 
+            ((g_smpi.num_local_nodes - 1) 
+             * (SMPI_ALIGN(s_smpi_length_queue + pagesize))));
+           
+    MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_eager_avail_buffer, 
+            ((g_smpi.num_local_nodes - 1) 
+             * (SMPI_ALIGN(s_smpi_length_queue + pagesize))));
+
 #if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     cu_ipc_len = sizeof(smpi_cu_ipc_attr) * g_smpi.num_local_nodes *
         (g_smpi.num_local_nodes - 1);
@@ -1896,6 +1955,14 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
                 * s_smp_num_send_buffer + pagesize) 
                 * g_smpi.num_local_nodes + SMPI_CACHE_LINE_SIZE;
 	
+    MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_rndv_total_buffer, 
+            SMPI_ALIGN ((sizeof (SEND_BUF_T) + s_smp_block_size)
+                * s_smp_num_send_buffer + pagesize));
+                
+    MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_rndv_avail_buffer, 
+            SMPI_ALIGN ((sizeof (SEND_BUF_T) + s_smp_block_size)
+                * s_smp_num_send_buffer + pagesize));
+
     PRINT_DEBUG(DEBUG_SHM_verbose>1, "size_shmem=%d, size_pool = %d\n", 
                 g_size_shmem, g_size_pool);
 
@@ -1954,7 +2021,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
 
     if(!g_smp_delay_shmem_pool_init) {
-        mpi_errno = MPIDI_CH3I_SMP_attach_shm_pool();
+        mpi_errno = MPIDI_CH3I_SMP_attach_shm_pool_inline();
         if (mpi_errno != MPI_SUCCESS) {
             /* to clean up tmp shared file */
             mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
@@ -2643,7 +2710,8 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     int mpi_errno = MPI_SUCCESS;
     if ( !mv2_shmem_pool_init )
     {
-        if ((mpi_errno = MPIDI_CH3I_SMP_attach_shm_pool()) != MPI_SUCCESS)
+        if ((mpi_errno = MPIDI_CH3I_SMP_attach_shm_pool_inline()) !=
+                MPI_SUCCESS)
         {
             MPIU_ERR_POP(mpi_errno);
         }
@@ -3066,6 +3134,9 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
                     offset),
                     iov[i].MPID_IOV_LEN - offset);
             }
+
+            MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_sent, iov[i].MPID_IOV_LEN - offset);
+
             send_buf->busy = 1;
             send_buf->len = iov[i].MPID_IOV_LEN - offset;
             send_buf->has_next = 1;
@@ -3087,6 +3158,9 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
                 MPIU_Memcpy(&send_buf->buf, iov[i].MPID_IOV_BUF, 
                         iov[i].MPID_IOV_LEN);
             }
+
+            MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_sent, iov[i].MPID_IOV_LEN);
+
             send_buf->busy = 1;
             send_buf->len = iov[i].MPID_IOV_LEN;
             send_buf->has_next = 1;
@@ -3111,6 +3185,9 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
                     (void *) ((unsigned long) iov[i].MPID_IOV_BUF + offset),
                     pkt_avail);
             }
+
+            MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_sent, pkt_avail);
+
             send_buf->busy = 1;
             send_buf->len = pkt_avail;
             send_buf->has_next = 1;
@@ -3236,6 +3313,9 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
                     offset),
                     iov[i].MPID_IOV_LEN - offset);
             }
+
+            MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_sent, iov[i].MPID_IOV_LEN - offset);
+
             send_buf->busy = 1;
             send_buf->len = iov[i].MPID_IOV_LEN - offset;
             send_buf->has_next = 1;
@@ -3256,6 +3336,9 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
                 MPIU_Memcpy(&send_buf->buf, iov[i].MPID_IOV_BUF, 
                         iov[i].MPID_IOV_LEN);
             }
+
+            MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_sent, iov[i].MPID_IOV_LEN);
+
             send_buf->busy = 1;
             send_buf->len = iov[i].MPID_IOV_LEN;
             send_buf->has_next = 1;
@@ -3282,6 +3365,9 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
                     offset),
                     pkt_avail);
             }
+
+            MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_sent, pkt_avail);
+
             send_buf->busy = 1;
             send_buf->len = pkt_avail;
             send_buf->has_next = 1;
@@ -3446,6 +3532,8 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
                     iov[i].MPID_IOV_LEN);
         }
 
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_eager_sent, iov[i].MPID_IOV_LEN);
+
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
         /*if iov is copied to device eager buffers then there is no
           need of advancing ptr by iov_len as there is nothing being
@@ -3469,6 +3557,152 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
 
     PRINT_DEBUG(DEBUG_SHM_verbose>1, "writev returns bytes %d\n", *num_bytes_ptr);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_WRITEV);
+}
+
+#undef FUNCNAME
+#define FUNCNAME mv2_smp_fast_write_contig
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
+                                MPIDI_msg_sz_t data_sz, int rank, int tag,
+                                MPID_Comm *comm, int context_offset, MPID_Request **sreq_p)
+{
+    int i = 0, len = 0;
+    MPID_Seqnum_t seqnum;
+    int mpi_errno = MPI_SUCCESS;
+    volatile void *ptr_head = NULL, *ptr = NULL, *ptr_flag = NULL;
+#if defined(_ENABLE_CUDA_)
+    int buf_isdev = 0;
+#if defined(HAVE_CUDA_IPC)
+    int rem_rank = 0;
+    int contig_avail = 0;
+    void *cuda_region_ptr = NULL;
+    smpi_cu_ipc_attr *my_base;
+    int cur_t,cur_h;
+#endif
+#endif
+
+    len = data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t);
+
+#if defined(_ENABLE_CUDA_)
+    buf_isdev = is_device_buffer((void *) buf);
+#if defined(HAVE_CUDA_IPC)
+    if (rdma_enable_cuda && rdma_cuda_smp_ipc && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+        if (buf_isdev) {
+            len = sizeof(MPIDI_CH3_Pkt_eager_send_t);
+            rem_rank = vc->smp.local_nodes;
+            my_base = g_smpi_shmem->cu_attrbs[g_smpi.my_local_id];
+            cur_h = ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_head;
+            cur_t = ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_tail;
+
+            if(cur_t > cur_h) {
+                contig_avail =  cur_t - cur_h; 
+            } else {
+                contig_avail =  smp_cuda_region_size - cur_h;
+                if (contig_avail < data_sz) {
+                    cur_h = 0;
+                    contig_avail = cur_t;
+                    if (cuStreamWaitEvent(0, loop_event_local[vc->pg_rank], 0) != CUDA_SUCCESS) {
+                        PRINT_ERROR("Error in cuStreamWaitEvent\n");
+                        exit(EXIT_FAILURE);
+                    }
+                }
+            }
+
+            if(contig_avail < data_sz) {
+                return;
+                /* Not advancing header. Probably can be used for another
+                   request in the queue?*/
+            }
+        }
+    }
+#endif
+#endif
+
+    ptr_flag = (volatile void *) ((g_smpi_shmem->pool) +
+            s_header_ptr_s[vc->smp.local_nodes]);
+
+    /* check if avail is less than data size */
+    if (likely(smpi_check_avail(vc->smp.local_nodes, len,
+                            (volatile void **)&ptr_flag, ONE_FREE))) {
+        ptr_head = (volatile void *) ((unsigned long) ptr_flag + sizeof(int));
+        ptr = (volatile void *) ((unsigned long) ptr_flag + sizeof(int)*2);
+
+        MPIDI_CH3_Pkt_t *upkt;
+        MPIDI_CH3_Pkt_eager_send_t * eager_pkt;
+    
+        /* Write header information directly to SHMEM */
+        upkt = (MPIDI_CH3_Pkt_t *) ptr;
+        eager_pkt = &((*upkt).eager_send);
+        MPIDI_Pkt_init(eager_pkt, MPIDI_CH3_PKT_EAGER_SEND_CONTIG);
+        eager_pkt->match.parts.rank         = comm->rank;
+        eager_pkt->match.parts.tag          = tag;
+        eager_pkt->match.parts.context_id   = comm->context_id + context_offset;
+        eager_pkt->sender_req_id            = MPI_REQUEST_NULL;
+        eager_pkt->data_sz                  = data_sz;
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+        eager_pkt->in_cuda_region = 0;
+#endif
+
+        /* Set sequence number */
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
+
+        /* Increment pointer */
+        ptr = (void *)((unsigned long) ptr + sizeof(MPIDI_CH3_Pkt_eager_send_t));
+
+#if defined(_ENABLE_CUDA_)
+        if (buf_isdev) {
+#if defined(HAVE_CUDA_IPC)
+            if (rdma_cuda_smp_ipc && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+                
+                eager_pkt->in_cuda_region = 1;
+                cuda_region_ptr = (void *) ((unsigned long) smp_cuda_region_send[vc->smp.local_nodes]  + cur_h);
+                MPIU_Memcpy_CUDA(cuda_region_ptr,
+                        buf, data_sz,
+                        cudaMemcpyDefault);
+    
+                if (cuEventRecord(sr_event[vc->pg_rank], 0) != CUDA_SUCCESS) {
+                    PRINT_ERROR("[%d] event record failed for rank : %d \n",MPIDI_Process.my_pg_rank, vc->pg_rank);
+                    smp_error_abort(SMP_EXIT_ERR,"Error in recording the event\n");
+                }
+    
+                cur_h += data_sz;
+                ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_head = cur_h;
+    
+            } else
+#endif
+            { 
+                MPIU_Memcpy_CUDA((void *) ptr, buf, data_sz,
+                        cudaMemcpyDeviceToHost);
+                ptr = (volatile void *)((unsigned long) ptr + data_sz);
+            }
+        } else 
+#endif
+        {
+            /* Copy data */
+            memcpy((void *)ptr, buf, data_sz);
+    
+            /* Increment pointer */
+            ptr = (volatile void *)((unsigned long) ptr + data_sz);
+        }
+
+        /* update(header) */
+        smpi_complete_send(vc->smp.local_nodes, len, len, ptr, ptr_head, ptr_flag);
+    } else {
+        MPID_Request *sreq = NULL;
+        sreq = create_eagercontig_request(vc, MPIDI_CH3_PKT_EAGER_SEND, buf,
+                                            data_sz, rank, tag, comm, context_offset);
+        if (sreq == NULL) {
+            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");
+        }
+        MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
+        vc->smp.send_active = sreq;
+        *sreq_p = sreq;
+    }
+
+fn_fail:
+    return mpi_errno;
 }
 
 #undef FUNCNAME
@@ -3696,7 +3930,8 @@ int MPIDI_CH3I_SMP_readv_rndv_cuda(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
 
     if ( !mv2_shmem_pool_init )
     {
-        if ((mpi_errno = MPIDI_CH3I_SMP_attach_shm_pool()) != MPI_SUCCESS)
+        if ((mpi_errno = MPIDI_CH3I_SMP_attach_shm_pool_inline()) !=
+                MPI_SUCCESS)
         {
             MPIU_ERR_POP(mpi_errno);
         }
@@ -4107,6 +4342,12 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
     s_current_bytes[recv_vc_ptr->smp.local_nodes] =
         s_total_bytes[recv_vc_ptr->smp.local_nodes];
 
+    MPIR_T_PVAR_LEVEL_DEC(MV2, mv2_smp_rndv_avail_buffer, s_current_bytes[recv_vc_ptr->smp.local_nodes]); 
+
+    rndv_buffer_max_usage = (rndv_buffer_max_usage > s_current_bytes[recv_vc_ptr->smp.local_nodes]) ?
+        rndv_buffer_max_usage : s_current_bytes[recv_vc_ptr->smp.local_nodes]; 
+    MPIR_T_PVAR_LEVEL_SET(MV2, mv2_smp_rndv_buffer_max_use, rndv_buffer_max_usage);
+
     PRINT_DEBUG(DEBUG_SHM_verbose>1, "current byte %ld, total bytes %ld, iovlen %d, iov[0].len %ld\n",
          s_current_bytes[recv_vc_ptr->smp.local_nodes],
          s_total_bytes[recv_vc_ptr->smp.local_nodes], iovlen,
@@ -4172,6 +4413,10 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
                         (void *) current_buf, 
                         iov_len);
         }
+
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_received, iov_len);
+        MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_rndv_avail_buffer, iov_len);
+
         READBAR();
         current_buf = (void *) ((unsigned long) current_buf +
             iov_len);
@@ -4218,6 +4463,10 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
                         (void *) current_buf, 
                         iov_len);
         }
+
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_received, iov_len);
+        MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_rndv_avail_buffer, iov_len);
+
         READBAR();
         s_current_bytes[recv_vc_ptr->smp.local_nodes] -=
             iov_len;
@@ -4268,6 +4517,10 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
                         (void *) current_buf, 
                         msglen);
         }
+
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_received, msglen);
+        MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_rndv_avail_buffer, msglen);
+
         READBAR();
         iov_len -= msglen;
         received_bytes += msglen;
@@ -4363,7 +4616,8 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
     if ( !mv2_shmem_pool_init )
     {
-        if ((mpi_errno = MPIDI_CH3I_SMP_attach_shm_pool()) != MPI_SUCCESS)
+        if ((mpi_errno = MPIDI_CH3I_SMP_attach_shm_pool_inline()) !=
+                MPI_SUCCESS)
         {
             MPIU_ERR_POP(mpi_errno);
         }
@@ -4554,6 +4808,11 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
      s_total_bytes[recv_vc_ptr->smp.local_nodes], iovlen,
      iov[0].MPID_IOV_LEN);
 
+    MPIR_T_PVAR_LEVEL_DEC(MV2, mv2_smp_rndv_avail_buffer, s_current_bytes[recv_vc_ptr->smp.local_nodes]); 
+    rndv_buffer_max_usage = (rndv_buffer_max_usage > s_current_bytes[recv_vc_ptr->smp.local_nodes]) ?
+        rndv_buffer_max_usage : s_current_bytes[recv_vc_ptr->smp.local_nodes]; 
+    MPIR_T_PVAR_LEVEL_SET(MV2, mv2_smp_rndv_buffer_max_use, rndv_buffer_max_usage);
+
     WRITEBAR();
 
     if (current_index != -1) {
@@ -4603,6 +4862,10 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                         (void *) current_buf,   
                         iov_len);
         }
+
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_received, iov_len);
+        MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_rndv_avail_buffer, iov_len);
+
         READBAR();
         current_buf = (void *) ((unsigned long) current_buf +
             iov_len);
@@ -4643,6 +4906,10 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                         (void *) current_buf, 
                         iov_len);
         }
+
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_received, iov_len);
+        MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_rndv_avail_buffer, iov_len);
+
         READBAR();
         s_current_bytes[recv_vc_ptr->smp.local_nodes] -=
             iov_len;
@@ -4704,6 +4971,10 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                         (void *) current_buf, 
                         msglen);
         }
+
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_rndv_received, msglen);
+        MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_rndv_avail_buffer, msglen);
+
         READBAR();
         iov_len -= msglen;
         received_bytes += msglen;
@@ -4786,6 +5057,13 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     *num_bytes_ptr = 0;
 
     if (s_current_ptr[recv_vc_ptr->smp.local_nodes] != NULL) {
+
+        MPIR_T_PVAR_LEVEL_DEC(MV2, mv2_smp_eager_avail_buffer, s_current_bytes[recv_vc_ptr->smp.local_nodes]); 
+
+        eager_buffer_max_usage = (eager_buffer_max_usage > s_current_bytes[recv_vc_ptr->smp.local_nodes]) ?
+                                  eager_buffer_max_usage : s_current_bytes[recv_vc_ptr->smp.local_nodes]; 
+        MPIR_T_PVAR_LEVEL_SET(MV2, mv2_smp_eager_buffer_max_use, eager_buffer_max_usage);
+
         for (;
                 iov_off < iovlen
                 && s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0;) {
@@ -4811,6 +5089,10 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                             s_current_ptr[recv_vc_ptr->smp.local_nodes],
                             iov[iov_off].MPID_IOV_LEN);
                 }
+
+                MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_eager_received, iov[iov_off].MPID_IOV_LEN);
+                MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_eager_avail_buffer, iov[iov_off].MPID_IOV_LEN); 
+
                 READBAR();
                 s_current_ptr[recv_vc_ptr->smp.local_nodes] =
                     (void *) ((unsigned long)
@@ -4835,6 +5117,10 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                             (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
                             s_current_bytes[recv_vc_ptr->smp.local_nodes]);
                 }
+
+                MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_eager_received, s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+                MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_eager_avail_buffer, s_current_bytes[recv_vc_ptr->smp.local_nodes]); 
+
                 READBAR();
                 s_current_ptr[recv_vc_ptr->smp.local_nodes] =
                     (void *) ((unsigned long)
@@ -4890,6 +5176,12 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         WRITEBAR();
         s_current_bytes[recv_vc_ptr->smp.local_nodes] =
             s_total_bytes[recv_vc_ptr->smp.local_nodes];
+
+        MPIR_T_PVAR_LEVEL_DEC(MV2, mv2_smp_eager_avail_buffer, s_current_bytes[recv_vc_ptr->smp.local_nodes]); 
+        eager_buffer_max_usage = (eager_buffer_max_usage > s_current_bytes[recv_vc_ptr->smp.local_nodes]) ?
+                                  eager_buffer_max_usage : s_current_bytes[recv_vc_ptr->smp.local_nodes]; 
+        MPIR_T_PVAR_LEVEL_SET(MV2, mv2_smp_eager_buffer_max_use, eager_buffer_max_usage);
+
         READBAR();
         s_current_ptr[recv_vc_ptr->smp.local_nodes] = ptr;
 
@@ -4919,6 +5211,10 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                                 MPID_IOV_BUF + buf_off),
                             ptr, iov[iov_off].MPID_IOV_LEN - buf_off);
                 }
+
+                MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_eager_received, iov[iov_off].MPID_IOV_LEN - buf_off);
+                MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_eager_avail_buffer, iov[iov_off].MPID_IOV_LEN - buf_off);
+
                 READBAR();
                 s_current_bytes[recv_vc_ptr->smp.local_nodes] -=
                     (iov[iov_off].MPID_IOV_LEN - buf_off);
@@ -4942,6 +5238,12 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                                 MPID_IOV_BUF + buf_off),
                             ptr, s_current_bytes[recv_vc_ptr->smp.local_nodes]);
                 }
+
+                MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_eager_received, 
+                        s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+                MPIR_T_PVAR_LEVEL_INC(MV2, mv2_smp_eager_avail_buffer, 
+                        s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+
                 READBAR();
                 ptr = (void*)((unsigned long)ptr + s_current_bytes[recv_vc_ptr->smp.local_nodes]);
                 received_bytes +=

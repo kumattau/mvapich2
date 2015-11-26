@@ -453,6 +453,7 @@ typedef struct shm_info_t {
     struct ibv_mr *mem_handle[MAX_NUM_HCAS]; /* mem hndl for entire region */
 #ifdef CKPT
     struct shm_info_t *next;
+    struct shm_info_t *prev;
 #endif /* CKPT */
 #endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 } shmem_info_t;
@@ -489,8 +490,6 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                          int expected_send_count, int dst,
                          int knomial_degree,
                          MPID_Comm * comm_ptr, int *errflag);
-extern inline int mv2_flush_zcpy_mid_request(shmem_info_t * shmem);
-extern inline int mv2_flush_zcpy_end_request(shmem_info_t * shmem);
 extern int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
                                 char *prefix, int *fd, size_t file_size);
 #endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */

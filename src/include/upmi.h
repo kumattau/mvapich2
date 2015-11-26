@@ -42,6 +42,14 @@ extern "C" {
 #define UPMI_ERR_INVALID_SIZE       13
 #define UPMI_ERR_OTHER              14
 
+#ifndef SLURM_PMI_CLIENT
+#   define HAVE_PMI2_KVS_IFENCE 1
+#   define HAVE_PMI2_KVS_WAIT   1
+#   define HAVE_PMI_IBARRIER    1
+#   define HAVE_PMI_WAIT        1
+#endif
+
+
 struct MPID_Info;
 
 int UPMI_INIT( int *spawned );
@@ -63,6 +71,10 @@ int UPMI_BARRIER( void );
 int UPMI_IBARRIER( void );
 
 int UPMI_WAIT( void );
+
+int UPMI_IALLGATHER( const char value[] );
+
+int UPMI_IALLGATHER_WAIT( void *buf );
 
 int UPMI_ABORT( int exit_code, const char error_msg[] );
 

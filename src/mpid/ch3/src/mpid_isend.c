@@ -34,6 +34,10 @@
 /*
  * MPID_Isend()
  */
+#ifdef CHANNEL_MRAIL
+extern MPID_Request *mv2_dummy_request;
+#endif
+
 #undef FUNCNAME
 #define FUNCNAME MPID_Isend
 #undef FCNAME
@@ -46,7 +50,7 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
     int dt_contig;
     MPI_Aint dt_true_lb;
     MPID_Datatype * dt_ptr;
-    MPID_Request * sreq;
+    MPID_Request * sreq = NULL;
     MPIDI_VC_t * vc=0;
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
@@ -98,19 +102,46 @@ skip_self_send:
 #endif
     }
 
+#ifndef CHANNEL_MRAIL
     MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
+#endif
 
     if (rank == MPI_PROC_NULL)
     {
-	MPIU_Object_set_ref(sreq, 1);
+#ifdef CHANNEL_MRAIL
+        sreq = mv2_dummy_request;
+#else
+        MPIU_Object_set_ref(sreq, 1);
         MPID_cc_set(&sreq->cc, 0);
-	goto fn_exit;
+#endif
+        goto fn_exit;
     }
 
     MPIDI_Datatype_get_info(count, datatype, dt_contig, data_sz, dt_ptr, 
-			    dt_true_lb);
-    
+			                dt_true_lb);
+#ifdef USE_EAGER_SHORT
+    if ((data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= vc->eager_fast_max_msg_sz) &&
+        vc->eager_fast_fn && dt_contig) {
+        mpi_errno = MPIDI_CH3_EagerContigShortSend(&sreq,
+                           MPIDI_CH3_PKT_EAGERSHORT_SEND,
+                           (char *)buf + dt_true_lb,
+                           data_sz, rank, tag, comm,
+                           context_offset );
+#ifdef CHANNEL_MRAIL
+        if (sreq == NULL) {
+            sreq = mv2_dummy_request;
+        }
+#endif
+        goto fn_exit;
+    }
+#endif
+
+    if (sreq == NULL) {
+        MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
+        MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
+    }
+
     if (data_sz == 0)
     {
 #if defined (CHANNEL_PSM)

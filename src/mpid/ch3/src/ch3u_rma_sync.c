@@ -5954,6 +5954,7 @@ int MPIDI_CH3_PktHandler_Put( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
            post_data_receive reset the handler.  There should
            be a cleaner way to do this */
         if (!req->dev.OnDataAvail) {
+            req->dev.segment_size = req->dev.recv_data_sz;
             req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_PutAccumRespComplete;
         }
         

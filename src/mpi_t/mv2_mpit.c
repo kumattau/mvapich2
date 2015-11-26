@@ -36,6 +36,20 @@ MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_ud_vbuf_freed);
 MPIR_T_PVAR_ULONG_LEVEL_DECL(MV2, mv2_ud_vbuf_available);
 
 /*
+ * Track smp memory usage
+ */
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_smp_eager_sent);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_smp_rndv_sent);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_smp_eager_received);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_smp_rndv_received);
+MPIR_T_PVAR_ULONG_LEVEL_DECL(MV2, mv2_smp_eager_total_buffer);
+MPIR_T_PVAR_ULONG_LEVEL_DECL(MV2, mv2_smp_rndv_total_buffer);
+MPIR_T_PVAR_ULONG_LEVEL_DECL(MV2, mv2_smp_eager_avail_buffer);
+MPIR_T_PVAR_ULONG_LEVEL_DECL(MV2, mv2_smp_rndv_avail_buffer);
+MPIR_T_PVAR_ULONG_LEVEL_DECL(MV2, mv2_smp_eager_buffer_max_use);
+MPIR_T_PVAR_ULONG_LEVEL_DECL(MV2, mv2_smp_rndv_buffer_max_use);
+
+/*
  * Track the registration cache hits and misses
  */
 MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_reg_cache_hits);
@@ -455,6 +469,66 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_LEVEL_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG,
+            mv2_smp_eager_avail_buffer,
+            0, /* initial value */
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Available number of SMP bytes for eager");
+    MPIR_T_PVAR_LEVEL_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mv2_smp_rndv_avail_buffer,
+            0, /* initial value */
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Available number of SMP bytes for rndv");
+    MPIR_T_PVAR_LEVEL_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mv2_smp_eager_total_buffer,
+            0, /* initial value */
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Total number of SMP bytes for eager");
+    MPIR_T_PVAR_LEVEL_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mv2_smp_rndv_total_buffer,
+            0, /* initial value */
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Total number of SMP bytes for rndv");
+    MPIR_T_PVAR_LEVEL_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mv2_smp_eager_buffer_max_use,
+            0, /* initial value */
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Max number of SMP bytes used for eager");
+    MPIR_T_PVAR_LEVEL_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mv2_smp_rndv_buffer_max_use,
+            0, /* initial value */
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Max number of SMP bytes used for rndv");
+    MPIR_T_PVAR_LEVEL_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
             mv2_ud_vbuf_available,
             0, /* initial value */
             MPI_T_VERBOSITY_USER_BASIC,
@@ -462,6 +536,42 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
             "CH3", /* category name */
             "Number of UD VBUFs available");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mv2_smp_eager_sent,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Number of SMP bytes sent through eager");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mv2_smp_rndv_sent,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Number of SMP bytes sent through rendezvous");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mv2_smp_eager_received,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Number of SMP bytes received through eager");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG,
+            mv2_smp_rndv_received,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
+            "CH3", /* category name */
+            "Number of SMP bytes received through rendezvous");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG,

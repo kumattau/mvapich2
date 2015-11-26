@@ -218,6 +218,6 @@ extern int g_use_limic2_coll;
 
 extern struct smpi_var g_smpi;
 extern struct shared_mem *g_smpi_shmem;
-
-
+extern unsigned long eager_buffer_max_usage;
+extern unsigned long rndv_buffer_max_usage;
 #endif

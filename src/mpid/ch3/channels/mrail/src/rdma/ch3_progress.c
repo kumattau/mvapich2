@@ -163,7 +163,7 @@ void MPIDI_CH3_Progress_start(MPID_Progress_state * state)
 
 
 #undef FUNCNAME
-#define FUNCNAME _MPIDI_CH3I_Progress
+#define FUNCNAME MPIDI_CH3I_Progress
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 
@@ -198,25 +198,22 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 
     do
     {
-
 start_polling:
         MPIR_T_PVAR_COUNTER_INC(MV2, mpit_progress_poll, 1);
         smp_completions = MPIDI_CH3I_progress_completion_count;
         smp_found = 0;
         /*needed if early send complete does not occur */
-        if (SMP_INIT && (mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-
-        if (SMP_INIT) { 
+        if (SMP_INIT) {
             mpi_errno = MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
             if (mpi_errno != MPI_SUCCESS) {
                 MPIU_ERR_POP(mpi_errno);
             }
-        } 
-       
-        if (smp_completions != MPIDI_CH3I_progress_completion_count) {
-            smp_found = 1;
+            if ((mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            if (smp_completions != MPIDI_CH3I_progress_completion_count) {
+                smp_found = 1;
+            }
         }
 
 #ifdef CKPT
@@ -228,15 +225,6 @@ start_polling:
 #endif
 
         if (!SMP_ONLY) {
-
-            /*CM code*/
-            if (MPIDI_CH3I_Process.new_conn_complete) {
-                /*New connection has been established*/
-                MPIDI_CH3I_Process.new_conn_complete = 0;
-                PRINT_DEBUG(DEBUG_XRC_verbose>0, "New connection\n");
-                cm_handle_pending_send();
-            }
-
             cq_poll_completion = 0;
             rdmafp_found = 0;
             mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer, &rdmafp_found, is_blocking);
@@ -248,19 +236,49 @@ start_polling:
                 /* We have picked up a packet, re-set the spin_count */ 
                 spin_count = 0;
                 /*CM code*/
+handle_recv_pkt:
+                if ((vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_IDLE)
 #ifdef _ENABLE_XRC_
-                if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV || 
+                    || (USE_XRC && (VC_XST_ISSET (vc_ptr, XF_SEND_IDLE) || VC_XST_ISSET (vc_ptr, XF_RECV_IDLE)))
+#endif
+#ifdef _ENABLE_UD_
+                    || (rdma_enable_hybrid &&
+                        (vc_ptr->ch.state < MPIDI_CH3I_VC_STATE_CONNECTING_SRV) &&
+                        (vc_ptr->mrail.state & MRAILI_RC_CONNECTING))
+#endif
+#ifdef CKPT
+                    || ((vc_ptr->ch.state >= MPIDI_CH3I_VC_STATE_SUSPENDING) &&
+                        (vc_ptr->ch.state < MPIDI_CH3I_VC_STATE_REACTIVATING_SRV))
+#endif
+                    ) {
+#ifdef _ENABLE_UD_
+                    if (rdma_enable_hybrid) {
+                        MRAILI_Process_recv(buffer);
+                    }
+                    else
+#endif
+                    {
+                        mpi_errno = handle_read(vc_ptr, buffer);
+                        if (mpi_errno != MPI_SUCCESS) {
+                            MPIU_ERR_POP(mpi_errno);
+                        }
+                    }
+                } else
+#ifdef _ENABLE_XRC_
+                if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV ||
                     VC_XST_ISSET (vc_ptr, XF_NEW_RECV)) {
-                        MPIDI_CH3I_CM_Establish(vc_ptr);
-                    if (!USE_XRC) { 
+                    MPIDI_CH3I_CM_Establish(vc_ptr);
+                    if (!USE_XRC) {
                         cm_handle_pending_send();
-                    } 
+                    }
+                    goto handle_recv_pkt;
                 }
 #else /* _ENABLE_XRC_ */
                 if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV) {
                     /*newly established connection on server side*/
                     MPIDI_CH3I_CM_Establish(vc_ptr);
                     cm_handle_pending_send();
+                    goto handle_recv_pkt;
                 }
 #endif /* _ENABLE_XRC_ */
 
@@ -271,30 +289,35 @@ start_polling:
                     if (vc_ptr->mrail.sreq_head) /*has rndv*/
                         PUSH_FLOWLIST(vc_ptr);
                     /* Handle pending two-sided sends */
-                    if (!MPIDI_CH3I_CM_SendQ_empty(vc_ptr)) { 
+                    if (!MPIDI_CH3I_CM_SendQ_empty(vc_ptr)) {
                         cm_send_pending_msg(vc_ptr);
                         /* Handle pending one-sided sends */
-                    } 
+                    }
                     if (!MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
                         cm_send_pending_1sc_msg(vc_ptr);
                     }
+                    goto handle_recv_pkt;
                 }
 #endif /* CKPT */
-#ifdef _ENABLE_UD_
-                if (rdma_enable_hybrid) {
-                    MRAILI_Process_recv(buffer);
-                }
-                else
-#endif
-                {
-                    mpi_errno = handle_read(vc_ptr, buffer); 
+#if defined(RDMA_CM)
+                else if ((vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING) ||
+                        (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_IWARP_SRV_WAITING) ||
+                        (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV)) {
+                    mpi_errno = handle_read(vc_ptr, buffer);
                     if (mpi_errno != MPI_SUCCESS) {
                         MPIU_ERR_POP(mpi_errno);
                     }
                 }
+#endif /* defined(RDMA_CM) */
+                else {
+                    /* Control should not reach here */
+                    PRINT_ERROR("vc_ptr->state = %s, vc_ptr->ch.state = %d\n",
+                                MPIDI_VC_GetStateString(vc_ptr->state), vc_ptr->ch.state);
+                    MPIU_Assert(0);
+                }
             }
 #ifdef _ENABLE_UD_
-            else if (rdma_enable_hybrid){
+            else if (rdma_enable_hybrid) {
                 nspin++;
                 if (nspin % rdma_ud_progress_spin == 0) {
                     if (UD_ACK_PROGRESS_TIMEOUT) {
@@ -311,12 +334,19 @@ start_polling:
             if (rdma_enable_mcast && mcast_ctx->init_list) {
                 mv2_mcast_process_comm_init_req(mcast_ctx->init_list);
             }
-#endif  
-        } 
+#endif
+            /*CM code*/
+            if (MPIDI_CH3I_Process.new_conn_complete) {
+                /*New connection has been established*/
+                MPIDI_CH3I_Process.new_conn_complete = 0;
+                PRINT_DEBUG(DEBUG_XRC_verbose>0, "New connection\n");
+                cm_handle_pending_send();
+            }
+        }
 
-        if (flowlist) { 
+        if (flowlist) {
             MPIDI_CH3I_MRAILI_Process_rndv();
-        } 
+        }
 
 #if defined(_ENABLE_CUDA_)
         MV2_CUDA_PROGRESS();
@@ -397,7 +427,6 @@ start_polling:
                 goto start_polling;
             }
         }
-          
     }
     /* Level 1 : exit on finding a message on any channel */
     while (completions == MPIDI_CH3I_progress_completion_count
@@ -450,25 +479,23 @@ int MPIDI_CH3I_Progress_test()
     /*needed if early send complete doesnot occur */
     if (SMP_INIT)
     {
-    	mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg);
-	    if (mpi_errno != MPI_SUCCESS)
-        {
-            MPIU_ERR_POP(mpi_errno);
-	    }
-
         int completion_count = MPIDI_CH3I_progress_completion_count;
-
-	    /* check if we made any progress */
-	    if (completion_count != MPIDI_CH3I_progress_completion_count)
-        {
-	       goto fn_exit;
-	    }
 
 	    mpi_errno = MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
         if (mpi_errno != MPI_SUCCESS)
         {
             MPIU_ERR_POP(mpi_errno);
         }
+    	mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg);
+	    if (mpi_errno != MPI_SUCCESS)
+        {
+            MPIU_ERR_POP(mpi_errno);
+	    }
+	    /* check if we made any progress */
+	    if (completion_count != MPIDI_CH3I_progress_completion_count)
+        {
+	       goto fn_exit;
+	    }
     }
 
 #if defined(CKPT)
@@ -482,15 +509,6 @@ int MPIDI_CH3I_Progress_test()
 
     if (!SMP_ONLY) 
     {
-        /*CM code*/
-        if (MPIDI_CH3I_Process.new_conn_complete)
-        {
-            /*New connection has been established*/
-            PRINT_DEBUG(DEBUG_XRC_verbose>0, "New Connection\n");
-            MPIDI_CH3I_Process.new_conn_complete = 0;
-            cm_handle_pending_send();
-        }
-
         MPIDI_VC_t *vc_ptr = NULL;
         vbuf *buffer = NULL;
 
@@ -503,6 +521,34 @@ int MPIDI_CH3I_Progress_test()
 
         if (vc_ptr != NULL)
         {
+test_handle_recv_pkt:
+            if ((vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_IDLE)
+#ifdef _ENABLE_XRC_
+                || (USE_XRC && (VC_XST_ISSET (vc_ptr, XF_SEND_IDLE) || VC_XST_ISSET (vc_ptr, XF_RECV_IDLE)))
+#endif
+#ifdef _ENABLE_UD_
+                || (rdma_enable_hybrid &&
+                    (vc_ptr->ch.state < MPIDI_CH3I_VC_STATE_CONNECTING_SRV) &&
+                    (vc_ptr->mrail.state & MRAILI_RC_CONNECTING))
+#endif
+#ifdef CKPT
+                || ((vc_ptr->ch.state >= MPIDI_CH3I_VC_STATE_SUSPENDING) &&
+                    (vc_ptr->ch.state < MPIDI_CH3I_VC_STATE_REACTIVATING_SRV))
+#endif
+               ) {
+#ifdef _ENABLE_UD_
+                if (rdma_enable_hybrid) {
+                    MRAILI_Process_recv(buffer);
+                }
+                else
+#endif
+                {
+                    mpi_errno = handle_read(vc_ptr, buffer);
+                    if (mpi_errno != MPI_SUCCESS) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+                }
+            } else
             /*CM code*/
 #ifdef _ENABLE_XRC_
             if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV || VC_XST_ISSET (vc_ptr, XF_NEW_RECV) )
@@ -511,6 +557,7 @@ int MPIDI_CH3I_Progress_test()
                 MPIDI_CH3I_CM_Establish(vc_ptr);
                 if (!USE_XRC)
                     cm_handle_pending_send();
+                goto test_handle_recv_pkt;
             }
 #else /* _ENABLE_XRC_ */
             if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV)
@@ -518,6 +565,7 @@ int MPIDI_CH3I_Progress_test()
                 /*newly established connection on server side*/
                 MPIDI_CH3I_CM_Establish(vc_ptr);
                 cm_handle_pending_send();
+                goto test_handle_recv_pkt;
             }
 #endif /* _ENABLE_XRC_ */
 
@@ -543,21 +591,24 @@ int MPIDI_CH3I_Progress_test()
                 {
                     cm_send_pending_1sc_msg(vc_ptr);
                 }
+                goto test_handle_recv_pkt;
             }
 #endif /* defined(CKPT) */
-
-#ifdef _ENABLE_UD_
-            if (rdma_enable_hybrid){
-                MRAILI_Process_recv(buffer);
-            }
-            else
-#endif
-            {
+#if defined(RDMA_CM)
+            else if ((vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING) ||
+                    (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_IWARP_SRV_WAITING) ||
+                    (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV)) {
                 mpi_errno = handle_read(vc_ptr, buffer);
-                if (mpi_errno != MPI_SUCCESS)
-                {
+                if (mpi_errno != MPI_SUCCESS) {
                     MPIU_ERR_POP(mpi_errno);
                 }
+            }
+#endif /* defined(RDMA_CM) */
+            else {
+                /* Control should not reach here */
+                PRINT_ERROR("vc_ptr->state = %s, vc_ptr->ch.state = %d\n",
+                            MPIDI_VC_GetStateString(vc_ptr->state), vc_ptr->ch.state);
+                MPIU_Assert(0);
             }
         }
 #if defined(_MCST_SUPPORT_)
@@ -565,6 +616,14 @@ int MPIDI_CH3I_Progress_test()
             mv2_mcast_process_comm_init_req(mcast_ctx->init_list);
         }
 #endif  
+        /*CM code*/
+        if (MPIDI_CH3I_Process.new_conn_complete)
+        {
+            /*New connection has been established*/
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "New Connection\n");
+            MPIDI_CH3I_Process.new_conn_complete = 0;
+            cm_handle_pending_send();
+        }
     }
 
     /* issue RDMA write ops if we got a clr_to_send */
@@ -1213,41 +1272,43 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
 #endif /* defined(CKPT) */
     case MPIDI_CH3_PKT_NOOP: 
 #if defined(RDMA_CM)
-            if (vc->ch.state == MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING)
-            {
-		/* This case is needed only for multi-rail with rdma_cm */
-		vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+        if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
+            if (vc->ch.state == MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING) {
+                /* This case is needed only for multi-rail with rdma_cm */
+                vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                 if (vc->state < MPIDI_VC_STATE_ACTIVE) {
-                    PRINT_DEBUG(DEBUG_CM_verbose>0, "%s: Current state (%s) State of %d to active\n", __func__, MPIDI_VC_GetStateString(vc->state), vc->pg_rank);
-		    vc->state = MPIDI_VC_STATE_ACTIVE;
+                    PRINT_DEBUG(DEBUG_CM_verbose>0, "Current state (%s) State of %d to active\n",
+                            MPIDI_VC_GetStateString(vc->state), vc->pg_rank);
+                    vc->state = MPIDI_VC_STATE_ACTIVE;
                 } else {
-                    PRINT_DEBUG(DEBUG_CM_verbose>0, "%s: Current state of %d is %s. Not moving to active\n", __func__, vc->pg_rank, MPIDI_VC_GetStateString(vc->state));
+                    PRINT_DEBUG(DEBUG_CM_verbose>0, "Current state of %d is %s. Not moving to active\n",
+                            vc->pg_rank, MPIDI_VC_GetStateString(vc->state));
                 }
-		MPIDI_CH3I_Process.new_conn_complete = 1;
-                DEBUG_PRINT("NOOP Received, RDMA CM is setting the proper status on the client side for multirail.\n");
-	    }
+                MPIDI_CH3I_Process.new_conn_complete = 1;
+                PRINT_DEBUG(DEBUG_CM_verbose>0, "NOOP Received, RDMA CM is setting the proper status on the client side for multirail.\n");
+            }
 
-	    if ((vc->ch.state == MPIDI_CH3I_VC_STATE_IWARP_SRV_WAITING)
-		|| (vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV))
-            {
+            if ((vc->ch.state == MPIDI_CH3I_VC_STATE_IWARP_SRV_WAITING)
+                    || (vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV)) {
                 ++rdma_cm_iwarp_msg_count[vc->pg_rank];
 
-                if (rdma_cm_iwarp_msg_count[vc->pg_rank] >= rdma_num_rails 
-                    && rdma_cm_connect_count[vc->pg_rank] >= rdma_num_rails)
-                {
+                if (rdma_cm_iwarp_msg_count[vc->pg_rank] >= rdma_num_rails &&
+                        rdma_cm_connect_count[vc->pg_rank] >= rdma_num_rails) {
                     vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                     if (vc->state < MPIDI_VC_STATE_ACTIVE) {
-                        PRINT_DEBUG(DEBUG_CM_verbose>0, "%s: Current state (%s) State of %d to active\n", __func__, MPIDI_VC_GetStateString(vc->state), vc->pg_rank);
-    		        vc->state = MPIDI_VC_STATE_ACTIVE;
+                        PRINT_DEBUG(DEBUG_CM_verbose>0, "Current state (%s) State of %d to active\n",
+                                MPIDI_VC_GetStateString(vc->state), vc->pg_rank);
+                        vc->state = MPIDI_VC_STATE_ACTIVE;
                     } else {
-                        PRINT_DEBUG(DEBUG_CM_verbose>0, "%s: Current state of %d is %s. Not moving to active\n", __func__, vc->pg_rank, MPIDI_VC_GetStateString(vc->state));
+                        PRINT_DEBUG(DEBUG_CM_verbose>0, "Current state of %d is %s. Not moving to active\n",
+                                vc->pg_rank, MPIDI_VC_GetStateString(vc->state));
                     }
                     MPIDI_CH3I_Process.new_conn_complete = 1;
-		    MRAILI_Send_noop(vc, 0);
+                    MRAILI_Send_noop(vc, 0);
                 }
-
-                DEBUG_PRINT("NOOP Received, RDMA CM is setting up the proper status on the server side.\n");
+                PRINT_DEBUG(DEBUG_CM_verbose>0, "NOOP Received, RDMA CM is setting up the proper status on the server side.\n");
             }
+        }
 #endif /* defined(RDMA_CM) */
     case MPIDI_CH3_PKT_ADDRESS:
     case MPIDI_CH3_PKT_ADDRESS_REPLY:

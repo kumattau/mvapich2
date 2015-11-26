@@ -193,6 +193,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     mpi_errno = MPIDI_CH3U_Comm_register_create_hook(MPIDI_CH3I_comm_create, NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     
+    /* Default startup */
+    MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
+
     /*Determine to use which connection management */
     threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
 
@@ -209,24 +212,6 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     MPIDI_CH3I_Process.has_dpm = dpm;
     if (MPIDI_CH3I_Process.has_dpm) {
         setenv("MV2_ENABLE_AFFINITY", "0", 1);
-    }
-
-    value = getenv("MV2_USE_XRC");
-    if (value) {
-#ifdef _ENABLE_XRC_
-        USE_XRC = !!atoi(value);
-        if (atoi(value)) {
-            /* Enable on-demand */
-            threshold = 1;
-        }
-#else
-        if (atoi(value)) {
-            MPIU_Error_printf
-                ("XRC support is not configured. Please retry with "
-                 "MV2_USE_XRC=0 (or) Reconfigure MVAPICH2 library without --disable-xrc.\n");
-            MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
-        }
-#endif
     }
 
     if ((value = getenv("MV2_USE_CUDA")) != NULL) {
@@ -276,6 +261,32 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         mv2_rdma_init_timers = 1;
     } 
 #endif
+
+    value = getenv("MV2_USE_XRC");
+    if (value) {
+#ifdef _ENABLE_XRC_
+        USE_XRC = !!atoi(value);
+        if (atoi(value)) {
+#ifdef _ENABLE_UD_
+            if (rdma_enable_only_ud) {
+                PRINT_INFO((pg_rank == 0), "XRC and only UD cannot be set at the same time.\n");
+                PRINT_INFO((pg_rank == 0), "Proceeding after disabling XRC.\n");
+                USE_XRC = 0;
+            } else
+#endif /*_ENABLE_UD_*/
+            {
+                /* Enable on-demand */
+                threshold = 0;
+            }
+        }
+#else
+        if (atoi(value)) {
+            PRINT_INFO((pg_rank == 0), "XRC support is not configured. Please retry with"
+                 "MV2_USE_XRC=0 (or) Reconfigure MVAPICH2 library without --disable-xrc.\n");
+            PRINT_INFO((pg_rank == 0), "Proceeding after disabling XRC.\n");
+        }
+#endif
+    }
 
 #if defined(RDMA_CM)
     if (((value = getenv("MV2_USE_RDMA_CM")) != NULL
@@ -360,6 +371,16 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     /* Check for SMP only */
     MPIDI_CH3I_set_smp_only();
+
+    if ((value = getenv("MV2_USE_EAGER_FAST_SEND")) != NULL) {
+        mv2_use_eager_fast_send = !!atoi(value);
+    }
+
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        mv2_use_eager_fast_send = 0;
+    }
+#endif
 
     if (!SMP_ONLY) {
         /*
@@ -480,6 +501,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             /* Mark the SMP VC as Idle */
             if (vc->smp.local_nodes >= 0) {
                 vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+                /* Enable fast send */
+                if (mv2_use_eager_fast_send) {
+                    vc->eager_fast_fn = mv2_smp_fast_write_contig;
+                }
                 if (SMP_ONLY) {
                     MPIDI_CH3I_SMP_Init_VC(vc);
                 }
@@ -493,6 +518,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         mv2_enable_shmem_collectives = SMP_INIT;
     }
 
+    /* Allocate and Init Dummy request */
+    mpi_errno = mv2_create_dummy_request();
+
     /* Set the eager max msg size now that we know SMP and RDMA are initialized.
      * The max message size is also set during VC initialization, but the state
      * of SMP is unknown at that time.
@@ -500,6 +528,11 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     for (p = 0; p < pg_size; ++p) {
         MPIDI_PG_Get_vc(pg, p, &vc);
         vc->eager_max_msg_sz = MPIDI_CH3_EAGER_MAX_MSG_SIZE(vc);
+        if (mv2_use_eager_fast_send) {
+            vc->eager_fast_max_msg_sz = MPIDI_CH3_EAGER_FAST_MAX_MSG_SIZE(vc);
+        } else {
+            vc->eager_fast_max_msg_sz = 0;
+        }
     }
 
     if ((value = getenv("MV2_SHOW_ENV_INFO")) != NULL) {

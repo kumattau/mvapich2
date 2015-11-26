@@ -39,6 +39,7 @@ int MPIDI_Use_pmi2_api = 0;
 
 #ifdef CHANNEL_MRAIL
 #include <mv2_config.h>
+#include <hwloc_bind.h>
 #include <error_handling.h>
 
 #ifdef CKPT
@@ -239,6 +240,11 @@ void init_debug2(int mpi_rank) {
     set_output_prefix( output_prefix );
 }
 #endif
+
+#if defined(CHANNEL_MRAIL)
+extern int mv2_my_async_cpu_id;
+extern int smpi_identify_core_for_async_thread(MPIDI_PG_t * pg);
+#endif /* defined(CHANNEL_MRAIL) */
 
 #undef FUNCNAME
 #define FUNCNAME MPID_Init
@@ -506,12 +512,12 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 #if defined(CHANNEL_MRAIL)
         /* If user has enabled blocking mode progress,
          * then we cannot support MPI_THREAD_MULTIPLE */
-        if (rdma_use_blocking) {
-            int thread_warning = 1;
+        int thread_warning = 1;
 
-            if ((value = getenv("MV2_USE_THREAD_WARNING")) != NULL) {
-                thread_warning = !!atoi(value);
-            }
+        if ((value = getenv("MV2_USE_THREAD_WARNING")) != NULL) {
+            thread_warning = !!atoi(value);
+        }
+        if (rdma_use_blocking) {
             if (0 == pg_rank && MPI_THREAD_MULTIPLE == requested
                     && thread_warning) {
                 fprintf(stderr, "WARNING: Requested MPI_THREAD_MULTIPLE, \n"
@@ -521,17 +527,38 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
             *provided = (MPICH_THREAD_LEVEL < requested) ?
                 MPICH_THREAD_LEVEL : MPI_THREAD_SERIALIZED;
         }
+        /* Check if user has allocated spare cores for progress thread */
+        if ((value = getenv("MV2_ENABLE_PROGRESS_AFFINITY")) != NULL) {
+            mv2_enable_progress_affinity = !!atoi(value);
+        }
+        if (SMP_INIT && mv2_enable_progress_affinity) {
+            mpi_errno = smpi_identify_core_for_async_thread(pg);
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        }
         int show_cpu_binding = 0;
         /*
          * Check to see if the user has explicitly disabled affinity.  If not
          * then affinity will be enabled barring any errors.
          */
-        if (mv2_enable_affinity) {
+        if (mv2_enable_affinity && mv2_my_async_cpu_id == -1) {
             /*
              * Affinity will be enabled, MPI_THREAD_SINGLE will be the provided
              * MPICH_THREAD_LEVEL in this case.
              */
             *provided = MPI_THREAD_SINGLE;
+        }
+        if ((value = getenv("OMP_NUM_THREADS")) != NULL) {
+            int _temp = atoi(value);
+            if ((_temp > 0) && mv2_enable_affinity && (0 == pg_rank)
+                && thread_warning && (level == LEVEL_CORE)) {
+                fprintf(stderr, "Warning: Process to core binding is enabled and"
+                        " OMP_NUM_THREADS is set to non-zero (%d) value\nIf"
+                        " your program has OpenMP sections, this can cause"
+                        " over-subscription of cores and consequently poor"
+                        " performance\nTo avoid this, please re-run your"
+                        " application after setting MV2_ENABLE_AFFINITY=0\n"
+                        "Use MV2_USE_THREAD_WARNING=0 to suppress this message\n", _temp);
+            }
         }
         MPL_env2bool("MV2_SHOW_CPU_BINDING", &show_cpu_binding);
         if (show_cpu_binding) {

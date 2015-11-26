@@ -17,6 +17,14 @@
 **pmi_get_id %d:PMI_Get_id returned %d
 **pmi_barrier:PMI_Barrier failed
 **pmi_barrier %d:PMI_Barrier returned %d
+**pmi_ibarrier:PMI_Ibarrier failed
+**pmi_ibarrier %d:PMI_Ibarrier returned %d
+**pmi_wait:PMI_Wait failed
+**pmi_wait %d:PMI_Wait returned %d
+**pmi_iallgather:PMI_Iallgather failed
+**pmi_iallgather %d:PMI_Iallgather returned %d
+**pmi_iallgather_wait:PMI_Iallgather_wait failed
+**pmi_iallgather_wait %d:PMI_Iallgather_wait returned %d
 **pmi_kvs_get_my_name:PMI_KVS_Get_my_name failed
 **pmi_kvs_get_my_name %d:PMI_KVS_Get_my_name returned %d
 **pmi_kvs_get_name_length_max:PMI_KVS_Get_name_length_max failed

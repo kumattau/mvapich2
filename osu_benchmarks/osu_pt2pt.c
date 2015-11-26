@@ -75,7 +75,7 @@ set_num_iterations (int value)
 static int
 set_num_warmup (int value)
 {
-    if (1 > value) {
+    if (0 > value) {
         return -1;
     }
 

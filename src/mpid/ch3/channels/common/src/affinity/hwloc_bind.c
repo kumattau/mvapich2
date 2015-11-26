@@ -38,6 +38,10 @@
 #define MAX_LINE_LENGTH 512
 #define MAX_NAME_LENGTH 64
 
+int mv2_my_cpu_id = -1;
+int mv2_my_sock_id = -1;
+int mv2_my_async_cpu_id = -1;
+int *local_core_ids = NULL;
 
 unsigned int mv2_enable_affinity = 1;
 unsigned int mv2_enable_leastload = 0;
@@ -1810,6 +1814,211 @@ int mv2_get_assigned_cpu_core(int my_local_id, char *cpu_mapping, int max_cpu_ma
 }
 
 #undef FUNCNAME
+#define FUNCNAME smpi_set_progress_thread_affinity
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int smpi_set_progress_thread_affinity()
+{
+    int mpi_errno = MPI_SUCCESS;
+    hwloc_cpuset_t cpuset;
+
+    /* Alloc cpuset */
+    cpuset = hwloc_bitmap_alloc();
+    /* Set cpuset to mv2_my_async_cpu_id */
+    hwloc_bitmap_set(cpuset, mv2_my_async_cpu_id);
+    /* Attachement progress thread to mv2_my_async_cpu_id */
+    hwloc_set_thread_cpubind(topology, pthread_self(), cpuset, 0);
+    /* Free cpuset */
+    hwloc_bitmap_free(cpuset);
+
+    return mpi_errno;
+}
+
+#undef FUNCNAME
+#define FUNCNAME smpi_identify_allgather_local_core_ids
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int smpi_identify_allgather_local_core_ids(MPIDI_PG_t * pg)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int pg_size = 0, p = 0;
+    MPIDI_VC_t *vc = NULL;
+    MPI_Request *request = NULL;
+    MPI_Status *status= NULL;
+    int errflag = 0;
+    MPI_Comm comm;
+    MPID_Comm *comm_ptr=NULL;
+
+    MPID_Comm_get_ptr(MPI_COMM_WORLD, comm_ptr );
+    comm = comm_ptr->handle;
+
+    pg_size = MPIDI_PG_Get_size(pg);
+    /* Allocate memory */
+    local_core_ids = MPIU_Malloc(g_smpi.num_local_nodes * sizeof(int));
+    if (local_core_ids== NULL) {
+        ibv_error_abort(GEN_EXIT_ERR, "Failed to allocate memory for local_core_ids\n");
+    }
+    request = MPIU_Malloc(g_smpi.num_local_nodes * 2 * sizeof(MPI_Request));
+    if (request == NULL) {
+        ibv_error_abort(GEN_EXIT_ERR, "Failed to allocate memory for requests\n");
+    }
+    status = MPIU_Malloc(g_smpi.num_local_nodes * 2 * sizeof(MPI_Status));
+    if (request == NULL) {
+        ibv_error_abort(GEN_EXIT_ERR, "Failed to allocate memory for statuses\n");
+    }
+    /* Perform intra-node allgather */
+    for (p = 0; p < g_smpi.num_local_nodes; ++p) {
+        MPIDI_PG_Get_vc(pg, g_smpi.l2g_rank[p], &vc);
+        if (vc->smp.local_nodes >= 0) {
+            mpi_errno = MPIC_Irecv((void*)&local_core_ids[vc->smp.local_nodes],
+                                    1, MPI_INT, vc->pg_rank, MPIR_ALLGATHER_TAG,
+                                    comm, &request[g_smpi.num_local_nodes+p]);
+            if (mpi_errno) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            mpi_errno = MPIC_Isend((void*)&mv2_my_cpu_id, 1, MPI_INT, vc->pg_rank,
+                                    MPIR_ALLGATHER_TAG, comm, &request[p], &errflag);
+            if (mpi_errno) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+        }
+    }
+    /* Wait for intra-node allgather to finish */
+    mpi_errno = PMPI_Waitall(g_smpi.num_local_nodes*2, request, status);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+fn_exit:
+    if (request) {
+        MPIU_Free(request);
+    }
+    if (status) {
+        MPIU_Free(status);
+    }
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME smpi_identify_free_cores
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int smpi_identify_free_cores(hwloc_cpuset_t *sock_cpuset, hwloc_cpuset_t *free_sock_cpuset)
+{
+    int i = 0;
+    int mpi_errno = MPI_SUCCESS;
+    int num_sockets = -1;
+    int depth_sockets = -1;
+    hwloc_obj_t socket = NULL;
+    hwloc_cpuset_t my_cpuset = NULL;
+    char cpu_str[128];
+
+    /* Alloc cpuset */
+    my_cpuset = hwloc_bitmap_alloc();
+    *sock_cpuset = hwloc_bitmap_alloc();
+    /* Clear CPU set */
+    hwloc_bitmap_zero(my_cpuset);
+    hwloc_bitmap_zero(*sock_cpuset);
+    /* Set cpuset to mv2_my_cpu_id */
+    hwloc_bitmap_set(my_cpuset, mv2_my_cpu_id);
+
+    depth_sockets   = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
+    num_sockets     = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
+
+    for (i = 0; i < num_sockets; ++i) {
+        socket = hwloc_get_obj_by_depth(topology, depth_sockets, i);
+        /* Find the list of CPUs we're allowed to use in the socket */
+        hwloc_bitmap_and(*sock_cpuset, socket->online_cpuset, socket->allowed_cpuset);
+        /* Find the socket the core I'm bound to resides on */
+        if (hwloc_bitmap_intersects(my_cpuset, *sock_cpuset)) {
+            /* Create a copy to identify list of free coress */
+            *free_sock_cpuset = hwloc_bitmap_dup(*sock_cpuset);
+            /* Store my sock ID */
+            mv2_my_sock_id = i;
+            break;
+        }
+    }
+    if (i == num_sockets) {
+        mpi_errno = MPI_ERR_OTHER;
+        MPIU_ERR_POP(mpi_errno);
+    } else {
+        /* Remove cores used by processes from list of available cores */
+        for (i = 0; i < g_smpi.num_local_nodes; ++i) {
+            hwloc_bitmap_clr(*free_sock_cpuset, local_core_ids[i]);
+        }
+        hwloc_bitmap_snprintf(cpu_str, 128, *free_sock_cpuset);
+        PRINT_DEBUG(DEBUG_INIT_verbose, "Free sock_cpuset = %s\n", cpu_str);
+    }
+
+    if (my_cpuset) {
+        hwloc_bitmap_free(my_cpuset);
+    }
+fn_fail:
+    return mpi_errno;
+}
+
+#undef FUNCNAME
+#define FUNCNAME smpi_identify_core_for_async_thread
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int smpi_identify_core_for_async_thread(MPIDI_PG_t * pg)
+{
+    int i = 0;
+    int my_socket = -1;
+    int mpi_errno = MPI_SUCCESS;
+    hwloc_cpuset_t sock_cpuset = NULL;
+    hwloc_cpuset_t free_sock_cpuset = NULL;
+
+    /* Gather IDs of cores local processes are bound to */
+    mpi_errno = smpi_identify_allgather_local_core_ids(pg);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    /* Identify my socket and cores available in my socket */
+    mpi_errno = smpi_identify_free_cores(&sock_cpuset, &free_sock_cpuset);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    /* Identify core to be used for async thread */
+    if (!hwloc_bitmap_iszero(free_sock_cpuset)) {
+        for (i = 0; i < g_smpi.num_local_nodes; ++i) {
+            /* If local process 'i' is on a core on my socket */
+            if (hwloc_bitmap_isset(sock_cpuset, local_core_ids[i])) {
+                mv2_my_async_cpu_id = hwloc_bitmap_next(free_sock_cpuset, mv2_my_async_cpu_id);
+                if (i == g_smpi.my_local_id) {
+                    break;
+                }
+            }
+        }
+        /* Ensure async thread gets bound to a core */
+        while (mv2_my_async_cpu_id < 0) {
+            mv2_my_async_cpu_id = hwloc_bitmap_next(free_sock_cpuset, mv2_my_async_cpu_id);
+        }
+    }
+    PRINT_DEBUG(DEBUG_INIT_verbose>0, "[local_rank: %d]: sock_id = %d, cpu_id = %d, async_cpu_id = %d\n",
+                    g_smpi.my_local_id, mv2_my_sock_id, mv2_my_cpu_id, mv2_my_async_cpu_id);
+
+fn_exit:
+    /* Free temporary memory */
+    if (local_core_ids) {
+        MPIU_Free(local_core_ids);
+    }
+    /* Free cpuset */
+    if (sock_cpuset) {
+        hwloc_bitmap_free(sock_cpuset);
+    }
+    if (free_sock_cpuset) {
+        hwloc_bitmap_free(free_sock_cpuset);
+    }
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
 #define FUNCNAME smpi_setaffinity
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -1884,6 +2093,8 @@ int smpi_setaffinity(int my_local_id)
                         goto fn_fail;
                     }
                     hwloc_bitmap_set(cpuset, cpunum);
+                    mv2_my_cpu_id = cpunum;
+                    PRINT_DEBUG(DEBUG_SHM_verbose>0, "Set mv2_my_cpu_id = %d\n", mv2_my_cpu_id);
                 } else if (*token == ',') {
                     token++;
                 } else if (*token == '-') {
@@ -1936,6 +2147,8 @@ int smpi_setaffinity(int my_local_id)
                  * This may not deliver the best performace
                  */
                 hwloc_bitmap_only(cpuset, my_local_id % N_CPUs_online);
+                mv2_my_cpu_id = (my_local_id % N_CPUs_online);
+                PRINT_DEBUG(DEBUG_SHM_verbose>0, "Set mv2_my_cpu_id = %d\n", mv2_my_cpu_id);
                 hwloc_set_cpubind(topology, cpuset, 0);
             } else {
                 /*
@@ -1977,10 +2190,15 @@ int smpi_setaffinity(int my_local_id)
                 if (level == LEVEL_CORE) {
                     if (SMP_ONLY || mv2_user_defined_mapping || !mv2_hca_aware_process_mapping) {
                         hwloc_bitmap_only(cpuset, atol(tp_str));
+                        mv2_my_cpu_id = atol(tp_str);
+                        PRINT_DEBUG(DEBUG_SHM_verbose>0, "Set mv2_my_cpu_id = %d\n", mv2_my_cpu_id);
                     } else {
                         hwloc_bitmap_only(cpuset,
                                 (atol(tp_str) % cores_per_socket)
                                 + (selected_socket * cores_per_socket));
+                        mv2_my_cpu_id = ((atol(tp_str) % cores_per_socket)
+                                        + (selected_socket * cores_per_socket));
+                        PRINT_DEBUG(DEBUG_SHM_verbose>0, "Set mv2_my_cpu_id = %d\n", mv2_my_cpu_id);
                     }
                 } else {
                     if (SMP_ONLY || mv2_user_defined_mapping || !mv2_hca_aware_process_mapping) {

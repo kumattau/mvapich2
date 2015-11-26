@@ -19,6 +19,7 @@
 #include "mpidi_ch3_impl.h"
 #include "mpiutil.h"
 #include <stdio.h>
+#include "rdma_impl.h"
 
 #ifdef DEBUG
 #define DEBUG_PRINT(args...) \
@@ -48,6 +49,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
     *vc_pptr = NULL;
     *v_ptr = NULL;
 
+    /* Blocking for message on one VC */
     if (pending_vc != NULL) {
         type = MPIDI_CH3I_MRAILI_Waiting_msg(pending_vc, v_ptr, 1);
         if (type == T_CHANNEL_CONTROL_MSG_ARRIVE) {
@@ -71,14 +73,16 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
         goto fn_exit;
     }
 
-    type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr);
-    if (type != T_CHANNEL_NO_ARRIVE) {
-        if (rdmafp_found != NULL ) {
-            *rdmafp_found = 1;
+    /* Poll RDMA Fast path channel */
+    if (likely(mv2_MPIDI_CH3I_RDMA_Process.polling_group_size)) {
+        type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr);
+        if (type != T_CHANNEL_NO_ARRIVE) {
+            if (rdmafp_found != NULL ) {
+                *rdmafp_found = 1;
+            }
+            goto fn_exit;
         }
-	    goto fn_exit;
-    } 
-
+    }
     /* local polling has finished, now we need to start global subchannel polling 
      * For convenience, at this stage, we by default refer to the global polling channel 
      * as the send recv channel on each of the queue pair
@@ -109,7 +113,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
             if (type == T_CHANNEL_CONTROL_MSG_ARRIVE) {
                 pending_vc = recv_vc_ptr;
             } else if (T_CHANNEL_EXACT_ARRIVE == type) {
-		DEBUG_PRINT("Get out of order delivered msg\n");
+                DEBUG_PRINT("Get out of order delivered msg\n");
             } else {
                 PRINT_ERROR("Error recving run return type\n");
                 exit(EXIT_FAILURE);
@@ -123,8 +127,11 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
             break;
         }
         goto fn_exit;
-    } 
+    }
+
   fn_exit:
+
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_READ_PROGRESS);
     return MPI_SUCCESS;
 }
 

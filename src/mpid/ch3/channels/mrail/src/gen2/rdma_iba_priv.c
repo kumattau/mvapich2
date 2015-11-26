@@ -1445,6 +1445,11 @@ void MRAILI_RC_Enable(MPIDI_VC_t * vc)
         mv2_MPIDI_CH3I_RDMA_Process.rc_connections++;
         rdma_hybrid_pending_rc_conn--;
         MPIU_Assert(vc->mrail.state & MRAILI_RC_CONNECTING);
+        if (mv2_use_eager_fast_send) {
+            vc->eager_fast_max_msg_sz = MIN(DEFAULT_MEDIUM_VBUF_SIZE, rdma_fp_buffer_size);
+        } else {
+            vc->eager_fast_max_msg_sz = 0;
+        }
     }
 #endif
 }
@@ -1701,16 +1706,6 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
     int hca_index = 0;
     int port_index = 0;
     int rail_index = 0;
-
-    qp_attr.qp_state = IBV_QPS_INIT;
-    if (g_atomics_support) {
-        qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
-        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-        IBV_ACCESS_REMOTE_ATOMIC;
-    } else {
-        qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
-        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
-    }
 
 
     vc->mrail.num_rails = rdma_num_rails;

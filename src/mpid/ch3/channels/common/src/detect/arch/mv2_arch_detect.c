@@ -315,14 +315,12 @@ mv2_arch_type mv2_get_arch_type()
 		                        arch_type = MV2_ARCH_INTEL_XEON_E5_2660_V3_2S_20;
                             }
                         }
-				    } else if(24 == num_cpus){
-				        if(INTEL_XEON_E5_2680_V3_MODEL == g_mv2_cpu_model) {
-		                    if(NULL != strstr(model_name, INTEL_E5_2680_V3_MODEL_NAME)) {
-		                        arch_type = MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24;
-                            }
-                        } else if(NULL != strstr(model_name, INTEL_E5_2690_V3_MODEL_NAME)){
-                            arch_type = MV2_ARCH_INTEL_XEON_E5_2690_V3_2S_24;
-                        }
+                                   } else if(24 == num_cpus){
+                                        if(NULL != strstr(model_name, INTEL_E5_2680_V3_MODEL_NAME)) {
+                                            arch_type = MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24;
+                                        } else if(NULL != strstr(model_name, INTEL_E5_2690_V3_MODEL_NAME)){
+                                            arch_type = MV2_ARCH_INTEL_XEON_E5_2690_V3_2S_24;
+                                        }
 				    } else if(32 == num_cpus){
 				        if(INTEL_XEON_E5_2698_V3_MODEL == g_mv2_cpu_model) {
 		                    if(NULL != strstr(model_name, INTEL_E5_2698_V3_MODEL_NAME)) {

@@ -63,6 +63,15 @@ int main (int argc, char *argv[])
         }
     }
 
+    po_ret = process_options(argc, argv, &win_type, &sync_type, all_sync);
+
+    if (po_okay == po_ret && none != options.accel) {
+        if (init_accel()) {
+           fprintf(stderr, "Error initializing device\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
     MPI_CHECK(MPI_Init(&argc, &argv));
     MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &nprocs));
     MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));

@@ -854,9 +854,14 @@ typedef struct MPIDI_VC
                          MPI_Aint dt_true_lb, int rank, int tag,
                          struct MPID_Comm * comm, int context_offset );
     int (* rndvRecv_fn)( struct MPIDI_VC * vc, struct MPID_Request *rreq );
+    int (* eager_fast_fn)(struct MPIDI_VC* vc, const void * buf, MPIDI_msg_sz_t data_sz,
+                            int rank, int tag, MPID_Comm * comm, int context_offset, MPID_Request **sreq_p);
+    int (* eager_fast_rfp_fn)(struct MPIDI_VC* vc, const void * buf, MPIDI_msg_sz_t data_sz,
+                            int rank, int tag, MPID_Comm * comm, int context_offset);
 
     /* eager message threshold */
     int eager_max_msg_sz;
+    int eager_fast_max_msg_sz;
     /* eager message threshold for ready sends.  -1 means there's no limit */
     int ready_eager_max_msg_sz;
  

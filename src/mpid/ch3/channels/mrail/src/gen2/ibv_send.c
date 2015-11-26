@@ -727,6 +727,110 @@ int post_hybrid_send(MPIDI_VC_t* vc, vbuf* v, int rail)
     return 0;
 }
 #endif /* _ENABLE_UD_ */
+
+#undef FUNCNAME
+#define FUNCNAME mv2_eager_fast_send
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int mv2_eager_fast_send(MPIDI_VC_t* vc, const void *buf,
+                        MPIDI_msg_sz_t data_sz, int rank, int tag,
+                        MPID_Comm *comm, int context_offset, MPID_Request **sreq_p)
+{
+    int rail = 0;
+    int retval = 0;
+    vbuf* v = NULL;
+    int len = 0;
+    void *ptr = NULL;
+    MPID_Seqnum_t seqnum;
+    MPIDI_CH3_Pkt_t *upkt = NULL;
+    MPIDI_CH3_Pkt_eager_send_t *eager_pkt = NULL;
+
+    rail = MRAILI_Send_select_rail(vc);
+
+    /* Get VBUF */
+    MRAILI_Get_buffer(vc, v, data_sz+sizeof(MPIDI_CH3_Pkt_eager_send_t));
+
+    /* Point header to start of buffer */
+    upkt = (MPIDI_CH3_Pkt_t *) v->buffer;
+    eager_pkt = &((*upkt).eager_send);
+
+    /* Create packet header */
+    MPIDI_Pkt_init(eager_pkt, MPIDI_CH3_PKT_EAGER_SEND);
+    eager_pkt->data_sz                 = data_sz;
+    eager_pkt->match.parts.tag         = tag;
+    eager_pkt->match.parts.rank        = comm->rank;
+    eager_pkt->match.parts.context_id  = comm->context_id + context_offset;
+
+    /* Set sequence number */
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
+
+    /* Copy data */
+    ptr = (void*) v->buffer + sizeof(MPIDI_CH3_Pkt_eager_send_t);
+
+#ifdef _ENABLE_CUDA_
+    cudaError_t cuda_error = cudaSuccess;
+    if (rdma_enable_cuda && is_device_buffer(buf)) {
+        MPIU_Memcpy_CUDA(ptr, buf, data_sz, cudaMemcpyDeviceToHost);
+    } else
+#endif
+    {
+         memcpy(ptr, buf, data_sz);
+    }
+    /* Compute size of pkt */
+    len = sizeof(MPIDI_CH3_Pkt_eager_send_t) + data_sz;
+
+    /* Initialize other vbuf parameters */
+    vbuf_init_send(v, len, rail);
+
+    /* Send the packet */
+    retval = mv2_MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
+
+    return retval;
+}
+
+#undef FUNCNAME
+#define FUNCNAME mv2_eager_fast_rfp_send
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int mv2_eager_fast_rfp_send(MPIDI_VC_t* vc, const void *buf,
+                        MPIDI_msg_sz_t data_sz, int rank, int tag,
+                        MPID_Comm *comm, int context_offset)
+{
+    /* For short send n_iov is always 2 */
+    int n_iov = 2;
+    MPID_Seqnum_t seqnum;
+    vbuf *buf_handle = NULL;
+    int num_bytes_ptr = 0;
+    MPID_IOV iov[MPID_IOV_LIMIT];
+    MPIDI_CH3_Pkt_t upkt;
+    MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
+
+    /* Create packet header */
+    MPIDI_Pkt_init(eager_pkt, MPIDI_CH3_PKT_EAGER_SEND);
+    eager_pkt->data_sz                 = data_sz;
+    eager_pkt->match.parts.tag         = tag;
+    eager_pkt->match.parts.rank        = comm->rank;
+    eager_pkt->match.parts.context_id  = comm->context_id + context_offset;
+
+    /* Create IOV (header) */
+    iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)eager_pkt;
+    iov[0].MPID_IOV_LEN = sizeof(*eager_pkt);
+    /* Create IOV (data) */
+    iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) buf;
+    iov[1].MPID_IOV_LEN = data_sz;
+
+    /* Compute size of pkt */
+    num_bytes_ptr = iov[0].MPID_IOV_LEN + iov[1].MPID_IOV_LEN;
+
+    /* Set sequence number */
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
+
+    return MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(vc, iov,
+                n_iov, &num_bytes_ptr, &buf_handle);
+}
+
 #undef FUNCNAME
 #define FUNCNAME post_srq_send
 #undef FCNAME
@@ -867,7 +971,7 @@ int post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
 #define FUNCNAME MRAILI_Fill_start_buffer
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-inline int MRAILI_Fill_start_buffer(vbuf * v,
+int MRAILI_Fill_start_buffer(vbuf * v,
                              MPID_IOV * iov,
                              int n_iov)
 {
@@ -1476,6 +1580,9 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_FAST_EAGER_SEND:
     case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
 #endif
+#if defined(USE_EAGER_SHORT)
+    case MPIDI_CH3_PKT_EAGERSHORT_SEND:
+#endif /* defined(USE_EAGER_SHORT) */
     case MPIDI_CH3_PKT_EAGER_SEND:
     case MPIDI_CH3_PKT_EAGER_SYNC_SEND: 
     case MPIDI_CH3_PKT_PACKETIZED_SEND_DATA:

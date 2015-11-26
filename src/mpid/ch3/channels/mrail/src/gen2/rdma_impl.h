@@ -173,6 +173,17 @@ typedef struct ud_addr_info {
 
 struct MPIDI_PG;
 
+typedef struct win_element
+{
+    struct win_element *prev;
+    struct win_element *next;
+    void *win_base;
+    void *complete_counter;
+    void *post_flag;
+}win_elem_t;
+
+extern win_elem_t *mv2_win_list;
+
 extern mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
 extern int (*perform_blocking_progress) (int hca_num, int num_cqs);
 extern void (*handle_multiple_cqs) (int num_cqs, int cq_choice, int is_send_completion);

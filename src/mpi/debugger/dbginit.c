@@ -353,6 +353,9 @@ void MPIR_Sendq_remember( MPID_Request *req,
 {
     MPIR_Sendq *p;
 
+    if (req->ch.reqtype == REQUEST_LIGHT) {
+        return;
+    }
     MPIU_THREAD_CS_ENTER(HANDLE,req);
     if (pool) {
 	p = pool;
@@ -383,6 +386,9 @@ void MPIR_Sendq_forget( MPID_Request *req )
 {
     MPIR_Sendq *p, *prev;
 
+    if (req->ch.reqtype == REQUEST_LIGHT) {
+        return;
+    }
     MPIU_THREAD_CS_ENTER(HANDLE,req);
     p    = req->dbg_next;
     if (!p) {

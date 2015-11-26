@@ -72,47 +72,60 @@ typedef struct MPIDI_CH3I_Process_s
 MPIDI_CH3I_Process_t;
 
 extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
+extern int mv2_eager_fast_send(MPIDI_VC_t* vc, const void *buf,
+                                MPIDI_msg_sz_t data_sz, int rank, int tag,
+                                MPID_Comm *comm, int context_offset, MPID_Request **sreq_p);
+extern int mv2_eager_fast_rfp_send(MPIDI_VC_t* vc, const void *buf,
+                                MPIDI_msg_sz_t data_sz, int rank, int tag,
+                                MPID_Comm *comm, int context_offset);
+extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
+                                MPIDI_msg_sz_t data_sz, int rank, int tag,
+                                MPID_Comm *comm, int context_offset, MPID_Request **sreq_p);
 
-#define MPIDI_CH3I_SendQ_enqueue(vc, req)				 \
-{									 \
-    /* MT - not thread safe! */						 \
-    MPIDI_DBG_PRINTF((50, FCNAME, "SendQ_enqueue vc=%08p req=0x%08x",    \
-	              vc, req->handle));		                 \
-    req->dev.next = NULL;						 \
-    if (vc->ch.sendq_tail != NULL)					 \
-    {									 \
-	vc->ch.sendq_tail->dev.next = req;				 \
-    }									 \
-    else								 \
-    {									 \
-	vc->ch.sendq_head = req;					 \
-    }									 \
-    vc->ch.sendq_tail = req;						 \
+#define MPIDI_CH3I_SendQ_enqueue(vc, req)                       \
+{                                                               \
+    /* MT - not thread safe! */                                 \
+    MPIDI_DBG_PRINTF((50, FCNAME, "enqueue vc=%08p req=0x%08x", \
+                  vc, req->handle));                            \
+    req->dev.next = NULL;                                       \
+    if (vc->ch.sendq_tail != NULL) {                            \
+        vc->ch.sendq_tail->dev.next = req;                      \
+    } else {                                                    \
+        vc->ch.sendq_head = req;                                \
+    }                                                           \
+    vc->ch.sendq_tail = req;                                    \
+    /* Disable direct send */                                   \
+    vc->eager_fast_fn = NULL;                                   \
 }
 
-#define MPIDI_CH3I_SendQ_enqueue_head(vc, req)				      \
-{									      \
-    /* MT - not thread safe! */						      \
-    MPIDI_DBG_PRINTF((50, FCNAME, "SendQ_enqueue_head vc=%08p req=0x%08x",    \
-	              vc, req->handle));		                      \
-    req->dev.next = vc->ch.sendq_head;					      \
-    if (vc->ch.sendq_tail == NULL)					      \
-    {									      \
-	vc->ch.sendq_tail = req;					      \
-    }									      \
-    vc->ch.sendq_head = req;						      \
+#define MPIDI_CH3I_SendQ_enqueue_head(vc, req)                              \
+{                                                                           \
+    /* MT - not thread safe! */                                             \
+    MPIDI_DBG_PRINTF((50, FCNAME, "SendQ_enqueue_head vc=%08p req=0x%08x",  \
+                  vc, req->handle));                                        \
+    req->dev.next = vc->ch.sendq_head;                                      \
+    if (vc->ch.sendq_tail == NULL) {                                        \
+        vc->ch.sendq_tail = req;                                            \
+    }                                                                       \
+    vc->ch.sendq_head = req;                                                \
+    /* Disable direct send */                                               \
+    vc->eager_fast_fn = NULL;                                               \
 }
 
-#define MPIDI_CH3I_SendQ_dequeue(vc)					 \
-{									 \
-    /* MT - not thread safe! */						 \
-    MPIDI_DBG_PRINTF((50, FCNAME, "SendQ_dequeue vc=%08p req=0x%08x",    \
-	              vc, vc->ch.sendq_head));		                 \
-    vc->ch.sendq_head = vc->ch.sendq_head->dev.next;			 \
-    if (vc->ch.sendq_head == NULL)					 \
-    {									 \
-	vc->ch.sendq_tail = NULL;					 \
-    }									 \
+#define MPIDI_CH3I_SendQ_dequeue(vc)                                    \
+{                                                                       \
+    /* MT - not thread safe! */                                         \
+    MPIDI_DBG_PRINTF((50, FCNAME, "SendQ_dequeue vc=%08p req=0x%08x",   \
+                    vc, vc->ch.sendq_head));                            \
+    vc->ch.sendq_head = vc->ch.sendq_head->dev.next;                    \
+    if (vc->ch.sendq_head == NULL) {                                    \
+        vc->ch.sendq_tail = NULL;                                       \
+        /* Re-enable direct send */                                     \
+        if (mv2_use_eager_fast_send &&                                  \
+            !(SMP_INIT && (vc->smp.local_nodes >= 0))) {                \
+            vc->eager_fast_fn = mv2_eager_fast_send;                    \
+        }                                                               \
+    }                                                                   \
 }
 
 #define MPIDI_CH3I_SendQ_head(vc) (vc->ch.sendq_head)
@@ -121,67 +134,72 @@ extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 
 /* #define XRC_DEBUG */
 
-#define MPIDI_CH3I_CM_SendQ_enqueue(vc, req)                                \
-{                                                                           \
-    /* MT - not thread safe! */						    \
-    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_enqueue vc=%08p req=0x%08x",    \
-	              vc, req->handle));		                    \
-    req->dev.next = NULL;						    \
-    if (vc->ch.cm_sendq_tail != NULL)					    \
-    {									    \
-	vc->ch.cm_sendq_tail->dev.next = req;				    \
-    }									    \
-    else								    \
-    {									    \
-	vc->ch.cm_sendq_head = req;					    \
-    }									    \
-    vc->ch.cm_sendq_tail = req;						    \
+#define MPIDI_CH3I_CM_SendQ_enqueue(vc, req)                            \
+{                                                                       \
+    /* MT - not thread safe! */                                         \
+    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_enqueue vc=%08p req=0x%08x",\
+                    vc, req->handle));                                  \
+    req->dev.next = NULL;                                               \
+    if (vc->ch.cm_sendq_tail != NULL) {                                 \
+        vc->ch.cm_sendq_tail->dev.next = req;                           \
+    }  else {                                                           \
+        vc->ch.cm_sendq_head = req;                                     \
+    }                                                                   \
+    vc->ch.cm_sendq_tail = req;                                         \
+    /* Disable direct send */                                           \
+    vc->eager_fast_fn = NULL;                                           \
 }
 
-#define MPIDI_CH3I_CM_SendQ_dequeue(vc)                                     \
-{                                                                           \
-    /* MT - not thread safe! */						    \
-    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_dequeue vc=%08p req=0x%08x",    \
-	              vc, vc->ch.sendq_head));		                    \
-    vc->ch.cm_sendq_head = vc->ch.cm_sendq_head->dev.next;		    \
-    if (vc->ch.cm_sendq_head == NULL)					    \
-    {									    \
-	vc->ch.cm_sendq_tail = NULL;					    \
-    }									    \
+#define MPIDI_CH3I_CM_SendQ_dequeue(vc)                                 \
+{                                                                       \
+    /* MT - not thread safe! */                                         \
+    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_dequeue vc=%08p req=0x%08x",\
+                  vc, vc->ch.sendq_head));                              \
+    vc->ch.cm_sendq_head = vc->ch.cm_sendq_head->dev.next;              \
+    if (vc->ch.cm_sendq_head == NULL) {                                 \
+        vc->ch.cm_sendq_tail = NULL;                                    \
+        /* Re-enable direct send */                                     \
+        if (mv2_use_eager_fast_send &&                                  \
+            !(SMP_INIT && (vc->smp.local_nodes >= 0))) {                \
+            vc->eager_fast_fn = mv2_eager_fast_send;                    \
+        }                                                               \
+    }                                                                   \
 }
 
 #define MPIDI_CH3I_CM_SendQ_head(vc) (vc->ch.cm_sendq_head)
 
 #define MPIDI_CH3I_CM_SendQ_empty(vc) (vc->ch.cm_sendq_head == NULL)
 
-/* One sidedd sendq */
-
-#define MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc, v)                                \
+/* One sided sendq */
+#define MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc, v)                        \
 {                                                                           \
-    /* MT - not thread safe! */						    \
-    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_enqueue vc=%08p vbuf=0x%08x",    \
-	              vc, v));		                    \
-    v->desc.next = NULL;						    \
-    if (vc->ch.cm_1sc_sendq_head != NULL)					    \
-    {									    \
-	vc->ch.cm_1sc_sendq_tail->desc.next = v;				    \
-    }									    \
-    else								    \
-    {									    \
-	vc->ch.cm_1sc_sendq_head = v;					    \
-    }									    \
-    vc->ch.cm_1sc_sendq_tail = v;						    \
+    /* MT - not thread safe! */                                             \
+    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_enqueue vc=%08p vbuf=0x%08x",   \
+                  vc, v));                                                  \
+    v->desc.next = NULL;                                                    \
+    if (vc->ch.cm_1sc_sendq_head != NULL) {                                 \
+        vc->ch.cm_1sc_sendq_tail->desc.next = v;                            \
+    } else {                                                                \
+        vc->ch.cm_1sc_sendq_head = v;                                       \
+    }                                                                       \
+    vc->ch.cm_1sc_sendq_tail = v;                                           \
+    /* Disable direct send */                                               \
+    vc->eager_fast_fn = NULL;                                               \
 }
 
-#define MPIDI_CH3I_CM_One_Sided_SendQ_dequeue(vc)                                     \
+#define MPIDI_CH3I_CM_One_Sided_SendQ_dequeue(vc)                           \
 {                                                                           \
-    /* MT - not thread safe! */						    \
-    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_dequeue vc=%08p", vc));	\
-    vc->ch.cm_1sc_sendq_head = vc->ch.cm_1sc_sendq_head->desc.next;		    \
-    if (vc->ch.cm_1sc_sendq_head == NULL)					    \
-    {									    \
-	vc->ch.cm_1sc_sendq_tail = NULL;					    \
-    }									    \
+    /* MT - not thread safe! */                                             \
+    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_dequeue vc=%08p", vc));         \
+    vc->ch.cm_1sc_sendq_head = vc->ch.cm_1sc_sendq_head->desc.next;         \
+    if (vc->ch.cm_1sc_sendq_head == NULL) {                                 \
+        vc->ch.cm_1sc_sendq_tail = NULL;                                    \
+        /* Re-enable direct send */                                         \
+        if (mv2_use_eager_fast_send &&                                      \
+            !(SMP_INIT && (vc->smp.local_nodes >= 0))) {                    \
+            vc->eager_fast_fn = mv2_eager_fast_send;                        \
+        }                                                                   \
+    }                                                                       \
 }
 
 #define MPIDI_CH3I_CM_One_Sided_SendQ_head(vc) (vc->ch.cm_1sc_sendq_head)
@@ -444,6 +462,8 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
     if (vc->smp.send_active == NULL) {                                   \
           vc->smp.send_active =  vc->smp.sendq_head;                     \
     }                                                                    \
+    /* Disable direct send */                                            \
+    vc->eager_fast_fn = NULL;                                            \
 }                                                                        
 
 #define MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, req)                            \
@@ -458,6 +478,8 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
         vc->smp.sendq_tail = req;                                             \
     }                                                                         \
     vc->smp.sendq_head = req;                                                 \
+    /* Disable direct send */                                                 \
+    vc->eager_fast_fn = NULL;                                                 \
 }
 
 #define MPIDI_CH3I_SMP_SendQ_dequeue(vc)                                      \
@@ -470,6 +492,10 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
     if (vc->smp.sendq_head == NULL)                                           \
     {                                                                         \
         vc->smp.sendq_tail = NULL;                                            \
+        /* Enable direct send */                                              \
+        if (mv2_use_eager_fast_send) {                                        \
+            vc->eager_fast_fn = mv2_smp_fast_write_contig;                    \
+        }                                                                     \
     }                                                                         \
     MPID_Request_release(req);                                                \
 }
@@ -533,7 +559,7 @@ int MPIDI_CH3I_SMP_read_progress(MPIDI_PG_t *pg);
 
 int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg);
 
-inline int MPIDI_CH3I_SMP_attach_shm_pool();
+int MPIDI_CH3I_SMP_attach_shm_pool();
 
 int MPIDI_CH3I_SMP_finalize(void);
 

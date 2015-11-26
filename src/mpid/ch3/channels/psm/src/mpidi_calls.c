@@ -214,7 +214,7 @@ void MPIDI_CH3I_Progress_wakeup(void)
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 
-inline int MPIDI_CH3_Progress_wait(MPID_Progress_state *state)
+int MPIDI_CH3_Progress_wait(MPID_Progress_state *state)
 {
     return(psm_progress_wait(TRUE));
 }

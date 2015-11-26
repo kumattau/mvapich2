@@ -151,6 +151,11 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
 	MPID_Abort(MPIR_Process.comm_world, mpi_errno, -1, NULL);
     }
 #endif
+#ifdef CHANNEL_MRAIL
+    if (req->ch.reqtype == REQUEST_LIGHT) {
+        return;
+    }
+#endif
 #ifdef _ENABLE_CUDA_
     if (req->dev.pending_pkt) {
         MPIU_Free(req->dev.pending_pkt);
@@ -226,6 +231,29 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
     MPIU_Handle_obj_free(&MPID_Request_mem, req);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_REQUEST_DESTROY);
 }
+
+#ifdef CHANNEL_MRAIL
+MPID_Request *mv2_dummy_request = NULL;
+
+int mv2_create_dummy_request()
+{
+    mv2_dummy_request = MPID_Request_create();
+    MPIDI_Request_set_type(mv2_dummy_request, MPIDI_REQUEST_TYPE_SEND);
+    MPID_cc_set(&mv2_dummy_request->cc, 0);
+    mv2_dummy_request->ch.reqtype = REQUEST_LIGHT;
+    mv2_dummy_request->kind = MPID_REQUEST_SEND;
+
+    return MPI_SUCCESS;
+}
+
+int mv2_free_dummy_request()
+{
+    mv2_dummy_request->ch.reqtype = REQUEST_NORMAL;
+    MPIDI_CH3_Request_destroy(mv2_dummy_request);
+
+    return MPI_SUCCESS;
+}
+#endif
 
 
 /* ------------------------------------------------------------------------- */

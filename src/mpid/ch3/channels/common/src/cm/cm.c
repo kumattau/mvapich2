@@ -48,19 +48,32 @@ do {                                                                        \
 do {                                                        \
     if (USE_XRC) {                                          \
         if (vc->state != MPIDI_VC_STATE_REMOTE_CLOSE &&     \
-                vc->state != MPIDI_VC_STATE_LOCAL_CLOSE &&  \
-                vc->state != MPIDI_VC_STATE_CLOSE_ACKED)    \
+            vc->state != MPIDI_VC_STATE_LOCAL_CLOSE &&      \
+            vc->state != MPIDI_VC_STATE_CLOSE_ACKED)        \
             vc->state = MPIDI_VC_STATE_ACTIVE;              \
     } else {                                                \
         vc->state = MPIDI_VC_STATE_ACTIVE;                  \
     }                                                       \
     MV2_HYBRID_SEND_NOOP_IF_NEEDED(vc);                     \
+    if (mv2_use_eager_fast_send &&                          \
+        vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE &&         \
+        (USE_XRC && VC_XST_ISSET (vc, XF_SEND_IDLE)) &&     \
+        MPIDI_CH3I_CM_SendQ_empty(vc) &&                    \
+        !(SMP_INIT && (vc->smp.local_nodes >= 0))) {        \
+        vc->eager_fast_fn = mv2_eager_fast_send;            \
+    }                                                       \
 } while (0);
 #else
 #define VC_SET_ACTIVE(vc)                                   \
 do {                                                        \
     vc->state = MPIDI_VC_STATE_ACTIVE;                      \
     MV2_HYBRID_SEND_NOOP_IF_NEEDED(vc);                     \
+    if (mv2_use_eager_fast_send &&                          \
+        vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE &&         \
+        MPIDI_CH3I_CM_SendQ_empty(vc) &&                    \
+        !(SMP_INIT && (vc->smp.local_nodes >= 0))) {        \
+        vc->eager_fast_fn = mv2_eager_fast_send;            \
+    }                                                       \
 } while (0);
 #endif
 
@@ -131,11 +144,13 @@ int page_size;
 
 extern int *rdma_cm_host_list;
 extern int g_atomics_support;
+extern int mv2_my_cpu_id;
 
 int mv2_pmi_max_keylen=0;
 int mv2_pmi_max_vallen=0;
 char *mv2_pmi_key=NULL;
 char *mv2_pmi_val=NULL;
+char *mv2_pmi_iallgather_buf=NULL;
 
 #define CM_ERR_ABORT(args...) do {                                           \
     int _rank; UPMI_GET_RANK(&_rank);  \
@@ -882,7 +897,7 @@ static int cm_accept(MPIDI_PG_t * pg, cm_msg * msg)
     MPIDI_STATE_DECL(MPID_GET2_CM_ACCEPT);
     MPIDI_FUNC_ENTER(MPID_GET2_CM_ACCEPT);
 
-    PRINT_DEBUG(DEBUG_CM_verbose > 0, "cm_accpet Enter\n");
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "cm_accept Enter\n");
 
     /*Prepare QP */
     MPIDI_PG_Get_vc(pg, msg->client_rank, &vc);
@@ -1100,7 +1115,7 @@ static int cm_accept_nopg(MPIDI_VC_t * vc, cm_msg * msg)
     int i;
     MPIDI_STATE_DECL(MPID_GEN2_CM_ACCEPT_NOPG);
     MPIDI_FUNC_ENTER(MPID_GEN2_CM_ACCEPT_NOPG);
-    PRINT_DEBUG(DEBUG_CM_verbose > 0, "cm_accpet_nopg Enter\n");
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "cm_accept_nopg Enter\n");
 
     PRINT_DEBUG(DEBUG_XRC_verbose > 0, "cm_accept_nopg\n");
 #ifdef _ENABLE_XRC_
@@ -1165,7 +1180,7 @@ static int cm_accept_nopg(MPIDI_VC_t * vc, cm_msg * msg)
         CM_ERR_ABORT("cm_send_ud_msg failed");
     }
 
-    PRINT_DEBUG(DEBUG_CM_verbose > 0, "cm_accpet_nopg Exit\n");
+    PRINT_DEBUG(DEBUG_CM_verbose > 0, "cm_accept_nopg Exit\n");
     MPIDI_FUNC_EXIT(MPID_GEN2_CM_ACCEPT_NOPG);
     return MPI_SUCCESS;
 }
@@ -1337,7 +1352,7 @@ static int cm_enable_nopg(MPIDI_VC_t * vc, cm_msg * msg)
 #define FUNCNAME cm_handle_msg
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int cm_handle_msg(cm_msg * msg)
+static int cm_handle_msg(cm_msg * msg)
 {
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;

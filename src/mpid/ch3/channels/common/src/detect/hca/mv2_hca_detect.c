@@ -246,6 +246,16 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
         return MV2_HCA_UNKWN;
     }
 
+#ifdef HAVE_LIBIBUMAD
+    static char last_name[UMAD_CA_NAME_LEN] = { '\0' };
+    static mv2_hca_type last_type = MV2_HCA_UNKWN;
+    if (!strncmp(dev_name, last_name, UMAD_CA_NAME_LEN)) {
+        return last_type;
+    } else {
+        strncpy(last_name, dev_name, UMAD_CA_NAME_LEN);
+    }
+#endif /* #ifdef HAVE_LIBIBUMAD */
+
     if (!strncmp(dev_name, MV2_STR_MLX4, 4)
         || !strncmp(dev_name, MV2_STR_MLX5, 4) 
         || !strncmp(dev_name, MV2_STR_MTHCA, 5)) {
@@ -285,12 +295,14 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 #else
         umad_ca_t umad_ca;
         if (umad_init() < 0) {
+            last_type = hca_type;
             return hca_type;
         }
 
         memset(&umad_ca, 0, sizeof(umad_ca_t));
 
         if (umad_get_ca(dev_name, &umad_ca) < 0) {
+            last_type = hca_type;
             return hca_type;
         }
 
@@ -299,6 +311,7 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
             if (!rate) {
                 umad_release_ca(&umad_ca);
                 umad_done();
+                last_type = hca_type;
                 return hca_type;
             }
         }
@@ -384,6 +397,9 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
     } else {
         hca_type = MV2_HCA_UNKWN;
     }    
+#ifdef HAVE_LIBIBUMAD
+    last_type = hca_type;
+#endif /* #ifdef HAVE_LIBIBUMAD */
     return hca_type;
 }
 #else
@@ -394,11 +410,10 @@ mv2_hca_type mv2_get_hca_type(void *dev)
 #endif
 
 #if defined(HAVE_LIBIBVERBS)
-mv2_arch_hca_type mv2_new_get_arch_hca_type (struct ibv_context *ctx,
-                                    struct ibv_device *ib_dev, uint64_t *guid)
+mv2_arch_hca_type mv2_new_get_arch_hca_type (mv2_hca_type hca_type)
 {
     mv2_arch_hca_type arch_hca = mv2_get_arch_type();
-    arch_hca = arch_hca << 32 | mv2_new_get_hca_type(ctx, ib_dev, guid);
+    arch_hca = arch_hca << 32 | hca_type;
     return arch_hca;
 }
 

@@ -182,9 +182,7 @@ int mv2_is_arch_hca_type(mv2_arch_hca_type arch_hca_type,
 /* Get architecture-hca type */
 #if defined(HAVE_LIBIBVERBS)
 mv2_arch_hca_type mv2_get_arch_hca_type (struct ibv_device *dev);
-mv2_arch_hca_type mv2_new_get_arch_hca_type (struct ibv_context *ctx,
-                                                struct ibv_device *dev,
-                                                uint64_t *guid);
+mv2_arch_hca_type mv2_new_get_arch_hca_type (mv2_hca_type hca_type);
 #else
 mv2_arch_hca_type mv2_get_arch_hca_type (void *dev);
 #endif

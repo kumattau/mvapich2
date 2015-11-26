@@ -80,6 +80,7 @@ main (int argc, char *argv[])
 
     print_header(myid, LAT);
 
+    
     /* Latency test */
     for(size = 0; size <= MAX_MSG_SIZE; size = (size ? size * 2 : 1)) {
         touch_data(s_buf, r_buf, myid, size);

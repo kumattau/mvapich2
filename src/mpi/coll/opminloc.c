@@ -45,28 +45,50 @@ typedef struct MPIR_longdoubleint_loctype {
    requires that we set loc to min of the locs if the two values are
    equal.  So we do "if a>b {} else if a>=b Y" which is the same as
    "if a>b X else if a==b Y" but avoids the warning. */
-#define MPIR_MINLOC_C_CASE(c_type_) {                   \
-        c_type_ *a = (c_type_ *)inoutvec;               \
-        c_type_ *b = (c_type_ *)invec;                  \
-        for (i=0; i<len; i++) {                         \
-            if (a[i].value > b[i].value) {              \
-                a[i].value = b[i].value;                \
-                a[i].loc   = b[i].loc;                  \
-            } else if (a[i].value >= b[i].value)        \
-                a[i].loc = MPIR_MIN(a[i].loc,b[i].loc); \
-        }                                               \
-    }                                                   \
+#define MPIR_MINLOC_C_CASE(c_type_) {                                   \
+        c_type_ *a = (c_type_ *)inoutvec;                               \
+        c_type_ *b = (c_type_ *)invec;                                  \
+        for (i=0; i<len; i++) {                                         \
+            if (a[i].value != a[i].value && b[i].value != b[i].value) { \
+                a[i].loc = MPIR_MIN(a[i].loc,b[i].loc);                 \
+            }                                                           \
+            else if  (a[i].value != a[i].value && b[i].value == b[i].value) { \
+                a[i].value = b[i].value;                                \
+                a[i].loc = b[i].loc;                                    \
+            }                                                           \
+            else if  (a[i].value == a[i].value && b[i].value != b[i].value) { \
+            }                                                           \
+            else {                                                      \
+                if (a[i].value > b[i].value) {                          \
+                    a[i].value = b[i].value;                            \
+                    a[i].loc   = b[i].loc;                              \
+                } else if (a[i].value >= b[i].value)                    \
+                    a[i].loc = MPIR_MIN(a[i].loc,b[i].loc);             \
+            }                                                           \
+        }                                                               \
+    }                                                                   \
     break
 
 #define MPIR_MINLOC_F_CASE(f_type_) {                   \
         f_type_ *a = (f_type_ *)inoutvec;               \
         f_type_ *b = (f_type_ *)invec;                  \
         for ( i=0; i<flen; i+=2 ) {                     \
-            if (a[i] > b[i]) {                          \
-                a[i]   = b[i];                          \
-                a[i+1] = b[i+1];                        \
-            } else if (a[i] >= b[i])                    \
+            if (a[i] != a[i] && b[i] != b[i]) {         \
                 a[i+1] = MPIR_MIN(a[i+1],b[i+1]);       \
+            }                                           \
+            else if  (a[i] != a[i] && b[i] == b[i]) {   \
+                a[i] = b[i];                            \
+                a[i+1] = b[i+1];                        \
+            }                                           \
+            else if  (a[i] == a[i] && b[i] != b[i]) {   \
+            }                                           \
+            else {                                      \
+                if (a[i] > b[i]) {                      \
+                    a[i]   = b[i];                      \
+                    a[i+1] = b[i+1];                    \
+                } else if (a[i] >= b[i])                \
+                    a[i+1] = MPIR_MIN(a[i+1],b[i+1]);   \
+            }                                           \
         }                                               \
     }                                                   \
     break

@@ -15,11 +15,7 @@
 #include "mpiutil.h"
 #include "rdma_impl.h"
 
-#undef FUNCNAME
-#define FUNCNAME create_eagercontig_request
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-static inline MPID_Request * create_eagercontig_request(MPIDI_VC_t * vc,
+static inline MPID_Request * create_eagercontig_request_inline(MPIDI_VC_t * vc,
                          MPIDI_CH3_Pkt_type_t reqtype,
                          const void * buf, MPIDI_msg_sz_t data_sz, int rank,
                          int tag, MPID_Comm * comm, int context_offset)
@@ -80,6 +76,20 @@ static inline MPID_Request * create_eagercontig_request(MPIDI_VC_t * vc,
 }
 
 #undef FUNCNAME
+#define FUNCNAME create_eagercontig_request
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+MPID_Request * create_eagercontig_request(MPIDI_VC_t * vc,
+                         MPIDI_CH3_Pkt_type_t reqtype,
+                         const void * buf, MPIDI_msg_sz_t data_sz, int rank,
+                         int tag, MPID_Comm * comm, int context_offset)
+{
+    return create_eagercontig_request_inline(vc, reqtype, buf, data_sz, rank,
+            tag, comm, context_offset);
+}
+
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_SMP_ContigSend
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -108,8 +118,9 @@ static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
         if( !nb ) {
             /* no available shared memory buffer, enqueue request, fallback to
              * MPIDI_CH3_PKT_EAGER_SEND */
-            sreq = create_eagercontig_request(vc, MPIDI_CH3_PKT_EAGER_SEND, buf, data_sz, rank, tag,
-                    comm, context_offset);
+            sreq = create_eagercontig_request_inline(vc,
+                    MPIDI_CH3_PKT_EAGER_SEND, buf, data_sz, rank, tag, comm,
+                    context_offset);
             if (sreq == NULL) {
                 MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");
             }
@@ -118,8 +129,8 @@ static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
         }
     } else {
         /* sendQ not empty, enqueue request, fallback MPIDI_CH3_PKT_EAGER_SEND */
-        sreq = create_eagercontig_request(vc, MPIDI_CH3_PKT_EAGER_SEND, buf, data_sz, rank, tag,
-                comm, context_offset);
+        sreq = create_eagercontig_request_inline(vc, MPIDI_CH3_PKT_EAGER_SEND,
+                buf, data_sz, rank, tag, comm, context_offset);
         if (sreq == NULL) {
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");
         }

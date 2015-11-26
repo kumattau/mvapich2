@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
         /* Comm. latency in seconds, fed to dummy_compute */
         latency_in_secs = timer/options.iterations;
 
-        init_arrays();
+        init_arrays(latency_in_secs);
         
         MPI_Barrier(MPI_COMM_WORLD);
 

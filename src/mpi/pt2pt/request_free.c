@@ -74,6 +74,11 @@ int MPI_Request_free(MPI_Request *request)
     
     MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_REQUEST_FREE);
+
+    if (*request == MPI_REQUEST_NULL) {
+        mpi_errno = MPI_ERR_REQUEST;
+        goto fn_exit;
+    }
     
     /* Validate handle parameters needing to be converted */
 #   ifdef HAVE_ERROR_CHECKING

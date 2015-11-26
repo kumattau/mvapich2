@@ -177,7 +177,7 @@ int MPI_Cancel(MPI_Request *request)
         {
 	    /* Validate request_ptr */
             MPID_Request_valid_ptr( request_ptr, mpi_errno );
-            if (mpi_errno) goto fn_fail;
+            if (mpi_errno) goto fn_exit;
         }
         MPID_END_ERROR_CHECKS;
     }

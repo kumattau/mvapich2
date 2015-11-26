@@ -232,7 +232,7 @@ void dump_vbuf(char* msg, vbuf* v);
 
 void mv2_print_vbuf_usage_usage();
 int init_vbuf_lock(void);
-
+void release_vbuf(vbuf* v);
 /*
  * Vbufs are allocated in blocks and threaded on a single free list.
  *
@@ -749,7 +749,6 @@ static inline void vbuf_init_rma_compare_and_swap(vbuf *v, void *l_addr, uint32_
 }
 
 int allocate_vbufs(struct ibv_pd* ptag[]);
-inline void release_vbuf(vbuf* v);
 
 void deallocate_vbufs(int);
 void deallocate_vbuf_region(void);

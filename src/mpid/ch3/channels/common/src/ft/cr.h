@@ -12,6 +12,7 @@
 #ifndef CR_H
 void MPIDI_CH3I_CR_lock (void);
 void MPIDI_CH3I_CR_unlock (void);
+void Wait_for_CR_Completion (void);
 
 #define CR_H
 
