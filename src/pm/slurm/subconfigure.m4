@@ -49,7 +49,9 @@ elif test "x$with_pmi" = "xpmi2/simple" -o "x$with_pmi" = "xpmi2"; then
              [PAC_PREPEND_FLAG([-lpmi2],[LIBS])
               PAC_PREPEND_FLAG([-lpmi2], [WRAPPER_LIBS])],
              [AC_MSG_ERROR([could not find the slurm libpmi2.  Configure aborted])])
-    AC_CHECK_FUNCS([PMI2_KVS_Ifence PMI2_KVS_Wait PMI2_Iallgather PMI2_Iallgather_wait])
+    AC_CHECK_FUNCS([PMI2_KVS_Ifence PMI2_KVS_Wait])
+    AC_CHECK_FUNCS([PMI2_Iallgather PMI2_Iallgather_wait])
+    AC_CHECK_FUNCS([PMI2_SHMEM_Iallgather PMI2_SHMEM_Iallgather_wait])
 else
     AC_MSG_ERROR([Selected PMI ($with_pmi) is not compatible with slurm])
 fi

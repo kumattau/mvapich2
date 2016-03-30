@@ -3,7 +3,7 @@
  *  (C) 2011 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -427,8 +427,16 @@ static int MPIDU_Sched_add_entry(struct MPIDU_Sched *s, int *idx, struct MPIDU_S
 
     if (s->num_entries == s->size) {
         /* need to grow the entries array */
-        s->entries = MPIU_Realloc(s->entries, 2*s->size*sizeof(struct MPIDU_Sched_entry));
-        if (s->entries == NULL) MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomem");
+        struct MPIDU_Sched_entry *entries = (struct MPIDU_Sched_entry *) MPIU_Malloc(2*s->size*sizeof(struct MPIDU_Sched_entry));
+        if (entries == NULL) MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomem");
+
+        /* Stage data to new memory location */
+        memmove(entries, s->entries, (s->size*sizeof(struct MPIDU_Sched_entry)));
+        /* Free existing memory */
+        MPIU_Free(s->entries);
+        /* Point to new memory */
+        s->entries = entries;
+        /* Reflect increased size */
         s->size *= 2;
     }
 

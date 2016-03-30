@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -14,8 +15,16 @@
 
 #include <sys/types.h>
 #include <stdint.h>
-#include <psm.h>
-#include <psm_mq.h>
+#include "mpichconf.h"
+#ifdef HAVE_LIBPSM2
+    #include <psm2.h>
+    #include <psm2_mq.h>
+    #define PSM_MQ_REQ_T    psm2_mq_req_t
+#elif HAVE_LIBPSM_INFINIPATH
+    #include <psm.h>
+    #include <psm_mq.h>
+    #define PSM_MQ_REQ_T    psm_mq_req_t
+#endif
 #include "mpiu_os_wrappers_pre.h"
 
 /* FIXME: These should be removed */
@@ -99,7 +108,7 @@ typedef struct MPIDI_CH3I_Process_group_s
 
 #define MPID_DEV_PSM
 #define MPID_DEV_PSM_REQUEST_DECL       \
-    psm_mq_req_t mqreq;                 \
+    PSM_MQ_REQ_T         mqreq;         \
     struct MPID_Request *psmcompnext;   \
     struct MPID_Request *psmcompprev;   \
     struct MPID_Request *savedreq;      \

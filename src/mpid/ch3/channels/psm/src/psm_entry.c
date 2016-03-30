@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -40,10 +41,10 @@ static int mv2_psm_ep_open_retry_secs  = 10;
 
 static char    scratch[WRBUFSZ];
 static char             *kvsid;
-static psm_uuid_t       psm_uuid;
+static PSM_UUID_T       psm_uuid;
 
 static int  psm_bcast_uuid(int pg_size, int pg_rank);
-static int  psm_allgather_epid(psm_epid_t *list, int pg_size, int pg_rank);
+static int  psm_allgather_epid(PSM_EPID_T *list, int pg_size, int pg_rank);
 static void psm_other_init(MPIDI_PG_t *pg);
 static void psm_preinit(int pg_size);
 static int  decode(unsigned s_len, char *src, unsigned d_len, char *dst);
@@ -52,7 +53,7 @@ static int  encode(unsigned s_len, char *src, unsigned d_len, char *dst);
 extern void MPIDI_CH3I_SHMEM_COLL_Cleanup();
 
 /* ensure that all procs have completed their call to psm_mq_init */
-static int psm_mq_init_barrier(psm_mq_t mq, int rank, int ranks, psm_epaddr_t* addrs)
+static int psm_mq_init_barrier(PSM_MQ_T mq, int rank, int ranks, PSM_EPADDR_T* addrs)
 {
     int tmp_rc;
     int rc = PSM_OK;
@@ -73,23 +74,42 @@ static int psm_mq_init_barrier(psm_mq_t mq, int rank, int ranks, psm_epaddr_t* a
         }
 
         /* post non-blocking receive for message with tag equal to source rank plus one */
-        uint64_t rtag = (uint64_t) src + 1;
-        uint64_t rtagsel = 0xFFFFFFFFFFFFFFFF;
-        psm_mq_req_t request;
-        tmp_rc = psm_mq_irecv(mq, rtag, rtagsel, MQ_FLAGS_NONE, NULL, 0, NULL, &request);
+        #if PSM_VERNO >= PSM_2_1_VERSION
+            psm2_mq_tag_t rtag, rtagsel;
+            rtagsel.tag0 = MQ_TAGSEL_ALL;
+            rtagsel.tag1 = MQ_TAGSEL_ALL;
+            rtagsel.tag2 = MQ_TAGSEL_ALL;
+
+        #else
+            uint64_t rtag;
+            uint64_t rtagsel = MQ_TAGSEL_ALL;
+        #endif
+
+        MAKE_PSM_SELECTOR(rtag, 0, 0, src+1);
+
+        PSM_MQ_REQ_T request;
+
+        tmp_rc = PSM_IRECV(mq, rtag, rtagsel, MQ_FLAGS_NONE, NULL, 0, NULL, &request);
         if (tmp_rc != PSM_OK) {
             rc = tmp_rc;
         }
 
         /* post blocking send to destination, set tag to be our rank plus one */
-        uint64_t stag = (uint64_t) rank + 1;
-        tmp_rc = psm_mq_send(mq, addrs[dst], MQ_FLAGS_NONE, stag, NULL, 0);
+        #if PSM_VERNO >= PSM_2_1_VERSION
+            psm2_mq_tag_t stag;
+        #else
+            uint64_t stag;
+        #endif
+
+        MAKE_PSM_SELECTOR(stag, 0, 0, rank+1);
+
+        tmp_rc = PSM_SEND(mq, addrs[dst], MQ_FLAGS_NONE, stag, NULL, 0);
         if (tmp_rc != PSM_OK) {
             rc = tmp_rc;
         }
 
         /* wait on non-blocking receive to complete */
-        tmp_rc = psm_mq_wait(&request, NULL);
+        tmp_rc = PSM_WAIT(&request, NULL);
 
         if (tmp_rc != PSM_OK) {
             rc = tmp_rc;
@@ -173,7 +193,7 @@ mv2_arch_hca_type MV2_get_arch_hca_type(void)
 
     for(i=0; i<num_devices; i++){
         hca_type = mv2_get_hca_type(dev_list[i]);
-        if(MV2_IS_QLE_CARD(hca_type))
+        if(MV2_IS_INTEL_CARD(hca_type) || MV2_IS_QLE_CARD(hca_type))
             break;
     }
 
@@ -189,12 +209,12 @@ mv2_arch_hca_type MV2_get_arch_hca_type(void)
 }
 
 /* print error string to stderr, flush stderr, and return error */
-static psm_error_t mv2_psm_err_handler(psm_ep_t ep, const psm_error_t error,
-        const char* error_string, psm_error_token_t token)
+static PSM_ERROR_T mv2_psm_err_handler(PSM_EP_T ep, const PSM_ERROR_T error,
+        const char* error_string, PSM_ERROR_TOKEN_T token)
 {
     /* print error and flush stderr */
     PRINT_ERROR("PSM error handler: %s : %s\n",
-                psm_error_get_string(error), error_string);
+                PSM_ERROR_GET_STRING(error), error_string);
     return error;
 }
 
@@ -208,9 +228,9 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     int verno_major, verno_minor;
     int pg_size, mpi_errno;
     int heterogeneity = 0; 
-    psm_epid_t myid, *epidlist = NULL;
-    psm_error_t *errs = NULL, err;
-    struct psm_ep_open_opts psm_opts;
+    PSM_EPID_T myid, *epidlist = NULL;
+    PSM_ERROR_T *errs = NULL, err;
+    struct PSM_EP_OPEN_OPTS psm_opts;
 
     /* Override split_type */
     MPID_Comm_fns = &comm_fns;
@@ -264,23 +284,20 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     psm_preinit(pg_size);
 
     /* override global error handler so we can print error messages */
-    psm_error_register_handler(NULL, mv2_psm_err_handler);
+    PSM_ERROR_REGISTER_HANDLER(NULL, mv2_psm_err_handler);
 
-    err = psm_init(&verno_major, &verno_minor);
+    err = PSM_INIT(&verno_major, &verno_minor);
     if(err != PSM_OK) {
-        fprintf(stderr, "psm_init failed with error: %s\n", psm_error_get_string(err));
+        #if PSM_VERNO >= PSM_2_1_VERSION
+            fprintf(stderr, "psm2_init failed with error: %s\n", PSM_ERROR_GET_STRING(err));
+        #else
+            fprintf(stderr, "psm_init failed with error: %s\n", PSM_ERROR_GET_STRING(err));
+        #endif
+
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psminit");
     }
 
-    /* By default, PSM sets cpu affinity on a process if it's not
-     * already set.  We disable cpu affinity in PSM here.  MVAPICH
-     * or the process launcher will set affinity, unless the user
-     * disabled it, but in that case, he probably doesn't want
-     * PSM to set it either.  In particular, we don't want PSM to
-     * set affinity on singleton MPI jobs (single-process MPI run
-     * w/o mpirun), since PSM will bind all such jobs to core 0. */
-    psm_ep_open_opts_get_defaults(&psm_opts);
-    psm_opts.affinity = PSM_EP_OPEN_AFFINITY_SKIP;
+    PSM_EP_OPEN_OPTS_GET_DEFAULTS(&psm_opts);
 
     /* number of times to retry psm_ep_open upon failure */
     if ((flag = getenv("MV2_PSM_EP_OPEN_RETRY_COUNT")) != NULL) {
@@ -317,19 +334,19 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
         if (err != PSM_OK) {
             PRINT_ERROR("MV2_WARNING: Failed to open an end-point: %s,"
                         " retry attempt %d of %d in %d seconds\n",
-                        psm_error_get_string(err), attempts,
+                        PSM_ERROR_GET_STRING(err), attempts,
                         mv2_psm_ep_open_retry_count, mv2_psm_ep_open_retry_secs);
             sleep(mv2_psm_ep_open_retry_secs);
         }
-        err = psm_ep_open(psm_uuid, &psm_opts, &psmdev_cw.ep, &myid);
+        err = PSM_EP_OPEN(psm_uuid, &psm_opts, &psmdev_cw.ep, &myid);
         attempts++;
     } while ((err != PSM_OK) && (attempts <= mv2_psm_ep_open_retry_count));
     if (err != PSM_OK) {
         fprintf(stderr, "psm_ep_open failed with error %s\n",
-                psm_error_get_string(err));
+                PSM_ERROR_GET_STRING(err));
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psmepopen");
     }
-    epidlist = (psm_epid_t *)MPIU_Malloc(pg_size * sizeof(psm_epid_t));
+    epidlist = (PSM_EPID_T *)MPIU_Malloc(pg_size * sizeof(PSM_EPID_T));
     if(epidlist == NULL) {
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_NO_MEM, "**psmnomem");
     }
@@ -340,20 +357,20 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
         goto fn_fail;
     }
 
-    psmdev_cw.epaddrs = (psm_epaddr_t *) MPIU_Malloc(pg_size * sizeof(psm_epaddr_t));
-    errs = (psm_error_t *) MPIU_Malloc(pg_size * sizeof(psm_error_t));
+    psmdev_cw.epaddrs = (PSM_EPADDR_T *) MPIU_Malloc(pg_size * sizeof(PSM_EPADDR_T));
+    errs = (PSM_ERROR_T *) MPIU_Malloc(pg_size * sizeof(PSM_ERROR_T));
     if(psmdev_cw.epaddrs == NULL || errs == NULL) {
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_NO_MEM, "**psmnomem");
     }
 
-    if((err = psm_ep_connect(psmdev_cw.ep, pg_size, epidlist, NULL, errs, 
+    if((err = PSM_EP_CONNECT(psmdev_cw.ep, pg_size, epidlist, NULL, errs,
                 psmdev_cw.epaddrs, TIMEOUT * SEC_IN_NS)) != PSM_OK) {
-        fprintf(stderr, "psm_ep_connect failed with error %s\n", psm_error_get_string(err));
+        fprintf(stderr, "psm_ep_connect failed with error %s\n", PSM_ERROR_GET_STRING(err));
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**psmconnectfailed");
     }
     DBG("psm_ep_connect done\n");
 
-    if((err = psm_mq_init(psmdev_cw.ep, PSM_MQ_ORDERMASK_ALL, NULL, 0, 
+    if((err = PSM_MQ_INIT(psmdev_cw.ep, PSM_MQ_ORDERMASK_ALL, NULL, 0,
                 &psmdev_cw.mq)) != PSM_OK) {
         DBG("psm_mq_init failed\n");
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**psm_mqinitfailed");
@@ -422,7 +439,7 @@ static void psm_preinit(int pg_size)
      * putenv("PSM_SHAREDCONTEXTS_MAX=16");*/
 
     /* for psm versions 2.0 or later, hints are needed for context sharing */
-    if(PSM_VERNO >= 0x0105) {
+    if(PSM_VERNO_MAJOR >= PSM_2_VERSION_MAJOR) {
         sprintf(scratch, "/dev/shm/mpi_%s_%d", kvsid, getpid());
         fp = fopen(scratch, "w");
         if(fp == NULL) {
@@ -447,27 +464,48 @@ static void psm_preinit(int pg_size)
 
         /* Should not override user settings. Updating to handle all 
          * possible scenarios. Refer to TRAC Ticket #457 */
-        if ( getenv("PSM_DEVICES") == NULL ) {
+        #if PSM_VERNO >= PSM_2_1_VERSION
+            /* PSM2 renamed PSM_* env vars to equivalent PSM2_* vars */
+            if ( getenv("PSM2_DEVICES") == NULL ) {
+        #else
+            if ( getenv("PSM_DEVICES") == NULL ) {
+        #endif
             if (universesize > n && n > 1) {
                 /* There are both local and remote ranks present;
                  * we require both the shm and ipath devices in
                  * this case. */
-                putenv("PSM_DEVICES=self,shm,ipath");
+                #if PSM_VERNO >= PSM_2_1_VERSION
+                    putenv("PSM2_DEVICES=self,shm,hfi");
+                #else
+                    putenv("PSM_DEVICES=self,shm,ipath");
+                #endif
             }
             else if (universesize > n && n == 1) {
                 /* There are only remote ranks; we do not require
                  * the shm device. */
-                putenv("PSM_DEVICES=self,ipath");
+                #if PSM_VERNO >= PSM_2_1_VERSION
+                    putenv("PSM2_DEVICES=self,hfi");
+                #else
+                    putenv("PSM_DEVICES=self,ipath");
+                #endif
             }
             else if (universesize == n && n > 1) {
                 /* There are only local ranks; we do not require the
                  * ipath device. */
-                putenv("PSM_DEVICES=self,shm");
+                #if PSM_VERNO >= PSM_2_1_VERSION
+                    putenv("PSM2_DEVICES=self,shm");
+                #else
+                    putenv("PSM_DEVICES=self,shm");
+                #endif
             }
             else if (universesize == 1 && n == 1) {
                 /* This is the only rank; we do not need either the
                    shm or the ipath device. */
-                putenv("PSM_DEVICES=self");
+                #if PSM_VERNO >= PSM_2_1_VERSION
+                    putenv("PSM2_DEVICES=self");
+                #else
+                    putenv("PSM_DEVICES=self");
+                #endif
             }
             else {
                 /* Impossible situation? Leave PSM_DEVICES as it
@@ -485,13 +523,18 @@ skip:
          * to be the default (usually "self,ipath") or what the user 
          * has set. Refer to TRAC Ticket #457
          * putenv("PSM_DEVICES=self,shm,ipath"); */
-         DBG("Memory-mapped file creation failed or unknown PSM version. \
-              Leaving PSM_DEVICES to default or user's settings. \n");
+        #if PSM_VERNO >= PSM_2_1_VERSION
+             DBG("Memory-mapped file creation failed or unknown PSM version. \
+                  Leaving PSM2_DEVICES to default or user's settings. \n");
+        #else
+             DBG("Memory-mapped file creation failed or unknown PSM version. \
+                  Leaving PSM_DEVICES to default or user's settings. \n");
+        #endif
     }
 }
 
 /* all ranks provide their epid via PMI put/get */
-static int psm_allgather_epid(psm_epid_t *list, int pg_size, int pg_rank)
+static int psm_allgather_epid(PSM_EPID_T *list, int pg_size, int pg_rank)
 {
     char *kvs_name;
     int kvslen;
@@ -542,11 +585,11 @@ static int psm_bcast_uuid(int pg_size, int pg_rank)
 {
     char *kvs_name;
     int mpi_errno = MPI_SUCCESS, valen;
-    int kvslen, srclen = sizeof(psm_uuid_t), dst = WRBUFSZ;
+    int kvslen, srclen = sizeof(PSM_UUID_T), dst = WRBUFSZ;
     char *kvskey;
 
     if(pg_rank == ROOT)
-        psm_uuid_generate(psm_uuid);
+        PSM_UUID_GENERATE(psm_uuid);
 
     if(pg_size == 1)
         return MPI_SUCCESS;
@@ -579,7 +622,7 @@ static int psm_bcast_uuid(int pg_size, int pg_rank)
         }
         strcat(scratch, "==");
         srclen = strlen(scratch);
-        if(decode(srclen, scratch, sizeof(psm_uuid_t), (char *)&psm_uuid)) {
+        if(decode(srclen, scratch, sizeof(PSM_UUID_T), (char *)&psm_uuid)) {
             fprintf(stderr, "base-64 decode failed of UUID\n");
             goto fn_fail;
         }
@@ -637,9 +680,9 @@ static void psm_other_init(MPIDI_PG_t *pg)
         vc->rndvRecv_fn = NULL;
     }
 
-    psm_mq_getopt(psmdev_cw.mq, PSM_MQ_RNDV_IPATH_SZ,
+    PSM_MQ_GETOPT(psmdev_cw.mq, PSM_MQ_RNDV_IPATH_SZ,
                 &ipath_rndv_thresh);
-    psm_mq_getopt(psmdev_cw.mq, PSM_MQ_RNDV_SHM_SZ,
+    PSM_MQ_GETOPT(psmdev_cw.mq, PSM_MQ_RNDV_SHM_SZ,
                 &i);
     if(i < ipath_rndv_thresh)
         ipath_rndv_thresh = i;

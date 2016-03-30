@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -16,10 +17,13 @@
 #define FUNCNAME psm_post_large_msg_irecv
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int psm_post_large_msg_irecv(void *buf, MPIDI_msg_sz_t buflen,
-            MPID_Request **request, uint64_t rtag, uint64_t rtagsel)
+#if PSM_VERNO >= PSM_2_1_VERSION
+    int psm_post_large_msg_irecv(void *buf, MPIDI_msg_sz_t buflen, MPID_Request **request, psm2_mq_tag_t *rtag, psm2_mq_tag_t *rtagsel)
+#else
+    int psm_post_large_msg_irecv(void *buf, MPIDI_msg_sz_t buflen, MPID_Request **request, uint64_t rtag, uint64_t rtagsel)
+#endif
 {
-    psm_error_t psmerr;
+    PSM_ERROR_T psmerr;
     MPID_Request *req = *request;
     int i = 0, steps = 0, balance = 0;
     int obj_ref = 0, cc_cnt = 0;
@@ -44,12 +48,12 @@ int psm_post_large_msg_irecv(void *buf, MPIDI_msg_sz_t buflen,
     MPIU_Object_set_ref(req, obj_ref);
 
     for (i = 0; i < steps; i++) {
-        psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
+        psmerr = PSM_IRECV_PTR(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
                     ipath_max_transfer_size, req, &(req->mqreq));
         buf += ipath_max_transfer_size;
     }
     if (balance) {
-        psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
+        psmerr = PSM_IRECV_PTR(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
                     balance, req, &(req->mqreq));
     }
 
@@ -63,8 +67,12 @@ int psm_post_large_msg_irecv(void *buf, MPIDI_msg_sz_t buflen,
 int psm_recv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
              MPI_Status *stat, MPID_Request **request)
 {
-    uint64_t rtag, rtagsel;
-    psm_error_t psmerr;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t rtag, rtagsel;
+    #else
+        uint64_t rtag, rtagsel;
+    #endif
+    PSM_ERROR_T psmerr;
     MPID_Request *req = *request;
     int mpi_errno = MPI_SUCCESS;
 
@@ -73,14 +81,25 @@ int psm_recv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
         goto fn_fail;
     }
 
-    rtag = 0;
-    rtagsel = MQ_TAGSEL_ALL;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        rtagsel.tag0 = MQ_TAGSEL_ALL;
+        rtagsel.tag1 = MQ_TAGSEL_ALL;
+        rtagsel.tag2 = MQ_TAGSEL_ALL;
+        if(unlikely(tag == MPI_ANY_TAG))
+            rtagsel.tag0 = MQ_TAGSEL_ANY_TAG;
+        if(unlikely(src == MPI_ANY_SOURCE))
+            rtagsel.tag1 = MQ_TAGSEL_ANY_SOURCE;
+    #else
+        rtag = 0;
+        rtagsel = MQ_TAGSEL_ALL;
+        if(unlikely(src == MPI_ANY_SOURCE))
+            rtagsel = MQ_TAGSEL_ANY_SOURCE;
+        if(unlikely(tag == MPI_ANY_TAG))
+            rtagsel = rtagsel & MQ_TAGSEL_ANY_TAG;
+    #endif
+
     MAKE_PSM_SELECTOR(rtag, context_id, tag, src);
-    if(unlikely(src == MPI_ANY_SOURCE))
-        rtagsel = MQ_TAGSEL_ANY_SOURCE;
-    if(unlikely(tag == MPI_ANY_TAG))
-        rtagsel = rtagsel & MQ_TAGSEL_ANY_TAG;
-       
+
     if(!req) {
         req = psm_create_req();
         if(unlikely(req == NULL)) {
@@ -95,9 +114,9 @@ int psm_recv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
     DBG("psm_irecv: expecting data from %d, tag = %d\n", src, tag);
     _psm_enter_;
     if ((unlikely(buflen > ipath_max_transfer_size))) {
-        psmerr = psm_post_large_msg_irecv(buf, buflen, request, rtag, rtagsel);
+        psmerr = PSM_LARGE_IRECV(buf, buflen, request, rtag, rtagsel);
     } else {
-        psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
+        psmerr = PSM_IRECV(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
                     buflen, req, &(req->mqreq));
     }
     _psm_exit_;
@@ -135,8 +154,12 @@ fn_fail:
 int psm_irecv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
         MPID_Request *req)
 {
-    uint64_t rtag, rtagsel;
-    psm_error_t psmerr;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t rtag, rtagsel;
+    #else
+        uint64_t rtag, rtagsel;
+    #endif
+    PSM_ERROR_T psmerr;
     int mpi_errno = MPI_SUCCESS;
 
     if(unlikely(buf == NULL && buflen > 0)) {
@@ -144,20 +167,32 @@ int psm_irecv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen
         goto fn_fail;
     }
 
-    rtag = 0;
-    rtagsel = MQ_TAGSEL_ALL;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        rtagsel.tag0 = MQ_TAGSEL_ALL;
+        rtagsel.tag1 = MQ_TAGSEL_ALL;
+        rtagsel.tag2 = MQ_TAGSEL_ALL;
+        if(unlikely(tag == MPI_ANY_TAG))
+            rtagsel.tag0 = MQ_TAGSEL_ANY_TAG;
+        if(unlikely(src == MPI_ANY_SOURCE))
+            rtagsel.tag1 = MQ_TAGSEL_ANY_SOURCE;
+        DBG("psm2_irecv: non-blocking\n");
+    #else
+        rtag = 0;
+        rtagsel = MQ_TAGSEL_ALL;
+        if(unlikely(src == MPI_ANY_SOURCE))
+            rtagsel = MQ_TAGSEL_ANY_SOURCE;
+        if(unlikely(tag == MPI_ANY_TAG))
+            rtagsel = rtagsel & MQ_TAGSEL_ANY_TAG;
+        DBG("psm_irecv: non-blocking\n");
+    #endif
+
     MAKE_PSM_SELECTOR(rtag, context_id, tag, src);
-    if(unlikely(src == MPI_ANY_SOURCE))
-        rtagsel = MQ_TAGSEL_ANY_SOURCE;
-    if(unlikely(tag == MPI_ANY_TAG))
-        rtagsel = rtagsel & MQ_TAGSEL_ANY_TAG;
-   
-    DBG("psm_irecv: non-blocking\n");
+
     _psm_enter_;
     if ((unlikely(buflen > ipath_max_transfer_size))) {
-        psmerr = psm_post_large_msg_irecv(buf, buflen, &req, rtag, rtagsel);
+        psmerr = PSM_LARGE_IRECV(buf, buflen, &req, rtag, rtagsel);
     } else {
-        psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
+        psmerr = PSM_IRECV(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, buf,
                     buflen, req, &(req->mqreq));
     }
     _psm_exit_;

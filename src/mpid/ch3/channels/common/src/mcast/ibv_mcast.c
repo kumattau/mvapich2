@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1046,11 +1046,11 @@ void mv2_mcast_flush_sendwin(message_queue_t * q)
     while (q->head) {
         v = q->head;
         mv2_mcast_remove_sendwin(q, v);
-        v->flags &= ~(UD_VBUF_SEND_INPROGRESS);
-        if (v->flags & UD_VBUF_FREE_PENIDING) {
+        if (v->flags & UD_VBUF_FREE_PENIDING)  {
             v->flags &= ~(UD_VBUF_FREE_PENIDING);
-            MRAILI_Release_vbuf(v);
+            release_vbuf(v);
         }
+        v->flags &= ~(UD_VBUF_SEND_INPROGRESS);
     }
 }
 
@@ -1137,6 +1137,7 @@ void mv2_process_mcast_msg(vbuf * v)
                         bcast_info->win_head + mcast_window_size)) {
                 PRINT_DEBUG(DEBUG_MCST_verbose > 3, "Dropped psn:%d head:%d tail:%d \n", 
                         p->psn, bcast_info->win_head, bcast_info->win_tail);
+                MRAILI_Release_vbuf(v);
                 break;
             }
 

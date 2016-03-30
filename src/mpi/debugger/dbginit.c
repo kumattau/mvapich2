@@ -4,6 +4,17 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/*
+ * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ */
 #include "mpiimpl.h"
 
 /* style:PMPIuse:PMPI_Get_processor_name:2 sig:0 */
@@ -353,9 +364,11 @@ void MPIR_Sendq_remember( MPID_Request *req,
 {
     MPIR_Sendq *p;
 
+#ifdef CHANNEL_MRAIL
     if (req->ch.reqtype == REQUEST_LIGHT) {
         return;
     }
+#endif
     MPIU_THREAD_CS_ENTER(HANDLE,req);
     if (pool) {
 	p = pool;
@@ -386,9 +399,11 @@ void MPIR_Sendq_forget( MPID_Request *req )
 {
     MPIR_Sendq *p, *prev;
 
+#ifdef CHANNEL_MRAIL
     if (req->ch.reqtype == REQUEST_LIGHT) {
         return;
     }
+#endif
     MPIU_THREAD_CS_ENTER(HANDLE,req);
     p    = req->dbg_next;
     if (!p) {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -165,7 +165,7 @@ struct ibv_srq *create_srq(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 }
 
 static int check_attrs(struct ibv_port_attr *port_attr,
-                       struct ibv_device_attr *dev_attr)
+                       struct ibv_device_attr *dev_attr, int user_set)
 {
     int ret = 0;
 #ifdef _ENABLE_XRC_
@@ -175,53 +175,89 @@ static int check_attrs(struct ibv_port_attr *port_attr,
     }
 #endif /* _ENABLE_XRC_ */
     if (port_attr->active_mtu < rdma_default_mtu) {
-        fprintf(stderr,
-                "Active MTU is %d, MV2_DEFAULT_MTU set to %d. See User Guide\n",
-                port_attr->active_mtu, rdma_default_mtu);
-        ret = 1;
+        if (!user_set) {
+            rdma_default_mtu = port_attr->active_mtu;
+        } else {
+            fprintf(stderr,
+                    "MV2_DEFAULT_MTU is set to %s, but maximum the HCA supports is %s.\n"
+                    "Please reset MV2_DEFAULT_MTU to a value <= %s\n",
+                    mv2_ibv_mtu_enum_to_string(rdma_default_mtu),
+                    mv2_ibv_mtu_enum_to_string(port_attr->active_mtu),
+                    mv2_ibv_mtu_enum_to_string(port_attr->active_mtu));
+            ret = 1;
+        }
     }
 
     if (dev_attr->max_qp_rd_atom < rdma_default_qp_ous_rd_atom) {
-        fprintf(stderr,
-                "Max MV2_DEFAULT_QP_OUS_RD_ATOM is %d, set to %d\n",
-                dev_attr->max_qp_rd_atom, rdma_default_qp_ous_rd_atom);
-        ret = 1;
+        if (!user_set) {
+            rdma_default_qp_ous_rd_atom = dev_attr->max_qp_rd_atom;
+        } else {
+            fprintf(stderr,
+                    "MV2_DEFAULT_QP_OUS_RD_ATOM is set to %d, but maximum the HCA supports is %d.\n"
+                    "Please reset MV2_DEFAULT_QP_OUS_RD_ATOM to a value <= %d\n",
+                    rdma_default_qp_ous_rd_atom, dev_attr->max_qp_rd_atom, dev_attr->max_qp_rd_atom);
+            ret = 1;
+        }
     }
 
     if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
         if (dev_attr->max_srq_sge < rdma_default_max_sg_list) {
-            fprintf(stderr,
-                    "Max MV2_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
-                    dev_attr->max_srq_sge, rdma_default_max_sg_list);
-            ret = 1;
+            if (!user_set) {
+                rdma_default_max_sg_list = dev_attr->max_srq_sge;
+            } else {
+                fprintf(stderr,
+                        "MV2_DEFAULT_MAX_SG_LIST is set to %d, but maximum the HCA supports is %d.\n"
+                        "Please reset MV2_DEFAULT_MAX_SG_LIST to a value <= %d\n",
+                        rdma_default_max_sg_list, dev_attr->max_srq_sge, dev_attr->max_srq_sge);
+                ret = 1;
+            }
         }
 
         if (dev_attr->max_srq_wr < mv2_srq_alloc_size) {
-            fprintf(stderr,
-                    "Max MV2_SRQ_SIZE is %d, set to %d\n",
-                    dev_attr->max_srq_wr, (int) mv2_srq_alloc_size);
-            ret = 1;
+            if (!user_set) {
+                mv2_srq_alloc_size = dev_attr->max_srq_wr;
+            } else {
+                fprintf(stderr,
+                        "MV2_SRQ_SIZE is set to %d, but maximum the HCA supports is %d.\n"
+                        "Please reset MV2_SRQ_SIZE to a value <= %d\n",
+                        (int) mv2_srq_alloc_size, dev_attr->max_srq_wr, dev_attr->max_srq_wr);
+                ret = 1;
+            }
         }
     } else {
         if (dev_attr->max_sge < rdma_default_max_sg_list) {
-            fprintf(stderr,
-                    "Max MV2_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
-                    dev_attr->max_sge, rdma_default_max_sg_list);
-            ret = 1;
+            if (!user_set) {
+                rdma_default_max_sg_list = dev_attr->max_sge;
+            } else {
+                fprintf(stderr,
+                        "Max MV2_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
+                        dev_attr->max_sge, rdma_default_max_sg_list);
+                ret = 1;
+            }
         }
 
         if (dev_attr->max_qp_wr < rdma_default_max_send_wqe) {
-            fprintf(stderr,
-                    "Max MV2_DEFAULT_MAX_SEND_WQE is %d, set to %d\n",
-                    dev_attr->max_qp_wr, (int) rdma_default_max_send_wqe);
-            ret = 1;
+            if (!user_set) {
+                rdma_default_max_send_wqe = dev_attr->max_qp_wr;
+            } else {
+                fprintf(stderr,
+                        "MV2_DEFAULT_MAX_SEND_WQE is set to %d, but maximum the HCA supports is %d.\n"
+                        "Please reset MV2_DEFAULT_MAX_SEND_WQE to a value <= %d\n",
+                        (int) rdma_default_max_send_wqe, dev_attr->max_qp_wr, dev_attr->max_qp_wr);
+                ret = 1;
+            }
         }
     }
     if (dev_attr->max_cqe < rdma_default_max_cq_size) {
-        fprintf(stderr,
-                "Max MV2_DEFAULT_MAX_CQ_SIZE is %d, set to %d\n",
-                dev_attr->max_cqe, (int) rdma_default_max_cq_size);
-        ret = 1;
+        if (!user_set) {
+            rdma_default_max_cq_size = dev_attr->max_cqe;
+        } else {
+            fprintf(stderr,
+                    "MV2_DEFAULT_MAX_CQ_SIZE is set to %d, but maximum the HCA supports is %d.\n"
+                    "Please reset MV2_DEFAULT_MAX_CQ_SIZE to a value <= %d\n",
+                    (int) rdma_default_max_cq_size, dev_attr->max_cqe, dev_attr->max_cqe);
+            ret = 1;
+        }
     }
 
     return ret;
@@ -676,7 +712,7 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 
                     mv2_MPIDI_CH3I_RDMA_Process.ports[i][k++] = j;
 
-                    if (check_attrs(&port_attr, &dev_attr)) {
+                    if (check_attrs(&port_attr, &dev_attr, 1)) {
                         MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
                                                   MPI_ERR_INTERN,
                                                   "**fail",
@@ -718,7 +754,7 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
             mv2_MPIDI_CH3I_RDMA_Process.lids[i][0] = port_attr.lid;
             mv2_MPIDI_CH3I_RDMA_Process.ports[i][0] = rdma_default_port;
 
-            if (check_attrs(&port_attr, &dev_attr)) {
+            if (check_attrs(&port_attr, &dev_attr, 0)) {
                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
                                           MPI_ERR_INTERN,
                                           "**fail",
@@ -879,7 +915,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                         ports[i][k++] = j;
 
 
-                        if (check_attrs(&port_attr, &dev_attr)) {
+                        if (check_attrs(&port_attr, &dev_attr, 1)) {
                             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                                       "**fail", "**fail %s",
                                                       "Attributes failed sanity check");
@@ -914,7 +950,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                             pg_rank);
                 }
 
-                if (check_attrs(&port_attr, &dev_attr)) {
+                if (check_attrs(&port_attr, &dev_attr, 0)) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                             "**fail", "**fail %s",
                             "Attributes failed sanity check");

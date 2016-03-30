@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -696,6 +696,7 @@ void MRAILI_Release_vbuf(vbuf* v)
      * to release this buffer to avoid to reusing buffer
      */
     if (v->flags & UD_VBUF_MCAST_MSG) {
+        MPIU_Assert(v->pending_send_polls > 0);
         v->pending_send_polls--;
         if(v->transport== IB_TRANSPORT_UD 
            && (v->flags & UD_VBUF_SEND_INPROGRESS || v->pending_send_polls > 0)) {

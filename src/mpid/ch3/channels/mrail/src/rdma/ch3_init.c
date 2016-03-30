@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -210,6 +210,13 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         dpm = !!atoi(dpm_str);
     }
     MPIDI_CH3I_Process.has_dpm = dpm;
+#ifdef _ENABLE_UD_
+    if (MPIDI_CH3I_Process.has_dpm) {
+        MPIU_Error_printf("Error: DPM is not supported with Hybrid builds.\n"
+                          "Please reconfigure MVAPICH2 library without --enable-hybrid option.\n");
+        MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
+    }
+#endif /* _ENABLE_UD_ */
     if (MPIDI_CH3I_Process.has_dpm) {
         setenv("MV2_ENABLE_AFFINITY", "0", 1);
     }
@@ -381,6 +388,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         mv2_use_eager_fast_send = 0;
     }
 #endif
+    if (MPIDI_CH3I_Process.has_dpm) {
+        mv2_use_eager_fast_send = 0;
+    }
 
     if (!SMP_ONLY) {
         /*
@@ -570,6 +580,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     mpi_errno = MPIDI_CH3U_Comm_register_destroy_hook(MPIDI_CH3I_comm_destroy, NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
+    if (rdma_use_blocking) {
+        MPIDI_PG_Get_vc(pg, pg_rank, &vc);
+        MPIDI_CH3I_CM_Connect_self(vc);
+    }
 
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_INIT);
@@ -801,8 +815,45 @@ int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_PG_Init(MPIDI_PG_t * pg)
 {
-    pg->ch.mrail = NULL;
+    char *value     = NULL;
+    int mpi_errno   = MPI_SUCCESS;
 
+    if ((value = getenv("MV2_SHMEM_BACKED_UD_CM")) != NULL) {
+        mv2_shmem_backed_ud_cm = !!atoi(value);
+    }
+    if ((value = getenv("MV2_SUPPORT_DPM")) != NULL) {
+        if (!!atoi(value)) {
+            mv2_shmem_backed_ud_cm = 0;
+        }
+    }
+
+    pg->ch.mrail = MPIU_Malloc(sizeof(MPIDI_CH3I_MRAIL_CM_t));
+    if (pg->ch.mrail == NULL) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+                "**nomem %s", "ud_cm mrail");
+    }
+    MPIU_Memset(pg->ch.mrail, 0, sizeof(MPIDI_CH3I_MRAIL_CM_t));
+
+    pg->ch.mrail->cm_ah = MPIU_Malloc(pg->size * sizeof(struct ibv_ah *));
+    if (pg->ch.mrail->cm_ah == NULL) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+                "**nomem %s", "cm_ah");
+    }
+    MPIU_Memset(pg->ch.mrail->cm_ah, 0, pg->size * sizeof(struct ibv_ah *));
+
+    if (!mv2_shmem_backed_ud_cm) {
+        pg->ch.mrail->cm_shmem.ud_cm =
+                MPIU_Malloc(pg->size * sizeof(MPIDI_CH3I_MRAIL_UD_CM_t));
+        if (pg->ch.mrail->cm_shmem.ud_cm == NULL) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+                    "**nomem %s", "ud_cm");
+        }
+        MPIU_Memset(pg->ch.mrail->cm_shmem.ud_cm, 0,
+                    pg->size * sizeof(MPIDI_CH3I_MRAIL_UD_CM_t));
+    }
+
+fn_exit:
+fn_fail:
     return MPI_SUCCESS;
 }
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -80,6 +80,7 @@ static int initialized = 0;
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t oracle_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+void Real_Free (void *ptr);
 
 static inline void
 increment_malloc_counter (void)

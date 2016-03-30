@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -32,6 +33,7 @@ static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
 #define MV2_STR_MTHCA        "mthca"
 #define MV2_STR_IPATH        "ipath"
 #define MV2_STR_QIB          "qib"
+#define MV2_STR_HFI1         "hfi1"
 #define MV2_STR_EHCA         "ehca"
 #define MV2_STR_CXGB3        "cxgb3"
 #define MV2_STR_CXGB4        "cxgb4"
@@ -62,6 +64,9 @@ static mv2_hca_types_log_t mv2_hca_types_log[] = {
 
     /* IBM Cards */
     {MV2_HCA_IBM_EHCA,      "MV2_HCA_IBM_EHCA"},
+
+    /* Intel Cards */
+    {MV2_HCA_INTEL_HFI1,    "MV2_HCA_INTEL_HFI1"},
     
     /* Chelsio Cards */
     {MV2_HCA_CHELSIO_T3,    "MV2_HCA_CHELSIO_T3"},
@@ -214,6 +219,9 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
 
     } else if(!strncmp(dev_name, MV2_STR_QIB, 3)) {
         hca_type = MV2_HCA_QLGIC_QIB;
+
+    } else if(!strncmp(dev_name, MV2_STR_HFI1, 4)) {
+        hca_type = MV2_HCA_INTEL_HFI1;
 
     } else if(!strncmp(dev_name, MV2_STR_EHCA, 4)) {
         hca_type = MV2_HCA_IBM_EHCA;
@@ -381,6 +389,9 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 
     } else if(!strncmp(dev_name, MV2_STR_QIB, 3)) {
         hca_type = MV2_HCA_QLGIC_QIB;
+
+    } else if (!strncmp(dev_name, MV2_STR_HFI1, 4)) {
+        hca_type = MV2_HCA_INTEL_HFI1;
 
     } else if(!strncmp(dev_name, MV2_STR_EHCA, 4)) {
         hca_type = MV2_HCA_IBM_EHCA;

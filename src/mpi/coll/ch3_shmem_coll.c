@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -43,6 +43,7 @@
 #if defined(CHANNEL_MRAIL)
 #include "rdma_impl.h"
 #endif
+#include "shmem_bar.h"
 #include "coll_shmem.h"
 #include "coll_shmem_internal.h"
 #include "gather_tuning.h"
@@ -314,10 +315,14 @@ int mv2_use_anl_collectives = 0;
 int mv2_shmem_coll_num_procs = 64;
 int mv2_shmem_coll_num_comm = 20;
 
-int mv2_shm_window_size = 32;
+int mv2_shm_window_size = 128;
 int mv2_shm_reduce_tree_degree = 4; 
 int mv2_shm_slot_len = 8192;
+#if defined(__powerpc__) || defined(__ppc__) || defined(__PPC__) || defined(__powerpc64__) || defined(__ppc64__)
+int mv2_use_slot_shmem_coll = 0;
+#else
 int mv2_use_slot_shmem_coll = 1;
+#endif
 int mv2_use_slot_shmem_bcast = 1;
 int mv2_use_mcast_pipeline_shm = 0;
 
@@ -1081,21 +1086,25 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
         for (j = 0; j < mv2_shmem_coll_num_comm; ++j) {
             for (i = 0; i < mv2_shmem_coll_num_procs; ++i) {
                 SHMEM_COLL_SYNC_CLR(child_complete_bcast, j, i);
+                WRITEBAR();
             }
 
             for (i = 0; i < mv2_shmem_coll_num_procs; ++i) {
                 SHMEM_COLL_SYNC_SET(root_complete_gather, j, i);
+                WRITEBAR();
             }
 
         }
         for (j = 0; j < mv2_g_shmem_coll_blocks; j++) {
             SHMEM_COLL_BLOCK_STATUS_CLR(shmem_coll_block_status, j);
+            WRITEBAR();
         }
 
 #if defined(_SMP_LIMIC_)
         for (j = 0; j < mv2_max_limic_comms; ++j) {
             for (i = 0; i < mv2_shmem_coll_num_procs; ++i) {
                 SHMEM_COLL_SYNC_CLR(limic_progress, j, i);
+                WRITEBAR();
             }
         }
         memset(shmem_coll->limic_hndl, 0, (sizeof (limic_user) * LIMIC_COLL_NUM_COMM));
@@ -1163,6 +1172,7 @@ int MPIDI_CH3I_SHMEM_Coll_get_free_block()
 {
     int i = 0;
     while (i < mv2_g_shmem_coll_blocks) {
+        READBAR();
         if (SHMEM_COLL_BLOCK_STATUS_INUSE(shmem_coll_block_status, i)) {
             i++;
         } else {
@@ -1172,6 +1182,7 @@ int MPIDI_CH3I_SHMEM_Coll_get_free_block()
 
     if (i < mv2_g_shmem_coll_blocks) {
         SHMEM_COLL_BLOCK_STATUS_SET(shmem_coll_block_status, i);
+        WRITEBAR();
         return i;
     } else {
         return -1;
@@ -1182,6 +1193,7 @@ int MPIDI_CH3I_SHMEM_Coll_get_free_block()
 void MPIDI_CH3I_SHMEM_Coll_Block_Clear_Status(int block_id)
 {
     SHMEM_COLL_BLOCK_STATUS_CLR(shmem_coll_block_status, block_id);
+    WRITEBAR();
 }
 
 /* Shared memory gather: rank zero is the root always*/
@@ -1199,6 +1211,7 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank,
 
     if (rank == 0) {
         for (; i < size; ++i) {
+            READBAR();
             while (SHMEM_COLL_SYNC_ISCLR(child_complete_gather, shmem_comm_rank, i)) {
 #if defined(CKPT)
                 Wait_for_CR_Completion();
@@ -1227,15 +1240,19 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank,
                         MPIDI_CH3I_CR_lock();
 #endif
                 }
-            MPIU_THREAD_CHECK_END}
+                MPIU_THREAD_CHECK_END
+                READBAR();
+            }
         }
         /* Set the completion flags back to zero */
         for (i = 1; i < size; ++i) {
             SHMEM_COLL_SYNC_CLR(child_complete_gather, shmem_comm_rank, i);
+            WRITEBAR();
         }
 
         *output_buf = (char *) shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
     } else {
+        READBAR();
         while (SHMEM_COLL_SYNC_ISCLR(root_complete_gather, shmem_comm_rank, rank)) {
 #if defined(CKPT)
             Wait_for_CR_Completion();
@@ -1264,9 +1281,12 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank,
                     MPIDI_CH3I_CR_lock();
 #endif
             }
-        MPIU_THREAD_CHECK_END}
+            MPIU_THREAD_CHECK_END
+            READBAR();
+        }
 
         SHMEM_COLL_SYNC_CLR(root_complete_gather, shmem_comm_rank, rank);
+        WRITEBAR();
         *output_buf = (char *) shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
     }
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF);
@@ -1288,6 +1308,7 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
 
     if (rank == 0) {
         for (; i < size; ++i) {
+            READBAR();
             while (SHMEM_COLL_SYNC_ISSET(child_complete_bcast, shmem_comm_rank, i)) {
 #if defined(CKPT)
                 Wait_for_CR_Completion();
@@ -1316,10 +1337,13 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
                         MPIDI_CH3I_CR_lock();
 #endif
                 }
-            MPIU_THREAD_CHECK_END}
+                MPIU_THREAD_CHECK_END
+                READBAR();
+            }
         }
         *output_buf = (char *) shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
     } else {
+        READBAR();
         while (SHMEM_COLL_SYNC_ISCLR(child_complete_bcast, shmem_comm_rank, rank)) {
 #if defined(CKPT)
             Wait_for_CR_Completion();
@@ -1348,7 +1372,9 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
                     MPIDI_CH3I_CR_lock();
 #endif
             }
-        MPIU_THREAD_CHECK_END}
+            MPIU_THREAD_CHECK_END
+            READBAR();
+        }
         *output_buf = (char *) shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
     }
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_BCAST_GETBUF);
@@ -1368,9 +1394,11 @@ void MPIDI_CH3I_SHMEM_Bcast_Complete(int size, int rank, int shmem_comm_rank)
     if (rank == 0) {
         for (; i < size; ++i) {
             SHMEM_COLL_SYNC_SET(child_complete_bcast, shmem_comm_rank, i);
+            WRITEBAR();
         }
     } else {
         SHMEM_COLL_SYNC_CLR(child_complete_bcast, shmem_comm_rank, rank);
+        WRITEBAR();
     }
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF);
 }
@@ -1388,9 +1416,11 @@ void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int size, int rank, int shmem_comm_
     if (rank == 0) {
         for (; i < size; ++i) {
             SHMEM_COLL_SYNC_SET(root_complete_gather, shmem_comm_rank, i);
+            WRITEBAR();
         }
     } else {
         SHMEM_COLL_SYNC_SET(child_complete_gather, shmem_comm_rank, rank);
+        WRITEBAR();
     }
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETGATHERCOMPLETE);
 }
@@ -1407,6 +1437,7 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
 
     if (rank == 0) {
         for (; i < size; ++i) {
+            READBAR();
             while (SHMEM_COLL_SYNC_ISCLR(barrier_gather, shmem_comm_rank, i)) {
 #if defined(CKPT)
                 Wait_for_CR_Completion();
@@ -1435,13 +1466,17 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
                         MPIDI_CH3I_CR_lock();
 #endif
                 }
-            MPIU_THREAD_CHECK_END}
+                MPIU_THREAD_CHECK_END
+                READBAR();
+            }
         }
         for (i = 1; i < size; ++i) {
             SHMEM_COLL_SYNC_CLR(barrier_gather, shmem_comm_rank, i);
+            WRITEBAR();
         }
     } else {
         SHMEM_COLL_SYNC_SET(barrier_gather, shmem_comm_rank, rank);
+        WRITEBAR();
     }
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_GATHER);
 }
@@ -1460,8 +1495,10 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
     if (rank == 0) {
         for (; i < size; ++i) {
             SHMEM_COLL_SYNC_SET(barrier_bcast, shmem_comm_rank, i);
+            WRITEBAR();
         }
     } else {
+        READBAR();
         while (SHMEM_COLL_SYNC_ISCLR(barrier_bcast, shmem_comm_rank, rank)) {
 #if defined(CKPT)
             Wait_for_CR_Completion();
@@ -1490,8 +1527,11 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
                     MPIDI_CH3I_CR_lock();
 #endif
             }
-        MPIU_THREAD_CHECK_END}
+            MPIU_THREAD_CHECK_END
+            READBAR();
+        }
         SHMEM_COLL_SYNC_CLR(barrier_bcast, shmem_comm_rank, rank);
+        WRITEBAR();
     }
 
     MPID_Progress_test();
@@ -2389,7 +2429,11 @@ void MV2_Read_env_vars(void)
         mv2_shm_slot_len = atoi(value);
     }
     if ((value = getenv("MV2_USE_SLOT_SHMEM_COLL")) != NULL) {
+#if defined(__powerpc__) || defined(__ppc__) || defined(__PPC__) || defined(__powerpc64__) || defined(__ppc64__)
+        /* ignore mv2_use_slot_shmem_coll for PowerPC */
+#else
         mv2_use_slot_shmem_coll = atoi(value);
+#endif
     }
     if ((value = getenv("MV2_USE_SLOT_SHMEM_BCAST")) != NULL) {
         mv2_use_slot_shmem_bcast = atoi(value);
@@ -2891,6 +2935,7 @@ int MPIDI_CH3I_LIMIC_Gather_Start(void *buf, MPI_Aint size, int sendbuf_offset,
     if (rank == 0) {
 
         for (; i < comm_size; ++i) {
+            READBAR();
             while (SHMEM_COLL_SYNC_ISSET(limic_progress, shmem_comm_rank, i)) {
 #if defined(CKPT)
                 Wait_for_CR_Completion();
@@ -2919,7 +2964,9 @@ int MPIDI_CH3I_LIMIC_Gather_Start(void *buf, MPI_Aint size, int sendbuf_offset,
                         MPIDI_CH3I_CR_lock();
 #endif
                 }
-            MPIU_THREAD_CHECK_END}
+                MPIU_THREAD_CHECK_END
+                READBAR();
+            }
         }
 
         if (buf != NULL && size > 0) {
@@ -2934,6 +2981,7 @@ int MPIDI_CH3I_LIMIC_Gather_Start(void *buf, MPI_Aint size, int sendbuf_offset,
                 shmem_coll->limic_hndl[shmem_comm_rank].offset + sendbuf_offset;
         }
     } else {
+        READBAR();
         while (SHMEM_COLL_SYNC_ISCLR(limic_progress, shmem_comm_rank, rank)) {
 #if defined(CKPT)
             Wait_for_CR_Completion();
@@ -2962,7 +3010,9 @@ int MPIDI_CH3I_LIMIC_Gather_Start(void *buf, MPI_Aint size, int sendbuf_offset,
                     MPIDI_CH3I_CR_lock();
 #endif
             }
-        MPIU_THREAD_CHECK_END}
+            MPIU_THREAD_CHECK_END
+            READBAR();
+        }
     }
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_LIMIC_GATHER_START);
     return mpi_errno;
@@ -2982,10 +3032,12 @@ int MPIDI_CH3I_LIMIC_Gather_Complete(int rank, int comm_size, int shmem_comm_ran
     if (rank == 0) {
         for (; i < comm_size; ++i) {
             SHMEM_COLL_SYNC_SET(limic_progress, shmem_comm_rank, i);
+            WRITEBAR();
         }
 
         /*Wait for all the non-leaders to complete */
         for (i = 1; i < comm_size; ++i) {
+            READBAR();
             while (SHMEM_COLL_SYNC_ISSET(limic_progress, shmem_comm_rank, i)) {
 #if defined(CKPT)
                 Wait_for_CR_Completion();
@@ -3014,11 +3066,14 @@ int MPIDI_CH3I_LIMIC_Gather_Complete(int rank, int comm_size, int shmem_comm_ran
                         MPIDI_CH3I_CR_lock();
 #endif
                 }
-            MPIU_THREAD_CHECK_END}
+                MPIU_THREAD_CHECK_END
+                READBAR();
+            }
         }
 
     } else {
         SHMEM_COLL_SYNC_CLR(limic_progress, shmem_comm_rank, rank);
+        WRITEBAR();
     }
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_LIMIC_COLL_GATHER_COMPLETE);
     return (mpi_errno);

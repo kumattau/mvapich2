@@ -1994,6 +1994,16 @@ export NEEDSPLIB
 
 AM_CONDITIONAL([BUILD_PROFILING_LIB],[test "$NEEDSPLIB" = "yes"])
 
+#OMB
+omb_subdir_args="--enable-embedded"
+PAC_APPEND_FLAG([--enable-mpi], [omb_subdir_args])
+PAC_APPEND_FLAG([--enable-mpi2], [omb_subdir_args])
+PAC_APPEND_FLAG([--enable-mpi3], [omb_subdir_args])
+AS_IF([test "$NEEDSPLIB" = "yes"],
+      [PAC_APPEND_FLAG([--with-plib], [omb_subdir_args])])
+PAC_CONFIG_SUBDIR_ARGS([osu_benchmarks],[$omb_subdir_args],[],[AC_MSG_ERROR(OMB configure failed)])
+
+
 # ---------------------------------------------------------------------------
 # determine rpath and other shared library flags for CC
 # src/env may not exist yet in a vpath build
@@ -6286,7 +6296,6 @@ dnl This includes an experimental pkgconfig file for ch3 in the src/pkgconfig
 dnl directory
 AC_OUTPUT(Makefile \
           examples/Makefile \
-          osu_benchmarks/Makefile \
           test/Makefile \
           test/commands/Makefile \
           src/include/mpichinfo.h \

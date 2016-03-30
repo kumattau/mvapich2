@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,9 +25,6 @@
 #include "coll_shmem.h"
 #include "hwloc_bind.h"
 #include "cm.h"
-#if defined(_MCST_SUPPORT_)
-#include "ibv_mcast.h"
-#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Flush
@@ -56,26 +53,6 @@ int MPIDI_CH3_Finalize()
 
     MPIDI_DBG_PRINTF((50, FCNAME, "entering"));
 
-#ifdef CKPT
-    mpi_errno = MPIDI_CH3I_CR_Finalize();
-    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
-#endif
-
-#ifdef _ENABLE_CUDA_
-    CUDA_COLL_Finalize();
-#endif
-
-    /* Shutdown the progress engine */
-    mpi_errno = MPIDI_CH3I_Progress_finalize();
-    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
-
-#if defined(_MCST_SUPPORT_)
-    if (rdma_enable_mcast) {
-        mv2_ud_destroy_ctx(mcast_ctx->ud_ctx);
-        MPIU_Free(mcast_ctx);
-    }
-#endif
-
     if (!SMP_ONLY) 
     {
 
@@ -100,6 +77,19 @@ int MPIDI_CH3_Finalize()
 
         if(mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
+
+#ifdef CKPT
+    mpi_errno = MPIDI_CH3I_CR_Finalize();
+    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+#endif
+
+#ifdef _ENABLE_CUDA_
+    CUDA_COLL_Finalize();
+#endif
+
+    /* Shutdown the progress engine */
+    mpi_errno = MPIDI_CH3I_Progress_finalize();
+    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     MV2_collectives_arch_finalize();
 

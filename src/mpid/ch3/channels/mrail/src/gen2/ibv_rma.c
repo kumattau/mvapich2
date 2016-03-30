@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -92,7 +92,7 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
     }
 
     if (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol) {
-        MPIDI_CH3I_MRAILI_rput_complete(vc, iov, 1, &nbytes, &v, rail);
+        MPIDI_CH3I_MRAILI_rput_complete(vc, iov, 1, (int *)&nbytes, &v, rail);
         v->sreq = req;
     }
 

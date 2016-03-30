@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -455,26 +455,11 @@ typedef struct MPIDI_CH3I_MRAIL_UD_CM {
 
 typedef struct MPIDI_CH3I_MRAIL_CM_SHMEM_Region {
     volatile int                *pid;
-    pthread_spinlock_t          *cm_shmem_lock;
     MPIDI_CH3I_MRAIL_UD_CM_t    *ud_cm;
 #ifdef _ENABLE_UD_
     mv2_ud_exch_info_t          **remote_ud_info;
 #endif /*_ENABLE_UD_ */
 } MPIDI_CH3I_MRAIL_CM_SHMEM_Region_t;
-
-/* Macro to lock/unlock ud cm region */
-#define MV2_LOCK_MRAIL_UD_CM_SHMEM_REGION(_pg)                  \
-do {                                                            \
-  if (mv2_shmem_backed_ud_cm) {                                 \
-    pthread_spin_lock((_pg)->ch.mrail->cm_shmem.cm_shmem_lock); \
-  }                                                             \
-} while(0);
-#define MV2_UNLOCK_MRAIL_UD_CM_SHMEM_REGION(_pg)                  \
-do {                                                              \
-  if (mv2_shmem_backed_ud_cm) {                                   \
-    pthread_spin_unlock((_pg)->ch.mrail->cm_shmem.cm_shmem_lock); \
-  }                                                               \
-} while(0);
 
 typedef struct MPIDI_CH3I_MRAIL_CM {
     int cm_shmem_fd;

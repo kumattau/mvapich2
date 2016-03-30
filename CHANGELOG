@@ -3,6 +3,54 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.2rc1 (03/29/2016)
+
+* Features and Enhancements (since 2.2b):
+    - Support for OpenPower architecture
+        - Optimized inter-node and intra-node communication
+    - Support for Intel Omni-Path architecture
+        - Thanks to Intel for contributing the patch
+        - Introduction of a new PSM2 channel for Omni-Path
+    - Support for RoCEv2
+    - Architecture detection for PSC Bridges system with Omni-Path
+    - Enhanced startup performance and reduced memory footprint for storing
+      InfiniBand end-point information with SLURM
+        - Support for shared memory based PMI operations
+        - Availability of an updated patch from the MVAPICH project website
+          with this support for SLURM installations
+    - Optimized pt-to-pt and collective tuning for Chameleon InfiniBand
+      systems at TACC/UoC
+    - Enable affinity by default for TrueScale(PSM) and Omni-Path(PSM2)
+      channels
+    - Enhanced tuning for shared-memory based MPI_Bcast
+    - Enhanced debugging support and error messages
+    - Update to hwloc version 1.11.2
+
+* Bug Fixes (since 2.2b):
+    - Fix issue in some of the internal algorithms used for MPI_Bcast,
+      MPI_Alltoall and MPI_Reduce
+    - Fix hang in one of the internal algorithms used for MPI_Scatter
+        - Thanks to Ivan Raikov@Stanford for reporting this issue
+    - Fix issue with rdma_connect operation
+    - Fix issue with Dynamic Process Management feature
+    - Fix issue with de-allocating InfiniBand resources in blocking mode
+    - Fix build errors caused due to improper compile time guards
+        - Thanks to Adam Moody@LLNL for the report
+    - Fix finalize hang when running in hybrid or UD-only mode
+        - Thanks to Jerome Vienne@TACC for reporting this issue
+    - Fix issue in MPI_Win_flush operation
+        - Thanks to Nenad Vukicevic for reporting this issue
+    - Fix out of memory issues with non-blocking collectives code
+        - Thanks to Phanisri Pradeep Pratapa and Fang Liu@GaTech for
+          reporting this issue
+    - Fix fall-through bug in external32 pack
+        - Thanks to Adam Moody@LLNL for the report and patch
+    - Fix issue with on-demand connection establishment and blocking mode
+        - Thanks to Maksym Planeta@TU Dresden for the report
+    - Fix memory leaks in hardware multicast based broadcast code
+    - Fix memory leaks in TrueScale(PSM) channel
+    - Fix compilation warnings
+
 MVAPICH2 2.2b (11/12/2015)
 
 * Features and Enhancements (since 2.2a):

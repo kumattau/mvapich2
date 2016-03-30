@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -54,6 +54,8 @@ static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 #define INTEL_XEON_E5_2698_V3_MODEL 63
 #define INTEL_XEON_E5_2660_V3_MODEL 63
 #define INTEL_XEON_E5_2680_V3_MODEL 63
+#define INTEL_XEON_E5_2695_V3_MODEL 63
+#define INTEL_XEON_E5_2670_V3_MODEL 64
 
 #define MV2_STR_VENDOR_ID    "vendor_id"
 #define MV2_STR_AUTH_AMD     "AuthenticAMD"
@@ -61,6 +63,7 @@ static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 #define MV2_STR_WS            " "
 #define MV2_STR_PHYSICAL     "physical"
 #define MV2_STR_MODEL_NAME   "model name"
+#define MV2_STR_POWER8_ID    "POWER8"
 
 #define INTEL_E5_2670_MODEL_NAME    "Intel(R) Xeon(R) CPU E5-2670 0 @ 2.60GHz"
 #define INTEL_E5_2680_MODEL_NAME    "Intel(R) Xeon(R) CPU E5-2680 0 @ 2.70GHz"
@@ -72,6 +75,9 @@ static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 #define INTEL_E5_2698_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2698 v3 @ 2.30GHz"
 #define INTEL_E5_2660_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2660 v3 @ 2.60GHz"
 #define INTEL_E5_2680_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2680 v3 @ 2.50GHz"
+#define INTEL_E5_2687W_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2687W v3 @ 3.10GHz"
+#define INTEL_E5_2670_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2670 v3 @ 2.30GHz"
+#define INTEL_E5_2695_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2695 v3 @ 2.30GHz"
 
 typedef struct _mv2_arch_types_log_t{
     uint64_t arch_type;
@@ -100,6 +106,9 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32,"MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32"},
     {MV2_ARCH_INTEL_XEON_E5_2660_V3_2S_20,"MV2_ARCH_INTEL_XEON_E5_2660_V3_2S_20"},
     {MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24,"MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24"},
+    {MV2_ARCH_INTEL_XEON_E5_2687W_V3_2S_20,"MV2_ARCH_INTEL_XEON_E5_2687W_V3_2S_20"},
+    {MV2_ARCH_INTEL_XEON_E5_2670_V3_2S_24,"MV2_ARCH_INTEL_XEON_E5_2670_V3_2S_24"},
+    {MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28,"MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28"},
 
     /* AMD Architectures */
     {MV2_ARCH_AMD_GENERIC,          "MV2_ARCH_AMD_GENERIC"},
@@ -112,6 +121,7 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
 
     /* IBM Architectures */
     {MV2_ARCH_IBM_PPC,              "MV2_ARCH_IBM_PPC"},
+    {MV2_ARCH_IBM_POWER8,           "MV2_ARCH_IBM_POWER8"},
 
     /* Unknown */
     {MV2_ARCH_UNKWN,                "MV2_ARCH_UNKWN"},
@@ -128,6 +138,7 @@ static mv2_cpu_family_types_log_t mv2_cpu_family_types_log[] =
     {MV2_CPU_FAMILY_NONE,  "MV2_CPU_FAMILY_NONE"},
     {MV2_CPU_FAMILY_INTEL, "MV2_CPU_FAMILY_INTEL"},
     {MV2_CPU_FAMILY_AMD,   "MV2_CPU_FAMILY_AMD"},
+    {MV2_CPU_FAMILY_POWER, "MV2_CPU_FAMILY_POWER"},
 };
 
 char *mv2_get_cpu_family_name(mv2_cpu_family_type cpu_family_type)
@@ -230,6 +241,16 @@ mv2_arch_type mv2_get_arch_type()
                     continue;
                 }
 
+                /* Identify the CPU Family for POWER */
+                if(! strcmp(key, "cpu")) {
+                    strtok(NULL, MV2_STR_WS);
+                    tmp = strtok(NULL, MV2_STR_WS);
+                    if (! strncmp(tmp, MV2_STR_POWER8_ID, strlen(MV2_STR_POWER8_ID))) {
+                        g_mv2_cpu_family_type = MV2_CPU_FAMILY_POWER;
+                        continue;
+                    }
+                }
+
                 if( -1 == g_mv2_cpu_model ) {
 
                     if(! strcmp(key, MV2_STR_MODEL)) {
@@ -310,6 +331,8 @@ mv2_arch_type mv2_get_arch_type()
 		                    }else if(NULL != strstr(model_name, INTEL_E5_2690_V2_MODEL_NAME)){
 		                        arch_type = MV2_ARCH_INTEL_XEON_E5_2690_V2_2S_20;
 		                    }
+		                } else if(NULL != strstr(model_name, INTEL_E5_2687W_V3_MODEL_NAME)){
+		                    arch_type = MV2_ARCH_INTEL_XEON_E5_2687W_V3_2S_20;
 					    } else if (INTEL_XEON_E5_2660_V3_MODEL == g_mv2_cpu_model) {
 		                    if(NULL != strstr(model_name, INTEL_E5_2660_V3_MODEL_NAME)) {
 		                        arch_type = MV2_ARCH_INTEL_XEON_E5_2660_V3_2S_20;
@@ -320,7 +343,13 @@ mv2_arch_type mv2_get_arch_type()
                                             arch_type = MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24;
                                         } else if(NULL != strstr(model_name, INTEL_E5_2690_V3_MODEL_NAME)){
                                             arch_type = MV2_ARCH_INTEL_XEON_E5_2690_V3_2S_24;
+                                        } else if(NULL != strstr(model_name, INTEL_E5_2670_V3_MODEL_NAME)){
+                                            arch_type = MV2_ARCH_INTEL_XEON_E5_2670_V3_2S_24;
                                         }
+                    } else if(28 == num_cpus){
+                        if(NULL != strstr(model_name, INTEL_E5_2695_V3_MODEL_NAME)) {
+                            arch_type = MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28;
+                        }
 				    } else if(32 == num_cpus){
 				        if(INTEL_XEON_E5_2698_V3_MODEL == g_mv2_cpu_model) {
 		                    if(NULL != strstr(model_name, INTEL_E5_2698_V3_MODEL_NAME)) {
@@ -334,10 +363,8 @@ mv2_arch_type mv2_get_arch_type()
                 arch_type = MV2_ARCH_AMD_GENERIC;
 
                 if(2 == num_sockets) {
-
                     if(4 == num_cpus) {
                         arch_type = MV2_ARCH_AMD_OPTERON_DUAL_4;
-                    
                     } else if(16 == num_cpus) {
                         arch_type =  MV2_ARCH_AMD_BULLDOZER_4274HE_16;
 
@@ -345,17 +372,16 @@ mv2_arch_type mv2_get_arch_type()
                         arch_type =  MV2_ARCH_AMD_MAGNY_COURS_24;
                     }
                 } else if(4 == num_sockets) {
-
                     if(16 == num_cpus) {
                         arch_type =  MV2_ARCH_AMD_BARCELONA_16;
-
                     } else if(32 == num_cpus) {
                         arch_type =  MV2_ARCH_AMD_OPTERON_6136_32;
-                    
-		    } else if(64 == num_cpus) {
+		            } else if(64 == num_cpus) {
                         arch_type =  MV2_ARCH_AMD_OPTERON_6276_64;
                     }
                 }
+            } else if(MV2_CPU_FAMILY_POWER == g_mv2_cpu_family_type) {
+                arch_type = MV2_ARCH_IBM_POWER8;
             }
         } else {
             fprintf(stderr, "Warning: %s: Failed to open \"%s\".\n", __func__,

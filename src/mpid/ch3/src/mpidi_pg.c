@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,10 @@
 
 #include "mpidimpl.h"
 #include "upmi.h"
+
+#if defined (CHANNEL_MRAIL)
+#include "mpidi_ch3_impl.h"
+#endif
 
 #define MAX_JOBID_LEN 1024
 

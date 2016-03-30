@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -369,6 +369,9 @@ int MPIDI_CH3_Flush(void);
 /* MPIDI_CH3I_CM_Connect should be called before using a VC to do
  * communication */
 int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc);
+
+/* Establish connection to self */
+int MPIDI_CH3I_CM_Connect_self(MPIDI_VC_t * vc);
 
 /* MPIDI_CH3I_CM_Establish should be called when detecting the first message
  * from a VC */

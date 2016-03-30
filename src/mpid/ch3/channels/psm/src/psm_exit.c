@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -24,28 +25,29 @@ int psm_dofinalize()
 {
     MPIDI_VC_t *vc = NULL;
     int mpi_errno = MPI_ERR_INTERN;
-    psm_error_t psmerr;
+    PSM_ERROR_T psmerr;
 
-    if((psmerr = psm_mq_finalize(psmdev_cw.mq)) != PSM_OK) {
+    if((psmerr = PSM_MQ_FINALIZE(psmdev_cw.mq)) != PSM_OK) {
         PSM_ERR_ABORT("psm_mq_finalize failed: %s\n",
-                psm_error_get_string(psmerr));
+                PSM_ERROR_GET_STRING(psmerr));
         MPIU_ERR_POP(mpi_errno);
     }
 
-    if((psmerr = psm_ep_close(psmdev_cw.ep, PSM_EP_CLOSE_GRACEFUL, 
+    if((psmerr = PSM_EP_CLOSE(psmdev_cw.ep, PSM_EP_CLOSE_GRACEFUL,
                      5 * SEC_IN_NS)) != PSM_OK) {
         PSM_ERR_ABORT("psm_ep_close failed: %s\n",
-                psm_error_get_string(psmerr));
+                PSM_ERROR_GET_STRING(psmerr));
         MPIU_ERR_POP(mpi_errno);
     }
 
-    if((psmerr = psm_finalize() != PSM_OK)) {
+    if((psmerr = PSM_FINALIZE() != PSM_OK)) {
         PSM_ERR_ABORT("psm_finalize failed: %s\n",
-                psm_error_get_string(psmerr));
+                PSM_ERROR_GET_STRING(psmerr));
         MPIU_ERR_POP(mpi_errno);
     }
     MPIU_Free(psmdev_cw.epaddrs);
 
+    psm_release_prepost_1sc();
     psm_deallocate_vbuf();
 
     MV2_collectives_arch_finalize();

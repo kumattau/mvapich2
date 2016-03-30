@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -18,8 +19,33 @@
 #endif
 
 #include <stdint.h>
-#include <psm.h>
-#include <psm_mq.h>
+#include "mpichconf.h"
+#ifdef HAVE_LIBPSM2
+    #include <psm2.h>
+    #include <psm2_mq.h>
+    /* PSM2 lib changed the names of PSM_* defines and env vars to PSM2_*.
+     * Since PSM2 does not define PSM_* defines, it is easier to add aliases
+     * from PSM_ to PSM2_ then have extra #ifdef PSM_VERNO blocks. */
+    #define PSM_VERNO                   PSM2_VERNO
+    #define PSM_VERNO_MAJOR             PSM2_VERNO_MAJOR
+    #define PSM_VERNO_MINOR             PSM2_VERNO_MINOR
+    #define PSM_OK                      PSM2_OK
+    #define PSM_EP_CLOSE_GRACEFUL       PSM2_EP_CLOSE_GRACEFUL
+    #define PSM_EP_OPEN_AFFINITY_SKIP   PSM2_EP_OPEN_AFFINITY_SKIP
+    #define PSM_MQ_RNDV_IPATH_SZ        PSM2_MQ_RNDV_IPATH_SZ
+    #define PSM_MQ_NO_COMPLETIONS       PSM2_MQ_NO_COMPLETIONS
+    #define PSM_MQ_ORDERMASK_ALL        PSM2_MQ_ORDERMASK_ALL
+    #define PSM_MQ_TRUNCATION           PSM2_MQ_TRUNCATION
+    #define PSM_MQ_RNDV_SHM_SZ          PSM2_MQ_RNDV_SHM_SZ
+    #define PSM_MQ_FLAG_SENDSYNC        PSM2_MQ_FLAG_SENDSYNC
+#elif HAVE_LIBPSM_INFINIPATH
+    #include <psm.h>
+    #include <psm_mq.h>
+#endif
+
+#define PSM_2_1_VERSION         0x0201
+#define PSM_2_VERSION_MAJOR     0x02
+
 #include <string.h>
 #include <pthread.h>
 #include "mpidimpl.h"
@@ -32,13 +58,22 @@
 #define MQ_FLAGS_NONE           0 
 
 /* tag selection macros, taken from mvapich-psm code */
-#define MQ_TAGSEL_ALL           0xffffffffffffffff
-#define TAG_BITS                32
-#define TAG_MASK                ~(MQ_TAGSEL_ALL << TAG_BITS)
-#define SRC_RANK_BITS           16
-#define SRC_RANK_MASK           ~(MQ_TAGSEL_ALL << SRC_RANK_BITS)
-#define MQ_TAGSEL_ANY_SOURCE    (MQ_TAGSEL_ALL << SRC_RANK_BITS)
-#define MQ_TAGSEL_ANY_TAG       ~(TAG_MASK << SRC_RANK_BITS)
+#if PSM_VERNO >= PSM_2_1_VERSION
+    /* PSM2 uses two instances of the new type psm2_mq_tag_t to hold the
+     * PSM tag and the tag selector. */
+    #define MQ_TAGSEL_ALL           0xffffffff
+    #define MQ_TAGSEL_ANY_TAG       0x00000000
+    #define MQ_TAGSEL_ANY_SOURCE    0x00000000
+#else
+    /* PSM1 uses a single 64-bit number to hold the PSM tag. */
+    #define MQ_TAGSEL_ALL           0xffffffffffffffff
+    #define TAG_BITS                32
+    #define TAG_MASK                ~(MQ_TAGSEL_ALL << TAG_BITS)
+    #define SRC_RANK_BITS           16
+    #define SRC_RANK_MASK           ~(MQ_TAGSEL_ALL << SRC_RANK_BITS)
+    #define MQ_TAGSEL_ANY_TAG       ~(TAG_MASK << SRC_RANK_BITS)
+    #define MQ_TAGSEL_ANY_SOURCE    (MQ_TAGSEL_ALL << SRC_RANK_BITS)
+#endif
 #define SEC_IN_NS               1000000000ULL
 
 /* Currently PSM has a max transfer limit of 1GB */
@@ -65,13 +100,112 @@
     fflush(stderr);                                                          \
 }while (0)
 
-#define MAKE_PSM_SELECTOR(out, cid, tag, rank) do { \
-        out = cid;                                  \
-        out = out << TAG_BITS;                      \
-        out = out | (tag & TAG_MASK);               \
-        out = out << SRC_RANK_BITS;                 \
-        out = out | (rank & SRC_RANK_MASK);         \
-} while(0)
+#if PSM_VERNO >= PSM_2_1_VERSION
+/* For PSM2, there is a performance enchancement that uses the MPI rank to
+ * place messages in separate hash buckets for faster message matching.
+ * In order to take advantage of this feature, the PSM2 tag must be in the
+ * order: user tag, rank, context id. PSM2 expects the PSM tag to be in
+ * this order to extract the rank id. */
+    #define MAKE_PSM_SELECTOR(out, cid, tag, rank) do { \
+        out.tag0 = tag;                                 \
+        out.tag1 = rank;                                \
+        out.tag2 = cid;                                 \
+    } while(0)
+#else
+    #define MAKE_PSM_SELECTOR(out, cid, tag, rank) do { \
+        out = cid;                                      \
+        out = out << TAG_BITS;                          \
+        out = out | (tag & TAG_MASK);                   \
+        out = out << SRC_RANK_BITS;                     \
+        out = out | (rank & SRC_RANK_MASK);             \
+    } while(0)
+#endif
+
+/* Macros for adding abstractions for psm_mq_send, psm_mq_isend, psm_mq_irecv, psm_mq_iprobe.
+ * These macros exist to avoid having "PSM_VERSION >= PSM_2_1_VERSION" multiple times in the code.
+ * These macros call in to the correct PSM function for the PSM version used, i.e.: psm_mq_send or psm_mq_send2
+ */
+#if PSM_VERNO >= PSM_2_1_VERSION
+    /* Functions added/edited in PSM 2 */
+    #define PSM_SEND(mq, epaddr, flags, stag, buf, buflen)                      psm2_mq_send2(mq, epaddr, flags, &stag, buf, buflen)
+    #define PSM_ISEND(mq, epaddr, flags, stag, buf, buflen, req, mqreq)         psm2_mq_isend2(mq, epaddr, flags, &stag, buf, buflen, req, mqreq)
+    #define PSM_ISEND_PTR(mq, epaddr, flags, stag, buf, buflen, req, mqreq)     psm2_mq_isend2(mq, epaddr, flags, stag, buf, buflen, req, mqreq)
+    #define PSM_LARGE_ISEND(rptr, dest, buf, buflen, stag, flags)               psm_large_msg_isend_pkt(rptr, dest, buf, buflen, &stag, flags)
+    #define PSM_IRECV(mq, rtag, rtagsel, flags, buf, buflen, req, mqreq)        psm2_mq_irecv2(mq, PSM2_MQ_ANY_ADDR, &rtag, &rtagsel, flags, buf, buflen, req, mqreq)
+    #define PSM_IRECV_PTR(mq, rtag, rtagsel, flags, buf, buflen, req, mqreq)    psm2_mq_irecv2(mq, PSM2_MQ_ANY_ADDR, rtag, rtagsel, flags, buf, buflen, req, mqreq)
+    #define PSM_LARGE_IRECV(buf, buflen, request, rtag, rtagsel)                psm_post_large_msg_irecv(buf, buflen, request, &rtag, &rtagsel)
+    #define PSM_IPROBE(mq, rtag, rtagsel, status)                               psm2_mq_iprobe2(mq, PSM2_MQ_ANY_ADDR, &rtag, &rtagsel, status)
+    #define PSM_TEST(req, status)                                               psm2_mq_test2(req,status)
+    #define PSM_IPEEK(mq, req, stat)                                            psm2_mq_ipeek2(mq, req, stat)
+    #define PSM_WAIT(mq, status)                                                psm2_mq_wait2(mq, status)
+
+    /* Symbols that have a renamed API in PSM2 but same functionality  */
+    #define PSM_POLL                                                            psm2_poll
+    #define PSM_MQ_STATUS_T                                                     psm2_mq_status2_t
+    #define PSM_MQ_INIT                                                         psm2_mq_init
+    #define PSM_MQ_FINALIZE                                                     psm2_mq_finalize
+    #define PSM_MQ_CANCEL                                                       psm2_mq_cancel
+    #define PSM_MQ_T                                                            psm2_mq_t
+    #define PSM_EP_T                                                            psm2_ep_t
+    #define PSM_EPID_T                                                          psm2_epid_t
+    #define PSM_UUID_T                                                          psm2_uuid_t
+    #define PSM_INIT                                                            psm2_init
+    #define PSM_EPADDR_T                                                        psm2_epaddr_t
+    #define PSM_ERROR_TOKEN_T                                                   psm2_error_token_t
+    #define PSM_EP_OPEN_OPTS                                                    psm2_ep_open_opts
+    #define PSM_MQ_GETOPT                                                       psm2_mq_getopt
+    #define PSM_FINALIZE                                                        psm2_finalize
+    #define PSM_ERROR_T                                                         psm2_error_t
+    #define PSM_ERROR_REGISTER_HANDLER                                          psm2_error_register_handler
+    #define PSM_ERROR_GET_STRING                                                psm2_error_get_string
+    #define PSM_EP_OPEN_OPTS_GET_DEFAULTS                                       psm2_ep_open_opts_get_defaults
+    #define PSM_EP_OPEN                                                         psm2_ep_open
+    #define PSM_EP_CONNECT                                                      psm2_ep_connect
+    #define PSM_EP_CLOSE                                                        psm2_ep_close
+    #define PSM_UUID_GENERATE                                                   psm2_uuid_generate
+    #ifndef PSM_MQ_REQ_T
+       #define PSM_MQ_REQ_T                                                     psm2_mq_req_t
+    #endif
+#else
+    #define PSM_SEND(mq, epaddr, flags, stag, buf, buflen)                      psm_mq_send(mq, epaddr, flags, stag, buf, buflen)
+    #define PSM_ISEND(mq, epaddr, flags, stag, buf, buflen, req, mqreq)         psm_mq_isend(mq, epaddr, flags, stag, buf, buflen, req, mqreq)
+    #define PSM_ISEND_PTR(mq, epaddr, flags, stag, buf, buflen, req, mqreq)     psm_mq_isend(mq, epaddr, flags, stag, buf, buflen, req, mqreq)
+    #define PSM_LARGE_ISEND(rptr, dest, buf, buflen, stag, flags)               psm_large_msg_isend_pkt(rptr, dest, buf, buflen, stag, flags)
+    #define PSM_IRECV(mq, rtag, rtagsel, flags, buf, buflen, req, mqreq)        psm_mq_irecv(mq, rtag, rtagsel, flags, buf, buflen, req, mqreq)
+    #define PSM_IRECV_PTR(mq, rtag, rtagsel, flags, buf, buflen, req, mqreq)    psm_mq_irecv(mq, rtag, rtagsel, flags, buf, buflen, req, mqreq)
+    #define PSM_LARGE_IRECV(buf, buflen, request, rtag, rtagsel)                psm_post_large_msg_irecv(buf, buflen, request, rtag, rtagsel)
+    #define PSM_IPROBE(mq, rtag, rtagsel, status)                               psm_mq_iprobe(mq, rtag, rtagsel, status)
+    #define PSM_TEST(req, status)                                               psm_mq_test(req,status)
+    #define PSM_IPEEK(mq, req, stat)                                            psm_mq_ipeek(mq, req, stat)
+    #define PSM_WAIT(mq, status)                                                psm_mq_wait(mq, status)
+
+    #define PSM_POLL                                                            psm_poll
+    #define PSM_MQ_STATUS_T                                                     psm_mq_status_t
+    #define PSM_MQ_INIT                                                         psm_mq_init
+    #define PSM_MQ_FINALIZE                                                     psm_mq_finalize
+    #define PSM_MQ_CANCEL                                                       psm_mq_cancel
+    #define PSM_MQ_T                                                            psm_mq_t
+    #define PSM_EP_T                                                            psm_ep_t
+    #define PSM_EPID_T                                                          psm_epid_t
+    #define PSM_UUID_T                                                          psm_uuid_t
+    #define PSM_EPADDR_T                                                        psm_epaddr_t
+    #define PSM_ERROR_TOKEN_T                                                   psm_error_token_t
+    #define PSM_EP_OPEN_OPTS                                                    psm_ep_open_opts
+    #define PSM_MQ_GETOPT                                                       psm_mq_getopt
+    #define PSM_INIT                                                            psm_init
+    #define PSM_FINALIZE                                                        psm_finalize
+    #define PSM_ERROR_T                                                         psm_error_t
+    #define PSM_ERROR_REGISTER_HANDLER                                          psm_error_register_handler
+    #define PSM_ERROR_GET_STRING                                                psm_error_get_string
+    #define PSM_EP_OPEN_OPTS_GET_DEFAULTS                                       psm_ep_open_opts_get_defaults
+    #define PSM_EP_OPEN                                                         psm_ep_open
+    #define PSM_EP_CONNECT                                                      psm_ep_connect
+    #define PSM_EP_CLOSE                                                        psm_ep_close
+    #define PSM_UUID_GENERATE                                                   psm_uuid_generate
+    #ifndef PSM_MQ_REQ_T
+       #define PSM_MQ_REQ_T                                                     psm_mq_req_t
+    #endif
+#endif
 
 #define CAN_BLK_PSM(_len) ((MPIR_ThreadInfo.thread_provided != MPI_THREAD_MULTIPLE) &&  \
                              (_len < ipath_rndv_thresh))
@@ -91,9 +225,11 @@ int (*psm_progress_unlock_fn)(pthread_spinlock_t *);
 #define PSM_COUNTERS    9 
 
 struct psmdev_info_t {
-    psm_ep_t        ep;
-    psm_mq_t        mq;
-    psm_epaddr_t    *epaddrs;
+    /* PSM1 structures renamed in PSM2 have the sam functionality for
+     * backwards compatibility.  */
+    PSM_EP_T        ep;
+    PSM_MQ_T        mq;
+    PSM_EPADDR_T    *epaddrs;
     int             pg_size;
     uint16_t        cnt[PSM_COUNTERS];
 };
@@ -121,12 +257,16 @@ extern size_t ipath_max_transfer_size;
 void psm_queue_init();
 int psm_dofinalize();
 int psm_do_cancel(MPID_Request *req);
-psm_error_t psm_probe(int src, int tag, int context, MPI_Status *stat);
+PSM_ERROR_T psm_probe(int src, int tag, int context, MPI_Status *stat);
 void psm_init_1sided();
 int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank);   
 int psm_istartmsgv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request **rptr);
-int psm_post_large_msg_irecv(void *buf, MPIDI_msg_sz_t buflen,
-            MPID_Request **request, uint64_t rtag, uint64_t rtagsel);
+/* PSM2 uses psm2_mq_tag_t instead of a uint64_t. */
+#if PSM_VERNO >= PSM_2_1_VERSION
+    int psm_post_large_msg_irecv(void *buf, MPIDI_msg_sz_t buflen, MPID_Request **request, psm2_mq_tag_t *rtag, psm2_mq_tag_t *rtagsel);
+#else
+    int psm_post_large_msg_irecv(void *buf, MPIDI_msg_sz_t buflen, MPID_Request **request, uint64_t rtag, uint64_t rtagsel);
+#endif
 int psm_recv(int rank, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
              MPI_Status *stat, MPID_Request **req);
 int psm_isendv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request *rptr);
@@ -141,11 +281,11 @@ int MPIDI_CH3_Recv(int rank, int tag, int cid, void *buf, MPIDI_msg_sz_t buflen,
 void psm_pe_yield();
 int psm_try_complete(MPID_Request *req);
 int psm_progress_wait(int blocking);
-int psm_map_error(psm_error_t psmerr);
+int psm_map_error(PSM_ERROR_T psmerr);
 MPID_Request *psm_create_req();
-void psm_update_mpistatus(MPI_Status *, psm_mq_status_t, int);
-psm_error_t psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m, 
-                  int dest, void *buf, MPIDI_msg_sz_t buflen);
+void psm_update_mpistatus(MPI_Status *, PSM_MQ_STATUS_T, int);
+PSM_ERROR_T psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m,
+                        int dest, void *buf, MPIDI_msg_sz_t buflen);
 int psm_1sided_input(MPID_Request *req, int inlen);
 int psm_1sided_putpkt(MPIDI_CH3_Pkt_put_t *pkt, MPID_IOV *iov, int iov_n,
                        MPID_Request **rptr);
@@ -164,9 +304,13 @@ int psm_1sided_getpkt(MPIDI_CH3_Pkt_get_t *pkt, MPID_IOV *iov, int iov_n,
 int psm_1sc_get_rndvrecv(MPID_Request *savreq, MPIDI_CH3_Pkt_t *pkt, int from_rank);
 int psm_dt_1scop(MPID_Request *req, char *buf, int len);
 int psm_complete_rndvrecv(MPID_Request *req, int inlen);
-psm_error_t psm_large_msg_isend_pkt(MPID_Request **rptr, int dest, void *buf,
-                MPIDI_msg_sz_t buflen, uint64_t stag, uint32_t flags);
-psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m, 
+/* PSM2 uses psm2_mq_tag_t instead of a uint64_t. */
+#if PSM_VERNO >= PSM_2_1_VERSION
+    PSM_ERROR_T psm_large_msg_isend_pkt(MPID_Request **rptr, int dest, void *buf, MPIDI_msg_sz_t buflen, psm2_mq_tag_t *stag, uint32_t flags);
+#else
+    PSM_ERROR_T psm_large_msg_isend_pkt(MPID_Request **rptr, int dest, void *buf, MPIDI_msg_sz_t buflen, uint64_t stag, uint32_t flags);
+#endif
+PSM_ERROR_T psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
                  int dest, void *buf, MPIDI_msg_sz_t buflen);
 int psm_send_1sided_ctrlpkt(MPID_Request **rptr, int dest, void *buf, 
                             MPIDI_msg_sz_t buflen, int src, int create_req);
@@ -178,6 +322,7 @@ int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
 void psm_do_ncrecv_complete(MPID_Request *req);
 void psm_dequeue_compreq(MPID_Request *req);
 void psm_prepost_1sc();
+void psm_release_prepost_1sc();
 int MPIDI_CH3_Probe(int source, int tag, int context, MPI_Status *stat,
                     int *complete, int blk);
 int MPID_Probe(int source, int tag, MPID_Comm * comm, int context_offset, 

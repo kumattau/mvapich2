@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,7 @@
 #include "debug_utils.h"
 #include "mv2_arch_hca_detect.h"
 
+extern int mv2_is_in_finalize;
 /* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
 extern int rdma_num_hcas;
 extern int rdma_num_req_hcas;
@@ -758,6 +759,7 @@ extern mv2_env_param_list_t param_list[];
 void mv2_show_all_params();
 void mv2_show_runlog_info(int level);
 void rdma_set_rdma_fast_path_params(int num_proc);
+const char *mv2_ibv_mtu_enum_to_string(enum ibv_mtu mtu);
 
 mv2_arch_hca_type MV2_get_arch_hca_type();
 

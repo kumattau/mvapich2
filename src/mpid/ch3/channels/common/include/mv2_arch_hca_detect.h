@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -32,6 +33,7 @@
  *         1 - 1000 - Mellanox Cards
  *      1001 - 2000 - Qlogic Cards
  *      2001 - 3000 - IBM Cards
+ *      3001 - 4000 - Intel HFI Cards
  *
  * 4096-8191 - iWarp Cards 
  *      5001 - 6000 - Chelsio Cards
@@ -62,6 +64,11 @@
 #define MV2_HCA_IBM_START       2001
 #define MV2_HCA_IBM_EHCA        2002
 #define MV2_HCA_IBM_END         3000
+
+/* Intel Cards */
+#define MV2_HCA_INTEL_START     3001
+#define MV2_HCA_INTEL_HFI1      3002
+#define MV2_HCA_INTEL_END       4000
 
 #define MV2_HCA_IB_TYPE_END     4095
 
@@ -95,6 +102,9 @@
 #define MV2_IS_QLE_CARD(_x) \
     ((_x) > MV2_HCA_QLGIC_START && (_x) < MV2_HCA_QLGIC_END)
 
+/* Check if given card is Intel card or not */
+#define MV2_IS_INTEL_CARD(_x) \
+    ((_x) > MV2_HCA_INTEL_START && (_x) < MV2_HCA_INTEL_END)
 
 /* Architecture Type 
  * Layout:
@@ -125,6 +135,9 @@
 #define MV2_ARCH_INTEL_XEON_E5_2660_V3_2S_20 17
 #define MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24 18
 #define MV2_ARCH_INTEL_XEON_E5_2690_V3_2S_24 19
+#define MV2_ARCH_INTEL_XEON_E5_2687W_V3_2S_20 20
+#define MV2_ARCH_INTEL_XEON_E5_2670_V3_2S_24 21
+#define MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28 22
 #define MV2_ARCH_INTEL_END              1000
 
 /* AMD Architectures */
@@ -141,6 +154,7 @@
 /* IBM Architectures */
 #define MV2_ARCH_IBM_START  3001
 #define MV2_ARCH_IBM_PPC    3002
+#define MV2_ARCH_IBM_POWER8 3003
 #define MV2_ARCH_IBM_END    4000
 
 typedef uint64_t mv2_arch_hca_type;
@@ -158,6 +172,7 @@ typedef enum{
     MV2_CPU_FAMILY_NONE=0,
     MV2_CPU_FAMILY_INTEL,
     MV2_CPU_FAMILY_AMD,
+    MV2_CPU_FAMILY_POWER,
 }mv2_cpu_family_type;
 
 /* Multi-rail info */

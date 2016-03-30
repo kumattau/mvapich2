@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -288,11 +288,13 @@ int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p,
 {
     int mpi_errno = MPI_SUCCESS;
     MPIDI_VC_t * vc;
+#if !defined(CHANNEL_MRAIL)
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_eagershort_send_t * const eagershort_pkt = 
 	&upkt.eagershort_send;
-    MPID_Request *sreq = *sreq_p;
     MPID_IOV iov[MPID_IOV_LIMIT];
+#endif
+    MPID_Request *sreq = *sreq_p;
 #if defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */

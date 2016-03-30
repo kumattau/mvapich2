@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -302,6 +302,14 @@ extern char *strdup( const char * );
 #       undef MPIU_Strdup
 #       undef MPIU_Realloc
 #
+void *MPIT_malloc (size_t size, int lineno, char const * filename);
+void *MPIT_calloc (size_t nelements, size_t elementSize, int lineno, char const *filename);
+void MPIT_free (void * ptr, int lineno, char const * filename);
+char *MPIT_strdup (const char * s, int lineno, char const * filename);
+void *MPIT_realloc (void * ptr, size_t size, int lineno, char const * filename);
+int MPIT_memalign (void ** ptr, size_t alignment, size_t size, int lineno, char const * filename);
+void MPIT_memalign_free (void * ptr, int lineno, char const * filename);
+void MPIT_shmdt (void * ptr, int lineno, char const * filename);
 #       define MPIU_Malloc(a)       MPIT_malloc(a, __LINE__, __FILE__)
 #       define MPIU_Calloc(a,b)     MPIT_calloc(a, b, __LINE__, __FILE__)
 #       define MPIU_Free(a)         MPIT_free(a, __LINE__, __FILE__)

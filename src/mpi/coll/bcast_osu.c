@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -547,7 +547,7 @@ int MPIR_Bcast_scatter_doubling_allgather_MV2(void *buffer,
             }
             k--;
 
-            offset = scatter_size * (my_tree_root + mask);
+            offset = (scatter_size * (my_tree_root + mask)) % nbytes;
             tmp_mask = mask >> 1;
 
             while (tmp_mask) {

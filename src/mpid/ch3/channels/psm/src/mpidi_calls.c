@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -185,7 +186,7 @@ int MPIDI_CH3_VC_Init(MPIDI_VC_t *vc)
 inline void MPIDI_CH3_Progress_start(MPID_Progress_state *pstate)
 {
   _psm_enter_;
-  psm_poll(psmdev_cw.ep);
+    PSM_POLL(psmdev_cw.ep);
   _psm_exit_;
 }
 
@@ -291,7 +292,7 @@ int MPIDI_CH3_Probe(int source, int tag, int context, MPI_Status *stat,
                     int *complete, int blk)
 {
     int mpi_errno = MPI_SUCCESS, i;
-    psm_error_t psmerr;
+    PSM_ERROR_T psmerr;
     uint32_t ipath_spinlimit = 
       (MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) ? 100 : 1000;
    

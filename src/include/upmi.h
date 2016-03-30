@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2015, The Ohio State University. All rights
+ * Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -74,7 +74,9 @@ int UPMI_WAIT( void );
 
 int UPMI_IALLGATHER( const char value[] );
 
-int UPMI_IALLGATHER_WAIT( void *buf );
+int UPMI_IALLGATHER_WAIT( void **buf );
+
+int UPMI_IALLGATHER_FREE( void );
 
 int UPMI_ABORT( int exit_code, const char error_msg[] );
 

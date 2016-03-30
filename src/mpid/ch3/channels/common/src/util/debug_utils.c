@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -75,6 +75,9 @@ int DEBUG_CHM_verbose;
 // Verbosity level for Init phase
 int DEBUG_INIT_verbose;
 
+// Verbosity level for RDMA_CM
+int DEBUG_RDMACM_verbose;
+
 static inline int env2int (char *name)
 {
     char* env_str = getenv( name );
@@ -103,6 +106,7 @@ int initialize_debug_variables() {
     DEBUG_SHM_verbose = env2int( "MV2_DEBUG_SHM_VERBOSE" );
     DEBUG_CHM_verbose = env2int( "MV2_DEBUG_CHM_VERBOSE" );
     DEBUG_INIT_verbose = env2int( "MV2_DEBUG_INIT_VERBOSE" );
+    DEBUG_RDMACM_verbose = env2int( "MV2_DEBUG_RDMACM_VERBOSE" );
     return 0;
 }
 

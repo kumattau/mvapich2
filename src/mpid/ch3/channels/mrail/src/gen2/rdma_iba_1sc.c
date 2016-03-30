@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1033,7 +1033,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
                      * size, so check the data size here 
                      * IB atomic operations require aligned address*/
                     if (g_atomics_support && origin_type_size == 8 && curr_ptr->origin_datatype != MPI_DOUBLE
-                        && aligned && !has_iwarp)
+                        && aligned && !has_iwarp && curr_ptr->op == MPI_SUM)
                     {
                         iba_fetch_and_add(curr_ptr, win_ptr, origin_type_size);
                         MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);

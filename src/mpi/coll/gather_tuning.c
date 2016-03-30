@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -2435,7 +2435,8 @@ int MV2_internode_Gather_is_define(char *mv2_user_gather_inter,
     if (nb_element == 1) {
       mv2_tmp_gather_indexed_thresholds_table[0].numproc = 1;
       mv2_tmp_gather_indexed_thresholds_table[0].size_inter_table = 1;
-      mv2_tmp_gather_indexed_thresholds_table[0].inter_leader[0].msg_sz = 0;
+      mv2_tmp_gather_indexed_thresholds_table[0].inter_leader[0].msg_sz = 1;
+      mv2_tmp_gather_indexed_thresholds_table[0].intra_node[0].msg_sz = 1;
       switch (atoi(mv2_user_gather_inter)) {
       case 1:
 	mv2_tmp_gather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Gather_function =

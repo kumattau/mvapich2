@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -2348,6 +2348,8 @@ int MV2_internode_Bcast_is_define(char *mv2_user_bcast_inter, char *mv2_user_bca
       mv2_tmp_bcast_indexed_thresholds_table[0].size_inter_table = 1;
       mv2_tmp_bcast_indexed_thresholds_table[0].inter_leader[0].msg_sz = 1;
       mv2_tmp_bcast_indexed_thresholds_table[0].inter_leader[0].zcpy_pipelined_knomial_factor = -1;
+      mv2_tmp_bcast_indexed_thresholds_table[0].intra_node[0].msg_sz = 1;
+      mv2_tmp_bcast_indexed_thresholds_table[0].intra_node[0].zcpy_pipelined_knomial_factor = -1;
       switch (atoi(mv2_user_bcast_inter)) {
       case 1:
 	mv2_tmp_bcast_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Bcast_function =

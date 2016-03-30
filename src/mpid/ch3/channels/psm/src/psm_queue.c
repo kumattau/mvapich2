@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -47,7 +48,7 @@ void psm_queue_init()
 #define FUNCNAME psm_complete_req
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void psm_complete_req(MPID_Request *req, psm_mq_status_t psmstat)
+void psm_complete_req(MPID_Request *req, PSM_MQ_STATUS_T psmstat)
 {
     int count = 0;
 
@@ -79,9 +80,9 @@ void psm_complete_req(MPID_Request *req, psm_mq_status_t psmstat)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int psm_do_cancel(MPID_Request *req)
 {
-    psm_error_t psmerr;
+    PSM_ERROR_T psmerr;
     int mpi_errno = MPI_SUCCESS;
-    psm_mq_status_t status;
+    PSM_MQ_STATUS_T status;
 
     if(req->psm_flags & PSM_SEND_CANCEL) {
         printf("send cancel unsupported\n");
@@ -93,12 +94,12 @@ int psm_do_cancel(MPID_Request *req)
         DBG("recv cancel\n");
         req->psm_flags &= ~PSM_RECV_CANCEL;
         _psm_enter_;
-        psmerr = psm_mq_cancel(&(req->mqreq));
+        psmerr = PSM_MQ_CANCEL(&(req->mqreq));
         _psm_exit_;
         if(unlikely(psmerr != PSM_OK)) {
             MPIU_ERR_POP(mpi_errno);
         } else {
-            psmerr = psm_mq_test(&(req->mqreq), &status);
+            psmerr = PSM_TEST(&(req->mqreq), &status);
             if (psmerr == PSM_OK) {
                 MPIR_STATUS_SET_CANCEL_BIT(req->status, TRUE);
                 MPIR_STATUS_SET_COUNT(req->status, 0);
@@ -116,7 +117,7 @@ fn_fail:
 #define FUNCNAME psm_process_completion
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int psm_process_completion(MPID_Request *req, psm_mq_status_t gblstatus)
+int psm_process_completion(MPID_Request *req, PSM_MQ_STATUS_T gblstatus)
 {
     int mpi_errno = MPI_SUCCESS;
 
@@ -209,9 +210,9 @@ int psm_try_complete(MPID_Request *req)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int psm_progress_wait(int blocking)
 {
-    psm_error_t psmerr;
-    psm_mq_status_t gblstatus;
-    psm_mq_req_t gblpsmreq;
+    PSM_ERROR_T psmerr;
+    PSM_MQ_STATUS_T gblstatus;
+    PSM_MQ_REQ_T gblpsmreq;
     register MPID_Request *req;
     int mpi_errno = MPI_SUCCESS;
     int yield_count = ipath_progress_yield_count;
@@ -228,10 +229,10 @@ int psm_progress_wait(int blocking)
             goto out_2; 
         }
 
-        psmerr = psm_mq_ipeek(psmdev_cw.mq, &gblpsmreq, NULL);
+        psmerr = PSM_IPEEK(psmdev_cw.mq, &gblpsmreq, NULL);
 
         if(psmerr == PSM_OK) {
-            psmerr = psm_mq_test(&gblpsmreq, &gblstatus);
+            psmerr = PSM_TEST(&gblpsmreq, &gblstatus);
             _psm_progress_exit_;
             req = (MPID_Request *) gblstatus.context;
             DBG("got bytes from %d\n", (gblstatus.msg_tag & SRC_RANK_MASK));
@@ -292,22 +293,37 @@ void psm_dequeue_compreq(MPID_Request *req)
 #define FUNCNAME psm_probe
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-psm_error_t psm_probe(int src, int tag, int context, MPI_Status *stat)
+PSM_ERROR_T psm_probe(int src, int tag, int context, MPI_Status *stat)
 {
-    uint64_t rtag, rtagsel;
-    psm_error_t psmerr;
-    psm_mq_status_t gblstatus;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t rtag, rtagsel;
+    #else
+        uint64_t rtag, rtagsel;
+    #endif
+    PSM_MQ_STATUS_T gblstatus;
+    PSM_ERROR_T psmerr;
 
-    rtag = 0;
-    rtagsel = MQ_TAGSEL_ALL;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        rtagsel.tag0 = MQ_TAGSEL_ALL;
+        rtagsel.tag1 = MQ_TAGSEL_ALL;
+        rtagsel.tag2 = MQ_TAGSEL_ALL;
+        if(unlikely(tag == MPI_ANY_TAG))
+            rtagsel.tag0 = MQ_TAGSEL_ANY_TAG;
+        if(unlikely(src == MPI_ANY_SOURCE))
+            rtagsel.tag1 = MQ_TAGSEL_ANY_SOURCE;
+    #else
+        rtag = 0;
+        rtagsel = MQ_TAGSEL_ALL;
+        if(unlikely(tag == MPI_ANY_TAG))
+            rtagsel = rtagsel & MQ_TAGSEL_ANY_TAG;
+        if(unlikely(src == MPI_ANY_SOURCE))
+            rtagsel = MQ_TAGSEL_ANY_SOURCE;
+    #endif
+
     MAKE_PSM_SELECTOR(rtag, context, tag, src);
-    if(unlikely(src == MPI_ANY_SOURCE))
-        rtagsel = MQ_TAGSEL_ANY_SOURCE;
-    if(unlikely(tag == MPI_ANY_TAG))
-        rtagsel = rtagsel & MQ_TAGSEL_ANY_TAG;
     
     _psm_enter_;
-    psmerr = psm_mq_iprobe(psmdev_cw.mq, rtag, rtagsel, &gblstatus);
+    psmerr = PSM_IPROBE(psmdev_cw.mq, rtag, rtagsel, &gblstatus);
     _psm_exit_;
     if(psmerr == PSM_OK) {
         DBG("one psm probe completed\n");
@@ -342,11 +358,10 @@ void psm_pe_yield()
 #define FUNCNAME psm_update_mpistatus
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void psm_update_mpistatus(MPI_Status *stat, psm_mq_status_t psmst, int append)
+void psm_update_mpistatus(MPI_Status *stat, PSM_MQ_STATUS_T psmst, int append)
 {
     MPIDI_msg_sz_t old_nbytes = 0;
 
-    stat->MPI_TAG = (psmst.msg_tag >> SRC_RANK_BITS) & TAG_MASK;
     switch(psmst.error_code) {
         case PSM_OK:    
             stat->MPI_ERROR = MPI_SUCCESS;
@@ -356,8 +371,15 @@ void psm_update_mpistatus(MPI_Status *stat, psm_mq_status_t psmst, int append)
             break;
         default:
             break;
-    }           
-    stat->MPI_SOURCE = psmst.msg_tag & SRC_RANK_MASK;
+    }
+
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        stat->MPI_TAG = psmst.msg_tag.tag0;
+        stat->MPI_SOURCE = psmst.msg_tag.tag1;
+    #else
+        stat->MPI_TAG = (psmst.msg_tag >> SRC_RANK_BITS) & TAG_MASK;
+        stat->MPI_SOURCE = psmst.msg_tag & SRC_RANK_MASK;
+    #endif
 
     if (append) {
         old_nbytes = MPIR_STATUS_GET_COUNT(*stat);

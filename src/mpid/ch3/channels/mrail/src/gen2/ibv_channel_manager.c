@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -56,6 +56,8 @@ MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ibv_channel_ctrl_packet_count);
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2,
         mv2_ibv_channel_out_of_order_packet_count);
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ibv_channel_exact_recv_count);
+
+volatile int mv2_in_blocking_progress = 0;
 
 /*
  * TODO add error handling
@@ -771,6 +773,11 @@ inline int perform_blocking_progress_for_ib(int hca_num, int num_cqs)
     MPIU_THREAD_CHECK_END
 #endif
     do {    
+        if (unlikely(ibv_req_notify_cq(
+                        mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_num], 0))) {
+            ibv_error_abort(IBV_RETURN_ERR,
+                "Couldn't request for CQ notification\n");
+        }
         ret = ibv_get_cq_event(
                 mv2_MPIDI_CH3I_RDMA_Process.comp_channel[hca_num], 
                 &ev_cq, &ev_ctx);
@@ -792,12 +799,6 @@ inline int perform_blocking_progress_for_ib(int hca_num, int num_cqs)
 	
     ibv_ack_cq_events(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_num], 1);
 	
-	if (unlikely(ibv_req_notify_cq(
-                mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_num], 0))) {
-	    ibv_error_abort(IBV_RETURN_ERR,
-	            "Couldn't request for CQ notification\n");
-	}
-
     return 0;
 }
 
@@ -815,6 +816,24 @@ inline int perform_blocking_progress_for_iwarp(int hca_num, int num_cqs)
     MPIU_THREAD_CHECK_END
 #endif
     do {    
+        if (num_cqs == 1) {
+    	    if (ibv_req_notify_cq(
+                        mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_num], 0)) {
+    	        ibv_error_abort(IBV_RETURN_ERR,
+    	                "Couldn't request for CQ notification\n");
+    	    }
+        } else {
+    	    if (ibv_req_notify_cq(
+                  mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[hca_num], 0)) {
+    	        ibv_error_abort(IBV_RETURN_ERR,
+    	           "Couldn't request for CQ notification\n");
+    	    }
+    	    if (ibv_req_notify_cq(
+                  mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[hca_num], 0)) {
+    	        ibv_error_abort(IBV_RETURN_ERR,
+    	           "Couldn't request for CQ notification\n");
+    	    }
+        }
         ret = ibv_get_cq_event(
                 mv2_MPIDI_CH3I_RDMA_Process.comp_channel[hca_num], 
                 &ev_cq, &ev_ctx);
@@ -834,37 +853,17 @@ inline int perform_blocking_progress_for_iwarp(int hca_num, int num_cqs)
 	        ibv_error_abort(IBV_STATUS_ERR,
                              "Event in unknown CQ\n");
 	    }
-	
        ibv_ack_cq_events(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_num], 1);
-	
-	    if (ibv_req_notify_cq(
-                    mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_num], 0)) {
-	        ibv_error_abort(IBV_RETURN_ERR,
-	                "Couldn't request for CQ notification\n");
-	    }
     } else {
 	    if (ev_cq == mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[hca_num]) {
             ibv_ack_cq_events(
                     mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[hca_num], 1);
-	
-	        if (ibv_req_notify_cq(
-                  mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[hca_num], 0)) {
-	            ibv_error_abort(IBV_RETURN_ERR,
-	               "Couldn't request for CQ notification\n");
-	        }
         } else if (ev_cq == 
                     mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[hca_num]) {
             ibv_ack_cq_events(
                     mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[hca_num], 1);
-	
-	        if (ibv_req_notify_cq(
-                  mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[hca_num], 0)) {
-	            ibv_error_abort(IBV_RETURN_ERR,
-	               "Couldn't request for CQ notification\n");
-	        }
 	    } else {
-	       ibv_error_abort(IBV_STATUS_ERR,
-                             "Event in unknown CQ\n");
+	       ibv_error_abort(IBV_STATUS_ERR, "Event in unknown CQ\n");
         }
     }
 
@@ -963,7 +962,9 @@ int MPIDI_CH3I_MRAILI_Cq_poll_iwarp(vbuf **vbuf_handle,
     	
     	            /* Blocking mode progress */
     	            if(rdma_use_blocking && is_blocking && nspin >= rdma_blocking_spin_count_threshold) {
+                        mv2_in_blocking_progress = 1;
                         perform_blocking_progress(i, num_cqs);
+                        mv2_in_blocking_progress = 0;
     	                nspin = 0;
     	            }
     	        }
@@ -1045,7 +1046,9 @@ get_blocking_message:
     	        /* Blocking mode progress */
     	        if (unlikely(rdma_use_blocking && is_blocking &&
                             nspin >= rdma_blocking_spin_count_threshold)) {
+                    mv2_in_blocking_progress = 1;
                     perform_blocking_progress(i, num_cqs);
+                    mv2_in_blocking_progress = 0;
     	            nspin = 0;
                     goto get_blocking_message;
     	        }

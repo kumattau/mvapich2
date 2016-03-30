@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -108,9 +108,9 @@ int MPIR_Alltoall_inplace_MV2(
     
     if(sendbuf != MPI_IN_PLACE) {
        mpi_errno = MPIR_Localcopy((char *)sendbuf,
-                                  recvcount * recvtype_extent * comm_size, recvtype,
+                                  recvcount * comm_size, recvtype,
                                   (char *)recvbuf,
-                                  recvcount * recvtype_extent * comm_size, recvtype);
+                                  recvcount * comm_size, recvtype);
     }
 
     /* check if multiple threads are calling this collective function */

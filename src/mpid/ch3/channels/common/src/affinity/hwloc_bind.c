@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1841,7 +1841,7 @@ int smpi_set_progress_thread_affinity()
 int smpi_identify_allgather_local_core_ids(MPIDI_PG_t * pg)
 {
     int mpi_errno = MPI_SUCCESS;
-    int pg_size = 0, p = 0;
+    int p = 0;
     MPIDI_VC_t *vc = NULL;
     MPI_Request *request = NULL;
     MPI_Status *status= NULL;
@@ -1852,7 +1852,6 @@ int smpi_identify_allgather_local_core_ids(MPIDI_PG_t * pg)
     MPID_Comm_get_ptr(MPI_COMM_WORLD, comm_ptr );
     comm = comm_ptr->handle;
 
-    pg_size = MPIDI_PG_Get_size(pg);
     /* Allocate memory */
     local_core_ids = MPIU_Malloc(g_smpi.num_local_nodes * sizeof(int));
     if (local_core_ids== NULL) {
@@ -1966,7 +1965,6 @@ fn_fail:
 int smpi_identify_core_for_async_thread(MPIDI_PG_t * pg)
 {
     int i = 0;
-    int my_socket = -1;
     int mpi_errno = MPI_SUCCESS;
     hwloc_cpuset_t sock_cpuset = NULL;
     hwloc_cpuset_t free_sock_cpuset = NULL;

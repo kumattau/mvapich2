@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH software package developed by the
@@ -90,6 +90,7 @@ int cm_qp_reuse(MPIDI_VC_t * vc, MPIDI_VC_t * orig);
 #endif /* _ENABLE_XRC_ */
 int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
                                     mv2_arch_hca_type *arch_hca_type_all);
+int MPICM_Create_finalize_thread();
 
 #define MV2_QP_NEW      0
 #define MV2_QP_REUSE    1
@@ -97,6 +98,8 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
 #define MV2_QPT_RC      1
 #define MV2_QPT_XRC     2
 
+extern pthread_t cm_finalize_progress_thread;
+extern int mv2_finalize_upmi_barrier_complete;
 extern int mv2_pmi_max_keylen;
 extern int mv2_pmi_max_vallen;
 extern char *mv2_pmi_key;

@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -24,6 +24,8 @@
 #ifdef _SMP_LIMIC_
 #   include <limic.h>
 #endif
+
+#include <shmem_bar.h>
 
 /* SMP user parameters*/
 
@@ -76,7 +78,7 @@ typedef struct polling_set_element {
  ((a & 0xFFFFFFF8) - SMPI_CACHE_LINE_SIZE)
 
                                                                                                                                                
-#elif defined(_IA64_)
+#elif defined(_IA64_) || defined(__powerpc__) || defined(__ppc__) || defined(__PPC__) || defined(__powerpc64__) || defined(__ppc64__)
 
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \
@@ -220,4 +222,5 @@ extern struct smpi_var g_smpi;
 extern struct shared_mem *g_smpi_shmem;
 extern unsigned long eager_buffer_max_usage;
 extern unsigned long rndv_buffer_max_usage;
+
 #endif

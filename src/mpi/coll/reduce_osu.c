@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1197,6 +1197,7 @@ int MPIR_Reduce_Zcpy_MV2(const void *sendbuf,
     } else {
         in_buf = recvbuf;
     } 
+    
     mpi_errno = mv2_shm_zcpy_reduce(shmem_commptr->dev.ch.shmem_info, 
                                   in_buf, &out_buf, count, stride, 
                                   datatype, op,
@@ -1841,6 +1842,25 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
        is_two_level_reduce[inter_node_algo_index] == 1) {
                is_two_level = 1;
     }
+    
+#ifdef CHANNEL_MRAIL_GEN2
+    if (MPIR_Reduce_Zcpy_MV2 == MV2_Reduce_function) {
+       
+       if(mv2_use_slot_shmem_coll &&
+          mv2_enable_zcpy_reduce == 1 && 
+          comm_ptr->dev.ch.shmem_coll_ok == 1 &&
+          mv2_enable_shmem_reduce && is_commutative == 1) {
+           //do nothing and continue to use zcpy
+       }
+       else {
+           //fall back to trusty algorithm because it's invalid to
+           //use zcpy without the initializations.
+           MV2_Reduce_function = MPIR_Reduce_binomial_MV2;
+       }
+    } 
+#endif /* CHANNEL_MRAIL_GEN2 */
+
+    
     /* We call Reduce function */
     if(is_two_level == 1)
     {

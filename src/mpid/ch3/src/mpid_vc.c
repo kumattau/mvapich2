@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -830,6 +830,8 @@ int MPIDI_VC_Init( MPIDI_VC_t *vc, MPIDI_PG_t *pg, int rank )
     MPIDI_VC_Init_seqnum_recv(vc);
     vc->rndvSend_fn      = MPIDI_CH3_RndvSend;
     vc->rndvRecv_fn      = MPIDI_CH3_RecvRndv;
+    vc->eager_fast_fn    = NULL;
+    vc->eager_fast_rfp_fn= NULL;
 #if defined(CHANNEL_MRAIL)
     vc->free_vc = 0;
     vc->tmp_dpmvc = 0;

@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -411,13 +412,13 @@ fn_fail:
 #define FUNCNAME psm_map_error
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int psm_map_error(psm_error_t psmerr) 
+int psm_map_error(PSM_ERROR_T psmerr)
 {
     if(psmerr == PSM_OK) {
         return MPI_SUCCESS;
     }
 
-    fprintf(stderr, "psm error: %s\n", psm_error_get_string(psmerr));
+    fprintf(stderr, "psm error: %s\n", PSM_ERROR_GET_STRING(psmerr));
     fflush(stderr);
     return MPI_ERR_INTERN;
 }

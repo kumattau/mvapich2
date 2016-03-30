@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -13,14 +14,23 @@
 #include "psmpriv.h"
 #include "psm_vbuf.h"
 
-#define MAX_PREPOST 512
-#define RCV_PREPOST 128
+/* Choose correct type for PSM tag, either psm2_mq_tag_t or uint64_t */
+#if PSM_VERNO >= PSM_2_1_VERSION
+    #define MAKE_1SIDED_SELECTOR(_rt, _rts) do {              \
+        MAKE_PSM_SELECTOR(_rt, MPID_CONTEXT_PSMCTRL, 0, 0);   \
+        _rts.tag0 = MQ_TAGSEL_ANY_TAG;                        \
+        _rts.tag1 = MQ_TAGSEL_ANY_SOURCE;                     \
+        _rts.tag2 = MQ_TAGSEL_ALL;                            \
+    } while (0)
+#else
+    #define MAKE_1SIDED_SELECTOR(_rt, _rts) do {               \
+        _rt = 0;                                               \
+        MAKE_PSM_SELECTOR(_rt, MPID_CONTEXT_PSMCTRL, 0, 0);    \
+        _rts = (MQ_TAGSEL_ANY_SOURCE & MQ_TAGSEL_ANY_TAG);     \
+    } while (0)
+#endif
 
-#define MAKE_1SIDED_SELECTOR(_rt, _rts) do {               \
-    _rt = 0;                                               \
-    MAKE_PSM_SELECTOR(_rt, MPID_CONTEXT_PSMCTRL, 0, 0); \
-    _rts = (MQ_TAGSEL_ANY_SOURCE & MQ_TAGSEL_ANY_TAG);     \
-} while (0)
+psm_prepost_list_t *psm_prepost_list_head = NULL;
 
 static void psm_1sided_recv(MPID_Request *req, void *ptr);
 static void *psm_gen_packbuf(MPID_Request *rreq, MPID_Request *dtreq);
@@ -61,6 +71,9 @@ void psm_prepost_1sc()
     if(psm_tot_pposted_recvs >= MAX_PREPOST)
         return;
 
+    psm_prepost_list_t *plptr = (psm_prepost_list_t *)MPIU_Malloc(
+        sizeof(psm_prepost_list_t));
+
     for(i = 0; i < RCV_PREPOST; i++) {
         req = psm_create_req();
         req->kind = MPID_REQUEST_RECV;
@@ -68,14 +81,42 @@ void psm_prepost_1sc()
         ptr = psm_get_vbuf();
         req->vbufptr = ptr;
         ptr->req = (void*) req;
+        plptr->prepost_array[i] = ptr;
         psm_1sided_recv(req, ptr->buffer); 
     }
+
+    plptr->next = psm_prepost_list_head;
+    psm_prepost_list_head = plptr;
+
     DBG("pre-posted recv buffers\n");
+}
+
+void psm_release_prepost_1sc()
+{
+    int i;
+    MPID_Request *req;
+    psm_prepost_list_t *plptr = psm_prepost_list_head, *plpre;
+
+    while (plptr) {
+        for (i = 0; i < RCV_PREPOST; i++) {
+            if (plptr->prepost_array[i]) {
+                req = (MPID_Request*) plptr->prepost_array[i]->req;
+                MPIDI_CH3_Request_destroy(req);
+            }
+        }
+        plpre = plptr;
+        plptr = plptr->next;
+        MPIU_Free(plpre);
+    }
 }
 
 static void psm_1sided_recv(MPID_Request *req, void *ptr)
 {
-    uint64_t rtag, rtagsel;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t rtag ,rtagsel;
+    #else
+        uint64_t rtag, rtagsel;
+    #endif
     MAKE_1SIDED_SELECTOR(rtag, rtagsel);
 
     assert(req->psm_flags & PSM_1SIDED_PREPOST);
@@ -83,42 +124,50 @@ static void psm_1sided_recv(MPID_Request *req, void *ptr)
     req->psm_flags |= PSM_1SIDED_PREPOST;
     ++psm_tot_pposted_recvs;
     _psm_enter_;
-    psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, ptr,
+    PSM_IRECV(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, ptr,
                  PSM_VBUFSZ, req, &(req->mqreq));
     _psm_exit_;
 }
 
-static psm_error_t psm_iput(int dest, void *buf, MPIDI_msg_sz_t buflen, MPID_Request *req, int src)
+static PSM_ERROR_T psm_iput(int dest, void *buf, MPIDI_msg_sz_t buflen, MPID_Request *req, int src)
 {
-    uint64_t stag = 0;
-    psm_error_t psmerr;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t stag;
+    #else
+        uint64_t stag = 0;
+    #endif
+    PSM_ERROR_T psmerr;
 
     MAKE_PSM_SELECTOR(stag, MPID_CONTEXT_PSMCTRL, 0, src);
     _psm_enter_;
     if ((unlikely(buflen > ipath_max_transfer_size))) {
-        psmerr = psm_large_msg_isend_pkt(&req, dest, buf, buflen,
+        psmerr = PSM_LARGE_ISEND(&req, dest, buf, buflen,
                     stag, MQ_FLAGS_NONE);
     } else {
-        psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
+        psmerr = PSM_ISEND(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
                     MQ_FLAGS_NONE, stag, buf, buflen, req, &(req->mqreq));
     }
     _psm_exit_;
     return psmerr;
 }
 
-static psm_error_t psm_iget_rndvsend(MPID_Request *req, int dest, void *buf, MPIDI_msg_sz_t buflen,
+static PSM_ERROR_T psm_iget_rndvsend(MPID_Request *req, int dest, void *buf, MPIDI_msg_sz_t buflen,
                        int tag, int src)
 {
-    uint64_t stag = 0;
-    psm_error_t psmerr;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t stag;
+    #else
+        uint64_t stag = 0;
+    #endif
+    PSM_ERROR_T psmerr;
 
     MAKE_PSM_SELECTOR(stag, MPID_CONTEXT_RNDVPSM, tag, src);
     _psm_enter_;
     if ((unlikely(buflen > ipath_max_transfer_size))) {
-        psmerr = psm_large_msg_isend_pkt(&req, dest, buf, buflen,
+        psmerr = PSM_LARGE_ISEND(&req, dest, buf, buflen,
                     stag, MQ_FLAGS_NONE);
     } else {
-        psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
+        psmerr = PSM_ISEND(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
                     MQ_FLAGS_NONE, stag, buf, buflen, req, &(req->mqreq));
     }
     _psm_exit_;
@@ -127,8 +176,13 @@ static psm_error_t psm_iget_rndvsend(MPID_Request *req, int dest, void *buf, MPI
 
 void psm_iput_rndv(int dest, void *buf, MPIDI_msg_sz_t buflen, int tag, int src, MPID_Request **rptr)
 {
-    uint64_t stag = 0;
-    psm_error_t psmerr ATTRIBUTE((unused));
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t stag;
+    #else
+        uint64_t stag = 0;
+    #endif
+
+    PSM_ERROR_T psmerr ATTRIBUTE((unused));
     MPID_Request *rndvreq = NULL;
 
     rndvreq = psm_create_req();
@@ -140,10 +194,10 @@ void psm_iput_rndv(int dest, void *buf, MPIDI_msg_sz_t buflen, int tag, int src,
     MAKE_PSM_SELECTOR(stag, MPID_CONTEXT_RNDVPSM, tag, src);
     _psm_enter_;
     if ((unlikely(buflen > ipath_max_transfer_size))) {
-        psmerr = psm_large_msg_isend_pkt(rptr, dest, buf, buflen,
+        psmerr = PSM_LARGE_ISEND(rptr, dest, buf, buflen,
                     stag, MQ_FLAGS_NONE);
     } else {
-        psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
+        psmerr = PSM_ISEND(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
                 MQ_FLAGS_NONE, stag, buf, buflen, rndvreq, &(rndvreq->mqreq));
     }
     _psm_exit_;
@@ -321,8 +375,12 @@ int psm_1sided_getaccumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPID_IOV *iov, int iov_n,
     int mpi_errno = MPI_SUCCESS;
     MPIDI_msg_sz_t buflen = 0, len;
     MPID_Request *req;
-    uint64_t rtag, rtagsel;
-    psm_error_t psmerr;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t rtag, rtagsel;
+    #else
+        uint64_t rtag, rtagsel;
+    #endif
+    PSM_ERROR_T psmerr;
 
     req = psm_create_req();
     req->kind = MPID_REQUEST_SEND;
@@ -397,17 +455,23 @@ int psm_1sided_getaccumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPID_IOV *iov, int iov_n,
         }
         resp_req->savedreq = orig_resp_req;
 
-        rtag = 0;
-        rtagsel = MQ_TAGSEL_ALL;
+        #if PSM_VERNO >= PSM_2_1_VERSION
+            rtagsel.tag0 = MQ_TAGSEL_ALL;
+            rtagsel.tag1 = MQ_TAGSEL_ALL;
+            rtagsel.tag2 = MQ_TAGSEL_ALL;
+        #else
+            rtag = 0;
+            rtagsel = MQ_TAGSEL_ALL;
+        #endif
         MAKE_PSM_SELECTOR(rtag, MPID_CONTEXT_RNDVPSM, pkt->resp_rndv_tag,
                   pkt->mapped_trank);
 
         _psm_enter_;
         if ((unlikely(pkt->rndv_len > ipath_max_transfer_size))) {
-            psmerr = psm_post_large_msg_irecv(orig_resp_req->dev.user_buf, pkt->rndv_len,
+            psmerr = PSM_LARGE_IRECV(orig_resp_req->dev.user_buf, pkt->rndv_len,
                         &resp_req, rtag, rtagsel);
         } else {
-            psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE,
+            psmerr = PSM_IRECV(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE,
                         orig_resp_req->dev.user_buf, pkt->rndv_len, resp_req,
                         &(resp_req->mqreq));
         }
@@ -432,7 +496,7 @@ int psm_1sided_getaccumresppkt(MPIDI_CH3_Pkt_get_accum_resp_t *pkt, MPID_IOV *io
     void *iovp, *off;
     MPIDI_msg_sz_t buflen = 0, len;
     MPID_Request *req = (*rptr);
-    psm_error_t psmerr;
+    PSM_ERROR_T psmerr;
     int mpi_errno = MPI_SUCCESS, i;
 
     req->psm_flags |= PSM_GETACCUMRESP_REQ;
@@ -480,7 +544,7 @@ int psm_1sided_getpkt(MPIDI_CH3_Pkt_get_t *pkt, MPID_IOV *iov, int iov_n,
     MPIDI_msg_sz_t buflen = 0, len;
     int mpi_errno = MPI_SUCCESS, i;
     void *off, *iovp;
-    psm_error_t psmerr;
+    PSM_ERROR_T psmerr;
     vbuf *vptr;
     MPID_Request *req = (*rptr);
 
@@ -523,7 +587,7 @@ int psm_1sided_getresppkt(MPIDI_CH3_Pkt_get_resp_t *pkt, MPID_IOV *iov, int iov_
     void *iovp, *off;
     MPIDI_msg_sz_t buflen = 0, len;
     MPID_Request *req = (*rptr);
-    psm_error_t psmerr;
+    PSM_ERROR_T psmerr;
     int mpi_errno = MPI_SUCCESS, i;
 
     req->psm_flags |= PSM_GETRESP_REQ;
@@ -990,8 +1054,12 @@ int psm_1sc_get_rndvrecv(MPID_Request *savreq, MPIDI_CH3_Pkt_t *pkt, int from_ra
 {
     MPIDI_CH3_Pkt_get_t *getpkt = (MPIDI_CH3_Pkt_get_t *) pkt;
     MPID_Request *req;
-    uint64_t rtag, rtagsel;
-    psm_error_t psmerr;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t rtag, rtagsel;
+    #else
+        uint64_t rtag, rtagsel;
+    #endif
+    PSM_ERROR_T psmerr;
     int mpi_errno = MPI_SUCCESS;
 
     req = psm_create_req();
@@ -1007,18 +1075,23 @@ int psm_1sc_get_rndvrecv(MPID_Request *savreq, MPIDI_CH3_Pkt_t *pkt, int from_ra
         req->psm_flags |= PSM_RNDVRECV_GET_PACKED;
         savreq->psm_flags &= ~PSM_RNDVRECV_GET_PACKED;
     }
-
-    rtag = 0;
-    rtagsel = MQ_TAGSEL_ALL;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        rtagsel.tag0 = MQ_TAGSEL_ALL;
+        rtagsel.tag1 = MQ_TAGSEL_ALL;
+        rtagsel.tag2 = MQ_TAGSEL_ALL;
+    #else
+        rtag = 0;
+        rtagsel = MQ_TAGSEL_ALL;
+    #endif
     MAKE_PSM_SELECTOR(rtag, MPID_CONTEXT_RNDVPSM, getpkt->rndv_tag,
                       from_rank);
     /* ch3u_rma_sync.c saved the origin_addr in dev.user_buf */
     _psm_enter_;
     if ((unlikely(getpkt->rndv_len > ipath_max_transfer_size))) {
-        psmerr = psm_post_large_msg_irecv(savreq->dev.user_buf,
+        psmerr = PSM_LARGE_IRECV(savreq->dev.user_buf,
                         getpkt->rndv_len, &req, rtag, rtagsel);
     } else {
-        psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE,
+        psmerr = PSM_IRECV(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE,
                           savreq->dev.user_buf, getpkt->rndv_len, req, &(req->mqreq));
     }
     _psm_exit_;
@@ -1037,8 +1110,12 @@ static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *putreq, int putlen,
 {
     MPID_Request *req = *nreq;
     MPID_Request *preq = vc->ch.recv_active;
-    uint64_t rtag, rtagsel;
-    psm_error_t psmerr;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t rtag, rtagsel;
+    #else
+        uint64_t rtag, rtagsel;
+    #endif
+    PSM_ERROR_T psmerr;
 
     if(req == NULL) {
         req = psm_create_req();
@@ -1050,8 +1127,14 @@ static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *putreq, int putlen,
     req->savedreq = putreq;
     req->pktlen = putlen;
 
-    rtag = 0;
-    rtagsel = MQ_TAGSEL_ALL;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        rtagsel.tag0 = MQ_TAGSEL_ALL;
+        rtagsel.tag1 = MQ_TAGSEL_ALL;
+        rtagsel.tag2 = MQ_TAGSEL_ALL;
+    #else
+        rtag = 0;
+        rtagsel = MQ_TAGSEL_ALL;
+    #endif
     /* pkt->target_rank is my rank */
     MAKE_PSM_SELECTOR(rtag, MPID_CONTEXT_RNDVPSM, rndv_tag,
                       source_rank);
@@ -1072,10 +1155,10 @@ static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *putreq, int putlen,
 	 
     _psm_enter_;
     if ((unlikely(rndv_len > ipath_max_transfer_size))) {
-        psmerr = psm_post_large_msg_irecv(useraddr, rndv_len,
+        psmerr = PSM_LARGE_IRECV(useraddr, rndv_len,
                         &req, rtag, rtagsel);
     } else {
-        psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE,
+        psmerr = PSM_IRECV(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE,
                         useraddr, rndv_len, req, &(req->mqreq));
     }
     _psm_exit_;
@@ -1095,7 +1178,7 @@ int psm_send_1sided_ctrlpkt(MPID_Request **rptr, int dest, void *buf,
     MPID_Request *req = *rptr;
     vbuf *vb;
     int mpi_errno = MPI_SUCCESS;
-    psm_error_t psmerr;
+    PSM_ERROR_T psmerr;
 
     if(create_req) {
         req = psm_create_req();

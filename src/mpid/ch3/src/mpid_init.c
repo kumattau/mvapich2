@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -299,11 +299,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     }
 #endif
     
-    /* Create the string that will cache the last group of failed processes
-     * we received from PMI */
-    UPMI_KVS_GET_VALUE_LENGTH_MAX(&val);
-    MPIDI_failed_procs_string = MPIU_Malloc(sizeof(char) * (val+1));
-
     /*
      * Set global process attributes.  These can be overridden by the channel 
      * if necessary.
@@ -319,6 +314,11 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     if (mpi_errno) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
+
+    /* Create the string that will cache the last group of failed processes
+     * we received from PMI */
+    UPMI_KVS_GET_VALUE_LENGTH_MAX(&val);
+    MPIDI_failed_procs_string = MPIU_Malloc(sizeof(char) * (val+1));
 
 #ifdef CHANNEL_MRAIL
     init_debug2( pg_rank );

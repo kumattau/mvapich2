@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -2193,6 +2193,7 @@ int MV2_Alltoall_is_define(char *mv2_user_alltoall)
         mv2_tmp_alltoall_indexed_thresholds_table[0].numproc = 1;
         mv2_tmp_alltoall_indexed_thresholds_table[0].size_table = 1;
         mv2_tmp_alltoall_indexed_thresholds_table[0].algo_table[0].msg_sz = 1;
+        mv2_tmp_alltoall_indexed_thresholds_table[0].in_place_algo_table[0] = 0;
         switch (atoi(mv2_user_alltoall)) {
         case ALLTOALL_BRUCK_MV2:
 	  mv2_tmp_alltoall_indexed_thresholds_table[0].algo_table[0].MV2_pt_Alltoall_function =

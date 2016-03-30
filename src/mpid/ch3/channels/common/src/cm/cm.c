@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -123,8 +123,9 @@ static int cm_recv_buffer_size;
 static int cm_ud_psn;
 static int cm_req_id_global;
 static int cm_max_spin_count;
-static int cm_is_finalizing;
+static volatile int cm_is_finalizing;
 static pthread_t cm_comp_thread, cm_timer_thread;
+pthread_t cm_finalize_progress_thread;
 static pthread_cond_t cm_cond_new_pending;
 pthread_mutex_t cm_conn_state_lock;
 struct timespec cm_timeout;
@@ -141,10 +142,12 @@ void *cm_ud_send_buf;           /*length is set to 1 */
 void *cm_ud_recv_buf;
 int cm_ud_recv_buf_index;
 int page_size;
+int mv2_finalize_upmi_barrier_complete = 0;
 
 extern int *rdma_cm_host_list;
 extern int g_atomics_support;
 extern int mv2_my_cpu_id;
+extern int mv2_in_blocking_progress;
 
 int mv2_pmi_max_keylen=0;
 int mv2_pmi_max_vallen=0;
@@ -419,7 +422,7 @@ static cm_pending *cm_pending_search_peer(MPIDI_PG_t * pg, int peer,
                                           int cli_or_srv, void *tag)
 {
     cm_pending *pending = cm_pending_head;
-    while (pending->next != cm_pending_head) {
+    while (pending && (pending->next != cm_pending_head)) {
         pending = pending->next;
         if (pending->has_pg && pending->data.pg.pg == pg &&
             pending->cli_or_srv == cli_or_srv &&
@@ -438,8 +441,9 @@ static cm_pending *cm_pending_search_peer(MPIDI_PG_t * pg, int peer,
 static inline int cm_pending_append(cm_pending * node)
 {
     cm_pending *last;
-    if (!cm_pending_head)
+    if (!cm_pending_head) {
         return MPI_SUCCESS;
+    }
     last = cm_pending_head->prev;
     last->next = node;
     node->next = cm_pending_head;
@@ -1309,6 +1313,13 @@ static int cm_enable(MPIDI_PG_t * pg, cm_msg * msg)
                     "xst: 0x%08x\n", vc->pg_rank, vc->state, vc->ch.xrc_flags);
 #endif
         MPIDI_CH3I_Process.new_conn_complete = 1;
+        if (mv2_in_blocking_progress) {
+            int my_rank = -1;
+            MPIDI_VC_t *my_vc = NULL;
+            UPMI_GET_RANK(&my_rank);
+            MPIDI_PG_Get_vc(pg, my_rank, &my_vc);
+            MRAILI_Send_noop(my_vc, 0);
+        }
     }
 
     PRINT_DEBUG(DEBUG_CM_verbose > 0, "cm_enable Exit\n");
@@ -1343,6 +1354,11 @@ static int cm_enable_nopg(MPIDI_VC_t * vc, cm_msg * msg)
 #endif
     VC_SET_ACTIVE(vc);
     MPIDI_CH3I_Process.new_conn_complete = 1;
+    if (mv2_in_blocking_progress) {
+        MPIDI_VC_t *my_vc = NULL;
+        MPIDI_PG_Get_vc(vc->pg, rank, &my_vc);
+        MRAILI_Send_noop(my_vc, 0);
+    }
 
     PRINT_DEBUG(DEBUG_CM_verbose > 0, "cm_enable_nopg Exit\n");
     return MPI_SUCCESS;
@@ -1376,6 +1392,10 @@ static int cm_handle_msg(cm_msg * msg)
                 int rail_index, hca_index;
                 MPIU_Assert(USE_XRC != 0);
                 MPICM_lock();
+                if (cm_is_finalizing) {
+                    MPICM_unlock();
+                    return MPI_SUCCESS;
+                }
                 cm_msg rep;
                 PRINT_DEBUG(DEBUG_XRC_verbose > 0,
                             "CM_MSG_TYPE_XRC_REQ from %d\n", msg->client_rank);
@@ -1448,6 +1468,10 @@ static int cm_handle_msg(cm_msg * msg)
             {
                 int i;
                 MPICM_lock();
+                if (cm_is_finalizing) {
+                    MPICM_unlock();
+                    return MPI_SUCCESS;
+                }
                 MPIU_Assert(USE_XRC != 0);
                 PRINT_DEBUG(DEBUG_XRC_verbose > 0,
                             "CM_MSG_TYPE_XRC_REP from %d\n", msg->server_rank);
@@ -1484,6 +1508,13 @@ static int cm_handle_msg(cm_msg * msg)
                 VC_SET_ACTIVE(vc);
                 cm_xrc_send_enable(vc);
                 MPIDI_CH3I_Process.new_conn_complete = 1;
+                if (mv2_in_blocking_progress) {
+                    int my_rank = -1;
+                    MPIDI_VC_t *my_vc = NULL;
+                    UPMI_GET_RANK(&my_rank);
+                    MPIDI_PG_Get_vc(pg, my_rank, &my_vc);
+                    MRAILI_Send_noop(my_vc, 0);
+                }
                 MPICM_unlock();
             }
             break;
@@ -1491,6 +1522,10 @@ static int cm_handle_msg(cm_msg * msg)
         case CM_MSG_TYPE_REQ:
             {
                 MPICM_lock();
+                if (cm_is_finalizing) {
+                    MPICM_unlock();
+                    return MPI_SUCCESS;
+                }
                 PRINT_DEBUG(DEBUG_XRC_verbose > 0, "CM_MSG_TYPE_REQ from %d\n",
                             msg->client_rank);
                 PRINT_DEBUG(DEBUG_CM_verbose > 0, "Search for pg_id %s\n",
@@ -1587,6 +1622,10 @@ static int cm_handle_msg(cm_msg * msg)
             {
                 cm_pending *pending;
                 MPICM_lock();
+                if (cm_is_finalizing) {
+                    MPICM_unlock();
+                    return MPI_SUCCESS;
+                }
                 PRINT_DEBUG(DEBUG_XRC_verbose > 0, "CM_MSG_TYPE_REP from %d\n",
                             msg->server_rank);
                 PRINT_DEBUG(DEBUG_CM_verbose > 0,
@@ -1623,6 +1662,12 @@ static int cm_handle_msg(cm_msg * msg)
             break;
         case CM_MSG_TYPE_RAW_REQ:
             {
+                MPICM_lock();
+                if (cm_is_finalizing) {
+                    MPICM_unlock();
+                    return MPI_SUCCESS;
+                }
+                MPICM_unlock();
                 MPIDI_VC_t *vc;
 
                 vc = MPIU_Malloc(sizeof(MPIDI_VC_t));
@@ -1641,6 +1686,12 @@ static int cm_handle_msg(cm_msg * msg)
             }
         case CM_MSG_TYPE_RAW_REP:
             {
+                MPICM_lock();
+                if (cm_is_finalizing) {
+                    MPICM_unlock();
+                    return MPI_SUCCESS;
+                }
+                MPICM_unlock();
                 cm_pending *pending;
                 MPIDI_VC_t *vc = (void *) (uintptr_t) (msg->vc_addr_bounce);
                 PRINT_DEBUG(DEBUG_CM_verbose > 0, "Bounced VC is %p\n", vc);
@@ -1688,6 +1739,10 @@ static int cm_handle_msg(cm_msg * msg)
         case CM_MSG_TYPE_REACTIVATE_REQ:
             {
                 MPICM_lock();
+                if (cm_is_finalizing) {
+                    MPICM_unlock();
+                    return MPI_SUCCESS;
+                }
                 MPIDI_PG_Find(msg->pg_id, &pg);
                 if (!pg) {
                     MPICM_unlock();
@@ -1725,6 +1780,10 @@ static int cm_handle_msg(cm_msg * msg)
         case CM_MSG_TYPE_REACTIVATE_REP:
             {
                 MPICM_lock();
+                if (cm_is_finalizing) {
+                    MPICM_unlock();
+                    return MPI_SUCCESS;
+                }
                 MPIDI_PG_Find(msg->pg_id, &pg);
                 if (!pg) {
                     MPICM_unlock();
@@ -1912,7 +1971,12 @@ void *cm_completion_handler(void *arg)
                                 "received finalization message\n");
                     return NULL;
                 }
-                cm_handle_msg(msg);
+                if (wc.byte_len == (sizeof(cm_msg) + 40)) {
+                    cm_handle_msg(msg);
+                } else {
+                    PRINT_DEBUG(DEBUG_CM_verbose>0, "Error: recevied a message of size %d, expected = %d\n",
+                                wc.byte_len, (int)(sizeof(cm_msg)+40));
+                }
                 PRINT_DEBUG(DEBUG_CM_verbose > 0, "Post recv \n");
                 cm_post_ud_recv(buf - 40, sizeof(cm_msg));
                 cm_ud_recv_buf_index =
@@ -2196,6 +2260,50 @@ int MPICM_Init_UD_struct(MPIDI_PG_t * pg)
     return mpi_errno;
 }
 
+void *cm_finalize_handler(void *arg)
+{
+    while (!mv2_finalize_upmi_barrier_complete) {
+        MPIDI_CH3I_Progress_test();
+    }
+
+#if defined(__SUNPRO_C) || defined(__SUNPRO_CC)
+#pragma error_messages(off, E_STATEMENT_NOT_REACHED)
+#endif /* defined(__SUNPRO_C) || defined(__SUNPRO_CC) */
+    return NULL;
+#if defined(__SUNPRO_C) || defined(__SUNPRO_CC)
+#pragma error_messages(default, E_STATEMENT_NOT_REACHED)
+#endif /* defined(__SUNPRO_C) || defined(__SUNPRO_CC) */
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPICM_Create_finalize_thread
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPICM_Create_finalize_thread()
+{
+    int ret;
+    int mpi_errno = MPI_SUCCESS;
+
+    pthread_attr_t attr;
+    if (pthread_attr_init(&attr)) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                  "**fail %s", "pthread_attr_init failed");
+    }
+    ret = pthread_attr_setstacksize(&attr, cm_thread_stacksize);
+    if (ret && ret != EINVAL) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                  "**fail %s",
+                                  "pthread_attr_setstacksize failed");
+    }
+    pthread_create(&cm_finalize_progress_thread, &attr, cm_finalize_handler, NULL);
+
+  fn_exit:
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+
 #undef FUNCNAME
 #define FUNCNAME MPICM_Create_UD_threads
 #undef FCNAME
@@ -2249,7 +2357,19 @@ int MPICM_Finalize_UD()
     int i = 0;
 
     PRINT_DEBUG(DEBUG_CM_verbose > 0, "In MPICM_Finalize_UD\n");
+#if defined(CKPT)
+    if (MPIDI_CH3I_CR_Get_state() != MPICR_STATE_PRE_COORDINATION)
+#endif /* defined(CKPT) */
+    {
+        MPICM_lock();
+    }
     cm_is_finalizing = 1;
+#if defined(CKPT)
+    if (MPIDI_CH3I_CR_Get_state() != MPICR_STATE_PRE_COORDINATION)
+#endif /* defined(CKPT) */
+    {
+        MPICM_unlock();
+    }
     cm_pending_list_finalize();
 
     /*Cancel cm thread */
@@ -2331,6 +2451,44 @@ int MPICM_Finalize_UD()
 
     PRINT_DEBUG(DEBUG_CM_verbose > 0, "MPICM_Finalize_UD done\n");
     MPIDI_FUNC_EXIT(MPID_GEN2_MPICM_FINALIZE_UD);
+    return MPI_SUCCESS;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_CM_Connect_self
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_CM_Connect_self(MPIDI_VC_t * vc)
+{
+    int i;
+    cm_msg msg;
+
+    /*TODO: XRC and CHECKPOINT cases yet to be handled*/
+
+    /*create qp*/
+    cm_qp_create(vc, 1, MV2_QPT_RC);
+
+    /*move to rtr*/
+    for (i = 0; i < vc->mrail.num_rails; ++i) {
+        msg.lids[i] = vc->mrail.rails[i].lid;
+        if (use_iboeth) {
+            MPIU_Memcpy(&msg.gids[i], &vc->mrail.rails[i].gid,
+                        sizeof(union ibv_gid));
+        }
+        msg.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
+    }
+    cm_qp_move_to_rtr (vc, msg.lids, msg.gids, msg.qpns, 0, NULL, 0);
+
+    /*initialize vc and prepost buffers*/
+    MRAILI_Init_vc(vc);
+
+    /*move to rts*/
+    cm_qp_move_to_rts(vc);
+
+    /*set vc to idle and active*/
+    vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+    VC_SET_ACTIVE(vc);
+
     return MPI_SUCCESS;
 }
 

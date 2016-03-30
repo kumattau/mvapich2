@@ -37,12 +37,46 @@ AC_ARG_WITH(psm-lib, [--with-psm-lib=path - specify path to psm lib directory],
             LDFLAGS="$LDFLAGS -L${with_psm_lib}"
             fi,)
 
-AC_CHECK_HEADER([psm.h], , [
-    AC_MSG_ERROR(['psm.h not found.  Did you specify --with-psm= or --with-psm-include=?'])
-])
-AC_CHECK_LIB(psm_infinipath, psm_init, , [
-    AC_MSG_ERROR(['psm_infinipath library not found.  Did you specify --with-psm= or --with-psm-lib=?'])
-])
+AC_ARG_WITH(psm2, [--with-psm2=path - specify path where psm2 include directory and lib directory can be found],
+        if test "${with_psm2}" != "yes" -a "${with_psm2}" != "no" ; then
+            LDFLAGS="$LDFLAGS -L${with_psm2}/lib64 -L${with_psm2}/lib"
+            CPPFLAGS="$CPPFLAGS -I${with_psm2}/include"
+            fi,)
+AC_ARG_WITH(psm2-include, [--with-psm2-include=path - specify path to psm2 include directory],
+        if test "${with_psm2_include}" != "yes" -a "${with_psm2_include}" != "no" ; then
+            CPPFLAGS="$CPPFLAGS -I${with_psm2_include}"
+            fi,)
+AC_ARG_WITH(psm2-lib, [--with-psm2-lib=path - specify path to psm2 lib directory],
+        if test "${with_psm2_lib}" != "yes" -a "${with_psm2_lib}" != "no" ; then
+            LDFLAGS="$LDFLAGS -L${with_psm2_lib}"
+            fi,)
+
+if test "x$with_psm" != "x" -a "x$with_psm2" != "x" ; then
+    AC_MSG_ERROR([Cannot specify option for --with-psm and --with-psm2 simultaneously])
+elif test "x$with_psm2" != "x" ; then
+    AC_CHECK_HEADER([psm2.h], , [
+     AC_MSG_ERROR(['psm2.h not found.  Did you specify --with-psm2= or --with-psm2-include=?'])
+    ])
+    AC_CHECK_LIB(psm2, psm2_init, , [
+    AC_MSG_ERROR(['psm2 library not found.  Did you specify --with-psm2= or --with-psm2-lib=?'])
+    ])
+else
+    AC_CHECK_HEADER([psm.h], [have_psm=yes], [have_psm=no])
+    AC_CHECK_HEADER([psm2.h], [have_psm2=yes], [have_psm2=no])
+
+    if test "$have_psm" == "no" -a "$have_psm2" == "no" ; then
+        AC_MSG_ERROR(['No PSM header files found in default locations. Please retry after setting --with-psm= OR --with-psm2= to correct paths'])
+    elif test "$have_psm2" == "yes" ; then
+        AC_CHECK_LIB(psm2, psm2_init, , [
+            AC_MSG_ERROR(['psm2 library not found.  Did you specify --with-psm2= or --with-psm2-lib=?'])
+        ])
+    else
+        AC_CHECK_LIB(psm_infinipath, psm_init, , [
+            AC_MSG_ERROR(['psm_infinipath library not found.  Did you specify --with-psm= or --with-psm-lib=?'])
+        ])
+    fi
+fi
+
 
 AC_CHECK_HEADER([infiniband/verbs.h],, [
     AC_MSG_ERROR(['infiniband/verbs.h not found. Did you specify --with-ib-include=?'])

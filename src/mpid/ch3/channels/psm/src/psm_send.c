@@ -1,5 +1,6 @@
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
+ * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
@@ -24,10 +25,13 @@
 #define FUNCNAME psm_large_msg_isend_pkt
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-psm_error_t psm_large_msg_isend_pkt(MPID_Request **rptr, int dest, void *buf,
-                        MPIDI_msg_sz_t buflen, uint64_t stag, uint32_t flags)
+#if PSM_VERNO >= PSM_2_1_VERSION
+    PSM_ERROR_T psm_large_msg_isend_pkt(MPID_Request **rptr, int dest, void *buf, MPIDI_msg_sz_t buflen, psm2_mq_tag_t *stag, uint32_t flags)
+#else
+    PSM_ERROR_T psm_large_msg_isend_pkt(MPID_Request **rptr, int dest, void *buf, MPIDI_msg_sz_t buflen, uint64_t stag, uint32_t flags)
+#endif
 {
-    psm_error_t psmerr;
+    PSM_ERROR_T psmerr;
     MPID_Request *req = *rptr;
     int i = 0, steps = 0, balance = 0;
     int obj_ref = 0, cc_cnt = 0;
@@ -52,12 +56,12 @@ psm_error_t psm_large_msg_isend_pkt(MPID_Request **rptr, int dest, void *buf,
     MPIU_Object_set_ref(req, obj_ref);
 
     for (i = 0; i < steps; i++) {
-        psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
+        psmerr = PSM_ISEND_PTR(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
                     flags, stag, buf, ipath_max_transfer_size, req, &(req->mqreq));
         buf += ipath_max_transfer_size;
     }
     if (balance) {
-        psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
+        psmerr = PSM_ISEND_PTR(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
                     flags, stag, buf, balance, req, &(req->mqreq));
     }
 
@@ -68,14 +72,18 @@ psm_error_t psm_large_msg_isend_pkt(MPID_Request **rptr, int dest, void *buf,
 #define FUNCNAME psm_send_pkt
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m, 
+PSM_ERROR_T psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
                  int dest, void *buf, MPIDI_msg_sz_t buflen)
 {
-    psm_error_t psmerr;
-    uint64_t stag = 0;
+    PSM_ERROR_T psmerr;
     uint32_t flags = MQ_FLAGS_NONE;
     MPID_Request *req = *rptr;
     uint8_t blocking = 1;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t stag;
+    #else
+        uint64_t stag = 0;
+    #endif
 
     MAKE_PSM_SELECTOR(stag, m.parts.context_id, m.parts.tag, m.parts.rank);
     if(req && req->psm_flags & PSM_SYNC_SEND) {
@@ -84,8 +92,13 @@ psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
         blocking = 0;
     }
 
-    DBG("psm_mq_send: ctx = %d tag = %d\n", m.parts.context_id, m.parts.tag);
-    DBG("psm_mq_send: dst = %d src = %d\n", dest, m.partsrank);
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        DBG("psm2_mq_send: ctx = %d tag = %d\n", m.parts.context_id, m.parts.tag);
+        DBG("psm2_mq_send: dst = %d src = %d\n", dest, m.partsrank);
+    #else
+        DBG("psm_mq_send: ctx = %d tag = %d\n", m.parts.context_id, m.parts.tag);
+        DBG("psm_mq_send: dst = %d src = %d\n", dest, m.partsrank);
+    #endif
 
     if(blocking && !CAN_BLK_PSM(buflen))
         blocking = 0;
@@ -93,7 +106,7 @@ psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
     if(blocking) {
         DBG("blocking send\n");
         _psm_enter_;
-        psmerr = psm_mq_send(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
+        psmerr = PSM_SEND(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
                 flags, stag, buf, buflen);
         _psm_exit_;
         if(req) {
@@ -111,10 +124,9 @@ psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
         DBG("nb send posted for blocking mpi_send\n");
         _psm_enter_;
         if ((unlikely(buflen > ipath_max_transfer_size))) {
-            psmerr = psm_large_msg_isend_pkt(rptr, dest, buf, buflen,
-                        stag, flags);
+            psmerr = PSM_LARGE_ISEND(rptr, dest, buf, buflen, stag, flags);
         } else {
-            psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
+            psmerr = PSM_ISEND(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
                         flags, stag, buf, buflen, req, &(req->mqreq));
         }
         _psm_exit_;
@@ -129,12 +141,16 @@ psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
         issue isend 
 */
 
-psm_error_t psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m, 
+PSM_ERROR_T psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m,
                   int dest, void *buf, MPIDI_msg_sz_t buflen)
 {
-    uint64_t stag = 0;
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        psm2_mq_tag_t stag;
+    #else
+        uint64_t stag = 0;
+    #endif
     uint32_t flags = MQ_FLAGS_NONE;
-    psm_error_t psmerr;
+    PSM_ERROR_T psmerr;
 
     MAKE_PSM_SELECTOR(stag, m.parts.context_id, m.parts.tag, m.parts.rank);
     assert(req);
@@ -144,15 +160,19 @@ psm_error_t psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m,
     }
 
     assert(dest < psmdev_cw.pg_size);
-    DBG("psm_mq_isend: ctx = %d tag = %d\n", m.context_id, m.tag);
-    DBG("psm_mq_isend: dst = %d src = %d\n", dest, m.rank);
+    #if PSM_VERNO >= PSM_2_1_VERSION
+        DBG("psm2_mq_isend: ctx = %d tag = %d\n", m.context_id, m.tag);
+        DBG("psm2_mq_isend: dst = %d src = %d\n", dest, m.rank);
+    #else
+        DBG("psm_mq_isend: ctx = %d tag = %d\n", m.context_id, m.tag);
+        DBG("psm_mq_isend: dst = %d src = %d\n", dest, m.rank);
+    #endif
 
     _psm_enter_;
     if ((unlikely(buflen > ipath_max_transfer_size))) {
-        psmerr = psm_large_msg_isend_pkt(&req, dest, buf, buflen,
-                    stag, flags);
+        psmerr = PSM_LARGE_ISEND(&req, dest, buf, buflen, stag, flags);
     } else {
-        psmerr = psm_mq_isend(psmdev_cw.mq, psmdev_cw.epaddrs[dest], 
+        psmerr = PSM_ISEND(psmdev_cw.mq, psmdev_cw.epaddrs[dest],
                     flags, stag, buf, buflen, req, &(req->mqreq));
     }
     _psm_exit_;

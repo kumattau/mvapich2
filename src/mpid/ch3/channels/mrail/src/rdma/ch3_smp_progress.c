@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,6 +39,10 @@
 #include "mpiutil.h"
 #include "mv2_arch_hca_detect.h"
 #include "coll_shmem.h"
+
+#ifdef _ENABLE_MPIT_TOOL_
+#include "rdma_impl.h"
+#endif
 
 #include <sys/syscall.h>
 #include <sys/uio.h>
@@ -267,37 +271,6 @@ extern int MPIDI_Get_num_nodes();
 extern int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 extern void MPIDI_CH3I_SHMEM_COLL_Cleanup();
 
-#if defined(MAC_OSX) || defined(_PPC64_) 
-#if defined(__GNUC__)
-/* can't use -ansi for vxworks ccppc or this will fail with a syntax error
- * */
-#define STBAR()  asm volatile ("sync": : :"memory")     /* ": : :" for C++ */
-#define READBAR() asm volatile ("sync": : :"memory")
-#define WRITEBAR() asm volatile ("sync": : :"memory")
-#else /* defined(__GNUC__) */
-#if  defined(__IBMC__) || defined(__IBMCPP__)
-extern void __iospace_eieio(void);
-extern void __iospace_sync(void);
-#define STBAR()   __iospace_sync ()
-#define READBAR() __iospace_sync ()
-#define WRITEBAR() __iospace_eieio ()
-#else /* defined(__IBMC__) || defined(__IBMCPP__) */
-#error Do not know how to make a store barrier for this system
-#endif /* defined(__IBMC__) || defined(__IBMCPP__) */
-#endif /* defined(__GNUC__) */
-
-#if !defined(WRITEBAR)
-#define WRITEBAR() STBAR()
-#endif /* !defined(WRITEBAR) */
-#if !defined(READBAR)
-#define READBAR() STBAR()
-#endif /* !defined(READBAR) */
-
-#else /* defined(MAC_OSX) || defined(_PPC64_) */
-#define WRITEBAR()
-#define READBAR()
-#endif /* defined(MAC_OSX) || defined(_PPC64_) */
-
 static int smpi_exchange_info(MPIDI_PG_t *pg);
 static inline SEND_BUF_T *get_buf_from_pool (void);
 static inline void send_buf_reclaim (void);
@@ -320,6 +293,7 @@ static inline void smpi_complete_send(unsigned int destination,
     WRITEBAR();
     /* set current flag to busy */
     *((volatile int *) ptr_flag) = SMP_CBUF_BUSY;
+    WRITEBAR();
     avail[destination] -= length + sizeof(int)*2;
 }
 
@@ -343,8 +317,10 @@ static inline void smpi_complete_recv(unsigned int from_grank,
         s_header_ptr_r[from_grank] +
         length + sizeof(int)*2;
     READBAR();
-    if(header == SMPI_FIRST_R(from_grank, my_id))
+    if(header == SMPI_FIRST_R(from_grank, my_id)) {
         *(volatile int *)ptr_flag = SMP_CBUF_FREE;
+        WRITEBAR();
+    }
 }
 
 /*
@@ -377,6 +353,7 @@ static inline int smpi_check_avail(int rank, int len,
             volatile void *ptr_flag;
             ptr_flag = *pptr_flag;
             *(volatile int *)ptr_flag = SMP_CBUF_END;
+            WRITEBAR();
             ptr_flag = (volatile void *) ((g_smpi_shmem->pool) +
                     s_header_ptr_s[rank]);
             *pptr_flag = ptr_flag;
@@ -419,7 +396,7 @@ void MPIDI_CH3I_SMP_cleanup()
 
     /*clean up shmem file*/
     if (g_smpi.mmap_ptr != NULL) { 
-        munmap(g_smpi.mmap_ptr, g_size_shmem);        
+        munmap((void *)g_smpi.mmap_ptr, g_size_shmem);        
     }
     if (g_smpi.fd != -1) { 
         close(g_smpi.fd);
@@ -1714,7 +1691,7 @@ int MPIDI_CH3I_CM_Destroy_region(MPIDI_PG_t *pg)
 
     /* Unmap UD_CM SHMEM region */
     if (pg->ch.mrail->cm_shmem_mmap_ptr != NULL) {
-        munmap(pg->ch.mrail->cm_shmem_mmap_ptr, cm_shmem_file_size);
+        munmap((void *)pg->ch.mrail->cm_shmem_mmap_ptr, cm_shmem_file_size);
     }
     /* Unlink and close */
     if (pg->ch.mrail->cm_shmem_fd != -1) {
@@ -1739,7 +1716,7 @@ int MPIDI_CH3I_CM_Destroy_region(MPIDI_PG_t *pg)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_CM_Create_region(MPIDI_PG_t *pg)
 {
-    int pid_len = 0, lock_len = 0, ud_cm_len = 0, ud_len = 0;
+    int pid_len = 0, ud_cm_len = 0, ud_len = 0;
     int mpi_errno = MPI_SUCCESS;
 
     MPIDI_STATE_DECL(MPIDI_CH3I_CM_CREATE_REGION);
@@ -1749,9 +1726,6 @@ int MPIDI_CH3I_CM_Create_region(MPIDI_PG_t *pg)
     pid_len = sizeof(int) * pg->ch.num_local_processes;
     pid_len = (pid_len + SMPI_CACHE_LINE_SIZE) -
                 (pid_len % SMPI_CACHE_LINE_SIZE);
-    lock_len = sizeof(pthread_spinlock_t);
-    lock_len = (lock_len + SMPI_CACHE_LINE_SIZE) -
-                (lock_len % SMPI_CACHE_LINE_SIZE);
     ud_cm_len = sizeof(MPIDI_CH3I_MRAIL_UD_CM_t) * pg->size;
     ud_cm_len = (ud_cm_len + SMPI_CACHE_LINE_SIZE) -
                 (ud_cm_len % SMPI_CACHE_LINE_SIZE);
@@ -1762,7 +1736,7 @@ int MPIDI_CH3I_CM_Create_region(MPIDI_PG_t *pg)
                     (ud_len % SMPI_CACHE_LINE_SIZE);
     }
 #endif /* _ENABLE_UD_ */
-    cm_shmem_file_size = pid_len + lock_len + ud_cm_len + ud_len;
+    cm_shmem_file_size = pid_len + ud_cm_len + ud_len;
 
     PRINT_DEBUG(DEBUG_CM_verbose>0, "Setting up shmem segment of size %ld\n",
                 cm_shmem_file_size);
@@ -1791,16 +1765,14 @@ int MPIDI_CH3I_CM_Create_region(MPIDI_PG_t *pg)
     /* Assign SHMEM region to accessible variable */
     pg->ch.mrail->cm_shmem.pid = (int*)
                 ((char*)pg->ch.mrail->cm_shmem_mmap_ptr);
-    pg->ch.mrail->cm_shmem.cm_shmem_lock = (pthread_spinlock_t*)
-                ((char*)pg->ch.mrail->cm_shmem_mmap_ptr + pid_len);
     pg->ch.mrail->cm_shmem.ud_cm = (MPIDI_CH3I_MRAIL_UD_CM_t*)
-                ((char*)pg->ch.mrail->cm_shmem_mmap_ptr + pid_len + lock_len);
+                ((char*)pg->ch.mrail->cm_shmem_mmap_ptr + pid_len);
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid) {
         int i = 0, j = 0;
         MPIU_Assert(rdma_num_hcas>0);
         char *base_addr = (char*)pg->ch.mrail->cm_shmem_mmap_ptr +
-                            pid_len + lock_len + ud_cm_len;
+                            pid_len + ud_cm_len;
         for (i = 0; i < pg->size; i++) {
             pg->ch.mrail->cm_shmem.remote_ud_info[i] = (mv2_ud_exch_info_t *)
                 ((char*)base_addr + i*rdma_num_hcas*sizeof(mv2_ud_exch_info_t));
@@ -1823,8 +1795,6 @@ int MPIDI_CH3I_CM_Create_region(MPIDI_PG_t *pg)
     /* Initialize UD_CM SHMEM region */
     if (pg->ch.local_process_id == 0) {
         MPIU_Memset(pg->ch.mrail->cm_shmem.ud_cm, 0, ud_cm_len);
-        pthread_spin_init(pg->ch.mrail->cm_shmem.cm_shmem_lock,
-                            PTHREAD_PROCESS_SHARED);
     }
 
     /* Synchronization barrier */
@@ -2514,7 +2484,7 @@ int MPIDI_CH3I_SMP_finalize()
     }
 
     /* unmap the shared memory file */
-    munmap(g_smpi.mmap_ptr, g_size_shmem);
+    munmap((void *)g_smpi.mmap_ptr, g_size_shmem);
     close(g_smpi.fd);
 
     if (g_smpi.send_buf_pool_ptr != NULL) {
@@ -2878,8 +2848,10 @@ void smp_cuda_send_copy_complete(MPIDI_VC_t * vc, MPID_Request *req, void *ptr_f
     int mpi_errno = MPI_SUCCESS;
     int complete = 0;
 
+    READBAR();
     MPIU_Assert(*((volatile int *) ptr_flag) == SMP_CBUF_PENDING);
     *((volatile int *) ptr_flag) = SMP_CBUF_BUSY;   
+    WRITEBAR();
 
     /*This is the last chunk if request is present, complete it*/
     if (req != NULL) { 
@@ -2898,6 +2870,7 @@ void smp_cuda_send_copy_enqueue(MPIDI_VC_t * vc, MPID_Request *req, SEND_BUF_T *
     cudaError_t cuda_err = cudaSuccess; 
 
     *((volatile int *) ptr_flag) = SMP_CBUF_PENDING;
+    WRITEBAR();
 
     send_buf->len = size;
     MPIU_Memcpy_CUDA_Async(send_buf->buf, user_buf, size, cudaMemcpyDeviceToHost, stream_d2h);
@@ -3567,7 +3540,7 @@ int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
                                 MPIDI_msg_sz_t data_sz, int rank, int tag,
                                 MPID_Comm *comm, int context_offset, MPID_Request **sreq_p)
 {
-    int i = 0, len = 0;
+    int len = 0;
     MPID_Seqnum_t seqnum;
     int mpi_errno = MPI_SUCCESS;
     volatile void *ptr_head = NULL, *ptr = NULL, *ptr_flag = NULL;
@@ -3961,12 +3934,16 @@ int MPIDI_CH3I_SMP_readv_rndv_cuda(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
         ptr_flag = (volatile int *) ptr;
 
         if (!is_cont) { 
+            READBAR();
             while(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) {
                MV2_CUDA_PROGRESS();     
+               READBAR();
             }
         } else {
+            READBAR();
             if(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) goto fn_exit;
         }
+        READBAR();
         if(*ptr_flag == SMP_CBUF_END) {
             s_header_ptr_r[recv_vc_ptr->smp.local_nodes] =
                 SMPI_FIRST_R(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id);
@@ -3974,10 +3951,13 @@ int MPIDI_CH3I_SMP_readv_rndv_cuda(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
                     s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
             ptr_flag = (volatile int *) ptr;
             if (!is_cont) {
+                READBAR();
                 while(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) { 
                    MV2_CUDA_PROGRESS();
+                   READBAR();
                 }
             } else {
+                READBAR();
                 if(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) goto fn_exit;
             }
         }
@@ -4325,13 +4305,16 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
     volatile int *ptr_flag;
     ptr_flag = (volatile int *) ptr;
 
+    READBAR();
     if(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) goto fn_exit;
+    READBAR();
     if(*ptr_flag == SMP_CBUF_END) {
         s_header_ptr_r[recv_vc_ptr->smp.local_nodes] =
             SMPI_FIRST_R(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id);
         ptr = (void*)(g_smpi_shmem->pool +
                 s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
         ptr_flag = (volatile int *) ptr;
+        READBAR();
         if(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) goto fn_exit;
     }
 
@@ -4776,22 +4759,27 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     ptr = (void*)((unsigned long)g_smpi_shmem->pool + 
             s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
     ptr_flag = (volatile int *) ptr;
+    READBAR();
     while(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) {
 #if defined (_ENABLE_CUDA_)
         MV2_CUDA_PROGRESS();
 #endif 
+        READBAR();
     }
 
+    READBAR();
     if(*ptr_flag == SMP_CBUF_END) {
     s_header_ptr_r[recv_vc_ptr->smp.local_nodes] =
             SMPI_FIRST_R(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id);
     ptr = (volatile void*)((unsigned long)g_smpi_shmem->pool +
             s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
     ptr_flag = (volatile int *)ptr;
+    READBAR();
     while(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) {
 #if defined (_ENABLE_CUDA_)
         MV2_CUDA_PROGRESS();
 #endif         
+        READBAR();
     }
     }
 
@@ -5157,7 +5145,9 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     ptr = (void*)(g_smpi_shmem->pool + s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
     ptr_flag = (volatile int*)ptr;
 
+    READBAR();
     while(*ptr_flag != SMP_CBUF_FREE && *ptr_flag != SMP_CBUF_PENDING) {
+        READBAR();
         if(*ptr_flag == SMP_CBUF_END) {
             s_header_ptr_r[recv_vc_ptr->smp.local_nodes] =
                 SMPI_FIRST_R(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id);
@@ -5166,10 +5156,12 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                     s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
             ptr_flag = (volatile int*)ptr;
 
+            READBAR();
             if(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING)
                 goto fn_exit;
         }
 
+        READBAR();
         s_total_bytes[recv_vc_ptr->smp.local_nodes] = *(int*)((unsigned long)ptr +
                 sizeof(int));
         ptr = (void *)((unsigned long)ptr + sizeof(int)*2);
@@ -5298,9 +5290,11 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t** pkt_head)
     ptr = (void*)(g_smpi_shmem->pool + s_header_ptr_r[vc->smp.local_nodes]);
     ptr_flag = (volatile int*)ptr;
 
+    READBAR();
     if(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) {
         *pkt_head = NULL;
     } else {
+        READBAR();
         if(*ptr_flag == SMP_CBUF_END) {
             *pkt_head = NULL;
             s_header_ptr_r[vc->smp.local_nodes] =
@@ -5309,10 +5303,12 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t** pkt_head)
                     s_header_ptr_r[vc->smp.local_nodes]);
             ptr_flag = (volatile int*)ptr;
 
+            READBAR();
             if(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) {
                 goto fn_exit;
             }
         }
+        READBAR();
         s_total_bytes[vc->smp.local_nodes] = *(int*)((unsigned long)ptr + sizeof(int));
         *pkt_head = (void *)((unsigned long)ptr + sizeof(int)*2);
         WRITEBAR();

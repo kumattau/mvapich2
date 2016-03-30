@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2015, The Ohio State University. All rights
+ * Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -12,11 +12,14 @@
 #include "upmi.h"
 #include <stdlib.h>
 #include <pthread.h>
+#include <mpimem.h>
 
 struct PMI_keyval_t;
 int _size, _rank, _appnum;
 static int _in_ibarrier = 0;
 static int _in_iallgather = 0;
+static void * _iallgather_data = NULL;
+static size_t _iallgather_data_size = 0;
 pthread_mutex_t upmi_lock;
 
 void UPMI_lock_init(void) {
@@ -185,8 +188,23 @@ int UPMI_IALLGATHER( const char value[] ) {
     if (!_in_iallgather) {
         _in_iallgather = 1;
 #ifdef USE_PMI2_API
-#   if defined(HAVE_PMI2_IALLGATHER) && defined(HAVE_PMI2_IALLGATHER_WAIT)
+#   if defined(HAVE_PMI2_SHMEM_IALLGATHER) \
+        && defined(HAVE_PMI2_SHMEM_IALLGATHER_WAIT)
+        rc = PMI2_SHMEM_Iallgather(value);
+#   elif defined(HAVE_PMI2_IALLGATHER) && defined(HAVE_PMI2_IALLGATHER_WAIT)
         rc = PMI2_Iallgather(value);
+        if (UPMI_SUCCESS == rc) {
+            if (NULL == _iallgather_data) {
+                _iallgather_data_size = _size * PMI2_MAX_VALLEN * sizeof(char);
+                _iallgather_data = MPIU_Malloc(_iallgather_data_size);
+            }
+
+            if (NULL == _iallgather_data) {
+                rc = UPMI_FAIL;
+            } else {
+                memset(_iallgather_data, 0, _iallgather_data_size);
+            }
+        }
 #   else
         rc = UPMI_FAIL;
 #   endif
@@ -199,21 +217,52 @@ int UPMI_IALLGATHER( const char value[] ) {
     return rc;
 }
 
-int UPMI_IALLGATHER_WAIT( void *buf ) { 
+int UPMI_IALLGATHER_WAIT( void **buf ) {
     int rc = UPMI_SUCCESS;
 
     UPMI_lock();
     if (_in_iallgather) {
         _in_iallgather = 0;
 #ifdef USE_PMI2_API
-#   if defined(HAVE_PMI2_IALLGATHER) && defined(HAVE_PMI2_IALLGATHER_WAIT)
-        rc = PMI2_Iallgather_wait(buf);
+#   if defined(HAVE_PMI2_SHMEM_IALLGATHER) \
+        && defined(HAVE_PMI2_SHMEM_IALLGATHER_WAIT)
+        rc = PMI2_SHMEM_Iallgather_wait(buf);
+#   elif defined(HAVE_PMI2_IALLGATHER) && defined(HAVE_PMI2_IALLGATHER_WAIT)
+        *buf = _iallgather_data;
+        if (NULL != *buf) {
+            rc = PMI2_Iallgather_wait(*buf);
+        } else {
+            rc = UPMI_FAIL;
+        }
 #   endif
 #else
         rc = UPMI_FAIL;
 #endif
     } else {
         rc = UPMI_SUCCESS;
+    }
+    UPMI_unlock();
+
+    return rc;
+}
+
+int UPMI_IALLGATHER_FREE( void ) {
+    int rc = UPMI_SUCCESS;
+
+    UPMI_lock();
+    if (!_in_iallgather) {
+#ifdef USE_PMI2_API
+#   if defined(HAVE_PMI2_SHMEM_IALLGATHER) \
+        && defined(HAVE_PMI2_SHMEM_IALLGATHER_WAIT)
+        /* nothing to do */
+#   elif defined(HAVE_PMI2_IALLGATHER) && defined(HAVE_PMI2_IALLGATHER_WAIT)
+        if (NULL != _iallgather_data) {
+            MPIU_Free(_iallgather_data);
+        }
+#   endif
+#endif
+    } else {
+        rc = UPMI_FAIL;
     }
     UPMI_unlock();
 

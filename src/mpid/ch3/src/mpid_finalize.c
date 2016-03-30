@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -117,9 +117,8 @@ int MPID_Finalize(void)
         cuda_cleanup();
     }
 #endif
-    
+
 #ifdef _ENABLE_XRC_
-    MPIDI_CH3_Flush();
     xrc_rdmafp_init = 0;
     if (USE_XRC) {
         mpi_errno = UPMI_BARRIER ();
@@ -139,16 +138,16 @@ int MPID_Finalize(void)
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
 #if defined(CHANNEL_MRAIL)
+    mv2_is_in_finalize = 1;
     /* Let the lower layer flush out. */
     MPIDI_CH3_Flush();
 #endif /* defined(CHANNEL_MRAIL) */
 
     /* Re-enabling the close step because many tests are failing
      * without it, particularly under gforker */
-#if 1
     /* FIXME: The close actions should use the same code as the other
        connection close code */
-#if !defined (CHANNEL_PSM)
+#if !defined (CHANNEL_PSM) && !defined(CHANNEL_MRAIL)
     mpi_errno = MPIDI_PG_Close_VCs();
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     /*
@@ -156,7 +155,6 @@ int MPID_Finalize(void)
      */
     mpi_errno = MPIDI_CH3U_VC_WaitForClose();
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-#endif
 #endif
 
     /* Note that the CH3I_Progress_finalize call has been removed; the

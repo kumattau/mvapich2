@@ -203,7 +203,10 @@ SUBDIRS += contrib/hwloc
 endif
 
 # build the current directory and then the examples directory after everything else
-SUBDIRS += . examples osu_benchmarks src/env/mpiname src/util/mv2_ckpt_rebuild
+SUBDIRS += . examples
+if BUILD_OSU_MVAPICH
+SUBDIRS += src/env/mpiname src/util/mv2_ckpt_rebuild osu_benchmarks
+endif
 DIST_SUBDIRS += . examples test
 
 if BUILD_OSU_MVAPICH

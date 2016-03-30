@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -27,20 +27,7 @@
 
 #ifdef RDMA_CM
 
-#undef DEBUG_PRINT
-#ifdef DEBUG
-#define DEBUG_PRINT(args...)                                      \
-do {                                                              \
-    int __rank;                                                   \
-    UPMI_GET_RANK(&__rank);                                        \
-    fprintf(stderr, "[%d][%s:%d] ", __rank, __FILE__, __LINE__);  \
-    fprintf(stderr, args);                                        \
-    fflush(stderr);                                               \
-} while (0)
-#else
-#define DEBUG_PRINT(args...)
-#endif
-
+#define RDMA_MAX_PRIVATE_LENGTH     56
 #define MV2_RDMA_CM_MIN_PORT_LIMIT  1024
 #define MV2_RDMA_CM_MAX_PORT_LIMIT  65536
 
@@ -118,7 +105,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
     switch (event->event) {
 
         case RDMA_CM_EVENT_ADDR_RESOLVED:
-            DEBUG_PRINT("case RDMA_CM_ADDR_RESOLVED\n");
+            PRINT_DEBUG(DEBUG_RDMACM_verbose,"case RDMA_CM_ADDR_RESOLVED\n");
             if (cma_id == tmpcmid) {
                 sem_post(&rdma_cm_addr);
                 break;
@@ -142,7 +129,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
 
         break;
         case RDMA_CM_EVENT_ROUTE_RESOLVED:
-            DEBUG_PRINT("case RDMA_CM_EVENT_ROUTE_RESOLVED\n");
+            PRINT_DEBUG(DEBUG_RDMACM_verbose,"case RDMA_CM_EVENT_ROUTE_RESOLVED\n");
 
             /* VC pointer is stored in cm_id->context at cm_id creation */
             vc = (MPIDI_VC_t *) cma_id->context;
@@ -155,7 +142,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             }
     
             if (rank < 0 || rail_index < 0) {
-                DEBUG_PRINT("Unexpected error occured\n");
+                PRINT_DEBUG(DEBUG_RDMACM_verbose,"Unexpected error occured\n");
             }
 
             rdma_cm_create_qp(vc, rail_index);
@@ -167,13 +154,14 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             conn_param.retry_count = rdma_default_rnr_retry;
             conn_param.rnr_retry_count = rdma_default_rnr_retry;
 
-            tmplen = 3 * sizeof(uint64_t) + strlen(MPIDI_Process.my_pg->id) + 1;
-            if(tmplen > MAX_PG_ID_SIZE) {
-                ibv_error_abort(GEN_EXIT_ERR, "PG ID too long."
-                    "Cannot use RDMA CM\n");
+            tmplen = 3 * sizeof(uint64_t) + 1;
+            if(tmplen > RDMA_MAX_PRIVATE_LENGTH) {
+                PRINT_ERROR("Length of private data too long. Requested: %d. Supported: %d.",
+                            tmplen, RDMA_MAX_PRIVATE_LENGTH);
+                ibv_error_abort(GEN_EXIT_ERR, "Cannot use RDMA CM\n");
             }
 
-            DEBUG_PRINT("allocating %d bytes for private_data\n", tmplen);
+            PRINT_DEBUG(DEBUG_RDMACM_verbose,"allocating %d bytes for private_data\n", tmplen);
             conn_param.private_data = MPIU_Malloc(tmplen);
 
             if (!conn_param.private_data) {
@@ -185,14 +173,11 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                 ((uint64_t *) conn_param.private_data)[0] = pg_rank;
                 ((uint64_t *) conn_param.private_data)[1] = rail_index;
                 ((uint64_t *) conn_param.private_data)[2] = (uint64_t) vc;
-                pg_id = (char *) conn_param.private_data + 3*sizeof(uint64_t);
-
-                MPIU_Strncpy(pg_id, MPIDI_Process.my_pg->id, MAX_PG_ID_SIZE);
-                DEBUG_PRINT("Sending connection request to [rank = %d], "
-                    " [rail = %d] [vc = %x] [pg = %s]\n", 
+                PRINT_DEBUG(DEBUG_RDMACM_verbose,"Sending connection request to [rank = %d], "
+                    " [rail = %d] [vc = %x]\n", 
                 ((uint64_t *) conn_param.private_data)[0],
                 ((uint64_t *) conn_param.private_data)[1],
-                ((uint64_t *) conn_param.private_data)[2], pg_id);
+                ((uint64_t *) conn_param.private_data)[2]);
 
                 ret = rdma_connect(cma_id, &conn_param);
                 connect_attempts++;
@@ -200,7 +185,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                     usleep(rdma_cm_connect_retry_interval*exp_factor);
                     exp_factor *= 2;
                 }
-                DEBUG_PRINT("connect_attempts = %d, exp_factor=%d, ret = %d,"
+                PRINT_DEBUG(DEBUG_RDMACM_verbose,"connect_attempts = %d, exp_factor=%d, ret = %d,"
                     "wait_time = %d\n", connect_attempts, exp_factor, ret,
                     (rdma_cm_connect_retry_interval*exp_factor));
             } while (ret && (connect_attempts < max_rdma_connect_attempts));
@@ -214,7 +199,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
 
         break;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
-            DEBUG_PRINT("case RDMA_CM_EVENT_CONNECT_REQUEST\n");
+            PRINT_DEBUG(DEBUG_RDMACM_verbose,"case RDMA_CM_EVENT_CONNECT_REQUEST\n");
 
 #ifndef OFED_VERSION_1_1        /* OFED 1.2 */
             if (!event->param.conn.private_data_len){
@@ -225,8 +210,6 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             rail_index = ((uint64_t *) event->param.conn.private_data)[1];
             gotvc      = (MPIDI_VC_t *) ((uint64_t *) 
                 event->param.conn.private_data)[2];
-            pg_id      = (char *) event->param.conn.private_data
-                + 3*sizeof(uint64_t);
 #else  /* OFED 1.1 */
             if (!event->private_data_len){
                 ibv_error_abort(IBV_RETURN_ERR,
@@ -235,13 +218,12 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             rank       = ((uint64_t *) event->private_data)[0];
             rail_index = ((uint64_t *) event->private_data)[1];
             gotvc      = (MPIDI_VC_t*) ((uint64_t *) event->private_data)[2];
-            pg_id      = event->private_data + 3*sizeof(uint64_t);
 #endif
 
-            DEBUG_PRINT("Passive side recieved connect request: [%d] :[%d]" 
-            " [vc: %x] [pg id: %s]\n", rank, rail_index, gotvc, pg_id);
+            PRINT_DEBUG(DEBUG_RDMACM_verbose,"Passive side recieved connect request: [%d] :[%d]" 
+            " [vc: %x]\n", rank, rail_index, gotvc);
     
-            MPIDI_PG_Find(pg_id, &pg_tmp);
+            MPIDI_PG_Find(MPIDI_Process.my_pg->id, &pg_tmp);
             if(pg_tmp == NULL) {
                 ibv_error_abort(GEN_EXIT_ERR,
                     "Could not find PG in conn request\n");
@@ -256,7 +238,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                 || vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE 
                 || vc->ch.state == MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING )
             {
-                DEBUG_PRINT("Passive size rejecting connect request: "
+                PRINT_DEBUG(DEBUG_RDMACM_verbose,"Passive size rejecting connect request: "
                     "Crossing connection requests expected\n");
                 ret = rdma_reject(cma_id, NULL, 0);
                 if (ret) {
@@ -309,7 +291,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
 
         break;
         case RDMA_CM_EVENT_ESTABLISHED:
-            DEBUG_PRINT("case RDMA_CM_EVENT_ESTABLISHED\n");
+            PRINT_DEBUG(DEBUG_RDMACM_verbose,"case RDMA_CM_EVENT_ESTABLISHED\n");
             vc = (MPIDI_VC_t *) cma_id->context;
             rank = vc->pg_rank;
 
@@ -324,7 +306,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
 #endif
 
             if (rank < 0) {        /* Overlapping connections */
-                DEBUG_PRINT("Got event for overlapping connections? "
+                PRINT_DEBUG(DEBUG_RDMACM_verbose,"Got event for overlapping connections? "
                    " removing...\n");
                 break;
             }
@@ -343,14 +325,14 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                         vc->ch.state = MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING;
                         for (i = 0; i < rdma_num_rails; i++){
                             MRAILI_Send_noop(vc, i);
-                            DEBUG_PRINT("Sending noop to [%d]\n", rank);
+                            PRINT_DEBUG(DEBUG_RDMACM_verbose,"Sending noop to [%d]\n", rank);
                         }
                      }
                      else {
                          vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                          vc->state = MPIDI_VC_STATE_ACTIVE;
                          MPIDI_CH3I_Process.new_conn_complete = 1;
-                         DEBUG_PRINT("Connection Complete - Client: %d->%d\n", 
+                         PRINT_DEBUG(DEBUG_RDMACM_verbose,"Connection Complete - Client: %d->%d\n", 
                              pg_rank, rank);
                      }
                  }
@@ -368,7 +350,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                              vc->state = MPIDI_VC_STATE_ACTIVE;
                              MPIDI_CH3I_Process.new_conn_complete = 1;
                              MRAILI_Send_noop(vc, 0);
-                             DEBUG_PRINT("Connection Complete - Server: "
+                             PRINT_DEBUG(DEBUG_RDMACM_verbose,"Connection Complete - Server: "
                              "%d->%d\n", pg_rank, rank);
                          }
                      }
@@ -409,7 +391,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
          * ops.
          */
         case RDMA_CM_EVENT_REJECTED:
-        DEBUG_PRINT("RDMA CM Reject Event %d, error %d\n", event->event, 
+        PRINT_DEBUG(DEBUG_RDMACM_verbose,"RDMA CM Reject Event %d, error %d\n", event->event, 
             event->status);
         break;
 
@@ -417,14 +399,14 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
         break;
 
         case RDMA_CM_EVENT_TIMEWAIT_EXIT:
-        DEBUG_PRINT("caught RDMA_CM_EVENT_TIMEWAIT_EXIT \n");
+        PRINT_DEBUG(DEBUG_RDMACM_verbose,"caught RDMA_CM_EVENT_TIMEWAIT_EXIT \n");
         break;  
 
         case RDMA_CM_EVENT_DEVICE_REMOVAL:
 #endif
 
         default:
-            DEBUG_PRINT("%s: Caught unhandled rdma cm event - %s\n",
+            PRINT_DEBUG(DEBUG_RDMACM_verbose,"%s: Caught unhandled rdma cm event - %s\n",
                 __FUNCTION__, rdma_event_str(event->event));
         break;
     }
@@ -453,7 +435,7 @@ void *cm_thread(void *arg)
                 "rdma_get_cm_event err %d\n", ret);
         }
 
-        DEBUG_PRINT("rdma cm event[id: %p]: %d\n", event->id, event->event);
+        PRINT_DEBUG(DEBUG_RDMACM_verbose,"rdma cm event[id: %p]: %d\n", event->id, event->event);
         {
          
             MPICM_lock();
@@ -519,7 +501,7 @@ static int get_base_listen_port(int pg_rank, int* port)
     }
 
     int portRange = MPIDI_PG_Get_size(MPIDI_Process.my_pg) - g_num_smp_peers;
-    DEBUG_PRINT("%s: portRange = %d\r\n", __FUNCTION__, portRange);
+    PRINT_DEBUG(DEBUG_RDMACM_verbose,"%s: portRange = %d\r\n", __FUNCTION__, portRange);
 
     if (maxPort - minPort < portRange)
     {
@@ -609,7 +591,7 @@ static int bind_listen_port(int pg_rank, int pg_size)
 
         sin.sin_port = rdma_base_listen_port[pg_rank];
         ret = rdma_bind_addr(proc->cm_listen_id, (struct sockaddr *) &sin);
-        DEBUG_PRINT("[%d] Port bind failed - %d. retrying %d\n", pg_rank,
+        PRINT_DEBUG(DEBUG_RDMACM_verbose,"[%d] Port bind failed - %d. retrying %d\n", pg_rank,
                  rdma_base_listen_port[pg_rank], count++);
         if (count > 1000){
             ibv_error_abort(IBV_RETURN_ERR,
@@ -623,7 +605,7 @@ static int bind_listen_port(int pg_rank, int pg_size)
                         "rdma_listen failed: %d\n", ret);
     }
 
-    DEBUG_PRINT("Listen port bind on %d\n", sin.sin_port);
+    PRINT_DEBUG(DEBUG_RDMACM_verbose,"Listen port bind on %d\n", sin.sin_port);
 
 fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_BIND_LISTEN_PORT);
@@ -779,7 +761,7 @@ int rdma_cm_connect_all(int *hosts, int pg_rank, MPIDI_PG_t *pg)
             sem_wait(&proc->rdma_cm);
 
         /* RDMA CM Connection Setup Complete */
-        DEBUG_PRINT("RDMA CM based connection setup complete\n");
+        PRINT_DEBUG(DEBUG_RDMACM_verbose,"RDMA CM based connection setup complete\n");
     }
 
     rdma_cm_host_list = hosts;
@@ -1006,7 +988,7 @@ int *rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
         rdma_cm_host_list[pg_rank*max_num_ips + i] = rdma_cm_local_ips[i];
     }
 
-    DEBUG_PRINT("[%d] message to be sent: %s\n", pg_rank, buffer);
+    PRINT_DEBUG(DEBUG_RDMACM_verbose,"[%d] message to be sent: %s\n", pg_rank, buffer);
 
     MPIU_Strncpy(mv2_pmi_key, rank, 16);
     MPIU_Strncpy(mv2_pmi_val, buffer, length);
@@ -1060,7 +1042,7 @@ int *rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
                 ++g_num_smp_peers;
         }
     }
-    DEBUG_PRINT("Number of SMP peers for %d is %d\n", pg_rank, 
+    PRINT_DEBUG(DEBUG_RDMACM_verbose,"Number of SMP peers for %d is %d\n", pg_rank, 
         g_num_smp_peers);
 
     MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_GET_HOSTNAMES);
@@ -1141,7 +1123,7 @@ int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int ipnum, int rail_index){
                         "rdma_resolve_addr error %d\n", ret);
     }
 
-    DEBUG_PRINT("Active connect initiated for %d [ip: %d:%d] [rail %d]\n",
+    PRINT_DEBUG(DEBUG_RDMACM_verbose,"Active connect initiated for %d [ip: %d:%d] [rail %d]\n",
         vc->pg_rank, ipnum, rdma_base_listen_port[vc->pg_rank], rail_index);
     return ret;
 }
@@ -1338,7 +1320,7 @@ int rdma_cm_init_pd_cq()
             proc->srq_hndl[i] = create_srq(proc, i);
         }
 
-        DEBUG_PRINT("[%d][rail %d] proc->ptag %p, "
+        PRINT_DEBUG(DEBUG_RDMACM_verbose,"[%d][rail %d] proc->ptag %p, "
             "proc->cq_hndl %p, proc->srq_hndl %p\n",
             pg_rank, i, proc->ptag[i], proc->cq_hndl[i], proc->srq_hndl[i]);
     }
@@ -1463,7 +1445,7 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
 
     }
 
-    DEBUG_PRINT("RDMA CM resources finalized\n");
+    PRINT_DEBUG(DEBUG_RDMACM_verbose,"RDMA CM resources finalized\n");
 }
 
 

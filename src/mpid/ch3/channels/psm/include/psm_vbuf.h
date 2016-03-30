@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2015, The Ohio State University. All rights
+/* Copyright (c) 2001-2016, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -35,6 +35,9 @@
 #define  PSM_VBUFSZ             17408
 #define  PSM_INITIAL_POOL_SZ    256
 #define  PSM_SECONDARY_POOL_SZ  64
+
+#define MAX_PREPOST 512
+#define RCV_PREPOST 128
 
 typedef struct vbuf
 {
@@ -63,6 +66,12 @@ typedef struct vbuf_region
     struct vbuf_region* next;   /* thread vbuf regions        */
     int count;                  /* number of vbufs in region  */
 } vbuf_region;
+
+typedef struct psm_prepost_list
+{
+    vbuf *prepost_array[RCV_PREPOST];
+    struct psm_prepost_list *next;
+} psm_prepost_list_t;
 
 int     psm_init_vbuf_lock();
 int     psm_allocate_vbufs(int nvbufs);

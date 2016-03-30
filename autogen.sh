@@ -171,7 +171,7 @@ MAKE=${MAKE-make}
 # external packages that require autogen.sh to be run for each of them
 externals="src/pm/hydra src/mpi/romio src/openpa"
 # amdirs are the directories that make use of autoreconf
-amdirs=". src/mpl src/util/logging/rlog limic2-0.5.6"
+amdirs=". src/mpl src/util/logging/rlog limic2-0.5.6 osu_benchmarks"
 
 autoreconf_args="-if"
 export autoreconf_args
