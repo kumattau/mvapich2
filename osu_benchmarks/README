@@ -21,19 +21,19 @@ following:
         upcc upc/osu_upc_memput.c -o upc/osu_upc_memput
         upcc upc/osu_upc_memget.c -o upc/osu_upc_memget
 
-        upcc upc/osu_upc_all_barrier.c upc/osu_common.c     \
+        upcc upc/osu_upc_all_barrier.c upc/osu_coll.c upc/osu_common.c     \
             -o upc/osu_upc_all_barrier
-        upcc upc/osu_upc_all_broadcast.c upc/osu_common.c   \
+        upcc upc/osu_upc_all_broadcast.c upc/osu_coll.c upc/osu_common.c   \
             -o upc/osu_upc_all_broadcast
-        upcc upc/osu_upc_all_exchange.c upc/osu_common.c    \
+        upcc upc/osu_upc_all_exchange.c upc/osu_coll.c upc/osu_common.c    \
             -o upc/osu_upc_all_exchange
-        upcc upc/osu_upc_all_gather_all.c upc/osu_common.c  \
+        upcc upc/osu_upc_all_gather_all.c upc/osu_coll.c upc/osu_common.c  \
             -o upc/osu_upc_all_gather_all
-        upcc upc/osu_upc_all_gather.c upc/osu_common.c      \
+        upcc upc/osu_upc_all_gather.c upc/osu_coll.c upc/osu_common.c      \
             -o upc/osu_upc_all_gather
-        upcc upc/osu_upc_all_reduce.c upc/osu_common.c      \
+        upcc upc/osu_upc_all_reduce.c upc/osu_coll.c upc/osu_common.c      \
             -o upc/osu_upc_all_reduce.c
-        upcc upc/osu_upc_all_scatter.c upc/osu_common.c     \
+        upcc upc/osu_upc_all_scatter.c upc/osu_coll.c upc/osu_common.c     \
             -o upc/osu_upc_all_scatter
 
 The MPI Multiple Bandwidth / Message Rate (osu_mbw_mr), OpenSHMEM Put Message
@@ -108,7 +108,7 @@ osu_mbw_mr - Multiple Bandwidth / Message Rate Test
     * configurable number of processes running on each node. The test is
     * available here.
 
-osu_multi_lat - Multi-pair Latency Test (requires threading support from MPI-2)
+osu_multi_lat - Multi-pair Latency Test
     * This test is very similar to the latency test. However, at the same
     * instant multiple pairs are performing the same test simultaneously.
     * In order to perform the test across just two nodes the hostnames must
@@ -680,6 +680,18 @@ Collective Latency Tests
     * for up to 1MB message lengths.
     * "-i" can be used to set the number of iterations to run for each message
     * length.
+
+Startup Benchmarks
+------------------
+osu_init.c - This benchmark measures the minimum, maximum, and average time
+    * each process takes to complete MPI_Init.
+
+osu_hello.c - This is a simple hello world program. Users can take advantage of
+    * this to time it takes for all processes to execute MPI_Init +
+    * MPI_Finalize.
+    *
+    * Example:
+    * - time mpirun_rsh -np 2 -hostfile hostfile osu_hello
 
 CUDA and OpenACC Extensions to OMB
 ----------------------------------

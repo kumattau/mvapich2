@@ -147,13 +147,13 @@ free_node(rootp)
 #if !defined(DISABLE_PTMALLOC)
    if(g_is_dreg_finalize == 1) {
      MPIU_Free((*rootp)->data);
-     MPIU_Free((void *) *rootp);
+     MPIU_Free(*rootp);
    } else { 
       ADD_AVL_FREE_LIST(&avl_free_list, *rootp);
    }
 #else /* !defined(DISABLE_PTMALLOC) */
    MPIU_Free((*rootp)->data);
-   MPIU_Free((void *) *rootp);
+   MPIU_Free(*rootp);
 #endif /* !defined(DISABLE_PTMALLOC) */
    *rootp = NULL_TREE;
 }/* free_node */

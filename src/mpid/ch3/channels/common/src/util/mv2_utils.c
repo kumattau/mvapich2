@@ -71,6 +71,12 @@ int user_val_to_bytes(char* value, const char* param)
         str=value;
         factor = 1;
     }
+
+    if (atoi(str) < 0) {
+        fprintf(stderr,"\nIllegal value in %s environment variable!\n", param);
+        return 4194304;
+    }
+
     return atoi(str) * factor;
 }
 

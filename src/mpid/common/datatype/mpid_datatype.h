@@ -70,7 +70,7 @@
 	     }								    \
 	} */								    \
         if (lmpi_errno == MPI_SUCCESS) {				    \
-	    MPID_Datatype_free(datatype_ptr);				    \
+	    MPID_Datatype_free(datatype_ptr, 0);				    \
         }								    \
     }                                                                       \
 } while(0)
@@ -682,7 +682,7 @@ int MPID_Datatype_set_contents(struct MPID_Datatype *ptr,
 			       const MPI_Aint *aints,
 			       const MPI_Datatype *types);
 
-void MPID_Datatype_free_contents(struct MPID_Datatype *ptr);
+void MPID_Datatype_free_contents(struct MPID_Datatype *ptr, int in_finalize);
 void MPIDI_Datatype_get_contents_aints(MPID_Datatype_contents *cp,
 				       MPI_Aint *user_aints);
 void MPIDI_Datatype_get_contents_types(MPID_Datatype_contents *cp,
@@ -690,7 +690,7 @@ void MPIDI_Datatype_get_contents_types(MPID_Datatype_contents *cp,
 void MPIDI_Datatype_get_contents_ints(MPID_Datatype_contents *cp,
 				      int *user_ints);
 
-void MPID_Datatype_free(struct MPID_Datatype *ptr);
+void MPID_Datatype_free(struct MPID_Datatype *ptr, int in_finalize);
 
 void MPID_Dataloop_update(struct DLOOP_Dataloop *dataloop,
 			  MPI_Aint ptrdiff);

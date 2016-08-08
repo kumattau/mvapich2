@@ -1337,12 +1337,12 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     } 
     
     if (fallback_trigger) {
-        MPIU_Free((void *) win_info_exchange);
-        MPIU_Free((void *) cc_ptrs_exchange);
+        MPIU_Free(win_info_exchange);
+        MPIU_Free(cc_ptrs_exchange);
         dreg_unregister((*win_ptr)->post_flag_dreg_entry);
-        MPIU_Free((void *) (*win_ptr)->post_flag);
+        MPIU_Free((*win_ptr)->post_flag);
         dreg_unregister((*win_ptr)->completion_counter_dreg_entry);
-        MPIU_Free((void *) (*win_ptr)->completion_counter);
+        MPIU_Free((*win_ptr)->completion_counter);
         dreg_unregister((*win_ptr)->win_dreg_entry);
         (*win_ptr)->fall_back = 1;
         goto fn_exit;
@@ -1518,11 +1518,11 @@ fn_exit:
     return;
 
   err_postflag_register:
-    MPIU_Free((void *) (*win_ptr)->post_flag);
+    MPIU_Free((*win_ptr)->post_flag);
   err_postflag_buf:
     dreg_unregister((*win_ptr)->completion_counter_dreg_entry);
   err_cc_register:
-    MPIU_Free((void *) (*win_ptr)->completion_counter);
+    MPIU_Free((*win_ptr)->completion_counter);
   err_cc_buf:
     dreg_unregister((*win_ptr)->win_dreg_entry);
   err_base_register:
@@ -1535,8 +1535,8 @@ fn_exit:
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
  
-    MPIU_Free((void *) win_info_exchange);
-    MPIU_Free((void *) cc_ptrs_exchange);
+    MPIU_Free(win_info_exchange);
+    MPIU_Free(cc_ptrs_exchange);
     goto fn_exit;
      
 }
@@ -1564,14 +1564,14 @@ void MPIDI_CH3I_RDMA_win_free(MPID_Win** win_ptr)
 
     MPIU_Free((*win_ptr)->win_rkeys);
     MPIU_Free((*win_ptr)->completion_counter_rkeys);
-    MPIU_Free((void *) (*win_ptr)->post_flag);
+    MPIU_Free((*win_ptr)->post_flag);
     MPIU_Free((*win_ptr)->post_flag_rkeys);
     MPIU_Free((*win_ptr)->remote_post_flags);
     MPIU_Free((*win_ptr)->put_get_list);
     MPIU_Free((*win_ptr)->put_get_list_size_per_process);
 
-    MPIU_Free((void *) (*win_ptr)->completion_counter);
-    MPIU_Free((void *) (*win_ptr)->all_completion_counter);
+    MPIU_Free((*win_ptr)->completion_counter);
+    MPIU_Free((*win_ptr)->all_completion_counter);
 }
 
 static int Decrease_CC(MPID_Win * win_ptr, int target_rank)

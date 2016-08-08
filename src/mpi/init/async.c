@@ -187,6 +187,7 @@ int MPIR_Finalize_async_thread(void)
     MPIU_Thread_mutex_destroy(&progress_mutex, &mpi_errno);
     MPIU_Assert(!mpi_errno);
 
+    MPIR_async_thread_initialized = 0;
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_FINALIZE_ASYNC_THREAD);
 
 #endif /* MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE */

@@ -159,10 +159,6 @@ int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, int *errflag)
        time */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
 
-#if defined(CKPT)
-    MPIDI_CH3I_CR_lock();
-#endif
-
     if (mv2_enable_shmem_collectives && mv2_enable_shmem_barrier
         && comm_ptr->dev.ch.shmem_coll_ok == 1) {
 
@@ -172,10 +168,6 @@ int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, int *errflag)
 
         mpi_errno = MPIR_Pairwise_Barrier_MV2(comm_ptr, errflag);
     }
-
-#if defined(CKPT)
-    MPIDI_CH3I_CR_unlock();
-#endif
 
     if (mpi_errno) {
         /* for communication errors, just record the error but continue */

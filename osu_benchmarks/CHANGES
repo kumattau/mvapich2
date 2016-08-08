@@ -1,3 +1,14 @@
+OSU Micro Benchmarks v5.3.1 (08/08/16)
+* New Features & Enhancements
+    - Add option to control whether CUDA kernels are built
+    - Add runtime option to specify number of threads for osu_latency_mt
+
+* Bug Fixes
+    - Check if -lrt or -lpthread is needed
+    - Fix compilation warnings
+    - Fix non-blocking collective memory leak
+    - Correct documentation for osu_multi_lat
+
 OSU Micro Benchmarks v5.3 (03/25/16)
 * New Features & Enhancements
     - Introduce new UPC++ Benchmarks

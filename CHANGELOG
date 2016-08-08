@@ -3,6 +3,49 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.2rc2 (08/08/2016)
+
+* Features and Enhancements (since 2.2rc1):
+    - Enhanced performance for MPI_Comm_split through new bitonic algorithm
+        - Thanks to Adam T. Moody@LLNL for the patch
+    - Enable graceful fallback to Shared Memory if LiMIC2 or CMA transfer fails
+    - Enable support for multiple MPI initializations
+    - Unify process affinity support in Gen2, PSM and PSM2 channels
+    - Remove verbs dependency when building the PSM and PSM2 channels
+    - Allow processes to request MPI_THREAD_MULTIPLE when socket or NUMA node
+      level affinity is specified
+    - Point-to-point and collective performance optimization for Intel Knights
+      Landing
+    - Automatic detection and tuning for InfiniBand EDR HCAs
+    - Warn user to reconfigure library if rank type is not large enough to
+      represent all ranks in job
+    - Collective tuning for Opal@LLNL, Bridges@PSC, and Stampede-1.5@TACC
+    - Tuning and architecture detection for Intel Broadwell processors
+    - Add ability to avoid using --enable-new-dtags with ld
+        - Thanks to Adam T. Moody@LLNL for the suggestion
+    - Add LIBTVMPICH specific CFLAGS and LDFLAGS
+        - Thanks to Adam T. Moody@LLNL for the suggestion
+
+* Bug Fixes (since 2.2rc1):
+    - Disable optimization that removes use of calloc in ptmalloc hook
+      detection code
+        - Thanks to Karl W. Schulz@Intel
+    - Fix weak alias typos (allows successful compilation with CLANG compiler)
+        - Thanks to Min Dong@Old Dominion University for the patch
+    - Fix issues in PSM large message gather operations
+        - Thanks to Adam T. Moody@LLNL for the report
+    - Enhance error checking in collective tuning code
+        - Thanks to Jan Bierbaum@Technical University of Dresden for the patch
+    - Fix issues with UD based communication in RoCE mode
+    - Fix issues with PMI2 support in singleton mode
+    - Fix default binding bug in hydra launcher
+    - Fix issues with Checkpoint Restart when launched with mpirun_rsh
+    - Fix fortran binding issues with Intel 2016 compilers
+    - Fix issues with socket/NUMA node level binding
+    - Disable atomics when using Connect-IB with RDMA_CM
+    - Fix hang in MPI_Finalize when using hybrid channel
+    - Fix memory leaks
+
 MVAPICH2 2.2rc1 (03/29/2016)
 
 * Features and Enhancements (since 2.2b):

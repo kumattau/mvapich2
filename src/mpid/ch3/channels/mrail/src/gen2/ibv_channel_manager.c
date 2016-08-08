@@ -40,6 +40,10 @@
 #endif
 
 static pthread_spinlock_t g_apm_lock;
+static int num_cqes[MAX_NUM_HCAS] = { 0 };
+static int curr_cqe[MAX_NUM_HCAS] = { 0 };
+static struct ibv_wc wc[MAX_NUM_HCAS][RDMA_MAX_CQE_ENTRIES_PER_POLL];
+static unsigned long nspin = 0;
 
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_freed);
@@ -878,14 +882,10 @@ int MPIDI_CH3I_MRAILI_Cq_poll_iwarp(vbuf **vbuf_handle,
         MPIDI_VC_t * vc_req, int receiving, int is_blocking)
 {
     int ne = 0;
-    static int num_cqes[MAX_NUM_HCAS] = { 0 };
-    static int curr_cqe[MAX_NUM_HCAS] = { 0 };
-    static struct ibv_wc wc[MAX_NUM_HCAS][RDMA_MAX_CQE_ENTRIES_PER_POLL];
     int i = 0;
     int cq_choice = 0;
     int num_cqs = 0;
     int type = T_CHANNEL_NO_ARRIVE;
-    static unsigned long nspin = 0;
     struct ibv_cq *chosen_cq = NULL;
 
     MPIDI_STATE_DECL(MPID_GEN2_MRAILI_CQ_POLL);
@@ -984,14 +984,10 @@ int MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf **vbuf_handle,
         MPIDI_VC_t * vc_req, int receiving, int is_blocking)
 {
     int ne = 0;
-    static int num_cqes[MAX_NUM_HCAS] = { 0 };
-    static int curr_cqe[MAX_NUM_HCAS] = { 0 };
-    static struct ibv_wc wc[MAX_NUM_HCAS][RDMA_MAX_CQE_ENTRIES_PER_POLL];
     int i = 0;
     int cq_choice = 0;
     int num_cqs = 1;
     int type = T_CHANNEL_NO_ARRIVE;
-    static unsigned long nspin = 0;
     struct ibv_cq *chosen_cq = NULL;
 
     MPIDI_STATE_DECL(MPID_GEN2_MRAILI_CQ_POLL);
@@ -1359,6 +1355,18 @@ int perform_manual_apm(struct ibv_qp* qp)
     
     unlock_apm(); 
     return 0;
+}
+
+void MPIDI_CH3I_Cleanup_cqes(void)
+{
+    int i;
+
+    nspin = 0;
+    arriving_head = arriving_tail = NULL;
+    for (i=0; i< MAX_NUM_HCAS; i++) {
+        num_cqes[i] = 0;
+        curr_cqe[i] = 0;
+    }
 }
 
 void

@@ -20,9 +20,9 @@
 #include "mpiimpl.h"
 #include "mpicomm.h"
 
-#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) || defined(CHANNEL_NEMESIS_IB)
 #include "coll_shmem.h"
-#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
+#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) || defined(CHANNEL_NEMESIS_IB) */
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -62,6 +62,754 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm) __attri
 #ifndef MPICH_MPI_FROM_PMPI
 #undef MPI_Comm_split
 #define MPI_Comm_split PMPI_Comm_split
+
+/***************************************
+ * comm_split using parallel (bitonic) sort,
+ * useful for large process counts,
+ * currently only good for intracomms.
+ ***************************************/
+
+/* Executes an MPI_Comm_split operation using bitonic sort, a pt2pt
+ * exchange to find color boundaries and left and right group
+ * neighbors, a double inclusive scan to compute new rank and group
+ * size, and a recv from ANY_SOURCE with a barrier to return the
+ * output group as a chain (left/right/rank/size).
+ *
+ * Based on "Exascale Algorithms for Generalized MPI_Comm_split",
+ * EuroMPI 2011, Adam Moody, Dong H. Ahn, and Bronis R. de Supinkski
+ *
+ * Also see "A New Vision for Coarray Fortran",
+ * The Third Conference on Partitioned Global Address Space
+ * Programming Models 2009, John Mellor-Crummey, Laksono Adhianto,
+ * Guohua Jin, and William N. Scherer III. */
+
+/* TODO: define these tags for comm_split in src/include/mpiimpl.h
+ * along with other tags used for various collectives
+ *
+ * #define MPIR_ALLTOALLW_TAG            25
+ * #define MPIR_SPLIT_A_TAG              26
+ * #define MPIR_SPLIT_B_TAG              27
+ * #define MPIR_TOPO_A_TAG               28
+ * #define MPIR_TOPO_B_TAG               29
+ *
+ * */
+/* TODO: right now we use two tags plus a barrier, this may be overkill
+ * and we may be able to get by with one tag and the barrier */
+static int tag0 = 0; // MPIR_SPLIT_A_TAG
+static int tag1 = 2; // MPIR_SPLIT_B_TAG
+
+#define CKRSIZE (3)
+enum ckr_fields {
+    CKR_COLOR = 0,
+    CKR_KEY   = 1,
+    CKR_RANK  = 2,
+};
+
+/* compares a (color,key,rank) integer tuple, first by color,
+ * then key, then rank */
+static int cmp_three_ints(const int a[], const int b[])
+{
+    /* compare color values first */
+    if (a[CKR_COLOR] != b[CKR_COLOR]) {
+        if (a[CKR_COLOR] > b[CKR_COLOR]) {
+            return 1;
+        }
+        return -1;
+    }
+
+    /* then compare key values */
+    if (a[CKR_KEY] != b[CKR_KEY]) {
+        if (a[CKR_KEY] > b[CKR_KEY]) {
+            return 1;
+        }
+        return -1;
+    }
+
+    /* finally compare ranks */
+    if (a[CKR_RANK] != b[CKR_RANK]) {
+        if (a[CKR_RANK] > b[CKR_RANK]) {
+            return 1;
+        }
+        return -1;
+    }
+
+    /* all three are equal if we make it here */
+    return 0;
+}
+
+/***************************************
+ * Bitonic sort CKR_COLOR/KEY/RANK tuples
+ ***************************************/
+
+static int sort_bitonic_merge(
+    int value[CKRSIZE],
+    int start,
+    int num,
+    int direction,
+    MPID_Comm *comm_ptr)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int errflag = FALSE;
+
+    int scratch[CKRSIZE];
+    if (num > 1) {
+        /* get our rank in the communicator */
+        MPI_Comm comm = comm_ptr->handle;
+        int rank = comm_ptr->rank;
+
+        /* determine largest power of two that is smaller than num */
+        int count = 1;
+        while (count < num) {
+            count <<= 1;
+        }
+        count >>= 1;
+
+        /* divide range into two chunks, execute bitonic half-clean
+         * step, then recursively merge each half */
+        MPI_Status status[2];
+        if (rank < start + count) {
+            int dst_rank = rank + count;
+            if (dst_rank < start + num) {
+              /* exchange data with our partner rank */
+              mpi_errno = MPIC_Sendrecv(
+                  value,   CKRSIZE, MPI_INT, dst_rank, tag0,
+                  scratch, CKRSIZE, MPI_INT, dst_rank, tag0,
+                  comm, status, &errflag
+              );
+              /* TODO: process error! */
+
+              /* select the appropriate value,
+               * depedning on the sort direction */
+              int cmp = cmp_three_ints(scratch, value);
+              if ((direction && cmp < 0) || (!direction && cmp > 0)) {
+                  memcpy(value, scratch, CKRSIZE * sizeof(int));
+              }
+            }
+
+            /* recursively merge our half */
+            sort_bitonic_merge(
+                value, start, count, direction, comm_ptr
+            );
+            /* TODO: process error! */
+        } else {
+            int dst_rank = rank - count;
+            if (dst_rank >= start) {
+              mpi_errno = MPIC_Sendrecv(
+                  value,   CKRSIZE, MPI_INT, dst_rank, tag0,
+                  scratch, CKRSIZE, MPI_INT, dst_rank, tag0,
+                  comm, status, &errflag
+              );
+              /* TODO: process error! */
+
+              /* select the appropriate value,
+               * depedning on the sort direction */
+              int cmp = cmp_three_ints(scratch, value);
+              if ((direction && cmp > 0) || (!direction && cmp < 0)) {
+                  memcpy(value, scratch, CKRSIZE * sizeof(int));
+              }
+            }
+
+            /* recursively merge our half */
+            int new_start = start + count;
+            int new_num   = num - count;
+            sort_bitonic_merge(
+                value, new_start, new_num, direction, comm_ptr
+            );
+            /* TODO: process error! */
+        }
+    }
+
+    return mpi_errno;
+}
+
+static int sort_bitonic_sort(
+    int value[CKRSIZE],
+    int start,
+    int num,
+    int direction,
+    MPID_Comm *comm_ptr)
+{
+    int mpi_errno = MPI_SUCCESS;
+
+    if (num > 1) {
+        /* get our rank in our group */
+        int rank = comm_ptr->rank;
+
+        /* recursively divide and sort each half */
+        int mid = (num >> 1);
+        if (rank < start + mid) {
+            sort_bitonic_sort(
+                value, start, mid, !direction, comm_ptr
+            );
+            /* TODO: process error! */
+        } else {
+            int new_start = start + mid;
+            int new_num   = num - mid;
+            sort_bitonic_sort(
+                value, new_start, new_num, direction, comm_ptr
+            );
+            /* TODO: process error! */
+        }
+
+        /* merge the two sorted halves */
+        sort_bitonic_merge(
+            value, start, num, direction, comm_ptr
+        );
+        /* TODO: process error! */
+    }
+
+    return mpi_errno;
+}
+
+/* globally sort (color,key,rank) items across processes in group,
+ * each process provides its tuple as item on input,
+ * on output item is overwritten with a new item
+ * such that if rank_i < rank_j, item_i < item_j for all i and j */
+static int sort_bitonic(int item[CKRSIZE], MPID_Comm *comm_ptr)
+{
+    /* conduct the bitonic sort on our values */
+    int ranks = comm_ptr->local_size;
+    int rc = sort_bitonic_sort(item, 0, ranks, 1, comm_ptr);
+    /* TODO: process error! */
+    return rc;
+}
+
+#define CHAINSIZE (4)
+enum chain_fields {
+    CHAIN_LEFT  = 0, /* address of proc whose rank is one less */
+    CHAIN_RIGHT = 1, /* address of proc whose rank is one more */
+    CHAIN_RANK  = 2, /* our rank within new group */
+    CHAIN_SIZE  = 3, /* size of new group */
+};
+
+#define SCANSIZE (3)
+enum scan_fields {
+    SCAN_FLAG  = 0, /* set flag=1 when we should stop accumulating */
+    SCAN_COUNT = 1, /* running count being accumulated */
+    SCAN_NEXT  = 2, /* rank of next process to talk to */
+};
+
+/* assumes that color/key/rank tuples have been globally sorted
+ * across ranks, computes corresponding group information in form
+ * of chain (left,right,rank,size) and passes that back to
+ * originating rank:
+ *   1) determines group boundaries and left and right neighbors
+ *      via pt2pt msgs to compare colors
+ *   2) executes left-to-right and right-to-left (double) inclusive
+ *      segmented scan to compute number of ranks to left and right
+ *      sides
+ *   3) sends chain info (left/right/rank/size)
+ *      back to originating rank via isend/irecv ANY_SOURCE
+ *      followed by a barrier */
+static int split_sorted(
+    const int val[CKRSIZE],
+    int *outranks,
+    int *outrank,
+    int *outleft,
+    int *outright,
+    MPID_Comm *comm_ptr)
+{
+    int k;
+    MPI_Request request[4];
+    MPI_Status  status[4];
+    int mpi_errno = MPI_SUCCESS;
+    int errflag = FALSE;
+
+    /* we will fill in four integer values (left, right, rank, size)
+     * representing the chain data structure for the the globally
+     * ordered color/key/rank tuple that we hold, which we'll then
+     * send back to the rank that contributed our item */
+    int send_group_ints[CHAINSIZE];
+
+    /* get our rank, number of ranks, and ranks of processes
+     * that are one less (left) and one more (right) than our own */
+    MPI_Comm comm = comm_ptr->handle;
+    int rank  = comm_ptr->rank;
+    int ranks = comm_ptr->local_size;
+
+    int left_rank = rank - 1;
+    if (left_rank < 0) {
+        left_rank = MPI_PROC_NULL;
+    }
+
+    int right_rank = rank + 1;
+    if (right_rank >= ranks) {
+        right_rank = MPI_PROC_NULL;
+    }
+
+    /* exchange data with left and right neighbors to find
+     * boundaries of group */
+    k = 0;
+    int left_buf[CKRSIZE];
+    int right_buf[CKRSIZE];
+    if (left_rank != MPI_PROC_NULL) {
+        mpi_errno = MPIC_Isend(
+            (void*)val, CKRSIZE, MPI_INT, left_rank,
+            tag0, comm, &request[k], &errflag
+        );
+        k++;
+        /* TODO: process error! */
+
+        mpi_errno = MPIC_Irecv(
+            left_buf, CKRSIZE, MPI_INT, left_rank,
+            tag0, comm, &request[k]
+        );
+        k++;
+        /* TODO: process error! */
+    }
+    if (right_rank != MPI_PROC_NULL) {
+        mpi_errno = MPIC_Isend(
+            (void*)val, CKRSIZE, MPI_INT, right_rank,
+            tag0, comm, &request[k], &errflag
+        );
+        k++;
+        /* TODO: process error! */
+
+        mpi_errno = MPIC_Irecv(
+            right_buf, CKRSIZE, MPI_INT, right_rank,
+            tag0, comm, &request[k]
+        );
+        k++;
+        /* TODO: process error! */
+    }
+    if (k > 0) {
+        mpi_errno = MPIR_Waitall_impl(k, request, status);
+        /* TODO: process error! */
+    }
+
+    /* if we have a left neighbor, and if his color value matches ours,
+     * then our element is part of his group, otherwise we are the
+     * first rank of a new group */
+    int first_in_group = 0;
+    if (left_rank != MPI_PROC_NULL &&
+        left_buf[CKR_COLOR] == val[CKR_COLOR])
+    {
+        /* record the rank of the item from our left neighbor */
+        send_group_ints[CHAIN_LEFT] = left_buf[CKR_RANK];
+    } else {
+        first_in_group = 1;
+        send_group_ints[CHAIN_LEFT] = MPI_PROC_NULL;
+    }
+
+    /* if we have a right neighbor, and if his color value matches ours,
+     * then our element is part of his group, otherwise we are the
+     * last rank of our group */
+    int last_in_group = 0;
+    if (right_rank != MPI_PROC_NULL &&
+        right_buf[CKR_COLOR] == val[CKR_COLOR])
+    {
+        /* record the rank of the item from our right neighbor */
+        send_group_ints[CHAIN_RIGHT] = right_buf[CKR_RANK];
+    } else {
+        last_in_group = 1;
+        send_group_ints[CHAIN_RIGHT] = MPI_PROC_NULL;
+    }
+
+    /* prepare buffers for our scan operations: flag, count, next */
+    int send_left_ints[SCANSIZE]  = {0,1,MPI_PROC_NULL};
+    int send_right_ints[SCANSIZE] = {0,1,MPI_PROC_NULL};
+    int recv_left_ints[SCANSIZE]  = {0,0,MPI_PROC_NULL};
+    int recv_right_ints[SCANSIZE] = {0,0,MPI_PROC_NULL};
+    if (first_in_group) {
+        left_rank = MPI_PROC_NULL;
+        send_right_ints[SCAN_FLAG] = 1;
+    }
+    if (last_in_group) {
+        right_rank = MPI_PROC_NULL;
+        send_left_ints[SCAN_FLAG] = 1;
+    }
+
+    /* execute inclusive scan in both directions to count number of
+     * ranks in our group to our left and right sides */
+    while (left_rank != MPI_PROC_NULL || right_rank != MPI_PROC_NULL) {
+        /* select our left and right partners for this iteration */
+        k = 0;
+
+        /* send and receive data with left partner */
+        if (left_rank != MPI_PROC_NULL) {
+            mpi_errno = MPIC_Irecv(
+                recv_left_ints, SCANSIZE, MPI_INT, left_rank,
+                tag0, comm, &request[k]
+            );
+            k++;
+            /* TODO: process error! */
+
+            /* send the rank of our right neighbor to our left,
+             * since it will be his right neighbor in the next step */
+            send_left_ints[SCAN_NEXT] = right_rank;
+            mpi_errno = MPIC_Isend(
+                send_left_ints, SCANSIZE, MPI_INT, left_rank,
+                tag0, comm, &request[k], &errflag
+            );
+            k++;
+            /* TODO: process error! */
+        }
+
+        /* send and receive data with right partner */
+        if (right_rank != MPI_PROC_NULL) {
+            mpi_errno = MPIC_Irecv(
+                recv_right_ints, SCANSIZE, MPI_INT, right_rank,
+                tag0, comm, &request[k]
+            );
+            k++;
+            /* TODO: process error! */
+
+            /* send the rank of our left neighbor to our right,
+             * since it will be his left neighbor in the next step */
+            send_right_ints[SCAN_NEXT] = left_rank;
+            mpi_errno = MPIC_Isend(
+                send_right_ints, SCANSIZE, MPI_INT, right_rank,
+                tag0, comm, &request[k], &errflag
+            );
+            k++;
+            /* TODO: process error! */
+        }
+
+        /* wait for communication to finsih */
+        if (k > 0) {
+            mpi_errno = MPIR_Waitall_impl(k, request, status);
+            /* TODO: process error! */
+        }
+
+        /* reduce data from left partner */
+        if (left_rank != MPI_PROC_NULL) {
+            /* continue accumulating the count in our right-going data
+             * if our flag has not already been set */
+            if (send_right_ints[SCAN_FLAG] != 1) {
+                send_right_ints[SCAN_FLAG]   = recv_left_ints[SCAN_FLAG];
+                send_right_ints[SCAN_COUNT] += recv_left_ints[SCAN_COUNT];
+            }
+
+            /* get the next rank on our left */
+            left_rank = recv_left_ints[SCAN_NEXT];
+        }
+
+        /* reduce data from right partner */
+        if (right_rank != MPI_PROC_NULL) {
+            /* continue accumulating the count in our left-going data
+             * if our flag has not already been set */
+            if (send_left_ints[SCAN_FLAG] != 1) {
+                send_left_ints[SCAN_FLAG]   = recv_right_ints[SCAN_FLAG];
+                send_left_ints[SCAN_COUNT] += recv_right_ints[SCAN_COUNT];
+            }
+
+            /* get the next rank on our right */
+            right_rank = recv_right_ints[SCAN_NEXT];
+        }
+    }
+
+    /* Now we can set our rank and the number of ranks in our group.
+     * At this point, our right-going count is the number of ranks to
+     * left including ourself, and the left-going count is the number
+     * of ranks to right including ourself.
+     * Our rank is the number of ranks to our left (right-going count
+     * minus 1), and the group size is the sum of right-going and
+     * left-going counts minus 1 so we don't double counts ourself. */
+    send_group_ints[CHAIN_RANK] = send_right_ints[SCAN_COUNT] - 1;
+    send_group_ints[CHAIN_SIZE] = send_right_ints[SCAN_COUNT] + send_left_ints[SCAN_COUNT] - 1;
+
+    /* TODO: note we can avoid the any_source recv using
+     * another sort */
+    /* send group info back to originating rank,
+     * receive our own from someone else
+     * (don't know who so use an ANY_SOURCE recv) */
+    int recv_group_ints[CHAINSIZE];
+    mpi_errno = MPIC_Isend(
+        send_group_ints, CHAINSIZE, MPI_INT, val[CKR_RANK],
+        tag1, comm, &request[0], &errflag
+    );
+    /* TODO: process error! */
+    mpi_errno = MPIC_Irecv(
+        recv_group_ints, CHAINSIZE, MPI_INT, MPI_ANY_SOURCE,
+        tag1, comm, &request[1]
+    );
+    /* TODO: process error! */
+    mpi_errno = MPIR_Waitall_impl(2, request, status);
+    /* TODO: process error! */
+
+    /* execute barrier to ensure that everyone is done with
+     * their above ANY_SOURCE recv */
+    mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
+    /* TODO: process error! */
+
+    /* fill in return parameters */
+    *outleft  = recv_group_ints[CHAIN_LEFT];
+    *outright = recv_group_ints[CHAIN_RIGHT];
+    *outrank  = recv_group_ints[CHAIN_RANK];
+    *outranks = recv_group_ints[CHAIN_SIZE];
+
+    return mpi_errno;
+}
+
+/* issues an allgather operation over processes in specified group */
+#undef FUNCNAME
+#define FUNCNAME chain_allgather_int
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+static int chain_allgather_int(
+    int sendint,
+    int recvbuf[],
+    int ranks,
+    int rank,
+    int left,
+    int right,
+    MPID_Comm *comm_ptr)
+{
+    int left_rank, right_rank, next_left, next_right, count;
+    int mpi_errno = MPI_SUCCESS;
+    int errflag = FALSE;
+
+    /* get communicator handle */
+    MPI_Comm comm = comm_ptr->handle;
+
+    /* copy our own data into the receive buffer */
+    recvbuf[rank] = sendint;
+
+    /* execute the allgather operation */
+    MPI_Request request[8];
+    MPI_Status status[8];
+    left_rank  = left;
+    right_rank = right;
+    count = 1;
+    while (left_rank != MPI_PROC_NULL || right_rank != MPI_PROC_NULL) {
+        int k = 0;
+
+        /* if we have a left partner, send him all data we know about
+         * from on rank on to the right */
+        if (left_rank != MPI_PROC_NULL) {
+            /* receive rank of next left neighbor from current left neighbor */
+            mpi_errno = MPIC_Irecv(
+                &next_left, 1, MPI_INT, left_rank,
+                tag0, comm, &request[k]
+            );
+            k++;
+            /* TODO: process error! */
+
+            /* determine offset in receive buffer and incoming count */
+            int left_start = rank + 1 - 2 * count;
+            int left_count = count;
+            if (left_start < 0) {
+                left_start = 0;
+                left_count = rank + 1 - count;
+            }
+
+            /* issue receive for data from left partner */
+            mpi_errno = MPIC_Irecv(
+                recvbuf + left_start, left_count, MPI_INT, left_rank,
+                tag0, comm, &request[k]
+            );
+            k++;
+            /* TODO: process error! */
+
+            /* send the rank of our right neighbor */
+            mpi_errno = MPIC_Isend(
+                &right_rank, 1, MPI_INT, left_rank,
+                tag0, comm, &request[k], &errflag
+            );
+            k++;
+            /* TODO: process error! */
+
+            /* compute the number of elements we'll be sending left */
+            int left_send_count = count;
+            if (rank + left_send_count > ranks) {
+                left_send_count = ranks - rank;
+            }
+
+            /* send our data to our left neighbor */
+            mpi_errno = MPIC_Isend(
+                recvbuf + rank, left_send_count, MPI_INT, left_rank,
+                tag0, comm, &request[k], &errflag
+            );
+            k++;
+            /* TODO: process error! */
+        }
+
+        /* if we have a right partner, send him all data we know about
+         * from on rank on to the left */
+        if (right_rank != MPI_PROC_NULL) {
+            /* receive rank of next right neighbor from current right neighbor */
+            mpi_errno = MPIC_Irecv(
+                &next_right, 1, MPI_INT, right_rank,
+                tag0, comm, &request[k]
+            );
+            k++;
+            /* TODO: process error! */
+
+            /* determine offset in receive buffer and incoming count */
+            int right_start = rank + count;
+            int right_count = count;
+            if (right_start + count > ranks) {
+                right_count = ranks - right_start;
+            }
+
+            /* issue receive for data from right partner */
+            mpi_errno = MPIC_Irecv(
+                recvbuf + right_start, right_count, MPI_INT, right_rank,
+                tag0, comm, &request[k]
+            );
+            k++;
+            /* TODO: process error! */
+
+            /* send the rank of our left neighbor to our right neighbor */
+            mpi_errno = MPIC_Isend(
+                &left_rank, 1, MPI_INT, right_rank,
+                tag0, comm, &request[k], &errflag
+            );
+            k++;
+            /* TODO: process error! */
+
+            /* compute the number of elements we'll be sending right */
+            int right_send_start = rank + 1 - count;
+            int right_send_count = count;
+            if (right_send_start < 0) {
+                right_send_start = 0;
+                right_send_count = rank + 1;
+            }
+
+            /* send the data */
+            mpi_errno = MPIC_Isend(
+                recvbuf + right_send_start, right_send_count, MPI_INT, right_rank,
+                tag0, comm, &request[k], &errflag
+            );
+            k++;
+            /* TODO: process error! */
+        }
+
+        /* wait for communication to complete */
+        if (k > 0) {
+            mpi_errno = MPIR_Waitall_impl(k, request, status);
+            /* TODO: process error! */
+        }
+
+        /* get next rank to our left */
+        if (left_rank != MPI_PROC_NULL) {
+            left_rank = next_left;
+        }
+
+        /* get next rank to our right */
+        if (right_rank != MPI_PROC_NULL) {
+            right_rank = next_right;
+        }
+
+        /* go on to next iteration */
+        count <<= 1;
+    }
+
+ fn_exit:
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Comm_split_intra_bitonic
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Comm_split_intra_bitonic(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **newcomm_ptr)
+{
+    int i;
+    int mpi_errno = MPI_SUCCESS;
+    MPIU_CHKLMEM_DECL(1);
+
+    int rank = comm_ptr->rank;
+	
+    /* TODO: for small groups, faster to do an allgather and
+     * local sort */
+
+    /* prepare item for sorting, tuple of (color,key,rank) */
+    int item[CKRSIZE];
+    item[CKR_COLOR] = color;
+    item[CKR_KEY]   = key;
+    item[CKR_RANK]  = rank;
+
+    /* sort our values using bitonic sort algorithm -- 
+     * O(log^2 N) communication */
+    sort_bitonic(item, comm_ptr);
+    /* TODO: process error! */
+
+    /* now split our sorted values by comparing our value with our
+     * left and right neighbors to determine group boundaries --
+     * O(log N) communication */
+    int newranks, newrank, newleft, newright;
+    split_sorted(
+        item, &newranks, &newrank, &newleft, &newright, comm_ptr
+    );
+    /* TODO: process error! */
+
+    /* TRUE iff *newcomm should be populated */
+    int in_newcomm = (color != MPI_UNDEFINED && newranks > 0);
+
+    /* Collectively create a new context id.  The same context id will
+       be used by each (disjoint) collections of processes.  The
+       processes whose color is MPI_UNDEFINED will not influence the
+       resulting context id (by passing ignore_id==TRUE). */
+    /* In the multi-threaded case, MPIR_Get_contextid assumes that the
+       calling routine already holds the single criticial section */
+    MPIR_Context_id_t new_context_id;
+    mpi_errno = MPIR_Get_contextid_sparse(comm_ptr, &new_context_id, !in_newcomm);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    MPIU_Assert(new_context_id != 0);
+
+    *newcomm_ptr = NULL;
+
+    /* Now, create the new communicator structure if necessary */
+    if (in_newcomm) {
+        mpi_errno = MPIR_Comm_create( newcomm_ptr );
+        if (mpi_errno) goto fn_fail;
+        
+        /* set INTRA Communicator fields */
+        (*newcomm_ptr)->recvcontext_id = new_context_id;
+        (*newcomm_ptr)->rank           = newrank;
+        (*newcomm_ptr)->local_size     = newranks;
+        (*newcomm_ptr)->comm_kind      = comm_ptr->comm_kind;
+        (*newcomm_ptr)->context_id     = (*newcomm_ptr)->recvcontext_id;
+        (*newcomm_ptr)->remote_size    = newranks;
+        MPID_VCRT_Create( newranks, &(*newcomm_ptr)->vcrt );
+        MPID_VCRT_Get_ptr( (*newcomm_ptr)->vcrt, &(*newcomm_ptr)->vcr );
+        
+        /* Allocate memory to hold list of rank ids */
+        int* members = NULL;
+        MPIU_CHKLMEM_MALLOC(members,int*,newranks*sizeof(int),mpi_errno,
+            "members_table");
+
+        /* gather members of group -- O(N) communication,
+         * but if max group size is small, N is small */
+        chain_allgather_int(
+            rank, members,
+            newranks, newrank, newleft, newright, comm_ptr
+        );
+        /* TODO: process error! */
+
+        /* duplicate each vcr in new comm */
+        for (i=0; i < newranks; i++) {
+            int orig_rank = members[i];
+            MPID_VCR_Dup(
+                comm_ptr->vcr[orig_rank], &(*newcomm_ptr)->vcr[i]
+            );
+        }
+
+        /* Inherit the error handler (if any) */
+        MPIU_THREAD_CS_ENTER(MPI_OBJ, comm_ptr);
+        (*newcomm_ptr)->errhandler = comm_ptr->errhandler;
+        if (comm_ptr->errhandler) {
+            MPIR_Errhandler_add_ref( comm_ptr->errhandler );
+        }
+        MPIU_THREAD_CS_EXIT(MPI_OBJ, comm_ptr);
+
+        mpi_errno = MPIR_Comm_commit(*newcomm_ptr);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    }
+    
+ fn_exit:
+    MPIU_CHKLMEM_FREEALL();
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
+}
+
+/***************************************
+ * comm_split using allgather and local sort
+ ***************************************/
 
 typedef struct splittype {
     int color, key;
@@ -140,10 +888,10 @@ static void MPIU_Sort_inttable( sorttype *keytable, int size )
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPIR_Comm_split_impl
+#define FUNCNAME MPIR_Comm_split_allgather
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **newcomm_ptr)
+int MPIR_Comm_split_allgather(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **newcomm_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *local_comm_ptr;
@@ -403,7 +1151,51 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
     goto fn_exit;
 }
 
-#endif
+/***************************************
+ * comm_split driver to pick appropriate algorithm
+ ***************************************/
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Comm_split_impl
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **newcomm_ptr)
+{
+    int rc;
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) || defined(CHANNEL_NEMESIS_IB)
+    if (comm_ptr->comm_kind == MPID_INTERCOMM) {
+        rc = MPIR_Comm_split_allgather(comm_ptr, color, key, newcomm_ptr);
+
+        /* TODO: bitonic sort algorithm for intercomm split:
+         *   each process stores local group as chain
+         *   and stores address of remote process having same local rank (if any)
+         *   0) create single sort chain by appending high group to low group
+         *   1) create groupid/color/key/rank tuple
+         *   2) sort by groupid, then color, then key, then rank,
+         *      pt2pt with left/right to split into groups with same (groupid,color),
+         *      scan within group to define chain for new local group
+         *      send back to original rank, paying attention to which group its in
+         *   3) create color/newrank/groupid/rank tuple (newrank = rank in new local group)
+         *   4) sort by color, then newrank, then groupid
+         *      pt2pt with left/right to split into groups with same (color,newrank)
+         *      record address of remote process having same color and newrank (if any)
+         *      send back to original rank paying attention to its group */
+    } else {
+        /* TODO: for small input comms, better to call allgather/qsort vs bitonic */
+        int ranks = comm_ptr->local_size;
+        if (mv2_use_bitonic_comm_split && (ranks > mv2_bitonic_comm_split_threshold)) {
+            rc = MPIR_Comm_split_intra_bitonic(comm_ptr, color, key, newcomm_ptr);
+        } else {
+            rc = MPIR_Comm_split_allgather(comm_ptr, color, key, newcomm_ptr);
+        }
+    }
+#else
+    rc = MPIR_Comm_split_allgather(comm_ptr, color, key, newcomm_ptr);
+#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) || defined(CHANNEL_NEMESIS_IB) */
+    return rc;
+}
+
+#endif /* #ifndef MPICH_MPI_FROM_PMPI */
 
 
 

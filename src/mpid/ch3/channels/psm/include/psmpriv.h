@@ -38,9 +38,13 @@
     #define PSM_MQ_TRUNCATION           PSM2_MQ_TRUNCATION
     #define PSM_MQ_RNDV_SHM_SZ          PSM2_MQ_RNDV_SHM_SZ
     #define PSM_MQ_FLAG_SENDSYNC        PSM2_MQ_FLAG_SENDSYNC
+    /* Currently PSM2 has a max transfer limit of 4GB */
+    #define DEFAULT_IPATH_MAX_TRANSFER_SIZE (4*1024*1024*1024 - 1)
 #elif HAVE_LIBPSM_INFINIPATH
     #include <psm.h>
     #include <psm_mq.h>
+    /* Currently PSM has a max transfer limit of 1GB */
+    #define DEFAULT_IPATH_MAX_TRANSFER_SIZE (1*1024*1024*1024)
 #endif
 
 #define PSM_2_1_VERSION         0x0201
@@ -76,8 +80,6 @@
 #endif
 #define SEC_IN_NS               1000000000ULL
 
-/* Currently PSM has a max transfer limit of 1GB */
-#define DEFAULT_IPATH_MAX_TRANSFER_SIZE (1*1024*1024*1024)
 //#define DEBUG_PSM
 #ifdef DEBUG_PSM
 #define DBG(args...)                                                 \
@@ -286,7 +288,7 @@ MPID_Request *psm_create_req();
 void psm_update_mpistatus(MPI_Status *, PSM_MQ_STATUS_T, int);
 PSM_ERROR_T psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m,
                         int dest, void *buf, MPIDI_msg_sz_t buflen);
-int psm_1sided_input(MPID_Request *req, int inlen);
+int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen);
 int psm_1sided_putpkt(MPIDI_CH3_Pkt_put_t *pkt, MPID_IOV *iov, int iov_n,
                        MPID_Request **rptr);
 int psm_1sided_atomicpkt(MPIDI_CH3_Pkt_t *pkt, MPID_IOV *iov, int iov_n,
@@ -303,7 +305,7 @@ int psm_1sided_getpkt(MPIDI_CH3_Pkt_get_t *pkt, MPID_IOV *iov, int iov_n,
         MPID_Request **rptr);
 int psm_1sc_get_rndvrecv(MPID_Request *savreq, MPIDI_CH3_Pkt_t *pkt, int from_rank);
 int psm_dt_1scop(MPID_Request *req, char *buf, int len);
-int psm_complete_rndvrecv(MPID_Request *req, int inlen);
+int psm_complete_rndvrecv(MPID_Request *req, MPIDI_msg_sz_t inlen);
 /* PSM2 uses psm2_mq_tag_t instead of a uint64_t. */
 #if PSM_VERNO >= PSM_2_1_VERSION
     PSM_ERROR_T psm_large_msg_isend_pkt(MPID_Request **rptr, int dest, void *buf, MPIDI_msg_sz_t buflen, psm2_mq_tag_t *stag, uint32_t flags);
@@ -314,11 +316,11 @@ PSM_ERROR_T psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
                  int dest, void *buf, MPIDI_msg_sz_t buflen);
 int psm_send_1sided_ctrlpkt(MPID_Request **rptr, int dest, void *buf, 
                             MPIDI_msg_sz_t buflen, int src, int create_req);
-int psm_getresp_rndv_complete(MPID_Request *req, int inlen); 
+int psm_getresp_rndv_complete(MPID_Request *req, MPIDI_msg_sz_t inlen);
 int psm_do_unpack(int count, MPI_Datatype datatype, MPID_Comm *comm, 
-                  void *pkbuf, int pksz, void *inbuf, int data_sz);
+                  void *pkbuf, int pksz, void *inbuf, MPIDI_msg_sz_t data_sz);
 int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
-                *sreq, const void *buf, int data_sz);
+                *sreq, const void *buf, MPIDI_msg_sz_t data_sz);
 void psm_do_ncrecv_complete(MPID_Request *req);
 void psm_dequeue_compreq(MPID_Request *req);
 void psm_prepost_1sc();

@@ -48,8 +48,8 @@ typedef struct {
     float load;
 } obj_attribute_type;
 
-extern policy_type_t policy;
-extern level_type_t level;
+extern policy_type_t mv2_binding_policy;
+extern level_type_t mv2_binding_level;
 extern hwloc_topology_t topology;
 extern int mv2_user_defined_mapping;
 extern unsigned int mv2_enable_affinity;
@@ -67,7 +67,9 @@ void map_bunch_core(int num_cpus);
 void map_bunch_socket(int num_sockets, hwloc_obj_type_t binding_level);
 int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology);
 int get_cpu_mapping(long N_CPUs_online);
+#if defined(CHANNEL_MRAIL)
 int get_ib_socket(struct ibv_device * ibdev);
+#endif /* defined(CHANNEL_MRAIL) */
 int smpi_setaffinity(int my_local_id);
 int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank);
 

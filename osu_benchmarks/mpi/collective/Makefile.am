@@ -71,4 +71,5 @@ endif
 
 if OPENACC
     AM_CFLAGS = -acc
+    AM_CXXFLAGS = -acc
 endif

@@ -118,7 +118,7 @@ check_usage (int me, int npes, int argc, char * argv [])
 }
 
 void
-print_header (int myid)
+print_header_local (int myid)
 {
     if (myid == 0) {
         fprintf(stdout, HEADER);
@@ -179,7 +179,7 @@ benchmark_fadd (struct pe_vars v, union data_types *buffer,
         int old_value;
 
         begin = TIME();
-        for (i = 0; i < iterations; i++) {
+        for (i = 0; i < iterations; i++) { 
             old_value = shmem_int_fadd(&(buffer[i].int_type), value, v.nxtpe);
         }
         end = TIME();
@@ -651,7 +651,7 @@ main (int argc, char *argv[])
     }
     shmem_barrier_all();
 
-    print_header(v.me);
+    print_header_local(v.me);
 
     /*
      * Allocate Memory

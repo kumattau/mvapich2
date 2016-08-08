@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.59])
-AC_INIT([OSU-Micro-Benchmarks], [5.3], [mvapich-discuss@cse.ohio-state.edu])
+AC_INIT([OSU-Micro-Benchmarks], [5.3.1], [mvapich-discuss@cse.ohio-state.edu])
 AC_CONFIG_SRCDIR([mpi/pt2pt/osu_latency.c])
 
 AM_INIT_AUTOMAKE([foreign])
@@ -62,7 +62,8 @@ AC_PROG_CXX([mpicxx upc++])
 
 # Checks for libraries.
 AC_SEARCH_LIBS([sqrt], [m])
-AC_SEARCH_LIBS([pthread_create], [pthread])
+AC_SEARCH_LIBS([pthread_join], [pthread])
+AC_SEARCH_LIBS([clock_gettime], [rt])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stdlib.h string.h sys/time.h unistd.h])
@@ -115,7 +116,7 @@ AS_IF([test "x$build_cuda" = xyes], [
        AC_DEFINE([_ENABLE_CUDA_], [1], [Enable CUDA])
        ])
 
-AS_IF([test "xbuild_cuda_kernels" = xyes], [
+AS_IF([test "x$build_cuda_kernels" = xyes], [
        AC_DEFINE([_ENABLE_CUDA_KERNEL_], [1], [Enable CUDA Kernel])
        ])
 

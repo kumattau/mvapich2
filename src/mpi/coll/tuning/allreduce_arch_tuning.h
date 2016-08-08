@@ -10,6 +10,12 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  */
 
+#include "allreduce/gen2_cma_RI2_1ppn.h"
+#include "allreduce/gen2_cma_RI2_2ppn.h"
+#include "allreduce/gen2_cma_RI2_28ppn.h"
+#include "allreduce/gen2_RI2_1ppn.h"
+#include "allreduce/gen2_RI2_2ppn.h"
+#include "allreduce/gen2_RI2_28ppn.h"
 #include "allreduce/gen2_RI_1ppn.h"
 #include "allreduce/gen2_RI_2ppn.h"
 #include "allreduce/gen2_RI_8ppn.h"
@@ -71,3 +77,12 @@
 #include "allreduce/nemesis_INTEL_XEON_X5650_12_MLX_CX_QDR_1ppn.h"
 #include "allreduce/nemesis_INTEL_XEON_X5650_12_MLX_CX_QDR_2ppn.h"
 #include "allreduce/nemesis_INTEL_XEON_X5650_12_MLX_CX_QDR_12ppn.h"
+#include "allreduce/psm_INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100_1ppn.h"
+#include "allreduce/psm_INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100_2ppn.h"
+#include "allreduce/psm_INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100_28ppn.h"
+#include "allreduce/psm_INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100_1ppn.h"
+#include "allreduce/psm_INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100_36ppn.h"
+#include "allreduce/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_1ppn.h"
+#include "allreduce/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_4ppn.h"
+#include "allreduce/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_16ppn.h"
+#include "allreduce/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_64ppn.h"

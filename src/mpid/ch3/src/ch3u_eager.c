@@ -1202,7 +1202,7 @@ int MPIDI_CH3_PktPrint_ReadySend( FILE *fp, MPIDI_CH3_Pkt_t *pkt )
 
 #if defined (CHANNEL_PSM)
 int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
-                *sreq, const void *buf, int data_sz)
+                *sreq, const void *buf, MPIDI_msg_sz_t data_sz)
 {
     int pksz;
     MPID_Segment *segp;

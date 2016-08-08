@@ -76,6 +76,8 @@ int main(int argc, char *argv[])
     options.iterations = iterations_large;
     timer = 0.0;
 
+    allocate_host_arrays();
+
     for(i=0; i < options.iterations + options.skip ; i++) {
         t_start = MPI_Wtime();
         MPI_Ibarrier(MPI_COMM_WORLD, &request);
@@ -135,6 +137,11 @@ int main(int argc, char *argv[])
                                   timer, latency,
                                   test_total, tcomp_total,
                                   wait_total, init_total);
+
+    free_host_arrays();
+#ifdef _ENABLE_CUDA_KERNEL_
+    free_device_arrays();
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
 
     MPI_Finalize();
 

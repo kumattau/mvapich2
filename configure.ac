@@ -361,6 +361,10 @@ AC_ARG_VAR(MPICHLIB_LDFLAGS,
 	[extra LDFLAGS used in building MVAPICH libraries])
 AC_ARG_VAR(MPICHLIB_LIBS,
 	[extra LIBS used in building MVAPICH libraries])
+AC_ARG_VAR(LIBTVMPICH_CFLAGS,
+           [extra CFLAGS used in building LIBTVMPICH library])
+AC_ARG_VAR(LIBTVMPICH_LDFLAGS,
+           [extra LDFLAGS used in building LIBTVMPICH library])
 CFLAGS="$CFLAGS $MPICHLIB_CFLAGS"
 CPPFLAGS="$CPPFLAGS $MPICHLIB_CPPFLAGS"
 CXXFLAGS="$CXXFLAGS $MPICHLIB_CXXFLAGS"
@@ -661,6 +665,13 @@ AC_ARG_WITH(name-publisher,
     with_namepublisher=$with_name_publisher,)
 
 dnl <_OSU_MVAPICH_>
+AC_ARG_ENABLE([new-dtags],
+              [AS_HELP_STRING([--disable-new-dtags],
+                              [disable the use of --enable-new-dtags with ld])
+              ],
+              [use_new_dtags=$enableval],
+              [use_new_dtags=yes])
+
 AC_ARG_ENABLE([ckpt],
               [AS_HELP_STRING([--enable-ckpt],
                               [enable checkpoint/restart])
@@ -2424,6 +2435,20 @@ MPIMODNAME=mpi
 MPICONSTMODNAME=mpi_constants
 MPISIZEOFMODNAME=mpi_sizeofs
 MPIBASEMODNAME=mpi_base
+
+# F08 binding stuff
+MPI_F08_LINK_CONSTANTS_NAME=mpi_f08_link_constants
+PMPI_F08_NAME=pmpi_f08
+MPI_F08_CALLBACKS_NAME=mpi_f08_callbacks
+MPI_C_INTERFACE_NAME=mpi_c_interface
+MPI_C_INTERFACE_GLUE_NAME=mpi_c_interface_glue
+MPI_F08_TYPES_NAME=mpi_f08_types
+MPI_C_INTERFACE_NOBUF_NAME=mpi_c_interface_nobuf
+MPI_F08_COMPILE_CONSTANTS_NAME=mpi_f08_compile_constants
+MPI_F08_NAME=mpi_f08
+MPI_C_INTERFACE_TYPES_NAME=mpi_c_interface_types
+MPI_C_INTERFACE_CDESC_NAME=mpi_c_interface_cdesc
+
 if test "$enable_fc" = "yes" ; then
     # determine rpath and other shared library flags for FC
     fc_shlib_conf=src/env/fc_shlib.conf
@@ -2474,16 +2499,50 @@ if test "$enable_fc" = "yes" ; then
         MPICONSTMODNAME=MPI_CONSTANTS
 	MPISIZEOFMODNAME=MPI_SIZEOFS
 	MPIBASEMODNAME=MPI_BASE
+        MPI_F08_NAME=MPI_F08
+        MPI_F08_LINK_CONSTANTS_NAME=MPI_F08_LINK_CONSTANTS
+        MPI_F08_CALLBACKS_NAME=MPI_F08_CALLBACKS
+        MPI_F08_TYPES_NAME=MPI_F08_TYPES
+        MPI_F08_COMPILE_CONSTANTS_NAME=MPI_F08_COMPILE_CONSTANTS
+        PMPI_F08_NAME=PMPI_F08
+        MPI_C_INTERFACE_NAME=MPI_C_INTERFACE
+        MPI_C_INTERFACE_NOBUF_NAME=MPI_C_INTERFACE_NOBUF
+        MPI_C_INTERFACE_GLUE_NAME=MPI_C_INTERFACE_GLUE
+        MPI_C_INTERFACE_TYPES_NAME=MPI_C_INTERFACE_TYPES
+        MPI_C_INTERFACE_CDESC_NAME=MPI_C_INTERFACE_CDESC
     else
         MPIMODNAME=mpi
         MPICONSTMODNAME=mpi_constants
 	MPISIZEOFMODNAME=mpi_sizeofs
 	MPIBASEMODNAME=mpi_base
+        MPI_F08_NAME=mpi_f08
+        MPI_F08_LINK_CONSTANTS_NAME=mpi_f08_link_constants
+        MPI_F08_CALLBACKS_NAME=mpi_f08_callbacks
+        MPI_F08_TYPES_NAME=mpi_f08_types
+        MPI_F08_COMPILE_CONSTANTS_NAME=mpi_f08_compile_constants
+        PMPI_F08_NAME=pmpi_f08
+        MPI_C_INTERFACE_NAME=mpi_c_interface
+        MPI_C_INTERFACE_NOBUF_NAME=mpi_c_interface_nobuf
+        MPI_C_INTERFACE_GLUE_NAME=mpi_c_interface_glue
+        MPI_C_INTERFACE_TYPES_NAME=mpi_c_interface_types
+        MPI_C_INTERFACE_CDESC_NAME=mpi_c_interface_cdesc
     fi
     AC_SUBST(MPIMODNAME)
     AC_SUBST(MPICONSTMODNAME)
     AC_SUBST(MPISIZEOFMODNAME)
     AC_SUBST(MPIBASEMODNAME)
+
+    AC_SUBST(MPI_F08_NAME)
+    AC_SUBST(MPI_F08_LINK_CONSTANTS_NAME)
+    AC_SUBST(MPI_F08_CALLBACKS_NAME)
+    AC_SUBST(MPI_F08_TYPES_NAME)
+    AC_SUBST(MPI_F08_COMPILE_CONSTANTS_NAME)
+    AC_SUBST(PMPI_F08_NAME)
+    AC_SUBST(MPI_C_INTERFACE_NAME)
+    AC_SUBST(MPI_C_INTERFACE_NOBUF_NAME)
+    AC_SUBST(MPI_C_INTERFACE_GLUE_NAME)
+    AC_SUBST(MPI_C_INTERFACE_TYPES_NAME)
+    AC_SUBST(MPI_C_INTERFACE_CDESC_NAME)
 
     # Assume that all Fortran 90 compilers accept -I for include directories
     FCINC=-I

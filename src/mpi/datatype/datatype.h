@@ -5,6 +5,8 @@
  */
 
 /* Definitions private to the datatype code */
+extern int mv2_datatype_names_initialized;
+extern int mv2_datatype_builtin_fillin_is_init;
 extern int MPIR_Datatype_init( void );
 extern int MPIR_Datatype_builtin_fillin( void );
 extern int MPIR_Datatype_init_names( void );

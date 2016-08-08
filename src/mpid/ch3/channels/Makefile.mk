@@ -18,5 +18,5 @@
 include $(top_srcdir)/src/mpid/ch3/channels/nemesis/Makefile.mk
 include $(top_srcdir)/src/mpid/ch3/channels/sock/Makefile.mk
 include $(top_srcdir)/src/mpid/ch3/channels/mrail/Makefile.mk
-include $(top_srcdir)/src/mpid/ch3/channels/common/Makefile.mk
 include $(top_srcdir)/src/mpid/ch3/channels/psm/Makefile.mk
+include $(top_srcdir)/src/mpid/ch3/channels/common/Makefile.mk

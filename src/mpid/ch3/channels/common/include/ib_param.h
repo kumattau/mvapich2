@@ -14,7 +14,9 @@
 #ifndef _IBV_PARAM_H
 #define _IBV_PARAM_H
 
+#if defined(HAVE_LIBIBVERBS)
 #include <infiniband/verbs.h>
+#endif
 #include "mv2_arch_hca_detect.h"
 
 #define MAX_NUM_HCAS                    (4)

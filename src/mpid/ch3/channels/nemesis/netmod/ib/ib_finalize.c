@@ -328,6 +328,7 @@ int MPID_nem_ib_finalize(void)
 
     if (process_info.polling_set != NULL) {
         MPIU_Free(process_info.polling_set);
+        process_info.polling_group_size = 0;
     }
 
     if (cmanagers != NULL) {

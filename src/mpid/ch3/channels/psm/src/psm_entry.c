@@ -297,7 +297,14 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psminit");
     }
 
+    /* By default, PSM sets cpu affinity on a process if it's not
+     * already set.  We disable cpu affinity in PSM here.  MVAPICH
+     * or the process launcher will set affinity, unless the user
+     * disabled it, but in that case, he probably doesn't want
+     * PSM to set it either.
+     */
     PSM_EP_OPEN_OPTS_GET_DEFAULTS(&psm_opts);
+    psm_opts.affinity = PSM_EP_OPEN_AFFINITY_SKIP;
 
     /* number of times to retry psm_ep_open upon failure */
     if ((flag = getenv("MV2_PSM_EP_OPEN_RETRY_COUNT")) != NULL) {
@@ -372,13 +379,13 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
 
     if((err = PSM_MQ_INIT(psmdev_cw.ep, PSM_MQ_ORDERMASK_ALL, NULL, 0,
                 &psmdev_cw.mq)) != PSM_OK) {
-        DBG("psm_mq_init failed\n");
+        PRINT_ERROR("psm_mq_init failed\n");
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**psm_mqinitfailed");
     }
 
     /* execute barrier to ensure all tasks have returned from psm_ep_connect */
     if((err = psm_mq_init_barrier(psmdev_cw.mq, pg_rank, pg_size, psmdev_cw.epaddrs)) != PSM_OK) {
-        DBG("psm_mq_init_barrier failed\n");
+        PRINT_ERROR("psm_mq_init_barrier failed\n");
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**fail");
     } 
 

@@ -185,7 +185,6 @@ int MPIR_Comm_init(MPID_Comm *comm_p)
     /* Fields not set include context_id, remote and local size, and
        kind, since different communicator construction routines need
        different values */
-fn_fail:
     return mpi_errno;
 }
 
@@ -298,12 +297,14 @@ int MPIR_Setup_intercomm_localcomm( MPID_Comm *intercomm_ptr )
 static struct MPID_Collops *default_collops[MPID_HIERARCHY_SIZE] = {NULL};
 /* default for intercomms */
 static struct MPID_Collops *ic_default_collops = NULL;
+int mv2_coll_ops_initialized = FALSE;
 
 #undef FUNCNAME
 #define FUNCNAME cleanup_default_collops
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int cleanup_default_collops(void *unused) {
+int cleanup_default_collops(void *unused)
+{
     int i;
     for (i = 0; i < MPID_HIERARCHY_SIZE; ++i) {
         if (default_collops[i]) {
@@ -318,6 +319,7 @@ static int cleanup_default_collops(void *unused) {
         if (--ic_default_collops->ref_count == 0)
             MPIU_Free(ic_default_collops);
     }
+    mv2_coll_ops_initialized = FALSE;
     return MPI_SUCCESS;
 }
 
@@ -453,16 +455,15 @@ fn_fail:
 static int set_collops(MPID_Comm *comm)
 {
     int mpi_errno = MPI_SUCCESS;
-    static int initialized = FALSE;
 
     if (comm->coll_fns != NULL)
         goto fn_exit;
 
-    if (unlikely(!initialized)) {
+    if (unlikely(!mv2_coll_ops_initialized)) {
         mpi_errno = init_default_collops();
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-        initialized = TRUE;
+        mv2_coll_ops_initialized = TRUE;
     }
 
     if (comm->comm_kind == MPID_INTRACOMM) {
@@ -1998,7 +1999,6 @@ int MPIR_Comm_copy_data(MPID_Comm *comm_ptr, MPID_Comm **outcomm_ptr)
     *outcomm_ptr = newcomm_ptr;
 
 fn_fail:
-fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_COPY_DATA);
     return mpi_errno;
 }
@@ -2236,11 +2236,8 @@ static int MPIR_Comm_free_hint_handles(void *ignore)
         }
     }
 
- fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_FREE_HINT_HANDLES);
     return mpi_errno;
- fn_fail:
-    goto fn_exit;
 }
 
 /* The hint logic is stored in a uthash, with hint name as key and
@@ -2268,9 +2265,6 @@ int MPIR_Comm_register_hint(const char *hint_key, MPIR_Comm_hint_fn_t fn, void *
 
     HASH_ADD_STR(MPID_hint_fns, name, hint_elt);
 
- fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_REGISTER_HINT);
     return mpi_errno;
- fn_fail:
-    goto fn_exit;
 }

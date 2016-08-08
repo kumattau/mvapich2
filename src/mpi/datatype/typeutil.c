@@ -152,6 +152,14 @@ int MPIR_Datatype_init(void)
     MPIU_Assert(MPID_Datatype_mem.initialized == 0);
     MPIU_Assert(MPID_DATATYPE_PREALLOC >= 5);
 
+    /* Re-init mpi_pairtypes */
+    mpi_pairtypes[0] = MPI_FLOAT_INT;
+    mpi_pairtypes[1] = MPI_DOUBLE_INT;
+    mpi_pairtypes[2] = MPI_LONG_INT;
+    mpi_pairtypes[3] = MPI_SHORT_INT;
+    mpi_pairtypes[4] = MPI_LONG_DOUBLE_INT;
+    mpi_pairtypes[5] = (MPI_Datatype) -1;
+
     for (i=0; mpi_pairtypes[i] != (MPI_Datatype) -1; ++i) {
         /* types based on 'long long' and 'long double', may be disabled at
            configure time, and their values set to MPI_DATATYPE_NULL.  skip any
@@ -202,12 +210,14 @@ static int MPIR_Datatype_finalize(void *dummy ATTRIBUTE((unused)) )
 	    mpi_pairtypes[i] = MPI_DATATYPE_NULL;
 	}
     }
+    MPID_Datatype_mem.initialized = 0;
     return 0;
 }
 
 /* Called ONLY from MPIR_Datatype_init_names (type_get_name.c).  
    That routine calls it from within a single-init section to 
    ensure thread-safety. */
+int mv2_datatype_builtin_fillin_is_init = 0;
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Datatype_builtin_fillin
@@ -219,16 +229,15 @@ int MPIR_Datatype_builtin_fillin(void)
     int i;
     MPID_Datatype *dptr;
     MPI_Datatype  d = MPI_DATATYPE_NULL;
-    static int is_init = 0;
 
     /* FIXME: This is actually an error, since this routine 
        should only be called once */
-    if (is_init)
+    if (mv2_datatype_builtin_fillin_is_init)
     {
 	return MPI_SUCCESS;
     }
 
-    if (!is_init) { 
+    if (!mv2_datatype_builtin_fillin_is_init) { 
 	for (i=0; i<MPID_DATATYPE_N_BUILTIN; i++) {
 	    /* Compute the index from the value of the handle */
 	    d = mpi_dtypes[i];
@@ -278,7 +287,7 @@ int MPIR_Datatype_builtin_fillin(void)
             return mpi_errno;
 	}
 	/* --END ERROR HANDLING-- */
-	is_init = 1;
+	mv2_datatype_builtin_fillin_is_init = 1;
     }
     return mpi_errno;
 }

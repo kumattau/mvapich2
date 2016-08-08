@@ -36,12 +36,12 @@ static void MPIR_T_enum_env_finalize(void)
         /* Free all entries */
         for (i = 0; i < utarray_len(enum_table); i++) {
             e = (MPIR_T_enum_t *)utarray_eltptr(enum_table, i);
-            MPIU_Free((void *)e->name);
+            MPIU_Free(e->name);
 
             /* Free items in this enum */
             for (j = 0; j < utarray_len(e->items); j++) {
                 item = (enum_item_t *)utarray_eltptr(e->items, j);
-                MPIU_Free((void *)item->name);
+                MPIU_Free(item->name);
             }
 
             utarray_free(e->items);
@@ -62,8 +62,8 @@ static void MPIR_T_cat_env_finalize(void)
         /* Free all entries */
         for (i = 0; i < utarray_len(cat_table); i++) {
             cat = (cat_table_entry_t *)utarray_eltptr(cat_table, i);
-            MPIU_Free((void *)cat->name);
-            MPIU_Free((void *)cat->desc);
+            MPIU_Free(cat->name);
+            MPIU_Free(cat->desc);
             utarray_free(cat->cvar_indices);
             utarray_free(cat->pvar_indices);
             utarray_free(cat->subcat_indices);
@@ -100,8 +100,8 @@ static void MPIR_T_cvar_env_finalize(void)
         /* Free all entries */
         for (i = 0; i < utarray_len(cvar_table); i++) {
             cvar = (cvar_table_entry_t *)utarray_eltptr(cvar_table, i);
-            MPIU_Free((void *)cvar->name);
-            MPIU_Free((void *)cvar->desc);
+            MPIU_Free(cvar->name);
+            MPIU_Free(cvar->desc);
             if (cvar->datatype == MPI_CHAR) MPIU_Free(cvar->addr);
         }
 
@@ -133,8 +133,8 @@ static void MPIR_T_pvar_env_finalize(void)
         /* Free all entries */
         for (i = 0; i < utarray_len(pvar_table); i++) {
             pvar = (pvar_table_entry_t *)utarray_eltptr(pvar_table, i);
-            MPIU_Free((void *)pvar->name);
-            MPIU_Free((void *)pvar->desc);
+            MPIU_Free(pvar->name);
+            MPIU_Free(pvar->desc);
         }
 
         /* Free pvar_table itself */

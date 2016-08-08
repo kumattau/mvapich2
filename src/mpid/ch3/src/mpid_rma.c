@@ -19,6 +19,10 @@
 #include "mpidimpl.h"
 #include "mpidrma.h"
 
+#ifdef _SMP_LIMIC_
+#include "rdma_impl.h"
+#endif
+
 
 MPIU_THREADSAFE_INIT_DECL(initRMAoptions);
 
@@ -348,6 +352,9 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model,
     (*win_ptr)->shm_coll_comm_ref   = -1;
     (*win_ptr)->shm_win_pt2pt       = 0;
 #endif /* defined(CHANNEL_MRAIL) */
+#ifdef _SMP_LIMIC_
+    mv2_MPIDI_CH3I_RDMA_Process.g_smp_can_fallback = 0;
+#endif
 #if defined (CHANNEL_PSM)
     (*win_ptr)->outstanding_rma     = 0;
     (*win_ptr)->shm_coll_comm_ref   = -1;

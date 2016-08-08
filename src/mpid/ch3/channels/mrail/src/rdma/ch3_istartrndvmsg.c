@@ -68,7 +68,9 @@ static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
         MPIDI_CH3I_MRAIL_Prepare_rndv(vc, sreq);
     }
 
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
 fn_exit:
+#endif
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PREPARE_RNDV);
 }
 

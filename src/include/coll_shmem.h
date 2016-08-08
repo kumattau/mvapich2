@@ -339,6 +339,11 @@ extern int mv2_use_indexed_tuning;
 extern int mv2_use_osu_nb_collectives;
 extern int mv2_use_anl_collectives;
 
+#define MV2_DEFAULT_BITONIC_COMM_SPLIT_THRESHOLD    (12000)
+
+extern int mv2_use_bitonic_comm_split;
+extern int mv2_bitonic_comm_split_threshold;
+
 /* Comm functions*/
 extern int split_comm;
 int check_split_comm(pthread_t);

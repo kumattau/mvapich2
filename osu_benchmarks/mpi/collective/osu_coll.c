@@ -24,10 +24,10 @@
 static CUcontext cuContext;
 #endif
 
+static int is_alloc = 0;
 static char const * benchmark_header = NULL;
 static char const * benchmark_name = NULL;
 static int accel_enabled = 0;
-static int kernel_count = 0;
 struct options_t options;
 
 /* A is the A in DAXPY for the Compute Kernel */
@@ -53,6 +53,64 @@ static struct {
     char const * optarg;
     int opt;
 } bad_usage;
+
+void print_header (int rank, int full)
+{
+    if(rank == 0) {
+        fprintf(stdout, HEADER, "");
+
+        if (print_size) {
+            fprintf(stdout, "%-*s", 10, "# Size");
+            fprintf(stdout, "%*s", FIELD_WIDTH, "Avg Latency(us)");
+        }
+
+        else {
+            fprintf(stdout, "# Avg Latency(us)");
+        }
+
+        if (full) {
+            fprintf(stdout, "%*s", FIELD_WIDTH, "Min Latency(us)");
+            fprintf(stdout, "%*s", FIELD_WIDTH, "Max Latency(us)");
+            fprintf(stdout, "%*s\n", 12, "Iterations");
+        }
+
+        else {
+            fprintf(stdout, "\n");
+        }
+
+        fflush(stdout);
+    }
+}
+
+void print_data (int rank, int full, int size, double avg_time,
+                        double min_time, double max_time, int iterations)
+{
+    if(rank == 0) {
+        if (print_size) {
+            fprintf(stdout, "%-*d", 10, size);
+            fprintf(stdout, "%*.*f", FIELD_WIDTH, FLOAT_PRECISION, avg_time);
+        }
+
+        else {
+            fprintf(stdout, "%*.*f", 17, FLOAT_PRECISION, avg_time);
+        }
+
+        if (full) {
+            fprintf(stdout, "%*.*f%*.*f%*d\n",
+                    FIELD_WIDTH, FLOAT_PRECISION, min_time,
+                    FIELD_WIDTH, FLOAT_PRECISION, max_time,
+                    12, iterations);
+        }
+
+        else {
+            fprintf(stdout, "\n");
+
+        }
+
+        fflush(stdout);
+    }
+}
+
 
 static int
 set_min_message_size (int value)
@@ -712,7 +770,6 @@ set_buffer (void * buffer, enum accel_type type, int data, size_t size)
     size_t i;
     char * p = (char *)buffer;
 #endif
-    int a;
     switch (type) {
         case none:
             memset(buffer, data, size);
@@ -737,6 +794,10 @@ set_buffer (void * buffer, enum accel_type type, int data, size_t size)
 int
 allocate_buffer (void ** buffer, size_t size, enum accel_type type)
 {
+    if (options.target == cpu || options.target == both) {
+        allocate_host_arrays();
+    }
+
     size_t alignment = sysconf(_SC_PAGESIZE);
 #ifdef _ENABLE_CUDA_
     cudaError_t cuerr = cudaSuccess;
@@ -802,19 +863,15 @@ free_buffer (void * buffer, enum accel_type type)
     }
     
     /* Free dummy compute related resources */
-    if (is_alloc) {
-        if (options.target == cpu) {
-            free_host_arrays();
-        } 
-#ifdef _ENABLE_CUDA_KERNEL_ 
-        else if (options.target == gpu || options.target == both) {
-            free_host_arrays();
-            free_device_arrays();
-        }
-#endif
+    if (cpu == options.target || both == options.target) {
+        free_host_arrays();
     }
 
-    is_alloc = 0;
+    if (gpu == options.target || both == options.target) {
+#ifdef _ENABLE_CUDA_KERNEL_
+        free_device_arrays();
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
+    }
 }
 
 int
@@ -911,22 +968,40 @@ void
 free_device_arrays()
 {
     cudaError_t cuerr = cudaSuccess;
-    cuerr = cudaFree(d_x);
-    if (cuerr != cudaSuccess)
-        fprintf(stderr, "Failed to free device array\n");
+    if (is_alloc) {
+        cuerr = cudaFree(d_x);
+        if (cuerr != cudaSuccess) {
+            fprintf(stderr, "Failed to free device array\n");
+        }
     
-    cuerr = cudaFree(d_y);
-    if (cuerr != cudaSuccess)
-        fprintf(stderr, "Failed to free device array\n");
+        cuerr = cudaFree(d_y);
+        if (cuerr != cudaSuccess) {
+            fprintf(stderr, "Failed to free device array\n");
+        }
+
+        is_alloc = 0;
+    }
 }
 #endif
 
 void 
 free_host_arrays()
 {
-    free(x);
-    free(y);
-    free(a);
+    int i = 0;
+
+    if (x) free(x);
+    if (y) free(y);
+
+    if (a) {
+        for (i = 0; i < DIM; i++) {
+            free(a[i]);
+        }
+        free(a);
+    }
+
+    x = NULL;
+    y = NULL;
+    a = NULL;
 }
 
 double
@@ -1072,19 +1147,15 @@ do_compute_and_probe(double seconds, MPI_Request* request)
     return test_time;
 }
 
-void 
-init_arrays(double target_time) 
+void allocate_host_arrays()
 {
-    
-    if (DEBUG) fprintf(stderr, "called init_arrays with target_time = %f \n", (target_time * 1e6));
-    int i = 0, j = 0;
-    
+    int i=0, j=0;
     a = (float **)malloc(DIM * sizeof(float *));
-    
+
     for (i = 0; i < DIM; i++) {
         a[i] = (float *)malloc(DIM * sizeof(float));
     }
-    
+
     x = (float *)malloc(DIM * sizeof(float));
     y = (float *)malloc(DIM * sizeof(float));
 
@@ -1094,6 +1165,14 @@ init_arrays(double target_time)
             a[i][j] = 2.0f;
         }
     }
+}
+
+void
+init_arrays(double target_time)
+{
+
+    if (DEBUG) fprintf(stderr, "called init_arrays with target_time = %f \n",
+            (target_time * 1e6));
 
 #ifdef _ENABLE_CUDA_KERNEL_
     if (options.target == gpu || options.target == both) {
@@ -1122,9 +1201,6 @@ init_arrays(double target_time)
         {  
             N += 32;
 
-            /* First free the old arrays */
-            free_device_arrays();
-
             /* Now allocate arrays of size N */
             allocate_device_arrays(N);
         }
@@ -1140,23 +1216,30 @@ init_arrays(double target_time)
 #endif
 
 }
-#ifdef _ENABLE_CUDA_KENEL_
+
+#ifdef _ENABLE_CUDA_KERNEL_
 void
 allocate_device_arrays(int n)
 {
     cudaError_t cuerr = cudaSuccess;
     
+    /* First free the old arrays */
+    free_device_arrays();
+
     /* Allocate Device Arrays for Dummy Compute */
     cuerr = cudaMalloc((void**)&d_x, n * sizeof(float));
-    if (cuerr != cudaSuccess)
+    if (cuerr != cudaSuccess) {
         fprintf(stderr, "Failed to free device array");
+    }
     
     cuerr = cudaMalloc((void**)&d_y, n * sizeof(float));
-    if (cuerr != cudaSuccess)
+    if (cuerr != cudaSuccess) {
         fprintf(stderr, "Failed to free device array");
+    }
 
     cudaMemset(d_x, 1.0f, n);
     cudaMemset(d_y, 2.0f, n);
+    is_alloc = 1;
 }
 #endif
 /* vi:set sw=4 sts=4 tw=80: */

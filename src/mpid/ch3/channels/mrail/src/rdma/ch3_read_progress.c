@@ -33,13 +33,14 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
+MPIDI_VC_t *mv2_read_progress_pending_vc = NULL;
+
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_RDMA_read_progress
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_found, int is_blocking)
 {
-    static MPIDI_VC_t 	*pending_vc = NULL;
     int 	type;
     MPIDI_VC_t 	*recv_vc_ptr;
 
@@ -50,18 +51,18 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
     *v_ptr = NULL;
 
     /* Blocking for message on one VC */
-    if (pending_vc != NULL) {
-        type = MPIDI_CH3I_MRAILI_Waiting_msg(pending_vc, v_ptr, 1);
+    if (mv2_read_progress_pending_vc != NULL) {
+        type = MPIDI_CH3I_MRAILI_Waiting_msg(mv2_read_progress_pending_vc, v_ptr, 1);
         if (type == T_CHANNEL_CONTROL_MSG_ARRIVE) {
-            if((void *) pending_vc != (*v_ptr)->vc) {
-                fprintf(stderr, "mismatch %p %p\n", pending_vc,
+            if((void *) mv2_read_progress_pending_vc != (*v_ptr)->vc) {
+                fprintf(stderr, "mismatch %p %p\n", mv2_read_progress_pending_vc,
                         (*v_ptr)->vc);
             }
-            MPIU_Assert((void *) pending_vc == (*v_ptr)->vc);
-            *vc_pptr = pending_vc;
+            MPIU_Assert((void *) mv2_read_progress_pending_vc == (*v_ptr)->vc);
+            *vc_pptr = mv2_read_progress_pending_vc;
         } else if(type == T_CHANNEL_EXACT_ARRIVE) {
-            *vc_pptr = pending_vc;
-            pending_vc = NULL;
+            *vc_pptr = mv2_read_progress_pending_vc;
+            mv2_read_progress_pending_vc = NULL;
             DEBUG_PRINT("will return seqnum %d\n",
                         ((MPIDI_CH3_Pkt_rndv_req_to_send_t *) (*v_ptr)->
                          pheader)->seqnum);
@@ -111,7 +112,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
             type =
                 MPIDI_CH3I_MRAILI_Waiting_msg(recv_vc_ptr, v_ptr, 1);
             if (type == T_CHANNEL_CONTROL_MSG_ARRIVE) {
-                pending_vc = recv_vc_ptr;
+                mv2_read_progress_pending_vc = recv_vc_ptr;
             } else if (T_CHANNEL_EXACT_ARRIVE == type) {
                 DEBUG_PRINT("Get out of order delivered msg\n");
             } else {

@@ -138,6 +138,9 @@ int MPI_Init( int *argc, char ***argv )
     int threadLevel, provided;
     MPID_MPI_INIT_STATE_DECL(MPID_STATE_MPI_INIT);
 
+    if (MPIR_Process.initialized == MPICH_POST_FINALIZED) {
+        MPIR_Process.initialized = MPICH_PRE_INIT;
+    }
     rc = MPID_Wtime_init();
 #ifdef USE_DBG_LOGGING
     MPIU_DBG_PreInit( argc, argv, rc );

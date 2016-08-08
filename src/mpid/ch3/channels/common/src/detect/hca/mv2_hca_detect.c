@@ -416,7 +416,17 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 #else
 mv2_hca_type mv2_get_hca_type(void *dev)
 {
-    return MV2_HCA_UNKWN;
+    mv2_hca_type hca_type = MV2_HCA_UNKWN;
+
+#ifdef HAVE_LIBPSM2
+    hca_type = MV2_HCA_INTEL_HFI1;
+#elif HAVE_LIBPSM_INFINIPATH
+    hca_type = MV2_HCA_QLGIC_QIB;
+#else
+    hca_type = MV2_HCA_UNKWN;
+#endif
+
+    return hca_type;
 }
 #endif
 

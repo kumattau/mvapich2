@@ -28,6 +28,12 @@
 #define MAX_MEM_LIMIT (512*1024*1024)
 #define MAX_MEM_LOWER_LIMIT (1*1024*1024)
 
+#ifdef PACKAGE_VERSION
+#   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
+#else
+#   define HEADER "# " BENCHMARK "\n"
+#endif
+
 #ifndef FIELD_WIDTH
 #   define FIELD_WIDTH 20
 #endif
@@ -41,9 +47,9 @@ static int iterations_large = 100;
 static int print_size = 0;
 static uint64_t max_mem_limit = MAX_MEM_LIMIT; 
 static int process_args (int argc, char *argv[], int rank, int * size, 
-        int * full, char *header) __attribute__((unused));
-static void print_header (char *header, int rank, int full) __attribute__((unused));
-static void print_data (int rank, int full, int size, double avg_time, double
+        int * full, const char *header) __attribute__((unused));
+void print_header (const char *header, int rank, int full) __attribute__((unused));
+void print_data (int rank, int full, int size, double avg_time, double
         min_time, double max_time, int iterations) __attribute__((unused));
 
 static void print_usage(int rank, const char * prog, int has_size)
@@ -77,13 +83,13 @@ static void print_usage(int rank, const char * prog, int has_size)
     }
 }
 
-static void print_version(char *header)
+static void print_version(const char *header)
 {
         fprintf(stdout, header, "");
         fflush(stdout);
 }
 
-static int process_args (int argc, char *argv[], int rank, int * size, int * full, char *header)
+static int process_args (int argc, char* argv[], int rank, int * size, int * full, const char *header)
 {
     int c;
 
@@ -153,61 +159,4 @@ static int process_args (int argc, char *argv[], int rank, int * size, int * ful
 
     return 0;
 }
-
-static void print_header (char *header, int rank, int full)
-{
-    if(rank == 0) {
-        fprintf(stdout, header, "");
-
-        if (print_size) {
-            fprintf(stdout, "%-*s", 10, "# Size");
-            fprintf(stdout, "%*s", FIELD_WIDTH, "Avg Latency(us)");
-        }
-
-        else {
-            fprintf(stdout, "# Avg Latency(us)");
-        }
-
-        if (full) {
-            fprintf(stdout, "%*s", FIELD_WIDTH, "Min Latency(us)");
-            fprintf(stdout, "%*s", FIELD_WIDTH, "Max Latency(us)");
-            fprintf(stdout, "%*s\n", 12, "Iterations");
-        }
-
-        else {
-            fprintf(stdout, "\n");
-        }
-
-        fflush(stdout);
-    }
-}
-
-static void print_data (int rank, int full, int size, double avg_time, double
-        min_time, double max_time, int iterations)
-{
-    if(rank == 0) {
-        if (print_size) {
-            fprintf(stdout, "%-*d", 10, size);
-            fprintf(stdout, "%*.*f", FIELD_WIDTH, FLOAT_PRECISION, avg_time);
-        }
-
-        else {
-            fprintf(stdout, "%*.*f", 17, FLOAT_PRECISION, avg_time);
-        }
-
-        if (full) {
-            fprintf(stdout, "%*.*f%*.*f%*d\n", 
-                    FIELD_WIDTH, FLOAT_PRECISION, min_time,
-                    FIELD_WIDTH, FLOAT_PRECISION, max_time,
-                    12, iterations);
-        }
-
-        else {
-            fprintf(stdout, "\n");
-        }
-
-        fflush(stdout);
-    }
-}
-
 #endif

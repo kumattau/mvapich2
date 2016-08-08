@@ -158,7 +158,7 @@ struct ibv_qp *mv2_ud_create_qp (mv2_ud_qp_info_t *qp_info, int hca_index);
 
 /* create ud vc */
 int mv2_ud_set_vc_info (mv2_ud_vc_info_t *,
-        mv2_ud_exch_info_t *rem_info, 
+        mv2_ud_exch_info_t *rem_info, union ibv_gid gid,
         struct ibv_pd *pd, int rdma_default_port);
 
 /* destroy ud context */

@@ -149,6 +149,12 @@ void mvapich2_mem_unhook(void *ptr, size_t size)
     }
 }
 
+/* disable compiler optimization for minit() to avoid optimizing out memset */
+#ifdef __GNUC__
+#pragma GCC push_options
+#pragma GCC optimize ("O0")
+#endif
+
 int mvapich2_minit()
 {
     void *ptr_malloc = NULL;
@@ -214,10 +220,16 @@ int mvapich2_minit()
     return 0;
 }
 
+/* return to default optimization mode */
+#ifdef __GNUC__
+#pragma GCC pop_options
+#endif
+
 void mvapich2_mfin()
 {
     if (mem_hook_init) {
         mvapich2_minfo.is_mem_hook_finalized = 1;
+        mem_hook_init = 0;
     }
 }
 

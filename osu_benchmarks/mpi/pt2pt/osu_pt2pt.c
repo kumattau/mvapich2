@@ -65,6 +65,11 @@ usage (char const * name)
             benchmark_type == BW ? BW_SKIP_SMALL : LAT_SKIP_SMALL);
     printf("  -i ITER       number of iterations for timing (default %d)\n",
             benchmark_type == BW ? BW_LOOP_SMALL : LAT_LOOP_SMALL);
+    if (LAT_MT == benchmark_type) {
+        printf("  -t THREADS    number of recv threads to test with (min: %d, "
+                "default: %d, max: %d)\n", MIN_NUM_THREADS, DEF_NUM_THREADS,
+                MAX_NUM_THREADS);
+    }
     printf("  -h            print this help message\n");
     fflush(stdout);
 }
@@ -101,8 +106,16 @@ process_options (int argc, char *argv[], int type)
     extern char * optarg;
     extern int optind;
     
-    char const * optstring = (CUDA_ENABLED || OPENACC_ENABLED) ? "+d:x:i:h" : "+x:i:h";
+    char const * optstring = NULL;
     int c;
+    
+    if (CUDA_ENABLED || OPENACC_ENABLED) {
+        optstring = (LAT_MT == type) ? "+d:x:i:t:h" : "+d:x:i:h";
+    }
+
+    else {
+        optstring = (LAT_MT == type) ? "+x:i:t:h" : "+x:i:h";
+    }
     
     /*
      * set default options
@@ -119,6 +132,8 @@ process_options (int argc, char *argv[], int type)
             options.loop_large = BW_LOOP_LARGE;
             options.skip_large = BW_SKIP_LARGE;
             break;
+        case LAT_MT:
+            options.num_threads = DEF_NUM_THREADS;
         case LAT:
             options.loop = LAT_LOOP_SMALL;
             options.skip = LAT_SKIP_SMALL;
@@ -141,6 +156,16 @@ process_options (int argc, char *argv[], int type)
     
     while((c = getopt(argc, argv, optstring)) != -1) {
         switch (c) {
+            case 't':
+                options.num_threads = atoi(optarg);
+                if (options.num_threads < MIN_NUM_THREADS
+                        || options.num_threads >= MAX_NUM_THREADS) {
+                    bad_usage.message = "Invalid Number of Threads";
+                    bad_usage.optarg = optarg;
+
+                    return po_bad_usage;
+                }
+                break;
             case 'd':
                 /* optarg should contain cuda or openacc */
                 if (0 == strncasecmp(optarg, "cuda", 10)) {

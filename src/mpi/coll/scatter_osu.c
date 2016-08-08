@@ -1957,8 +1957,10 @@ int MPIR_Scatter_inter_MV2(void *sendbuf,
             mpi_errno = MPIR_Scatter_MV2(tmp_buf, recvcnt, recvtype,
                                          recvbuf, recvcnt, recvtype, 0,
                                          newcomm_ptr, errflag);
-            if (rank == 0)
-                MPIU_Free(((char *) tmp_buf + true_lb));
+            if (rank == 0) {
+                void *tmp = (void*)(tmp_buf + true_lb);
+                MPIU_Free(tmp);
+            }
         }
     } else {
         /* long message. use linear algorithm. */

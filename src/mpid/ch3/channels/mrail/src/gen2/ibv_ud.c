@@ -45,7 +45,7 @@ static inline void mv2_ud_flush_ext_window(MPIDI_VC_t *vc)
     }
 }
 
-inline void mv2_unack_queue_clear(MPIDI_VC_t *vc)
+static inline void mv2_unack_queue_clear(MPIDI_VC_t *vc)
 {
     vbuf *sendwin_head = vc->mrail.rely.send_window.head;
 
@@ -56,8 +56,6 @@ inline void mv2_unack_queue_clear(MPIDI_VC_t *vc)
         MRAILI_Process_send(sendwin_head);
         sendwin_head = vc->mrail.rely.send_window.head;
     }
-
-    return;
 }
 
 static inline void mv2_ud_process_ack(MPIDI_VC_t *vc, uint16_t acknum)

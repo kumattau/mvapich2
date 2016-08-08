@@ -315,6 +315,9 @@ int mv2_use_anl_collectives = 0;
 int mv2_shmem_coll_num_procs = 64;
 int mv2_shmem_coll_num_comm = 20;
 
+int mv2_use_bitonic_comm_split = 0;
+int mv2_bitonic_comm_split_threshold = MV2_DEFAULT_BITONIC_COMM_SPLIT_THRESHOLD;
+
 int mv2_shm_window_size = 128;
 int mv2_shm_reduce_tree_degree = 4; 
 int mv2_shm_slot_len = 8192;
@@ -1665,6 +1668,19 @@ void MV2_Read_env_vars(void)
 {
     char *value;
     int flag;
+
+    if ((value = getenv("MV2_USE_BITONIC_COMM_SPLIT")) != NULL) {
+        mv2_use_bitonic_comm_split = !!atoi(value);
+    }
+
+    if (mv2_use_bitonic_comm_split) {
+        if ((value = getenv("MV2_BITONIC_COMM_SPLIT_THRESHOLD")) != NULL) {
+            mv2_bitonic_comm_split_threshold = atoi(value);
+            if (mv2_bitonic_comm_split_threshold < 0) {
+                mv2_bitonic_comm_split_threshold = MV2_DEFAULT_BITONIC_COMM_SPLIT_THRESHOLD;
+            }
+        }
+    }
 
     if ((value = getenv("MV2_USE_OSU_COLLECTIVES")) != NULL) {
         if (atoi(value) == 1) {

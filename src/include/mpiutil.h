@@ -274,8 +274,6 @@ int MPIR_Assert_fail_fmt(const char *cond, const char *file_name, int line_num, 
 #endif
 #define MPIU_Assign_trunc(dst_,src_,dst_type_)                                         \
     do {                                                                               \
-        /* will catch some of the cases if the expr_inttype macros aren't available */ \
-        MPIU_Assert((src_) == (dst_type_)(src_));                                      \
         dst_ = (dst_type_)(src_);                                                      \
     } while (0)
 

@@ -10,6 +10,12 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  */
 
+#include "bcast/gen2_cma_RI2_1ppn.h"
+#include "bcast/gen2_cma_RI2_2ppn.h"
+#include "bcast/gen2_cma_RI2_28ppn.h"
+#include "bcast/gen2_RI2_1ppn.h"
+#include "bcast/gen2_RI2_2ppn.h"
+#include "bcast/gen2_RI2_28ppn.h"
 #include "bcast/gen2_RI_1ppn.h"
 #include "bcast/gen2_RI_2ppn.h"
 #include "bcast/gen2_RI_8ppn.h"
@@ -68,3 +74,12 @@
 #include "bcast/nemesis_INTEL_XEON_E5_2680_16_MLX_CX_FDR_1ppn.h"
 #include "bcast/nemesis_INTEL_XEON_E5_2680_16_MLX_CX_FDR_2ppn.h"
 #include "bcast/nemesis_INTEL_XEON_E5_2680_16_MLX_CX_FDR_16ppn.h"
+#include "bcast/psm_INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100_1ppn.h"
+#include "bcast/psm_INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100_2ppn.h"
+#include "bcast/psm_INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100_28ppn.h"
+#include "bcast/psm_INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100_1ppn.h"
+#include "bcast/psm_INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100_36ppn.h"
+#include "bcast/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_1ppn.h"
+#include "bcast/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_4ppn.h"
+#include "bcast/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_16ppn.h"
+#include "bcast/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_64ppn.h"

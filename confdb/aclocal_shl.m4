@@ -455,6 +455,7 @@ PAC_PUSH_FLAG([LD])
 # case they do in the future
 PAC_PUSH_FLAG([LDFLAGS])
 PAC_PUSH_FLAG([with_gnu_ld])
+PAC_PUSH_FLAG([use_new_dtags])
 
 # set the temporary override values (if any)
 m4_case([$1],
@@ -480,6 +481,7 @@ export GCC
 export LDFLAGS
 export LD
 export with_gnu_ld
+export use_new_dtags
 
 AS_IF([$ac_aux_dir/config.rpath "$host" > $2],[:],[AC_MSG_ERROR([unable to execute $ac_aux_dir/config.rpath])])
 
@@ -489,6 +491,7 @@ AC_SUBST([C_LINKPATH_SHL])
 rm -f conftest.out
 
 # restore the old values
+PAC_POP_FLAG([use_new_dtags])
 PAC_POP_FLAG([with_gnu_ld])
 PAC_POP_FLAG([LD])
 PAC_POP_FLAG([LDFLAGS])

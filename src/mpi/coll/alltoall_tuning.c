@@ -11,6 +11,7 @@
  */
 
 #include <regex.h>
+#include "common_tuning.h"
 #include "alltoall_tuning.h"
 #include "tuning/alltoall_arch_tuning.h"
 #include "mv2_arch_hca_detect.h"
@@ -52,19 +53,19 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	mv2_alltoall_indexed_table_ppn_conf[0] = 1;
 	mv2_size_alltoall_indexed_tuning_table[0] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-	  GEN2__INTEL_XEON_X5650_12__MLX_CX_QDR__1PPN
+	  GEN2__INTEL_XEON_X5650_12__MLX_CX_QDR__1PPN;
 	table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[1] = 2;
 	mv2_size_alltoall_indexed_tuning_table[1] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-	  GEN2__INTEL_XEON_X5650_12__MLX_CX_QDR__2PPN
+	  GEN2__INTEL_XEON_X5650_12__MLX_CX_QDR__2PPN;
 	table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[2] = 12;
 	mv2_size_alltoall_indexed_tuning_table[2] = 6;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_12ppn[] =
-	  GEN2__INTEL_XEON_X5650_12__MLX_CX_QDR__12PPN
+	  GEN2__INTEL_XEON_X5650_12__MLX_CX_QDR__12PPN;
 	table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_12ppn;
       
 	agg_table_sum = 0;
@@ -156,19 +157,19 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	mv2_alltoall_indexed_table_ppn_conf[0] = 1;
 	mv2_size_alltoall_indexed_tuning_table[0] = 4;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-	  GEN2__AMD_OPTERON_6136_32__MLX_CX_QDR__1PPN
+	  GEN2__AMD_OPTERON_6136_32__MLX_CX_QDR__1PPN;
 	table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[1] = 2;
 	mv2_size_alltoall_indexed_tuning_table[1] = 3;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-	  GEN2__AMD_OPTERON_6136_32__MLX_CX_QDR__2PPN
+	  GEN2__AMD_OPTERON_6136_32__MLX_CX_QDR__2PPN;
 	table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[2] = 32;
 	mv2_size_alltoall_indexed_tuning_table[2] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_32ppn[] =
-	  GEN2__AMD_OPTERON_6136_32__MLX_CX_QDR__32PPN 
+	  GEN2__AMD_OPTERON_6136_32__MLX_CX_QDR__32PPN;
 	table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_32ppn;
       
 	agg_table_sum = 0;
@@ -207,19 +208,19 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	mv2_alltoall_indexed_table_ppn_conf[0] = 1;
 	mv2_size_alltoall_indexed_tuning_table[0] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-	  GEN2__INTEL_XEON_E5_2670_16__MLX_CX_QDR__1PPN
+	  GEN2__INTEL_XEON_E5_2670_16__MLX_CX_QDR__1PPN;
 	table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[1] = 2;
 	mv2_size_alltoall_indexed_tuning_table[1] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-	  GEN2__INTEL_XEON_E5_2670_16__MLX_CX_QDR__2PPN
+	  GEN2__INTEL_XEON_E5_2670_16__MLX_CX_QDR__2PPN;
 	table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[2] = 16;
 	mv2_size_alltoall_indexed_tuning_table[2] = 8;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_16ppn[] =
-	  GEN2__INTEL_XEON_E5_2670_16__MLX_CX_QDR__16PPN
+	  GEN2__INTEL_XEON_E5_2670_16__MLX_CX_QDR__16PPN;
 	table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_16ppn;
       
 	agg_table_sum = 0;
@@ -422,70 +423,34 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	MPIU_Free(table_ptrs);
 	return 0;
       }
+
+      else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+		  MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+	    /*RI2 Table*/
+    MV2_COLL_TUNING_START_TABLE  (alltoall, 3)
+    MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  4, GEN2__RI2__1PPN)
+    MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 1,  4, GEN2_CMA__RI2__1PPN)
+    MV2_COLL_TUNING_ADD_CONF     (alltoall, 2,  5, GEN2__RI2__2PPN)
+    MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 2,  5, GEN2_CMA__RI2__2PPN)
+    MV2_COLL_TUNING_ADD_CONF     (alltoall, 28, 4, GEN2__RI2__28PPN)
+    MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 28, 4, GEN2_CMA__RI2__28PPN)
+    MV2_COLL_TUNING_FINISH_TABLE (alltoall)
+      }
+
       else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 				    MV2_ARCH_INTEL_XEON_E5630_8, MV2_HCA_MLX_CX_QDR) && !heterogeneity) {
 	/*RI Table*/
-        mv2_alltoall_indexed_num_ppn_conf = 3;
-        mv2_alltoall_indexed_thresholds_table
-          = MPIU_Malloc(sizeof(mv2_alltoall_indexed_tuning_table *)
-                        * mv2_alltoall_indexed_num_ppn_conf);
-        table_ptrs = MPIU_Malloc(sizeof(mv2_alltoall_indexed_tuning_table *)
-                                 * mv2_alltoall_indexed_num_ppn_conf);
-        mv2_size_alltoall_indexed_tuning_table = MPIU_Malloc(sizeof(int) *
-                                                          mv2_alltoall_indexed_num_ppn_conf);
-        mv2_alltoall_indexed_table_ppn_conf = MPIU_Malloc(mv2_alltoall_indexed_num_ppn_conf * sizeof(int));
-
-        mv2_alltoall_indexed_table_ppn_conf[0] = 1;
-        mv2_size_alltoall_indexed_tuning_table[0] = 2;
-        mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-          GEN2__RI__1PPN
-        table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
-
-        mv2_alltoall_indexed_table_ppn_conf[1] = 2;
-        mv2_size_alltoall_indexed_tuning_table[1] = 2;
-        mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-          GEN2__RI__2PPN
-        table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
-
-        mv2_alltoall_indexed_table_ppn_conf[2] = 8;
-        mv2_alltoall_indexed_tuning_table mv2_tmp_cma_alltoall_indexed_thresholds_table_8ppn[] =
-          GEN2_CMA__RI__8PPN;
-        mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_8ppn[] =
-          GEN2__RI__8PPN;
-#if defined(_SMP_CMA_)
-        if (g_smp_use_cma) {
-          mv2_size_alltoall_indexed_tuning_table[2] = 5;
-          table_ptrs[2] = mv2_tmp_cma_alltoall_indexed_thresholds_table_8ppn;
-        }
-        else {
-          mv2_size_alltoall_indexed_tuning_table[2] = 8;
-          table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_8ppn;
-        }
-#else
-        mv2_size_alltoall_indexed_tuning_table[2] = 8;
-        table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_8ppn;
-#endif
-
-        agg_table_sum = 0;
-        for (i = 0; i < mv2_alltoall_indexed_num_ppn_conf; i++) {
-          agg_table_sum += mv2_size_alltoall_indexed_tuning_table[i];
-	}
-	mv2_alltoall_indexed_thresholds_table[0] =
-          MPIU_Malloc(agg_table_sum * sizeof (mv2_alltoall_indexed_tuning_table));
-        MPIU_Memcpy(mv2_alltoall_indexed_thresholds_table[0], table_ptrs[0],
-                    (sizeof(mv2_alltoall_indexed_tuning_table)
-                     * mv2_size_alltoall_indexed_tuning_table[0]));
-	for (i = 1; i < mv2_alltoall_indexed_num_ppn_conf; i++) {
-          mv2_alltoall_indexed_thresholds_table[i] =
-            mv2_alltoall_indexed_thresholds_table[i - 1]
-            + mv2_size_alltoall_indexed_tuning_table[i - 1];
-          MPIU_Memcpy(mv2_alltoall_indexed_thresholds_table[i], table_ptrs[i],
-                      (sizeof(mv2_alltoall_indexed_tuning_table)
-                       * mv2_size_alltoall_indexed_tuning_table[i]));
-        }
-        MPIU_Free(table_ptrs);
-        return 0;
+    MV2_COLL_TUNING_START_TABLE  (alltoall, 3)
+    MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  2, GEN2__RI__1PPN)
+    MV2_COLL_TUNING_ADD_CONF     (alltoall, 2,  2, GEN2__RI__2PPN)
+    MV2_COLL_TUNING_ADD_CONF     (alltoall, 8,  8, GEN2__RI__8PPN)
+    MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 8,  5, GEN2_CMA__RI__8PPN)
+    MV2_COLL_TUNING_FINISH_TABLE (alltoall)
       }
+
+
+
+
       else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 			     MV2_ARCH_INTEL_XEON_E5_2680_V3_2S_24, MV2_HCA_MLX_CX_FDR) && !heterogeneity) {
 	/*Comet Table*/
@@ -541,6 +506,18 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	}
 	MPIU_Free(table_ptrs);
 	return 0;
+      }
+      else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+		  MV2_ARCH_ANY, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+	/*RI2 Table*/
+    MV2_COLL_TUNING_START_TABLE  (alltoall, 3)
+    MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  4, GEN2__RI2__1PPN)
+    MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 1,  4, GEN2_CMA__RI2__1PPN)
+    MV2_COLL_TUNING_ADD_CONF     (alltoall, 2,  4, GEN2__RI2__2PPN)
+    MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 2,  4, GEN2_CMA__RI2__2PPN)
+    MV2_COLL_TUNING_ADD_CONF     (alltoall, 28, 4, GEN2__RI2__28PPN)
+    MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 28, 4, GEN2_CMA__RI2__28PPN)
+    MV2_COLL_TUNING_FINISH_TABLE (alltoall)
       }
       else {
 	/*Stampede Table*/
@@ -648,19 +625,19 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	mv2_alltoall_indexed_table_ppn_conf[0] = 1;
 	mv2_size_alltoall_indexed_tuning_table[0] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-	  NEMESIS__INTEL_XEON_X5650_12__MLX_CX_QDR__1PPN
+	  NEMESIS__INTEL_XEON_X5650_12__MLX_CX_QDR__1PPN;
 	table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[1] = 2;
 	mv2_size_alltoall_indexed_tuning_table[1] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-	  NEMESIS__INTEL_XEON_X5650_12__MLX_CX_QDR__2PPN
+	  NEMESIS__INTEL_XEON_X5650_12__MLX_CX_QDR__2PPN;
 	table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[2] = 8;
 	mv2_size_alltoall_indexed_tuning_table[2] = 3;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_8ppn[] =
-	  NEMESIS__INTEL_XEON_X5650_12__MLX_CX_QDR__12PPN
+	  NEMESIS__INTEL_XEON_X5650_12__MLX_CX_QDR__12PPN;
 	table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_8ppn;
       
 	agg_table_sum = 0;
@@ -699,19 +676,19 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	mv2_alltoall_indexed_table_ppn_conf[0] = 1;
 	mv2_size_alltoall_indexed_tuning_table[0] = 4;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-	  NEMESIS__AMD_OPTERON_6136_32__MLX_CX_QDR__1PPN
+	  NEMESIS__AMD_OPTERON_6136_32__MLX_CX_QDR__1PPN;
 	table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[1] = 2;
 	mv2_size_alltoall_indexed_tuning_table[1] = 3;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-	  NEMESIS__AMD_OPTERON_6136_32__MLX_CX_QDR__2PPN
+	  NEMESIS__AMD_OPTERON_6136_32__MLX_CX_QDR__2PPN;
 	table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[2] = 32;
 	mv2_size_alltoall_indexed_tuning_table[2] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_32ppn[] =
-	  NEMESIS__AMD_OPTERON_6136_32__MLX_CX_QDR__32PPN
+	  NEMESIS__AMD_OPTERON_6136_32__MLX_CX_QDR__32PPN;
 	table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_32ppn;
       
 	agg_table_sum = 0;
@@ -750,19 +727,19 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	mv2_alltoall_indexed_table_ppn_conf[0] = 1;
 	mv2_size_alltoall_indexed_tuning_table[0] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_QDR_1PPN
+	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_QDR_1PPN;
 	table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[1] = 2;
 	mv2_size_alltoall_indexed_tuning_table[1] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_QDR_2PPN
+	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_QDR_2PPN;
 	table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[2] = 16;
 	mv2_size_alltoall_indexed_tuning_table[2] = 4;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_16ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_QDR_16PPN
+	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_QDR_16PPN;
 	table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_16ppn;
       
 	agg_table_sum = 0;
@@ -801,19 +778,19 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	mv2_alltoall_indexed_table_ppn_conf[0] = 1;
 	mv2_size_alltoall_indexed_tuning_table[0] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_FDR__1PPN
+	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_FDR__1PPN;
 	table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[1] = 2;
 	mv2_size_alltoall_indexed_tuning_table[1] = 2;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_FDR__2PPN
+	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_FDR__2PPN;
 	table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[2] = 16;
 	mv2_size_alltoall_indexed_tuning_table[2] = 5;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_16ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_FDR__16PPN
+	  NEMESIS__INTEL_XEON_E5_2670_16__MLX_CX_FDR__16PPN;
 	table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_16ppn;
       
 	agg_table_sum = 0;
@@ -852,19 +829,19 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	mv2_alltoall_indexed_table_ppn_conf[0] = 1;
 	mv2_size_alltoall_indexed_tuning_table[0] = 5;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__1PPN
+	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__1PPN;
 	table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[1] = 2;
 	mv2_size_alltoall_indexed_tuning_table[1] = 5;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__2PPN
+	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__2PPN;
 	table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[2] = 16;
 	mv2_size_alltoall_indexed_tuning_table[2] = 7;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_16ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__16PPN
+	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__16PPN;
 	table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_16ppn;
       
 	agg_table_sum = 0;
@@ -903,19 +880,19 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
         mv2_alltoall_indexed_table_ppn_conf[0] = 1;
         mv2_size_alltoall_indexed_tuning_table[0] = 2;
         mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-          NEMESIS__RI__1PPN
+          NEMESIS__RI__1PPN;
 	  table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
 
         mv2_alltoall_indexed_table_ppn_conf[1] = 2;
         mv2_size_alltoall_indexed_tuning_table[1] = 2;
         mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-          NEMESIS__RI__2PPN
+          NEMESIS__RI__2PPN;
 	  table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
 
         mv2_alltoall_indexed_table_ppn_conf[2] = 8;
         mv2_size_alltoall_indexed_tuning_table[2] = 7;
         mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_8ppn[] =
-          NEMESIS__RI__8PPN
+          NEMESIS__RI__8PPN;
 	  table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_8ppn;
 
         agg_table_sum = 0;
@@ -953,19 +930,19 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	mv2_alltoall_indexed_table_ppn_conf[0] = 1;
 	mv2_size_alltoall_indexed_tuning_table[0] = 5;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__1PPN
+	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__1PPN;
 	table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[1] = 2;
 	mv2_size_alltoall_indexed_tuning_table[1] = 5;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__2PPN
+	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__2PPN;
 	table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[2] = 16;
 	mv2_size_alltoall_indexed_tuning_table[2] = 7;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_16ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__16PPN
+	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__16PPN;
 	table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_16ppn;
       
 	agg_table_sum = 0;
@@ -1035,6 +1012,74 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
       MPIU_Free(table_ptrs);
       return 0;
     }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+			     MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28, MV2_HCA_INTEL_HFI1) && !heterogeneity) {
+      /*Bridges Table*/
+      mv2_alltoall_indexed_num_ppn_conf = 3;
+      mv2_alltoall_indexed_thresholds_table
+	= MPIU_Malloc(sizeof(mv2_alltoall_indexed_tuning_table *)
+		      * mv2_alltoall_indexed_num_ppn_conf);
+      table_ptrs = MPIU_Malloc(sizeof(mv2_alltoall_indexed_tuning_table *)
+			       * mv2_alltoall_indexed_num_ppn_conf);
+      mv2_size_alltoall_indexed_tuning_table = MPIU_Malloc(sizeof(int) *
+							mv2_alltoall_indexed_num_ppn_conf);
+      mv2_alltoall_indexed_table_ppn_conf = MPIU_Malloc(mv2_alltoall_indexed_num_ppn_conf * sizeof(int));
+      
+      mv2_alltoall_indexed_table_ppn_conf[0] = 1;
+      mv2_size_alltoall_indexed_tuning_table[0] = 4;
+      mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
+	PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__1PPN;
+      table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
+      
+      mv2_alltoall_indexed_table_ppn_conf[1] = 2;
+      mv2_size_alltoall_indexed_tuning_table[1] = 4;
+      mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
+	PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__2PPN;
+      table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
+      
+      mv2_alltoall_indexed_table_ppn_conf[2] = 28;
+      mv2_size_alltoall_indexed_tuning_table[2] = 4;
+      mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_28ppn[] =
+	PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__28PPN;
+      table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_28ppn;
+      
+      agg_table_sum = 0;
+      for (i = 0; i < mv2_alltoall_indexed_num_ppn_conf; i++) {
+	agg_table_sum += mv2_size_alltoall_indexed_tuning_table[i];
+      }
+      mv2_alltoall_indexed_thresholds_table[0] =
+	MPIU_Malloc(agg_table_sum * sizeof (mv2_alltoall_indexed_tuning_table));
+      MPIU_Memcpy(mv2_alltoall_indexed_thresholds_table[0], table_ptrs[0],
+		  (sizeof(mv2_alltoall_indexed_tuning_table)
+		   * mv2_size_alltoall_indexed_tuning_table[0]));
+      for (i = 1; i < mv2_alltoall_indexed_num_ppn_conf; i++) {
+	mv2_alltoall_indexed_thresholds_table[i] =
+	  mv2_alltoall_indexed_thresholds_table[i - 1]
+	  + mv2_size_alltoall_indexed_tuning_table[i - 1];
+	MPIU_Memcpy(mv2_alltoall_indexed_thresholds_table[i], table_ptrs[i],
+		    (sizeof(mv2_alltoall_indexed_tuning_table)
+		     * mv2_size_alltoall_indexed_tuning_table[i]));
+      }
+      MPIU_Free(table_ptrs);
+      return 0;
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+			     MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36, MV2_HCA_INTEL_HFI1) && !heterogeneity) {
+      /* Jade/Opal Table */
+      MV2_COLL_TUNING_START_TABLE  (alltoall, 2)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  5, PSM__INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 36, 4, PSM__INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100__36PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (alltoall)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+			     MV2_ARCH_INTEL_XEON_PHI_7250, MV2_HCA_INTEL_HFI1) && !heterogeneity) {
+      /* TACC-KNL Table */
+      MV2_COLL_TUNING_START_TABLE  (alltoall, 3)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  5, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 4,  5, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 16, 4, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__16PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (alltoall)
+    }
     else {
       /*Sierra Table*/
       mv2_alltoall_indexed_num_ppn_conf = 2;
@@ -1095,19 +1140,19 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
 	mv2_alltoall_indexed_table_ppn_conf[0] = 1;
 	mv2_size_alltoall_indexed_tuning_table[0] = 5;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_1ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__1PPN
+	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__1PPN;
 	table_ptrs[0] = mv2_tmp_alltoall_indexed_thresholds_table_1ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[1] = 2;
 	mv2_size_alltoall_indexed_tuning_table[1] = 5;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_2ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__2PPN
+	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__2PPN;
 	table_ptrs[1] = mv2_tmp_alltoall_indexed_thresholds_table_2ppn;
       
 	mv2_alltoall_indexed_table_ppn_conf[2] = 16;
 	mv2_size_alltoall_indexed_tuning_table[2] = 7;
 	mv2_alltoall_indexed_tuning_table mv2_tmp_alltoall_indexed_thresholds_table_16ppn[] =
-	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__16PPN
+	  NEMESIS__INTEL_XEON_E5_2680_16__MLX_CX_FDR__16PPN;
 	table_ptrs[2] = mv2_tmp_alltoall_indexed_thresholds_table_16ppn;
       
 	agg_table_sum = 0;
@@ -2178,6 +2223,9 @@ int MV2_Alltoall_is_define(char *mv2_user_alltoall)
 
       /* If one alltoall_indexed tuning table is already defined */
       if (mv2_alltoall_indexed_thresholds_table != NULL) {
+        if (mv2_alltoall_indexed_thresholds_table[0] != NULL) {
+            MPIU_Free(mv2_alltoall_indexed_thresholds_table[0]);
+        }
         MPIU_Free(mv2_alltoall_indexed_thresholds_table);
       }
 

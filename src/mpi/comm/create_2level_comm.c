@@ -638,12 +638,12 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
 
+    MPID_Comm_get_ptr( comm, comm_ptr );
     if (size <= 1) {
         return mpi_errno;
     }
 
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_2level_comm_requests, 1);
-    MPID_Comm_get_ptr( comm, comm_ptr );
 
     /* Find out if ranks are block ordered locally */
     for (iter = 0; iter < size; iter++) {

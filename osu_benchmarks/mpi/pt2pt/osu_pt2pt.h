@@ -72,6 +72,7 @@ extern CUcontext cuContext;
 
 #define BW 0
 #define LAT 1
+#define LAT_MT 2
 
 #define BW_LOOP_SMALL   100
 #define BW_SKIP_SMALL   10
@@ -82,6 +83,10 @@ extern CUcontext cuContext;
 #define LAT_SKIP_SMALL  100
 #define LAT_LOOP_LARGE  1000
 #define LAT_SKIP_LARGE  10
+
+#define DEF_NUM_THREADS 2
+#define MIN_NUM_THREADS 1
+#define MAX_NUM_THREADS 128
 
 enum po_ret_type {
     po_cuda_not_avail,
@@ -105,6 +110,7 @@ struct options_t {
     int loop_large;
     int skip;
     int skip_large;
+    int num_threads;
     char managedSend;
     char managedRecv;
 };

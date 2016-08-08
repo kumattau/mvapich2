@@ -21,6 +21,7 @@
 #include "upmi.h"
 #include "mpiutil.h"
 #include "rdma_impl.h"
+#include "smp_smpi.h"
 
 #include "dreg.h"
 
@@ -442,28 +443,29 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     /* Use cma for contiguous data 
      * Use shared memory for non-contiguous data
      */
-    if ((!use_cma && !use_limic) || 
-        sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV ||
-        sreq->dev.iov_count > 1) {
-        pkt_head.csend_req_id = NULL;
-        pkt_head.send_req_id = NULL;
-    }
-    else if ((!use_cma && use_limic) || 
-        sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV ||
-        sreq->dev.iov_count > 1) {
-        pkt_head.send_req_id = sreq;
-        pkt_head.csend_req_id = NULL;
-    }
-    else if ((use_cma && !use_limic) || 
-        sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV ||
-        sreq->dev.iov_count > 1) {
+    pkt_head.csend_req_id = NULL;
+    pkt_head.send_req_id = NULL;
+
+#if defined(_SMP_CMA_)
+    if(use_cma && (!g_smp_max_switch || 
+            (g_smp_max_switch && sreq->dev.iov[0].MPID_IOV_LEN < s_smp_cma_max_size))
+            && sreq->dev.OnDataAvail != MPIDI_CH3_ReqHandler_SendReloadIOV
+            && sreq->dev.iov_count == 1) {
         pkt_head.csend_req_id = sreq;
         pkt_head.send_req_id = NULL;
     }
-    else {
-        pkt_head.send_req_id = sreq;
+#endif
+
+#if defined(_SMP_LIMIC_)
+    if(use_limic && (!g_smp_max_switch ||
+            (g_smp_max_switch && sreq->dev.iov[0].MPID_IOV_LEN < s_smp_limic2_max_size))
+            && sreq->dev.OnDataAvail != MPIDI_CH3_ReqHandler_SendReloadIOV
+            && sreq->dev.iov_count == 1) {
         pkt_head.csend_req_id = NULL;
+        pkt_head.send_req_id = sreq;
     }
+#endif
+
 #endif
     
     mpi_errno = MPIDI_CH3_iStartMsg(vc, &pkt_head,

@@ -1288,7 +1288,8 @@ static int do_accumulate_op(MPID_Request *rreq)
  fn_exit:
     /* free the temporary buffer */
     MPIR_Type_get_true_extent_impl(rreq->dev.datatype, &true_lb, &true_extent);
-    MPIU_Free((char *) rreq->dev.user_buf + true_lb);
+    void *tmp = (void*)(rreq->dev.user_buf + true_lb);
+    MPIU_Free(tmp);
 
     MPIDI_FUNC_EXIT(MPID_STATE_DO_ACCUMULATE_OP);
 

@@ -251,7 +251,11 @@ void MPIU_trdump(FILE *, int);
   Module:
   Utility
   M*/
-#define MPIU_Free(a)      MPIU_trfree(a,__LINE__,__FILE__)
+#define MPIU_Free(a)                    \
+do {                                    \
+    MPIU_trfree((void *)(a),__LINE__,__FILE__); \
+    (a) = NULL;                         \
+} while(0)
 
 #define MPIU_Strdup(a)    MPIU_trstrdup(a,__LINE__,__FILE__)
 
@@ -280,7 +284,11 @@ void MPIU_trdump(FILE *, int);
 /* No memory tracing; just use native functions */
 #define MPIU_Malloc(a)    malloc((size_t)(a))
 #define MPIU_Calloc(a,b)  calloc((size_t)(a),(size_t)(b))
-#define MPIU_Free(a)      free((void *)(a))
+#define MPIU_Free(a)        \
+do {                        \
+    free((void *)(a));      \
+    (a) = NULL;             \
+} while (0)
 #define MPIU_Realloc(a,b)  realloc((void *)(a),(size_t)(b))
 
 #ifdef HAVE_STRDUP
@@ -312,7 +320,11 @@ void MPIT_memalign_free (void * ptr, int lineno, char const * filename);
 void MPIT_shmdt (void * ptr, int lineno, char const * filename);
 #       define MPIU_Malloc(a)       MPIT_malloc(a, __LINE__, __FILE__)
 #       define MPIU_Calloc(a,b)     MPIT_calloc(a, b, __LINE__, __FILE__)
-#       define MPIU_Free(a)         MPIT_free(a, __LINE__, __FILE__)
+#       define MPIU_Free(a)                     \
+        do {                                    \
+            MPIT_free((void *)(a), __LINE__, __FILE__);   \
+            (a) = NULL;                         \
+        } while(0)
 #       define MPIU_Strdup(a)       MPIT_strdup(a, __LINE__, __FILE__)
 #       define MPIU_Realloc(a,b)    MPIT_realloc(a, b, __LINE__, __FILE__)
 #       define MPIU_Memalign(a,b,c) MPIT_memalign(a, b, c, __LINE__, __FILE__)
@@ -380,8 +392,8 @@ if (pointer_) { \
     stmt_;\
 }}
 #define MPIU_CHKLMEM_FREEALL() \
-    do { while (mpiu_chklmem_stk_sp_ > 0) {\
-       MPIU_Free( mpiu_chklmem_stk_[--mpiu_chklmem_stk_sp_] ); } } while(0)
+    do { while (--mpiu_chklmem_stk_sp_ >= 0) {\
+       MPIU_Free( mpiu_chklmem_stk_[mpiu_chklmem_stk_sp_] ); } } while(0)
 #endif /* HAVE_ALLOCA */
 #define MPIU_CHKLMEM_MALLOC(pointer_,type_,nbytes_,rc_,name_) \
     MPIU_CHKLMEM_MALLOC_ORJUMP(pointer_,type_,nbytes_,rc_,name_)
@@ -433,8 +445,8 @@ if (pointer_) { \
     {MPIU_Assert(mpiu_chkpmem_stk_sp_<mpiu_chkpmem_stk_sz_);\
     mpiu_chkpmem_stk_[mpiu_chkpmem_stk_sp_++] = pointer_;}
 #define MPIU_CHKPMEM_REAP() \
-    { while (mpiu_chkpmem_stk_sp_ > 0) {\
-       MPIU_Free( mpiu_chkpmem_stk_[--mpiu_chkpmem_stk_sp_] ); } }
+    { while (--mpiu_chkpmem_stk_sp_ >= 0) {\
+       MPIU_Free( mpiu_chkpmem_stk_[mpiu_chkpmem_stk_sp_] ); } }
 #define MPIU_CHKPMEM_COMMIT() \
     mpiu_chkpmem_stk_sp_ = 0
 #define MPIU_CHKPMEM_MALLOC(pointer_,type_,nbytes_,rc_,name_) \

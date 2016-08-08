@@ -1848,11 +1848,11 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
        
        if(mv2_use_slot_shmem_coll &&
           mv2_enable_zcpy_reduce == 1 && 
-          comm_ptr->dev.ch.shmem_coll_ok == 1 &&
+          nbytes <= mv2_shm_slot_len &&
+	  comm_ptr->dev.ch.shmem_coll_ok == 1 &&
           mv2_enable_shmem_reduce && is_commutative == 1) {
            //do nothing and continue to use zcpy
-       }
-       else {
+       } else {
            //fall back to trusty algorithm because it's invalid to
            //use zcpy without the initializations.
            MV2_Reduce_function = MPIR_Reduce_binomial_MV2;

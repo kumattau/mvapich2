@@ -144,6 +144,10 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     mv2_ud_zcopy_info_t         zcopy_info;
     uint32_t                    rc_connections;
 #endif /*_ENABLE_UD_ */
+
+#ifdef _SMP_LIMIC_
+    uint8_t                     g_smp_can_fallback;
+#endif
 } mv2_MPIDI_CH3I_RDMA_Process_t;
 
 struct process_init_info {

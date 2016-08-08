@@ -34,6 +34,8 @@ extern int                  s_smpi_length_queue;
 extern int                  s_smp_num_send_buffer;
 extern int                  s_smp_batch_size;
 extern int                  s_smp_block_size;
+extern int                  s_smp_cma_max_size;
+extern int                  s_smp_limic2_max_size;
 
 #if defined _ENABLE_CUDA_
 extern int                  s_smp_cuda_pipeline;
@@ -55,6 +57,7 @@ extern CUevent *loop_event_local;
 extern int                  g_smp_delay_shmem_pool_init;
 
 extern int                  g_smp_priority_polling;
+extern int                  g_smp_priority_factor;
 extern int                  g_smp_polling_th;
 typedef struct polling_set_element {
     int rank; 
@@ -63,6 +66,9 @@ typedef struct polling_set_element {
 } POLLING_ELEMENT_T;
 
 /*********** Macro defines of local variables ************/
+#define MV2_SHMEM_PRIORTY_THRESHOLD     (24)
+#define MV2_SHMEM_PRIORTY_FACTOR        (64)
+
 #define PID_CHAR_LEN 22
 
 #define SMPI_SMALLEST_SIZE (64)
@@ -222,5 +228,6 @@ extern struct smpi_var g_smpi;
 extern struct shared_mem *g_smpi_shmem;
 extern unsigned long eager_buffer_max_usage;
 extern unsigned long rndv_buffer_max_usage;
+extern int g_smp_max_switch;
 
 #endif

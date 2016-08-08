@@ -9,6 +9,7 @@
 #include <mpid_dataloop.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <datatype.h>
 
 /*@
   MPID_Datatype_set_contents - store contents information for use in
@@ -109,7 +110,7 @@ int MPID_Datatype_set_contents(MPID_Datatype *new_dtp,
     return MPI_SUCCESS;
 }
 
-void MPID_Datatype_free_contents(MPID_Datatype *dtp)
+void MPID_Datatype_free_contents(MPID_Datatype *dtp, int in_finalize)
 {
     int i, struct_sz = sizeof(MPID_Datatype_contents);
     int align_sz = 8, epsilon;
@@ -123,11 +124,13 @@ void MPID_Datatype_free_contents(MPID_Datatype *dtp)
     /* note: relies on types being first after structure */
     array_of_types = (MPI_Datatype *) ((char *)dtp->contents + struct_sz);
 
-    for (i=0; i < dtp->contents->nr_types; i++) {
-	if (HANDLE_GET_KIND(array_of_types[i]) != HANDLE_KIND_BUILTIN) {
-	    MPID_Datatype_get_ptr(array_of_types[i], old_dtp);
-	    MPID_Datatype_release(old_dtp);
-	}
+    if (!in_finalize) {
+        for (i=0; i < dtp->contents->nr_types; i++) {
+            if (HANDLE_GET_KIND(array_of_types[i]) != HANDLE_KIND_BUILTIN) {
+                MPID_Datatype_get_ptr(array_of_types[i], old_dtp);
+                MPID_Datatype_release(old_dtp);
+            }
+        }
     }
 
     MPIU_Free(dtp->contents);

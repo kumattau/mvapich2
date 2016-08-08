@@ -29,103 +29,6 @@ int (*perform_blocking_progress) (int hca_num, int num_cqs);
 void (*handle_multiple_cqs) (int num_cqs, int cq_choice, int is_send_completion);
 extern int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank);
 
-int mv2_user_defined_mapping = FALSE;
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_set_affinity
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
-{
-    char *value;
-    int mpi_errno = MPI_SUCCESS;
-    int my_local_id;
-    MPIDI_VC_t *vc;
-
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SET_AFFINITY);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SET_AFFINITY);
-
-    if ((value = getenv("MV2_ENABLE_AFFINITY")) != NULL) {
-        mv2_enable_affinity = atoi(value);
-        #if defined(_SMP_LIMIC_)
-        g_use_limic2_coll = atoi(value);
-        #endif /*#if defined(_SMP_LIMIC_)*/
-    }
-
-    if (mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) != NULL) {
-        /* Affinity is on and the user has supplied a cpu mapping string */
-        int linelen = strlen(value);
-        if (linelen < s_cpu_mapping_line_max) {
-            s_cpu_mapping_line_max = linelen;
-        }
-        s_cpu_mapping =
-            (char *) MPIU_Malloc(sizeof(char) * (s_cpu_mapping_line_max + 1));
-        strncpy(s_cpu_mapping, value, s_cpu_mapping_line_max);
-        s_cpu_mapping[s_cpu_mapping_line_max] = '\0';
-        mv2_user_defined_mapping = TRUE;
-    }
-
-    if (mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) == NULL) {
-        /* Affinity is on and the user has not specified a mapping string */
-        if ((value = getenv("MV2_CPU_BINDING_POLICY")) != NULL) {
-            /* User has specified a binding policy */
-            if (!strcmp(value, "bunch") || !strcmp(value, "BUNCH")) {
-                policy = POLICY_BUNCH;
-            } else if (!strcmp(value, "scatter") || !strcmp(value, "SCATTER")) {
-                policy = POLICY_SCATTER;
-            } else {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**fail", "**fail %s",
-                                          "CPU_BINDING_PRIMITIVE: Policy should be bunch or scatter.");
-            }
-            mv2_user_defined_mapping = TRUE;
-        } else {
-            /* User has not specified a binding policy.
-             * We are going to do "bunch" binding, by default  */
-            policy = POLICY_BUNCH;
-        }
-    }
-
-    if (mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) == NULL) {
-        /* Affinity is on and the user has not specified a mapping string */
-        if ((value = getenv("MV2_CPU_BINDING_LEVEL")) != NULL) {
-            /* User has specified a binding level */
-            if (!strcmp(value, "core") || !strcmp(value, "CORE")) {
-                level = LEVEL_CORE;
-            } else if (!strcmp(value, "socket") || !strcmp(value, "SOCKET")) {
-                level = LEVEL_SOCKET;
-            } else if (!strcmp(value, "numanode") || !strcmp(value, "NUMANODE")) {
-                level = LEVEL_NUMANODE;
-            } else {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**fail", "**fail %s",
-                                          "CPU_BINDING_PRIMITIVE: Level should be core, socket, or numanode.");
-            }
-            mv2_user_defined_mapping = TRUE;
-        } else {
-            /* User has not specified a binding level.
-             * We are going to do "core" binding, by default  */
-            level = LEVEL_CORE;
-        }
-    }
-
-    /* Get my VC */
-    MPIDI_PG_Get_vc(pg, pg_rank, &vc);
-    my_local_id = vc->smp.local_rank;
-
-    if (mv2_enable_affinity) {
-        mpi_errno = smpi_setaffinity(my_local_id);
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-    }
-  fn_exit:
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SET_AFFINITY);
-    return mpi_errno;
-  fn_fail:
-    goto fn_exit;
-}
-
 #undef FUNCNAME
 #define FUNCNAME split_type
 #undef FCNAME
@@ -496,10 +399,6 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     MV2_collectives_arch_init(mv2_MPIDI_CH3I_RDMA_Process.heterogeneity);
 
-    if (MPIDI_CH3I_set_affinity(pg, pg_rank) != MPI_SUCCESS) {
-        MPIU_ERR_POP(mpi_errno);
-    }
-
     /* Initialize the smp channel */
     if ((mpi_errno = MPIDI_CH3I_SMP_init(pg))) {
         MPIU_ERR_POP(mpi_errno);
@@ -852,7 +751,6 @@ int MPIDI_CH3_PG_Init(MPIDI_PG_t * pg)
                     pg->size * sizeof(MPIDI_CH3I_MRAIL_UD_CM_t));
     }
 
-fn_exit:
 fn_fail:
     return MPI_SUCCESS;
 }

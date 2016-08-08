@@ -673,11 +673,6 @@ int CR_Thread_loop()
             lock2_count++;
             PRINT_DEBUG(DEBUG_CR_verbose > 2,"locking CR MPICR_cs_lock: lock2=%d, unlock2=%d \n", lock2_count, unlock2_count);
 
-            PRINT_DEBUG(DEBUG_CR_verbose > 1,"locking CM\n");
-            /* Lock will be finalized in suspension. */
-            MPICM_lock();
-            PRINT_DEBUG(DEBUG_CR_verbose > 1, "locked CM...\n");
-
             CR_Set_state(MPICR_STATE_PRE_COORDINATION);
 
             PRINT_DEBUG(DEBUG_CR_verbose, "CR_IBU_Suspend_channels()\n");
@@ -685,6 +680,11 @@ int CR_Thread_loop()
                 CR_MPDU_Ckpt_fail();
                 CR_ERR_ABORT("CR_IBU_Suspend_channels failed\n");
             }
+
+            PRINT_DEBUG(DEBUG_CR_verbose > 1,"locking CM\n");
+            /* Lock will be finalized in suspension. */
+            MPICM_lock();
+            PRINT_DEBUG(DEBUG_CR_verbose > 1, "locked CM...\n");
 
             /* begin phase 2: checkpoint/migration */
 
@@ -1979,13 +1979,6 @@ int CR_IBU_Suspend_channels()
         PRINT_DEBUG(DEBUG_CR_verbose > 2,"PG_get_vc=%d\n", i);
         MPIDI_PG_Get_vc(MPICR_pg, i, &vc);
 
-#if !defined(NDEBUG)
-        MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_CONNECTING_CLI);
-        MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_CONNECTING_SRV);
-        MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_1);
-        MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2);
-        MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_SRV);
-#endif /* !defined(NDEBUG) */
         /* init the fields to be used at resume */
         if (vc) {
             pthread_spin_init(&vc->mrail.cr_lock, 0);
@@ -1993,7 +1986,8 @@ int CR_IBU_Suspend_channels()
             vc->mrail.react_entry = NULL;
         }
 
-        if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE || vc->ch.state == MPIDI_CH3I_VC_STATE_SUSPENDING) {
+        if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE || vc->ch.state == MPIDI_CH3I_VC_STATE_SUSPENDING
+            || vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV) {
             vc_vector[i] = vc;
         } else {
             vc_vector[i] = NULL;

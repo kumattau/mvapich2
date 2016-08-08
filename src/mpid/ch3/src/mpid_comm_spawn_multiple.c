@@ -72,6 +72,14 @@ int MPID_Comm_spawn_multiple(int count, char *array_of_commands[],
     MPIU_ERR_SET1(mpi_errno,MPI_ERR_OTHER, "**notimpl",
 		  "**notimpl %s", FCNAME);
 #   endif
+
+#if CH3_RANK_BITS == 16
+    if ((MPIR_Process.comm_world->local_size + count) > 32768 && !MPIR_Process.comm_world->rank) {
+        mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,
+                MPI_ERR_OTHER, FCNAME, __LINE__, MPI_ERR_OTHER,
+                "**nomem", "Job size is larger than 32768. Reconfigure the library with --with-ch3-rank-bits=32");
+    }
+#endif
     
 fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_COMM_SPAWN_MULTIPLE);

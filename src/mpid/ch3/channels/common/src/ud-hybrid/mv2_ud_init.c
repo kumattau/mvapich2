@@ -123,18 +123,32 @@ mv2_ud_ctx_t* mv2_ud_create_ctx (mv2_ud_qp_info_t *qp_info, int hca_index)
 }
 
 /* create ud vc */
-int mv2_ud_set_vc_info (mv2_ud_vc_info_t *ud_vc_info, mv2_ud_exch_info_t *rem_info, struct ibv_pd *pd, int port)
+int mv2_ud_set_vc_info (mv2_ud_vc_info_t *ud_vc_info, mv2_ud_exch_info_t *rem_info, union ibv_gid gid, struct ibv_pd *pd, int port)
 {
     struct ibv_ah_attr ah_attr;
+
+    MPIU_Memset(&ah_attr, 0, sizeof(ah_attr));
 
     PRINT_DEBUG(DEBUG_UD_verbose>0,"lid:%d, qpn:%d, port: %d\n",
                 rem_info->lid,rem_info->qpn, port);
     
-    memset(&ah_attr, 0, sizeof(ah_attr));
-    ah_attr.is_global = 0; 
-    ah_attr.dlid = rem_info->lid;
-    ah_attr.sl = rdma_default_service_level;
-    ah_attr.src_path_bits = 0; 
+    if (use_iboeth) {
+        ah_attr.grh.dgid.global.subnet_prefix = 0;
+        ah_attr.grh.dgid.global.interface_id = 0;
+        ah_attr.grh.flow_label = 0;
+        ah_attr.grh.sgid_index = rdma_default_gid_index;
+        ah_attr.grh.hop_limit = 1;
+        ah_attr.grh.traffic_class = 0;
+        ah_attr.is_global = 1;
+        ah_attr.dlid = 0;
+        ah_attr.grh.dgid = gid;
+    } else {
+        ah_attr.is_global = 0;
+        ah_attr.dlid = rem_info->lid;
+        ah_attr.sl = 0;
+    }
+
+    ah_attr.src_path_bits = 0;
     ah_attr.port_num = port;
 
     ud_vc_info->ah = ibv_create_ah(pd, &ah_attr);

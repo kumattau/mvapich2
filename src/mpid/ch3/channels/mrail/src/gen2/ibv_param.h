@@ -197,6 +197,7 @@ extern int rdma_check_cuda_attribute;
 #endif /*#ifdef _ENABLE_CUDA_ */
 
 
+#define MV2_DEFAULT_UD_MTU 2048
 extern uint16_t rdma_default_ud_mtu;
 #if defined(_ENABLE_UD_)
 extern uint8_t rdma_enable_hybrid;
@@ -288,6 +289,7 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_LARGE_MSG_RAIL_SHARING_THRESHOLD (16384)
 #define DEF_MV2_CM_WAIT_TIME            (5)
 #define RDMA_DEFAULT_QP_OUS_RD_ATOM     (1)
+#define DEFAULT_SHMEM_PRIORITY_FACTOR   (1)
 
 /* This is a overprovision of resource, do not use in critical structures */
 #define MAX_NUM_SUBRAILS                (MAX_NUM_HCAS*  \
@@ -610,6 +612,8 @@ typedef enum mv2_env_param_id {
     MV2_SMP_NUM_SEND_BUFFER,
     MV2_SMP_SEND_BUF_SIZE,
     MV2_USE_SHARED_MEM,
+    MV2_SMP_CMA_MAX_SIZE,
+    MV2_SMP_LIMIC2_MAX_SIZE,
     /* cuda */
     MV2_CUDA_BLOCK_SIZE,
     MV2_CUDA_NUM_RNDV_BLOCKS,
@@ -760,6 +764,7 @@ void mv2_show_all_params();
 void mv2_show_runlog_info(int level);
 void rdma_set_rdma_fast_path_params(int num_proc);
 const char *mv2_ibv_mtu_enum_to_string(enum ibv_mtu mtu);
+uint16_t mv2_ibv_mtu_enum_to_value(enum ibv_mtu mtu);
 
 mv2_arch_hca_type MV2_get_arch_hca_type();
 

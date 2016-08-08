@@ -124,7 +124,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
 #endif
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid && (req->mrail.rndv_buf_sz < rdma_ud_zcopy_threshold
-     || req->mrail.rndv_buf_sz > (rdma_default_ud_mtu * rdma_ud_zcopy_rq_size))) {
+     || req->mrail.rndv_buf_sz > (MRAIL_MAX_UD_SIZE * rdma_ud_zcopy_rq_size))) {
             /*len <= (rdma_default_ud_mtu * 4096) */
         req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
         MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req);

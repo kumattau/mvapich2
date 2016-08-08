@@ -201,6 +201,7 @@ MPIDI_CH3_Pkt_send_t;
 typedef struct MPIDI_CH3_Pkt_comp
 {
     uint8_t type;
+    uint8_t fallback;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     size_t nb;
     MPI_Request *send_req_id;

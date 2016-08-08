@@ -182,6 +182,14 @@ if BUILD_MRAIL
 
 include $(top_srcdir)/src/mpid/ch3/channels/common/src/Makefile.mk
 
+else
+
+if BUILD_CH3_PSM
+include $(top_srcdir)/src/mpid/ch3/channels/common/src/Makefile.mk
+noinst_LTLIBRARIES += libch3affinity.la
+libch3affinity_la_SOURCES = src/mpid/ch3/channels/common/src/affinity/hwloc_bind.c
+endif
+
 endif
 
 if BUILD_NEMESIS_NETMOD_IB

@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
     rank = _my_pe();
     numprocs = _num_pes();
 
-    if (process_args(argc, argv, rank, &max_msg_size, &full)) {
+    if (process_args(argc, argv, rank, &max_msg_size, &full, HEADER)) {
         return 0;
     }
 
@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
         max_msg_size = max_mem_limit/numprocs;
     } 
 
-    print_header(rank, full);
+    print_header(HEADER, rank, full);
 
     recvbuff = (char *)shmemalign(align_size, sizeof(char) * max_msg_size
             * numprocs);

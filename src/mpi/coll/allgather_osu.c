@@ -625,7 +625,8 @@ int MPIR_Allgather_Bruck_MV2(const void *sendbuf,
         }
     }
 
-    MPIU_Free((char *) tmp_buf + recvtype_true_lb);
+    void *tmp = (void*)(tmp_buf + recvtype_true_lb);
+    MPIU_Free(tmp);
 
   fn_fail:
     return (mpi_errno);

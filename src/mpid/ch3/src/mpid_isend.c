@@ -122,7 +122,11 @@ skip_self_send:
 			                dt_true_lb);
 #ifdef USE_EAGER_SHORT
     if ((data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= vc->eager_fast_max_msg_sz) &&
-        vc->eager_fast_fn && dt_contig) {
+        vc->eager_fast_fn && dt_contig
+#ifdef CKPT
+        && vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
+#endif /* CKPT */
+        ) {
         mpi_errno = MPIDI_CH3_EagerContigShortSend(&sreq,
                            MPIDI_CH3_PKT_EAGERSHORT_SEND,
                            (char *)buf + dt_true_lb,

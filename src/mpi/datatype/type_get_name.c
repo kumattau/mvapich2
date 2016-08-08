@@ -136,6 +136,8 @@ static mpi_names_t mpi_maxloc_names[] = {
 #undef type_name_entry
 /* This routine is also needed by type_set_name */
 
+int mv2_datatype_names_initialized = 0;
+
 int MPIR_Datatype_init_names(void)
 {
 #ifdef HAVE_ERROR_CHECKING
@@ -146,8 +148,9 @@ int MPIR_Datatype_init_names(void)
     MPID_Datatype *datatype_ptr = NULL;
     MPIU_THREADSAFE_INIT_DECL(needsInit);
 
-    if (needsInit) {
-	MPIU_THREADSAFE_INIT_BLOCK_BEGIN(needsInit);
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    if (!mv2_datatype_names_initialized)
+    {
 	/* Make sure that the basics have datatype structures allocated
 	 * and filled in for them.  They are just integers prior to this
 	 * call.
@@ -199,12 +202,15 @@ int MPIR_Datatype_init_names(void)
 	    MPIU_Strncpy(datatype_ptr->name, mpi_maxloc_names[i].name,
 			 MPI_MAX_OBJECT_NAME);
 	}
-	MPIU_THREADSAFE_INIT_CLEAR(needsInit);
-    fn_fail:;
-    MPIU_THREADSAFE_INIT_BLOCK_END(needsInit);
+    mv2_datatype_names_initialized = 1;
     }
 
+fn_exit:
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
+fn_fail:
+    mv2_datatype_names_initialized = 0;
+    goto fn_exit;
 }
 #endif
 
@@ -238,7 +244,6 @@ int MPI_Type_get_name(MPI_Datatype datatype, char *type_name, int *resultlen)
     static const char FCNAME[] = "MPI_Type_get_name";
     int mpi_errno = MPI_SUCCESS;
     MPID_Datatype *datatype_ptr = NULL;
-    static int setup = 0;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_TYPE_GET_NAME);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
@@ -282,11 +287,8 @@ int MPI_Type_get_name(MPI_Datatype datatype, char *type_name, int *resultlen)
     /* ... body of routine ...  */
 
     /* If this is the first call, initialize all of the predefined names */
-    if (!setup) {
 	mpi_errno = MPIR_Datatype_init_names();
 	if (mpi_errno != MPI_SUCCESS) goto fn_fail;
-	setup = 1;
-    }
 
     /* Include the null in MPI_MAX_OBJECT_NAME */
     MPIU_Strncpy(type_name, datatype_ptr->name, MPI_MAX_OBJECT_NAME);

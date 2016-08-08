@@ -35,7 +35,7 @@ psm_prepost_list_t *psm_prepost_list_head = NULL;
 static void psm_1sided_recv(MPID_Request *req, void *ptr);
 static void *psm_gen_packbuf(MPID_Request *rreq, MPID_Request *dtreq);
 static void psm_init_tag();
-static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *, int, MPID_Request **, 
+static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *, MPIDI_msg_sz_t, MPID_Request **,
                                       void *, int, int, int, MPIDI_VC_t *);
 static MPIDI_CH3_PktHandler_Fcn *psm_pkthndl[MPIDI_CH3_PKT_END_CH3+1];
 
@@ -684,7 +684,7 @@ int psm_1sided_getresppkt(MPIDI_CH3_Pkt_get_resp_t *pkt, MPID_IOV *iov, int iov_
     DBG("Section handles"#TP"\n");                          \
     do_##TP:                                                  
 
-int psm_1sided_input(MPID_Request *req, int inlen)
+int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
 {
     MPIDI_CH3_Pkt_t *pkt;
     MPID_Request *temp_req;
@@ -964,7 +964,7 @@ int psm_1sided_input(MPID_Request *req, int inlen)
 errpkt:    
     fprintf(stderr, "Unknown packet type %d\n", pkt->type);
     fprintf(stderr, "Request flags are %x\n", req->psm_flags);
-    fprintf(stderr, "Length of message was %d\n", inlen);
+    fprintf(stderr, "Length of message was %ld\n", inlen);
     fprintf(stderr, "I should not be here. Poof!\n");
     fflush(stderr);
 
@@ -983,7 +983,7 @@ end_2:
 #undef GET_VC
 
 /* a large request has completed */
-int psm_complete_rndvrecv(MPID_Request *req, int inlen)
+int psm_complete_rndvrecv(MPID_Request *req, MPIDI_msg_sz_t inlen)
 {
     /* the put pkt request was stored in tmpbuf */
     MPID_Request *putreq;
@@ -1104,7 +1104,7 @@ fn_fail:
     return mpi_errno;    
 }
 
-static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *putreq, int putlen, 
+static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *putreq, MPIDI_msg_sz_t putlen,
                      MPID_Request **nreq, void *useraddr, int rndv_tag, 
                      int source_rank, int rndv_len, MPIDI_VC_t *vc)
 {
@@ -1209,7 +1209,7 @@ fn_fail:
 
 /* if response is packed, unpack */
 
-int psm_getresp_rndv_complete(MPID_Request *req, int inlen) 
+int psm_getresp_rndv_complete(MPID_Request *req, MPIDI_msg_sz_t inlen)
 {
     if(req->psm_flags & PSM_RNDVRECV_GET_PACKED) {
         DBG("GET RDNV: did unpack\n");

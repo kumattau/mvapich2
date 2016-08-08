@@ -79,10 +79,10 @@ fi
 
 
 AC_CHECK_HEADER([infiniband/verbs.h],, [
-    AC_MSG_ERROR(['infiniband/verbs.h not found. Did you specify --with-ib-include=?'])
+    AC_MSG_WARN(['infiniband/verbs.h not found. Did you specify --with-ib-include=? Proceeding without libibverbs support.'])
 ])
 AC_CHECK_LIB([ibverbs], [ibv_open_device],, [
-    AC_MSG_ERROR(['libibverbs not found. Did you specify --with-ib-libpath=?'])
+    AC_MSG_WARN(['libibverbs not found. Did you specify --with-ib-libpath=? Proceeding without libibverbs support.'])
 ])
 
 #which shared memory primitives to use

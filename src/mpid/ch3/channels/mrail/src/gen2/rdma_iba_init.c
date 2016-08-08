@@ -989,6 +989,7 @@ int MPIDI_CH3I_RDMA_finalize(void)
 
     if (mv2_MPIDI_CH3I_RDMA_Process.polling_set != NULL) {
         MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.polling_set);
+        mv2_MPIDI_CH3I_RDMA_Process.polling_group_size = 0;
     }
 
   fn_exit:
@@ -1216,7 +1217,6 @@ int MPIDI_CH3I_Iallgather_Init_Info(MPIDI_PG_t * pg, int pg_rank,
                                         mv2_process_init_info_t *my_info,
                                         mv2_arch_hca_type *arch_hca_type_all)
 {
-    int pg_size   = 0;
     int mpi_errno = MPI_SUCCESS;
 #ifdef _ENABLE_UD_
     char temp2[32];
@@ -1226,8 +1226,6 @@ int MPIDI_CH3I_Iallgather_Init_Info(MPIDI_PG_t * pg, int pg_rank,
 
     MPIDI_STATE_DECL(MPIDI_CH3I_IALLGATHER_INIT_INFO);
     MPIDI_FUNC_ENTER(MPIDI_CH3I_IALLGATHER_INIT_INFO);
-
-    pg_size = MPIDI_PG_Get_size(pg);
 
     /* Generate the value */
     if (use_iboeth) {
@@ -1341,7 +1339,7 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
                     "**pmi_wait", "**pmi_wait %d", mpi_errno);
         }
     } else if (mv2_use_pmi_iallgather) {
-        mpi_errno = UPMI_IALLGATHER_WAIT(&mv2_pmi_iallgather_buf);
+        mpi_errno = UPMI_IALLGATHER_WAIT((void **)&mv2_pmi_iallgather_buf);
         if (mpi_errno != UPMI_SUCCESS) {
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                     "**pmi_iallgather_wait", "**pmi_iallgather_wait %d", mpi_errno);
@@ -1936,7 +1934,7 @@ int MPIDI_CH3I_CM_Finalize(void)
                     "**pmi_wait", "**pmi_wait %d", retval);
         }
     } else if (mv2_use_pmi_iallgather) {
-        retval = UPMI_IALLGATHER_WAIT(&mv2_pmi_iallgather_buf);
+        retval = UPMI_IALLGATHER_WAIT((void **)&mv2_pmi_iallgather_buf);
         retval = UPMI_IALLGATHER_FREE();
     }
 
@@ -2143,6 +2141,7 @@ int MPIDI_CH3I_CM_Finalize(void)
 
     if (mv2_MPIDI_CH3I_RDMA_Process.polling_set != NULL) {
         MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.polling_set);
+        mv2_MPIDI_CH3I_RDMA_Process.polling_group_size = 0;
     }
 
   fn_exit:
@@ -2406,6 +2405,7 @@ int MPIDI_CH3I_RDMA_CM_Finalize(void)
 
     if (mv2_MPIDI_CH3I_RDMA_Process.polling_set != NULL) {
         MPIU_Free(mv2_MPIDI_CH3I_RDMA_Process.polling_set);
+        mv2_MPIDI_CH3I_RDMA_Process.polling_group_size = 0;
     }
 
   fn_exit:

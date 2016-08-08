@@ -37,7 +37,7 @@ char *MPIDI_DBG_parent_str = "?";
 
 int MPIDI_Use_pmi2_api = 0;
 
-#ifdef CHANNEL_MRAIL
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 #include <mv2_config.h>
 #include <hwloc_bind.h>
 #include <error_handling.h>
@@ -53,7 +53,7 @@ pthread_cond_t MVAPICH2_sync_ckpt_cond;
 int MVAPICH2_Sync_Checkpoint();
 #endif /* CKPT */
 extern unsigned int mv2_enable_affinity;
-#endif /* CHANNEL_MRAIL */
+#endif /* CHANNEL_MRAIL || CHANNEL_PSM */
 
 
 static int init_pg( int *argc_p, char ***argv_p,
@@ -365,6 +365,12 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
 
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+    if (MPIDI_CH3I_set_affinity(pg, pg_rank) != MPI_SUCCESS) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+#endif /*defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)*/
+
     /* setup receive queue statistics */
     mpi_errno = MPIDI_CH3U_Recvq_init();
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -535,12 +541,13 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
             mpi_errno = smpi_identify_core_for_async_thread(pg);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         }
-        int show_cpu_binding = 0;
         /*
          * Check to see if the user has explicitly disabled affinity.  If not
          * then affinity will be enabled barring any errors.
+         * Need to disable thread_multiple only if binding level is core.
          */
-        if (mv2_enable_affinity && mv2_my_async_cpu_id == -1) {
+        if (mv2_enable_affinity && (mv2_my_async_cpu_id == -1) &&
+            (mv2_binding_level == LEVEL_CORE)) {
             /*
              * Affinity will be enabled, MPI_THREAD_SINGLE will be the provided
              * MPICH_THREAD_LEVEL in this case.
@@ -550,7 +557,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
         if ((value = getenv("OMP_NUM_THREADS")) != NULL) {
             int _temp = atoi(value);
             if ((_temp > 0) && mv2_enable_affinity && (0 == pg_rank)
-                && thread_warning && (level == LEVEL_CORE)) {
+                && thread_warning && (mv2_binding_level == LEVEL_CORE)) {
                 fprintf(stderr, "Warning: Process to core binding is enabled and"
                         " OMP_NUM_THREADS is set to non-zero (%d) value\nIf"
                         " your program has OpenMP sections, this can cause"
@@ -559,10 +566,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
                         " application after setting MV2_ENABLE_AFFINITY=0\n"
                         "Use MV2_USE_THREAD_WARNING=0 to suppress this message\n", _temp);
             }
-        }
-        MPL_env2bool("MV2_SHOW_CPU_BINDING", &show_cpu_binding);
-        if (show_cpu_binding) {
-            mv2_show_cpu_affinity(pg);
         }
 #endif /* defined(CHANNEL_MRAIL) */
     }
@@ -609,6 +612,13 @@ int MPID_InitCompleted( void )
 {
     int mpi_errno;
     mpi_errno = MPIDI_CH3_InitCompleted();
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+    int show_cpu_binding = 0;
+    MPL_env2bool("MV2_SHOW_CPU_BINDING", &show_cpu_binding);
+    if (show_cpu_binding) {
+        mv2_show_cpu_affinity(NULL);
+    }
+#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
     return mpi_errno;
 }
 

@@ -62,6 +62,8 @@ int MV2_set_iallreduce_tuning_table(int heterogeneity)
 	    }
       };
     
+      MPIU_Assert(sizeof(mv2_tmp_iallreduce_thresholds_table) ==
+		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
       MPIU_Memcpy(mv2_iallreduce_thresholds_table, mv2_tmp_iallreduce_thresholds_table,
 		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
     } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
@@ -104,6 +106,8 @@ int MV2_set_iallreduce_tuning_table(int heterogeneity)
 	    }
       };
     
+      MPIU_Assert(sizeof(mv2_tmp_iallreduce_thresholds_table) ==
+		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
       MPIU_Memcpy(mv2_iallreduce_thresholds_table, mv2_tmp_iallreduce_thresholds_table,
 		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
     }
@@ -165,6 +169,8 @@ int MV2_set_iallreduce_tuning_table(int heterogeneity)
 	    }
       };
     
+      MPIU_Assert(sizeof(mv2_tmp_iallreduce_thresholds_table) ==
+		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
       MPIU_Memcpy(mv2_iallreduce_thresholds_table, mv2_tmp_iallreduce_thresholds_table,
 		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
     }
@@ -172,7 +178,7 @@ int MV2_set_iallreduce_tuning_table(int heterogeneity)
     {
         
 	/*RI*/
-	mv2_size_iallreduce_tuning_table = 7;
+	mv2_size_iallreduce_tuning_table = 6;
 	mv2_iallreduce_thresholds_table = MPIU_Malloc(mv2_size_iallreduce_tuning_table *
 						  sizeof (mv2_iallreduce_tuning_table));
 	mv2_iallreduce_tuning_table mv2_tmp_iallreduce_thresholds_table[] = {
@@ -214,13 +220,15 @@ int MV2_set_iallreduce_tuning_table(int heterogeneity)
 	    }
       };
     
+      MPIU_Assert(sizeof(mv2_tmp_iallreduce_thresholds_table) ==
+		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
       MPIU_Memcpy(mv2_iallreduce_thresholds_table, mv2_tmp_iallreduce_thresholds_table,
 		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
     } 
 #else /* defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM) */
         
 	/*RI*/
-	mv2_size_iallreduce_tuning_table = 7;
+	mv2_size_iallreduce_tuning_table = 6;
 	mv2_iallreduce_thresholds_table = MPIU_Malloc(mv2_size_iallreduce_tuning_table *
 						  sizeof (mv2_iallreduce_tuning_table));
 	mv2_iallreduce_tuning_table mv2_tmp_iallreduce_thresholds_table[] = {
@@ -262,6 +270,8 @@ int MV2_set_iallreduce_tuning_table(int heterogeneity)
 	    }
       };
     
+      MPIU_Assert(sizeof(mv2_tmp_iallreduce_thresholds_table) ==
+		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
       MPIU_Memcpy(mv2_iallreduce_thresholds_table, mv2_tmp_iallreduce_thresholds_table,
 		  mv2_size_iallreduce_tuning_table * sizeof (mv2_iallreduce_tuning_table));
 #endif

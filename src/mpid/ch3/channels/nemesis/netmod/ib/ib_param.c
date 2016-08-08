@@ -598,6 +598,28 @@ int MPID_nem_ib_set_default_params()
         rdma_get_fallback_threshold  = 0; 
     }
 
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (process_info.arch_hca_type, MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28,
+              MV2_HCA_MLX_CX_CONNIB)) {
+        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (process_info.arch_hca_type, MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28,
+              MV2_HCA_MLX_CX_EDR)) {
+        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
     else if(MV2_IS_ARCH_HCA_TYPE(process_info.arch_hca_type,
                 MV2_ARCH_INTEL_XEON_E5_2670_V2_2S_20, MV2_HCA_MLX_CX_FDR)){
 

@@ -16,7 +16,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
-#ifdef _OSU_MVAPICH_
+#if defined(_OSU_MVAPICH_) && defined(HAVE_LIBIBVERBS)
 #include <infiniband/verbs.h>
 #endif
 

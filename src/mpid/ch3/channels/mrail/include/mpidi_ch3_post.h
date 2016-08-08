@@ -28,7 +28,7 @@ extern int g_smp_eagersize;
 #define MPIDI_CH3_EAGER_FAST_MAX_MSG_SIZE(vc)                               \
     (((vc)->smp.local_nodes >= 0 && SMP_INIT) ?  DEFAULT_MEDIUM_VBUF_SIZE : \
     ((rdma_enable_hybrid && (vc->mrail.state & MRAILI_UD_CONNECTED))?       \
-        rdma_default_ud_mtu : MIN(DEFAULT_MEDIUM_VBUF_SIZE, rdma_fp_buffer_size)))
+        MRAIL_MAX_UD_SIZE : MIN(DEFAULT_MEDIUM_VBUF_SIZE, rdma_fp_buffer_size)))
 #else
 #define MPIDI_CH3_EAGER_FAST_MAX_MSG_SIZE(vc)                               \
     (((vc)->smp.local_nodes >= 0 && SMP_INIT) ?  DEFAULT_MEDIUM_VBUF_SIZE : \

@@ -1069,7 +1069,7 @@ static inline vbuf * MRAILI_Get_Vbuf(MPIDI_VC_t * vc, size_t pkt_len)
         int coalesc_buf_size = 0;
 #if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
         if (!vc->mrail.coalesce_vbuf->pool_index) {
-            coalesc_buf_size = rdma_default_ud_mtu;
+            coalesc_buf_size = MRAIL_MAX_UD_SIZE;
         } else
 #endif
         {

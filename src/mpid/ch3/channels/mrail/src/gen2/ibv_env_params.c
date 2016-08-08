@@ -1573,6 +1573,22 @@ mv2_env_param_list_t  param_list[] = {
     &rdma_use_smp,
     1,
     NULL    },
+{
+    MV2_SMP_CMA_MAX_SIZE,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_intranode,
+    "MV2_SMP_CMA_MAX_SIZE",
+    &s_smp_cma_max_size,
+    1,
+    NULL    },
+{
+    MV2_SMP_LIMIC2_MAX_SIZE,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_intranode,
+    "MV2_SMP_LIMIC2_MAX_SIZE",
+    &s_smp_limic2_max_size,
+    1,
+    NULL    },
 /* cuda */
 #if defined(_ENABLE_CUDA_)
 {

@@ -33,7 +33,7 @@ Output Parameters:
   types that are no longer referenced as well.
 
   @*/
-void MPID_Datatype_free(MPID_Datatype *ptr)
+void MPID_Datatype_free(MPID_Datatype *ptr, int in_finalize)
 {
     MPIU_DBG_MSG_P(DATATYPE,VERBOSE,"type %x freed.", ptr->handle);
 
@@ -45,7 +45,7 @@ void MPID_Datatype_free(MPID_Datatype *ptr)
        null because it is null in the case of a datatype shipped to the target
        for RMA ops */  
     if (ptr->contents) {
-        MPID_Datatype_free_contents(ptr);
+        MPID_Datatype_free_contents(ptr, in_finalize);
     }
     if (ptr->dataloop) {
 	MPID_Dataloop_free(&(ptr->dataloop));

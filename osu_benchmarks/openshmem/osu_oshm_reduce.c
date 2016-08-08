@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
     rank = _my_pe();
     numprocs = _num_pes();
 
-    if (process_args(argc, argv, rank, &max_msg_size, &full)) {
+    if (process_args(argc, argv, rank, &max_msg_size, &full, HEADER)) {
         return EXIT_SUCCESS;
     }
 
@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
     float *pWrkF1 = shmalloc(MAX(nreduce/2+1, _SHMEM_REDUCE_MIN_WRKDATA_SIZE));
     float *pWrkF2 = shmalloc(MAX(nreduce/2+1, _SHMEM_REDUCE_MIN_WRKDATA_SIZE));
 
-    print_header(rank, full);
+    print_header(HEADER, rank, full);
 
     recvbuf = (float *)shmemalign(align_size, max_msg_size);
     if (NULL == recvbuf) {

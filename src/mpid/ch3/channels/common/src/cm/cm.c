@@ -2914,17 +2914,21 @@ int cm_send_suspend_msg(MPIDI_VC_t * vc)
                                 sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header),
                                 &sreq);
         vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDING;
+        /* Disable fast send */
+        vc->eager_fast_fn = NULL;
         vc->ch.rput_stop = 1;
 
-        if (!sreq)      // if sreq == NULL, the msg has been sent out
-            vc->mrail.suspended_rails_send++;
+        MPIU_Assert(NULL == sreq);
+        /* sreq should be NULL because the msg has been sent out */
+        vc->mrail.suspended_rails_send++;
+
         if (vc->mrail.suspended_rails_send > 0 &&
             vc->mrail.suspended_rails_recv > 0) {
             vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDED;
             vc->mrail.suspended_rails_send = 0;
             vc->mrail.suspended_rails_recv = 0;
             PRINT_DEBUG(DEBUG_CM_verbose > 0,
-                        "%s [%d <= %d]: turn to SUSPENDED\n", __func__,
+                        "Suspend channel from %d to %d\n",
                         MPIDI_Process.my_pg_rank, vc->pg_rank);
         }
 
@@ -2956,18 +2960,22 @@ int cm_send_reactivate_msg(MPIDI_VC_t * vc)
     int i = 0;
 
     /* Use the SMP channel to send Reactivate message for SMP VCs */
-    MPID_Request *sreq;
+    MPID_Request *sreq = NULL;
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
     extern int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t *, void *, MPIDI_msg_sz_t,
                                        MPID_Request **);
     if (SMP_INIT && (vc->smp.local_nodes >= 0)) {
+        PRINT_DEBUG(DEBUG_CM_verbose > 0, "Sending CM_MSG_TYPE_REACTIVATE_REQ to rank %d\n", vc->pg_rank);
         p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *)
             MPIU_Malloc(sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header));
         p->type = MPIDI_CH3_PKT_CM_REACTIVATION_DONE;
         MPIDI_CH3_SMP_iStartMsg(vc, p,
                                 sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header),
                                 &sreq);
-        vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+
+        MPIU_Assert(NULL == sreq);
+        /* sreq should be NULL because the msg has been sent out */
+        vc->mrail.reactivation_done_send = 1;
 
         MPIU_Free(p);
         return (MPI_SUCCESS);
@@ -3045,9 +3053,11 @@ int MPIDI_CH3I_CM_Suspend(MPIDI_VC_t ** vc_vector)
             vc = vc_vector[i];
             pthread_mutex_lock(&cm_automic_op_lock);
             if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE) {
+                PRINT_DEBUG(DEBUG_CR_verbose > 2, "Sending cm_send_suspend_msg to %d\n", vc->pg_rank);
                 cm_send_suspend_msg(vc);
             } else if (vc->ch.state != MPIDI_CH3I_VC_STATE_SUSPENDING
-                       && vc->ch.state != MPIDI_CH3I_VC_STATE_SUSPENDED) {
+                       && vc->ch.state != MPIDI_CH3I_VC_STATE_SUSPENDED
+                       && vc->ch.state != MPIDI_CH3I_VC_STATE_CONNECTING_SRV) {
                 CM_ERR_ABORT("Wrong state when suspending %d\n", vc->ch.state);
             }
 
@@ -3157,6 +3167,10 @@ int MPIDI_CH3I_CM_Reactivate(MPIDI_VC_t ** vc_vector)
                 /* Handle the reactivation of the SMP channel */
                 if (SMP_INIT && (vc->smp.local_nodes >= 0)) {
                     pthread_mutex_lock(&cm_automic_op_lock);
+                    if (vc->mrail.reactivation_done_send &&
+                        vc->mrail.reactivation_done_recv) {
+                        vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+                    }
                     if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
                         pthread_mutex_unlock(&cm_automic_op_lock);
                         flag = 1;

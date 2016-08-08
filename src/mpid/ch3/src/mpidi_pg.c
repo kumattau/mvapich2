@@ -143,6 +143,7 @@ int MPIDI_PG_Finalize(void)
 	MPIDI_PG_Destroy(MPIDI_Process.my_pg);
     } 
     MPIDI_Process.my_pg = NULL;
+    pg_world = NULL;
 
     /* ifdefing out this check because the list will not be NULL in 
        Ch3_finalize because
@@ -332,6 +333,7 @@ int MPIDI_PG_Destroy(MPIDI_PG_t * pg)
         for(i = 0; i < pg->size; i++) {
             MPIDI_CH3I_Cleanup_after_connection(&pg->vct[i]);
         }
+        MPIDI_CH3I_Cleanup_cqes();
 #endif  
 	    MPIU_Free(pg->vct);
 	    if (pg->connData) {

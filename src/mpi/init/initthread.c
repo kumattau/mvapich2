@@ -536,6 +536,15 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     MPIU_dbg_init(MPIR_Process.comm_world->rank);
     MPIU_Timer_init(MPIR_Process.comm_world->rank,
 		    MPIR_Process.comm_world->local_size);
+
+#if CH3_RANK_BITS == 16
+    if (MPIR_Process.comm_world->local_size > 32768 && !MPIR_Process.comm_world->rank) {
+        mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,
+                MPI_ERR_OTHER, FCNAME, __LINE__, MPI_ERR_OTHER,
+                "**nomem", "Job size is larger than 32768. Reconfigure the library with --with-ch3-rank-bits=32");
+    }
+#endif
+
 #ifdef USE_MEMORY_TRACING
     MPIU_trinit( MPIR_Process.comm_world->rank );
     /* Indicate that we are near the end of the init step; memory 
@@ -574,9 +583,6 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     if (mpi_errno == MPI_SUCCESS) 
 	mpi_errno = MPID_InitCompleted();
 
-
-
-fn_exit:
     MPIU_THREAD_CS_EXIT(INIT,required);
     return mpi_errno;
 

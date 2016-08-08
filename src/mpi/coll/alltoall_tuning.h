@@ -96,6 +96,16 @@ extern int MPIR_Alltoall_bruck_MV2(
                             MPID_Comm *comm_ptr,
                             int *errflag );
 
+extern int MPIR_Alltoall_ALG_MV2(
+                            const void *sendbuf,
+                            int sendcount,
+                            MPI_Datatype sendtype,
+                            void *recvbuf,
+                            int recvcount,
+                            MPI_Datatype recvtype,
+                            MPID_Comm *comm_ptr,
+                            int *errflag );
+
 extern int MPIR_Alltoall_RD_MV2(
                             const void *sendbuf,
                             int sendcount,

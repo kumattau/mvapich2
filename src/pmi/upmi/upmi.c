@@ -16,10 +16,13 @@
 
 struct PMI_keyval_t;
 int _size, _rank, _appnum;
+int _singleton_mode = 0;
 static int _in_ibarrier = 0;
 static int _in_iallgather = 0;
+#if defined(HAVE_PMI2_IALLGATHER) && defined(HAVE_PMI2_IALLGATHER_WAIT)
 static void * _iallgather_data = NULL;
 static size_t _iallgather_data_size = 0;
+#endif
 pthread_mutex_t upmi_lock;
 
 void UPMI_lock_init(void) {
@@ -39,12 +42,17 @@ void UPMI_unlock(void) {
 }
 
 int UPMI_INIT( int *spawned ) {
+    int pmi_ret_val;
     #ifdef USE_PMI2_API
-    return PMI2_Init( spawned, &_size, &_rank, &_appnum );
+    pmi_ret_val = PMI2_Init( spawned, &_size, &_rank, &_appnum );
+    if (_appnum == -1) {
+        _singleton_mode = 1;
+    }
     #else
     UPMI_lock_init();
-    return PMI_Init( spawned );
+    pmi_ret_val = PMI_Init( spawned );
     #endif
+    return pmi_ret_val;
 }
 
 int UPMI_INITIALIZED( int *initialized ) { 
@@ -307,7 +315,12 @@ int UPMI_KVS_GET_VALUE_LENGTH_MAX( int *length ) {
 int UPMI_KVS_GET_MY_NAME( char kvsname[], int length ) {
     int pmi_ret_val;
     #ifdef USE_PMI2_API
-    pmi_ret_val = PMI2_Job_GetId( kvsname, length );
+    if (!_singleton_mode) {
+        pmi_ret_val = PMI2_Job_GetId( kvsname, length );
+    } else {
+        sprintf(kvsname, "%s", "singleton_kvs");
+        pmi_ret_val = UPMI_SUCCESS;
+    }
     #else
     UPMI_lock();
     pmi_ret_val = PMI_KVS_Get_my_name( kvsname, length );

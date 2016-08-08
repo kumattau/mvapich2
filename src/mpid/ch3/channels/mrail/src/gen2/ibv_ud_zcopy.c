@@ -189,7 +189,7 @@ static inline void mv2_ud_post_zcopy_recv(MPID_Request *req, mv2_ud_zcopy_info_t
     struct ibv_sge sge_entry[64];
 
     mv2_rndv_qp_t *rqp = (mv2_rndv_qp_t *) req->mrail.rndv_qp_entry;
-    posts_required = ((req->mrail.rndv_buf_sz + rdma_default_ud_mtu - 1) / rdma_default_ud_mtu);
+    posts_required = ((req->mrail.rndv_buf_sz + MRAIL_MAX_UD_SIZE - 1) / MRAIL_MAX_UD_SIZE);
     if (posts_required <= 0) {
         PRINT_DEBUG(DEBUG_ZCY_verbose>0 ,"Posted zero or less buffers :%d\n", posts_required);
     }
@@ -198,7 +198,7 @@ static inline void mv2_ud_post_zcopy_recv(MPID_Request *req, mv2_ud_zcopy_info_t
         for (i=0; i<32; i++) {
             MPIU_Assert(posted_buffers < posts_required);
             bytes_to_post = 
-                MIN(rdma_default_ud_mtu, (req->mrail.rndv_buf_sz - curr_len));
+                MIN(MRAIL_MAX_UD_SIZE, (req->mrail.rndv_buf_sz - curr_len));
             if (i > 0) {
                rr[i-1].next = &(rr[i]);
             }
@@ -321,7 +321,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_zcopy_push(MPIDI_VC_t * vc,
     hca_index = sreq->mrail.hca_index;
     ud_ctx = zcopy_info->rndv_ud_qps[hca_index];
     
-    posts_required = ((sreq->mrail.rndv_buf_sz + rdma_default_ud_mtu - 1) / rdma_default_ud_mtu);
+    posts_required = ((sreq->mrail.rndv_buf_sz + MRAIL_MAX_UD_SIZE - 1) / MRAIL_MAX_UD_SIZE);
 
     if (posts_required <= 0) {
         PRINT_DEBUG(DEBUG_ZCY_verbose>0 ,"Posted zero or less buffers :%d remote:%d\n", 
@@ -359,7 +359,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_zcopy_push(MPIDI_VC_t * vc,
 
         for (i=0; i<max_segments; i++) {
             bytes_to_post =  MIN(sreq->mrail.rndv_buf_sz - 
-                                sreq->mrail.rndv_buf_off, rdma_default_ud_mtu);
+                                sreq->mrail.rndv_buf_off, MRAIL_MAX_UD_SIZE);
             sr[i].sg_list = &(sg_entry[i]);
             sr[i].imm_data = seqnum++;
             sg_entry[i].addr   = (uint64_t) (uintptr_t) ((char *)
@@ -406,7 +406,7 @@ void MPIDI_CH3_Rendezvous_zcopy_finish(MPIDI_VC_t * vc,
     MPID_Request_get_ptr(zcopy_finish->receiver_req_id, rreq);
     rqp = (mv2_rndv_qp_t *) rreq->mrail.rndv_qp_entry;
     
-    posted_buffers = ((rreq->mrail.rndv_buf_sz + rdma_default_ud_mtu - 1) / rdma_default_ud_mtu);
+    posted_buffers = ((rreq->mrail.rndv_buf_sz + MRAIL_MAX_UD_SIZE - 1) / MRAIL_MAX_UD_SIZE);
     wc = (struct ibv_wc *) MPIU_Malloc (sizeof(struct ibv_wc) * posted_buffers);
     
     do {

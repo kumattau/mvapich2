@@ -173,6 +173,40 @@ static int MPIU_Handle_free( void *((*indirect)[]), int indirect_size )
 #define MPIU_HANDLE_VG_LABEL(objptr_, objsize_, handle_type_, is_direct_) do{}while(0)
 #endif
 
+int MPIU_Handle_direct_free(MPIU_Object_alloc_t *objmem)
+{
+    int i           = 0;
+    void *direct    = objmem->direct;
+    int obj_size    = objmem->size;
+    int direct_size = objmem->direct_size;
+    MPIU_Handle_common *hptr=0;
+    char *ptr       = (char *)direct;
+    int mpi_errno   = MPI_SUCCESS;
+
+    for (i=0; i<direct_size; i++) {
+        hptr = (MPIU_Handle_common *)(void *)ptr;
+        if (objmem == &MPID_Datatype_mem) {
+            MPID_Datatype *datatype_ptr = (MPID_Datatype*) hptr;
+            if (datatype_ptr->ref_count > 0) {
+                int inuse = 0;
+                do {
+                    MPIU_Object_release_ref(datatype_ptr,&inuse);
+                } while (inuse);
+                if (MPIR_Process.attr_free && datatype_ptr->attributes) {
+                    mpi_errno = MPIR_Process.attr_free(datatype_ptr->handle,
+                            &datatype_ptr->attributes );
+                }
+                if (mpi_errno == MPI_SUCCESS) {
+                    MPID_Datatype_free(datatype_ptr, 1);
+                }
+            }
+        }
+        ptr  = ptr + obj_size;
+    }
+
+    return 0;
+}
+
 void *MPIU_Handle_direct_init(void *direct,
 			      int direct_size, 
 			      int obj_size, 
@@ -198,6 +232,47 @@ void *MPIU_Handle_direct_init(void *direct,
     if (hptr)
         hptr->next = 0;
     return direct;
+}
+
+int MPIU_Handle_indirect_free(MPIU_Object_alloc_t *objmem)
+{
+    void *(**indirect)[]        = &objmem->indirect;
+    int *indirect_size          = &objmem->indirect_size;
+    int indirect_num_indices    = HANDLE_NUM_INDICES;
+    int obj_size                = objmem->size;
+    void               *block_ptr;
+    MPIU_Handle_common *hptr=0;
+    char               *ptr;
+    int                i = 0, j = 0;
+    int mpi_errno   = MPI_SUCCESS;
+
+    for (i = 0; i < *indirect_size; ++i) {
+        block_ptr = (**indirect)[i];
+        ptr = (char *)block_ptr;
+        for (j = 0; j < indirect_num_indices; j++) {
+            /* Cast to (void*) to avoid false warning about alignment */
+            hptr       = (MPIU_Handle_common *)(void*)ptr;
+            if (objmem == &MPID_Datatype_mem) {
+                MPID_Datatype *datatype_ptr = (MPID_Datatype*) hptr;
+                if (datatype_ptr->ref_count > 0) {
+                    int inuse = 0;
+                    do {
+                        MPIU_Object_release_ref(datatype_ptr,&inuse);
+                    } while (inuse);
+                    if (MPIR_Process.attr_free && datatype_ptr->attributes) {
+                        mpi_errno = MPIR_Process.attr_free(datatype_ptr->handle,
+                                &datatype_ptr->attributes );
+                    }
+                    if (mpi_errno == MPI_SUCCESS) {
+                        MPID_Datatype_free(datatype_ptr, 1);
+                    }
+                }
+            }
+            ptr = ptr + obj_size;
+        }
+    }
+
+    return mpi_errno;
 }
 
 /* indirect is really a pointer to a pointer to an array of pointers */
@@ -258,6 +333,7 @@ static void *MPIU_Handle_indirect_init( void *(**indirect)[],
     return block_ptr;
 }
 
+
 /*
   Create and return a pointer to an info object.  Returns null if there is 
   an error such as out-of-memory.  Does not allocate space for the
@@ -265,13 +341,39 @@ static void *MPIU_Handle_indirect_init( void *(**indirect)[],
 
  */
 
+static void MPIU_Handle_reset(MPIU_Object_alloc_t *objmem)
+{
+    objmem->avail = NULL;
+    objmem->initialized = 0;
+    objmem->indirect = NULL;
+    objmem->indirect_size = 0; 
+    memset(objmem->direct, 0, (objmem->size*objmem->direct_size));
+}
+
+extern int mv2_datatype_names_initialized;
+extern int mv2_datatype_builtin_fillin_is_init;
+
 static int MPIU_Handle_finalize( void *objmem_ptr )
 {
+    int retval = 0;
     MPIU_Object_alloc_t *objmem = (MPIU_Object_alloc_t *)objmem_ptr;
 
+    retval = MPIU_Handle_obj_outstanding(objmem);
+
+    if (retval) {
+        MPIU_Handle_direct_free(objmem);
+        MPIU_Handle_indirect_free(objmem);
+    }
     (void)MPIU_Handle_free( objmem->indirect, objmem->indirect_size );
     /* This does *not* remove any Info objects that the user created 
        and then did not destroy */
+
+    MPIU_Handle_reset(objmem);
+    if (objmem == &MPID_Datatype_mem) {
+        memset(&MPID_Datatype_builtin, 0, sizeof(MPID_Datatype)*(MPID_DATATYPE_N_BUILTIN + 1));
+        mv2_datatype_names_initialized = 0;
+        mv2_datatype_builtin_fillin_is_init = 0;
+    }
 
     /* at this point we are done with the memory pool, inform valgrind */
     MPL_VG_DESTROY_MEMPOOL(objmem_ptr);

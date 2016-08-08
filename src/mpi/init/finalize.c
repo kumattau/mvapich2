@@ -131,6 +131,14 @@ PMPI_LOCAL void MPIR_Call_finalize_callbacks( int, int );
 #endif
 #endif
 
+/* Cleanup the registered callbacks */
+void MPIR_Call_cleanup_finalize_callbacks( void )
+{
+    memset(fstack, 0, MAX_FINALIZE_FUNC*sizeof(Finalize_func_t));
+    fstack_sp = 0;
+    fstack_max_priority = 0;
+}
+
 #undef FUNCNAME
 #define FUNCNAME MPI_Finalize
 
@@ -260,7 +268,7 @@ int MPI_Finalize( void )
     MPID_Comm *comm_ptr = NULL;
     int errflag = FALSE;
     MPID_Comm_get_ptr( MPI_COMM_WORLD, comm_ptr );
-    mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag); 
+    mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
     if (mpi_errno) { 
              MPIU_ERR_POP(mpi_errno); 
     }
@@ -293,6 +301,7 @@ int MPI_Finalize( void )
 
     /* Call the low-priority (post Finalize) callbacks */
     MPIR_Call_finalize_callbacks( 0, MPIR_FINALIZE_CALLBACK_PRIO-1 );
+    MPIR_Call_cleanup_finalize_callbacks();
 
     /* At this point, if there has been a failure, exit before 
        completing the finalize */

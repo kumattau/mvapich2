@@ -7589,7 +7589,9 @@ int MPIDI_CH3_PktHandler_GetResp( MPIDI_VC_t *vc ATTRIBUTE((unused)),
 {
     MPIDI_CH3_Pkt_get_resp_t * get_resp_pkt = &pkt->get_resp;
     MPID_Request *req;
+#if !defined(CHANNEL_MRAIL)
     char *data_buf = NULL;
+#endif /* !defined(CHANNEL_MRAIL) */
     MPIDI_msg_sz_t data_len;
     int mpi_errno = MPI_SUCCESS;
     MPI_Aint type_size;
@@ -7600,7 +7602,9 @@ int MPIDI_CH3_PktHandler_GetResp( MPIDI_VC_t *vc ATTRIBUTE((unused)),
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"received get response pkt");
 
     data_len = *buflen - sizeof(MPIDI_CH3_Pkt_t);
+#if !defined(CHANNEL_MRAIL)
     data_buf = (char *)pkt + sizeof(MPIDI_CH3_Pkt_t);
+#endif /* !defined(CHANNEL_MRAIL) */
     
     MPID_Request_get_ptr(get_resp_pkt->request_handle, req);
     

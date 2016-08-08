@@ -72,6 +72,8 @@ typedef struct MPIDI_CH3I_Process_s
 MPIDI_CH3I_Process_t;
 
 extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
+extern MPIDI_VC_t *mv2_read_progress_pending_vc;
+
 extern int mv2_eager_fast_send(MPIDI_VC_t* vc, const void *buf,
                                 MPIDI_msg_sz_t data_sz, int rank, int tag,
                                 MPID_Comm *comm, int context_offset, MPID_Request **sreq_p);
@@ -379,6 +381,7 @@ int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc);
 void MPIDI_CH3I_Cleanup_after_connection(MPIDI_VC_t *vc);
 int MPIDI_CH3I_MRAIL_CM_Alloc(MPIDI_PG_t * pg);
 int MPIDI_CH3I_MRAIL_CM_Dealloc(MPIDI_PG_t * pg);
+void MPIDI_CH3I_Cleanup_cqes(void);
 
 /*flag to check if cq_poll is success in the progressing loop*/
 int cq_poll_completion;
@@ -547,6 +550,11 @@ typedef enum{
     ONE_FREE = 1,
     TWO_FREE
 }smp_ctrl_avail_flag_t;
+
+typedef enum{
+    NO_FALLBACK = 0,
+    FALLBACK
+}smp_fallback_flag_t;
 
 extern struct smpi_var g_smpi;
 

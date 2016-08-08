@@ -12,8 +12,6 @@
 #include <osu_pt2pt.h>
 #include <pthread.h>
 
-#define THREADS 2
-
 pthread_mutex_t finished_size_mutex;
 pthread_cond_t  finished_size_cond;
 
@@ -30,15 +28,15 @@ int main(int argc, char *argv[])
 {
     int numprocs, provided, myid, err;
     int i = 0;
-    pthread_t sr_threads[THREADS];
-    thread_tag_t tags[THREADS];
+    pthread_t sr_threads[MAX_NUM_THREADS];
+    thread_tag_t tags[MAX_NUM_THREADS];
 
     pthread_mutex_init(&finished_size_mutex, NULL);
     pthread_cond_init(&finished_size_cond, NULL);
 
     set_header(HEADER);
 
-    int po_ret = process_options(argc, argv, LAT);
+    int po_ret = process_options(argc, argv, LAT_MT);
 
     if (po_okay == po_ret && none != options.accel) {
         if (init_accel()) {
@@ -123,12 +121,12 @@ int main(int argc, char *argv[])
     }
 
     else {
-        for(i = 0; i < THREADS; i++) {
+        for(i = 0; i < options.num_threads; i++) {
             tags[i].id = i;
             pthread_create(&sr_threads[i], NULL, recv_thread, &tags[i]);
         }
 
-        for(i = 0; i < THREADS; i++) {
+        for(i = 0; i < options.num_threads; i++) {
             pthread_join(sr_threads[i], NULL);
         }
     }
@@ -164,7 +162,7 @@ void * recv_thread(void *arg) {
     for(size = 0, iter = 0; size <= MAX_MSG_SIZE; size = (size ? size * 2 : 1)) {
         pthread_mutex_lock(&finished_size_mutex);
 
-        if(finished_size == THREADS) {
+        if(finished_size == options.num_threads) {
             MPI_Barrier(MPI_COMM_WORLD);
 
             finished_size = 1;
@@ -191,7 +189,7 @@ void * recv_thread(void *arg) {
             r_buf[i] = 'b';
         }
 
-        for(i = val; i < (options.loop + options.skip); i += THREADS) {
+        for(i = val; i < (options.loop + options.skip); i += options.num_threads) {
             MPI_Recv (r_buf, size, MPI_CHAR, 0, 1, MPI_COMM_WORLD,
                     &reqstat[val]);
             MPI_Send (s_buf, size, MPI_CHAR, 0, 2, MPI_COMM_WORLD);

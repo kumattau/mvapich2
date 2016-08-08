@@ -290,7 +290,7 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 
 #if defined (CHANNEL_PSM)
 int psm_do_unpack(int count, MPI_Datatype datatype, MPID_Comm *comm, 
-                  void *pkbuf, int pksz, void *inbuf, int data_sz)
+                  void *pkbuf, int pksz, void *inbuf, MPIDI_msg_sz_t data_sz)
 {
     MPI_Aint first = 0, last = data_sz;
     MPID_Segment *segp;

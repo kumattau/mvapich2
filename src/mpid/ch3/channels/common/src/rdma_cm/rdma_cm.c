@@ -95,7 +95,6 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
     MPIDI_VC_t  *vc, *gotvc;
     MPIDI_PG_t *pg_tmp;
     struct rdma_conn_param conn_param;
-    char *pg_id;
     MPIDI_STATE_DECL(MPIDI_STATE_IB_CMA_EVENT_HANDLER);
     MPIDI_FUNC_ENTER(MPIDI_STATE_IB_CMA_EVENT_HANDLER);
 
@@ -173,8 +172,8 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                 ((uint64_t *) conn_param.private_data)[0] = pg_rank;
                 ((uint64_t *) conn_param.private_data)[1] = rail_index;
                 ((uint64_t *) conn_param.private_data)[2] = (uint64_t) vc;
-                PRINT_DEBUG(DEBUG_RDMACM_verbose,"Sending connection request to [rank = %d], "
-                    " [rail = %d] [vc = %x]\n", 
+                PRINT_DEBUG(DEBUG_RDMACM_verbose,"Sending connection request to [rank = %ld], "
+                    " [rail = %ld] [vc = %lx]\n", 
                 ((uint64_t *) conn_param.private_data)[0],
                 ((uint64_t *) conn_param.private_data)[1],
                 ((uint64_t *) conn_param.private_data)[2]);
@@ -195,7 +194,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                     " %d attempts\n", ret, connect_attempts);
             }
 
-            MPIU_Free((void *)conn_param.private_data);
+            MPIU_Free(conn_param.private_data);
 
         break;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
@@ -221,7 +220,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
 #endif
 
             PRINT_DEBUG(DEBUG_RDMACM_verbose,"Passive side recieved connect request: [%d] :[%d]" 
-            " [vc: %x]\n", rank, rail_index, gotvc);
+            " [vc: %p]\n", rank, rail_index, gotvc);
     
             MPIDI_PG_Find(MPIDI_Process.my_pg->id, &pg_tmp);
             if(pg_tmp == NULL) {
@@ -287,7 +286,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                 ibv_va_error_abort(IBV_RETURN_ERR,
                     "rdma_accept error: %d\n", ret);
             }
-            MPIU_Free((void *)conn_param.private_data);
+            MPIU_Free(conn_param.private_data);
 
         break;
         case RDMA_CM_EVENT_ESTABLISHED:
@@ -1360,8 +1359,8 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
 
     MPIU_Free(rdma_base_listen_port);
     MPIU_Free(rdma_cm_accept_count);
-    MPIU_Free((void *)rdma_cm_connect_count);
-    MPIU_Free((void *)rdma_cm_iwarp_msg_count);
+    MPIU_Free(rdma_cm_connect_count);
+    MPIU_Free(rdma_cm_iwarp_msg_count);
     MPIU_Free(rdma_cm_local_ips);
     pg_size = MPIDI_PG_Get_size(pg);
 

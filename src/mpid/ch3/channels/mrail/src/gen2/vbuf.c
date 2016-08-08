@@ -260,6 +260,7 @@ void deallocate_vbuf_region(void)
         }
     }
     MPIU_Memalign_Free(rdma_vbuf_pools);
+    rdma_num_vbuf_pools = 0;
 
     return;
 }

@@ -139,8 +139,8 @@ int MPIR_Sched_cb_free_buf(MPID_Comm *comm, int tag, void *state);
 /* just cleanup, don't add anything to the schedule */
 #define MPIR_SCHED_CHKPMEM_REAP(sched_)                                       \
     do {                                                                      \
-        while (mpir_sched_chkpmem_stk_sp_ > 0) {                              \
-            MPIU_Free(mpir_sched_chkpmem_stk_[--mpir_sched_chkpmem_stk_sp_]); \
+        while (--mpir_sched_chkpmem_stk_sp_ >= 0) {                              \
+            MPIU_Free(mpir_sched_chkpmem_stk_[mpir_sched_chkpmem_stk_sp_]); \
         }                                                                     \
     } while (0)
 
