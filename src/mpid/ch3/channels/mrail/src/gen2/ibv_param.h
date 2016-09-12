@@ -146,6 +146,7 @@ extern int rdma_cm_connect_retry_interval;
 extern int rdma_num_rails_per_hca;
 extern int rdma_process_binding_rail_offset;
 extern int g_atomics_support;
+extern int g_atomics_support_be;
 
 /* Use of LIMIC of RMA Communication */
 extern int limic_put_threshold;

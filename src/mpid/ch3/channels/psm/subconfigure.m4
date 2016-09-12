@@ -60,6 +60,13 @@ elif test "x$with_psm2" != "x" ; then
     AC_CHECK_LIB(psm2, psm2_init, , [
     AC_MSG_ERROR(['psm2 library not found.  Did you specify --with-psm2= or --with-psm2-lib=?'])
     ])
+elif test "x$with_psm" != "x" ; then
+    AC_CHECK_HEADER([psm.h], , [
+     AC_MSG_ERROR(['psm.h not found.  Did you specify --with-psm= or --with-psm-include=?'])
+    ])
+    AC_CHECK_LIB(psm_infinipath, psm_init, , [
+     AC_MSG_ERROR(['psm_infinipath library not found.  Did you specify --with-psm= or --with-psm-lib=?'])
+    ])
 else
     AC_CHECK_HEADER([psm.h], [have_psm=yes], [have_psm=no])
     AC_CHECK_HEADER([psm2.h], [have_psm2=yes], [have_psm2=no])

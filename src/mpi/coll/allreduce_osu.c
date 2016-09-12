@@ -833,7 +833,7 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
         /* heterogeneous. To get the same result on all processes, we
            do a reduce to 0 and then broadcast. */
         mpi_errno = MPIR_Reduce_MV2(sendbuf, recvbuf, count, datatype,
-                                    op, 0, comm, errflag);
+                                    op, 0, comm_ptr, errflag);
         /* 
            FIXME: mpi_errno is error CODE, not necessarily the error
            class MPI_ERR_OP.  In MPICH2, we can get the error class 
@@ -1982,7 +1982,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
         /* heterogeneous. To get the same result on all processes, we
            do a reduce to 0 and then broadcast. */
         mpi_errno = MPIR_Reduce_MV2(sendbuf, recvbuf, count, datatype,
-                                    op, 0, comm, errflag);
+                                    op, 0, comm_ptr, errflag);
         /* 
            FIXME: mpi_errno is error CODE, not necessarily the error
            class MPI_ERR_OP.  In MPICH2, we can get the error class 
@@ -2280,7 +2280,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
         /* heterogeneous. To get the same result on all processes, we
            do a reduce to 0 and then broadcast. */
         mpi_errno = MPIR_Reduce_MV2(sendbuf, recvbuf, count, datatype,
-                                    op, 0, comm, errflag);
+                                    op, 0, comm_ptr, errflag);
         /* 
            FIXME: mpi_errno is error CODE, not necessarily the error
            class MPI_ERR_OP.  In MPICH2, we can get the error class 

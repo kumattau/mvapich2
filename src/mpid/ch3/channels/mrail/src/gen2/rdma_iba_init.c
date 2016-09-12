@@ -695,7 +695,7 @@ int MPIDI_CH3I_MRAILI_Flush(void)
     pg_size = MPIDI_PG_Get_size(pg);
 
     for (i = 0; i < pg_size; i++) {
-        if (i == pg_rank) {
+        if (!g_atomics_support && (i == pg_rank)) {
             continue;
         }
 
@@ -786,7 +786,7 @@ int MPIDI_CH3I_RDMA_finalize(void)
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
 
-        if (!rdma_use_blocking && (i == pg_rank || !qp_required(vc, pg_rank, i))) {
+        if (!rdma_use_blocking && !qp_required(vc, pg_rank, i)) {
             continue;
         }
 
@@ -822,7 +822,7 @@ int MPIDI_CH3I_RDMA_finalize(void)
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
 
-        if (!rdma_use_blocking && (i == pg_rank || !qp_required(vc, pg_rank, i))) {
+        if (!rdma_use_blocking && !qp_required(vc, pg_rank, i)) {
             continue;
         }
 

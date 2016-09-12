@@ -22,6 +22,7 @@
 #include <dirent.h>
 
 #include "mv2_arch_hca_detect.h"
+#include "debug_utils.h"
 
 #if defined(_SMP_LIMIC_)
 #define SOCKETS 32
@@ -498,8 +499,9 @@ void hwlocSocketDetection(int print_details)
     
     depth = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
     no_sockets=hwloc_get_nbobjs_by_depth(topology, depth);
-    if(print_details)
-        printf("Total number of sockets=%d\n", no_sockets);
+    
+    PRINT_DEBUG(DEBUG_SHM_verbose>0, "Total number of sockets=%d\n", no_sockets);
+
     for(i=0;i<no_sockets;i++)
     {   
         sockets = hwloc_get_obj_by_type(topology, HWLOC_OBJ_SOCKET, i); 
@@ -537,19 +539,15 @@ void hwlocSocketDetection(int print_details)
             core_cnt[0] = (core_cnt[0] >> 1); 
         } 
         
-        if(print_details)
-        {
+        if (DEBUG_SHM_verbose>0) {
             printf("Socket %d, num of cores / socket=%d\n", i, (numcores_persocket[i]));
             printf("core id\n");
+
+            for (j=0;j<CORES_REP_AS_BITS;j++) {
+                printf("%d\t", node[i][j]);
+            }
+            printf("\n");
         }
-        
-        for(j=0;j<CORES_REP_AS_BITS;j++)
-        {                 
-            if(print_details)
-                printf("%d\t", node[i][j]); 
-        }         
-        if(print_details)
-             printf("\n");
     }   
     free(str);
 
@@ -577,7 +575,7 @@ int getProcessBinding(pid_t pid)
     cpubind_set = hwloc_bitmap_alloc();
     res = hwloc_get_proc_cpubind(topology, pid, cpubind_set, 0);
     if(-1 == res)
-        printf("getProcessBinding(): Error in getting cpubinding of process");
+        fprintf(stderr, "getProcessBinding(): Error in getting cpubinding of process");
 
     hwloc_bitmap_asprintf(&str, cpubind_set);
     
@@ -599,11 +597,11 @@ int getProcessBinding(pid_t pid)
     if(more32bit)
     {   
         /*tells multiple of 32 bits(eg if 0, then 64 bits)*/
-        printf("more bits set\n");
+        PRINT_DEBUG(DEBUG_SHM_verbose>0, "more bits set\n");
         core_bind[1] = strtol (pEnd,NULL,0);
-        printf("core_bind[1]=%x\n", core_bind[1]);
+        PRINT_DEBUG(DEBUG_SHM_verbose>0, "core_bind[1]=%x\n", core_bind[1]);
         offset = (core_bind[1] + 1)*CORES_REP_AS_BITS;
-        printf("Offset=%d\n", offset);
+        PRINT_DEBUG(DEBUG_SHM_verbose>0, "Offset=%d\n", offset);
     }   
 
     for(j=0;j<CORES_REP_AS_BITS;j++)
@@ -628,7 +626,7 @@ int getProcessBinding(pid_t pid)
             return i; /*index of socket where the process is bound*/
         }
     }   
-    printf("Error: Process not bound on any core ??\n");
+    fprintf(stderr, "Error: Process not bound on any core ??\n");
     free(str);
     hwloc_bitmap_free(cpubind_set);
     hwloc_topology_destroy(topology);

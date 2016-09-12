@@ -385,7 +385,8 @@ int limic_get_threshold;
 
 mv2_polling_level rdma_polling_level = MV2_POLLING_LEVEL_1;
 
-int g_atomics_support = 1;
+int g_atomics_support = 0;
+int g_atomics_support_be = 0;
 
 static int check_hsam_parameters(void);
 

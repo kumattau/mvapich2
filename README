@@ -1,8 +1,8 @@
-MVAPICH2 is a high performance MPI-2 implementation (with initial support for
-MPI-3) for InfiniBand, 10GigE/iWARP and RoCE.  MVAPICH2 delivers best
-performance, scalability and fault tolerance for high-end computing systems and
-servers.  MVAPICH2 provides underlying support for several interfaces (such as
-OFA-IB, OFA-iWARP, OFA-RoCE, PSM, Shared Memory, and TCP) for portability
+The MVAPICH2 software, based on MPI 3.1 standard, delivers the best performance,
+scalability and fault tolerance for high-end computing systems and servers using
+InfiniBand, Omni-Path, Ethernet/iWARP, and RoCE networking technologies.
+MVAPICH2 provides underlying support for several interfaces (such as OFA-IB,
+OFA-iWARP, OFA-RoCE, CH3-PSM, CH3-PSM2, Shared Memory, and TCP) for portability
 across multiple networks.
 
 This package uses the basic GNU build system.  To install a default build of

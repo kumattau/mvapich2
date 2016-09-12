@@ -1,3 +1,10 @@
+OSU Micro Benchmarks v5.3.2 (09/08/16)
+* New Features & Enhancements
+    - Allow specifying very large message sizes (>2GB) for collective benchmarks
+
+* Bug Fixes
+    - Fix compilation errors due to missing type casting
+
 OSU Micro Benchmarks v5.3.1 (08/08/16)
 * New Features & Enhancements
     - Add option to control whether CUDA kernels are built

@@ -17,6 +17,10 @@
 #include <unistd.h>
 #include <linux/types.h>
 
+#ifdef u_int64_t
+#include <stdint.h>
+#endif /* #ifdef u_int64_t */
+
 #ifdef __linux__
 #  include <sys/ioctl.h>                            /* necessary for: */
 #  include <time.h>

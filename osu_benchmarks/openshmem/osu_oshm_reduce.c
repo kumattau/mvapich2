@@ -82,8 +82,8 @@ int main(int argc, char *argv[])
     }
 
     int nreduce = max_msg_size/sizeof(float);
-    float *pWrkF1 = shmalloc(MAX(nreduce/2+1, _SHMEM_REDUCE_MIN_WRKDATA_SIZE));
-    float *pWrkF2 = shmalloc(MAX(nreduce/2+1, _SHMEM_REDUCE_MIN_WRKDATA_SIZE));
+    float *pWrkF1 = (float *)shmalloc(MAX(nreduce/2+1, _SHMEM_REDUCE_MIN_WRKDATA_SIZE));
+    float *pWrkF2 = (float *)shmalloc(MAX(nreduce/2+1, _SHMEM_REDUCE_MIN_WRKDATA_SIZE));
 
     print_header(HEADER, rank, full);
 

@@ -479,7 +479,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     mpi_errno = MPIDI_CH3U_Comm_register_destroy_hook(MPIDI_CH3I_comm_destroy, NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-    if (rdma_use_blocking) {
+    if (g_atomics_support || ((rdma_use_blocking) && (pg_size > threshold))) {
         MPIDI_PG_Get_vc(pg, pg_rank, &vc);
         MPIDI_CH3I_CM_Connect_self(vc);
     }

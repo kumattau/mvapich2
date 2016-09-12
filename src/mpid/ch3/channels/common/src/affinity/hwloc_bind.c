@@ -35,6 +35,7 @@
 #include "smp_smpi.h"
 #include "rdma_impl.h"
 #endif /*defined(CHANNEL_MRAIL)*/
+#include "mv2_arch_hca_detect.h"
 #include "debug_utils.h"
 
 /* CPU Mapping related definitions */
@@ -2313,9 +2314,6 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
 
     if ((value = getenv("MV2_ENABLE_AFFINITY")) != NULL) {
         mv2_enable_affinity = atoi(value);
-        #if defined(_SMP_LIMIC_)
-        g_use_limic2_coll = atoi(value);
-        #endif /*#if defined(_SMP_LIMIC_)*/
     }
 
     if (mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) != NULL) {
@@ -2366,6 +2364,14 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                           "**fail", "**fail %s",
                                           "CPU_BINDING_PRIMITIVE: Level should be core, socket, or numanode.");
+            }
+            if (MV2_ARCH_INTEL_XEON_PHI_7250 == mv2_get_arch_type() &&
+                    mv2_binding_level != LEVEL_CORE) {
+                if (MPIDI_Process.my_pg_rank == 0) {
+                    fprintf(stderr, "CPU_BINDING_PRIMITIVE: Only core level binding supported for this architecture.\n");
+                }
+                mpi_errno = MPI_ERR_OTHER;
+                goto fn_fail;
             }
             mv2_user_defined_mapping = TRUE;
         } else {

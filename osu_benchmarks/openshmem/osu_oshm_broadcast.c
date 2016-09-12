@@ -57,7 +57,7 @@ int main(int argc, char *argv[])
     }
     print_header(HEADER, rank, full);
 
-    buffer = shmalloc(max_msg_size * sizeof(char));
+    buffer = (char *)shmalloc(max_msg_size * sizeof(char));
     if(NULL == buffer) {
         fprintf(stderr, "malloc failed.\n");
         exit(1);

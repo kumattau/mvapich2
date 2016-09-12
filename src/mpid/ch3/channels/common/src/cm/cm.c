@@ -2464,30 +2464,49 @@ int MPIDI_CH3I_CM_Connect_self(MPIDI_VC_t * vc)
     cm_msg msg;
 
     /*TODO: XRC and CHECKPOINT cases yet to be handled*/
-
-    /*create qp*/
-    cm_qp_create(vc, 1, MV2_QPT_RC);
-
-    /*move to rtr*/
-    for (i = 0; i < vc->mrail.num_rails; ++i) {
-        msg.lids[i] = vc->mrail.rails[i].lid;
-        if (use_iboeth) {
-            MPIU_Memcpy(&msg.gids[i], &vc->mrail.rails[i].gid,
-                        sizeof(union ibv_gid));
+#if defined(RDMA_CM)
+    /* Trap into the RDMA_CM connection initiation */
+    if (mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm) {
+        int j;
+        int rail_index;
+        int max_num_ips = rdma_num_hcas * rdma_num_ports;
+        vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_CLI;
+        for (i = 0; i < rdma_num_hcas * rdma_num_ports; ++i) {
+            for (j = 0; j < rdma_num_qp_per_port; ++j) {
+                rail_index = i * rdma_num_qp_per_port + j;
+                rdma_cm_connect_to_server(vc,
+                                          rdma_cm_host_list[vc->pg_rank *
+                                                            max_num_ips + i],
+                                          rail_index);
+            }
         }
-        msg.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
+    } else
+#endif /* defined(RDMA_CM) */
+    {
+        /*create qp*/
+        cm_qp_create(vc, 1, MV2_QPT_XRC);
+
+        /*move to rtr*/
+        for (i = 0; i < vc->mrail.num_rails; ++i) {
+            msg.lids[i] = vc->mrail.rails[i].lid;
+            if (use_iboeth) {
+                MPIU_Memcpy(&msg.gids[i], &vc->mrail.rails[i].gid,
+                        sizeof(union ibv_gid));
+            }
+            msg.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
+        }
+        cm_qp_move_to_rtr (vc, msg.lids, msg.gids, msg.qpns, 0, NULL, 0);
+
+        /*initialize vc and prepost buffers*/
+        MRAILI_Init_vc(vc);
+
+        /*move to rts*/
+        cm_qp_move_to_rts(vc);
+
+        /*set vc to idle and active*/
+        vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+        VC_SET_ACTIVE(vc);
     }
-    cm_qp_move_to_rtr (vc, msg.lids, msg.gids, msg.qpns, 0, NULL, 0);
-
-    /*initialize vc and prepost buffers*/
-    MRAILI_Init_vc(vc);
-
-    /*move to rts*/
-    cm_qp_move_to_rts(vc);
-
-    /*set vc to idle and active*/
-    vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
-    VC_SET_ACTIVE(vc);
 
     return MPI_SUCCESS;
 }

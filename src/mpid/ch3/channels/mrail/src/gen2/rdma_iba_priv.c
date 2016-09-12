@@ -41,7 +41,11 @@ int qp_required(MPIDI_VC_t * vc, int my_rank, int dst_rank)
 {
     int qp_reqd = 1;
 
-    if ((my_rank == dst_rank) || (
+    if (g_atomics_support) {
+        /* If we support atomics, we always need to create QP to self to
+         * ensure correctness */
+        qp_reqd = 1;
+    } else if ((my_rank == dst_rank) || (
         !mv2_MPIDI_CH3I_RDMA_Process.force_ib_atomic 
         && rdma_use_smp && (vc->smp.local_rank != -1))) {
         /* Process is local */
@@ -739,8 +743,15 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 
         if ((dev_attr.atomic_cap == IBV_ATOMIC_HCA) || (dev_attr.atomic_cap == IBV_ATOMIC_GLOB)) {
             g_atomics_support = 1;
-        } else {
-            g_atomics_support = 0;
+        }
+#ifdef ATOMIC_HCA_REPLY_BE
+        else if (dev_attr.atomic_cap == ATOMIC_HCA_REPLY_BE) {
+                g_atomics_support = 1;
+                g_atomics_support_be = 1;
+        }
+#endif
+        else {
+                g_atomics_support = 0;
         }
 
         /* detecting active ports */
@@ -935,7 +946,14 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 
             if ((dev_attr.atomic_cap == IBV_ATOMIC_HCA) || (dev_attr.atomic_cap == IBV_ATOMIC_GLOB)) {
                 g_atomics_support = 1;
-            } else {
+            }
+#ifdef ATOMIC_HCA_REPLY_BE
+            else if (dev_attr.atomic_cap == ATOMIC_HCA_REPLY_BE) {
+                g_atomics_support = 1;
+                g_atomics_support_be = 1;
+            }
+#endif
+            else {
                 g_atomics_support = 0;
             }
 
@@ -1073,6 +1091,11 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
         qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
         IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
         IBV_ACCESS_REMOTE_ATOMIC;
+#ifdef INFINIBAND_VERBS_EXP_H
+        if (g_atomics_support_be) {
+            qp_attr.qp_access_flags |= IBV_EXP_QP_CREATE_ATOMIC_BE_REPLY;
+        }
+#endif  /* INFINIBAND_VERBS_EXP_H */
     } else {
         qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
         IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
@@ -1107,7 +1130,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
         MPIU_Memset(vc->mrail.srp.credits, 0,
                     (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails));
 
-        if (!qp_required(vc, pg_rank, i)) {
+        if ((i == pg_rank) || !qp_required(vc, pg_rank, i)) {
             continue;
         }
 #ifdef RDMA_CM
@@ -1173,6 +1196,11 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
                 IBV_ACCESS_REMOTE_ATOMIC;
+#ifdef INFINIBAND_VERBS_EXP_H
+                if (g_atomics_support_be) {
+                    qp_attr.qp_access_flags |= IBV_EXP_QP_CREATE_ATOMIC_BE_REPLY;
+                }
+#endif  /* INFINIBAND_VERBS_EXP_H */
             } else {
                 qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
@@ -1406,7 +1434,7 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     pg_size = MPIDI_PG_Get_size(pg);
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
-        if (!qp_required(vc, pg_rank, i)) {
+        if ((i == pg_rank) || !qp_required(vc, pg_rank, i)) {
             continue;
         }
 
@@ -1489,7 +1517,7 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
 
-        if (!qp_required(vc, pg_rank, i)) {
+        if ((i == pg_rank) || !qp_required(vc, pg_rank, i)) {
             continue;
         }
 
@@ -1893,6 +1921,11 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
             qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
             IBV_ACCESS_REMOTE_ATOMIC;
+#ifdef INFINIBAND_VERBS_EXP_H
+            if (g_atomics_support_be) {
+                qp_attr.qp_access_flags |= IBV_EXP_QP_CREATE_ATOMIC_BE_REPLY;
+            }
+#endif  /* INFINIBAND_VERBS_EXP_H */
         } else {
             qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;

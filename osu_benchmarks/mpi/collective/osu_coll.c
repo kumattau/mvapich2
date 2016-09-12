@@ -113,7 +113,7 @@ void print_data (int rank, int full, int size, double avg_time,
 
 
 static int
-set_min_message_size (int value)
+set_min_message_size (long long value)
 {
     int size = 1;
     if (0 >= value) {
@@ -130,7 +130,7 @@ set_min_message_size (int value)
 }
 
 static int
-set_max_message_size (int value)
+set_max_message_size (long long value)
 {
     if (0 > value) {
         return -1;
@@ -154,19 +154,19 @@ set_message_size (char *val_str)
     }
 
     if (!count) {
-        retval = set_max_message_size(atoi(val_str));
+        retval = set_max_message_size(atoll(val_str));
     } else if (count == 1) {
         val1 = strtok(val_str, ":");
         val2 = strtok(NULL, ":");
 
         if (val1 && val2) {
-            retval = set_min_message_size(atoi(val1));
-            retval = set_max_message_size(atoi(val2));
+            retval = set_min_message_size(atoll(val1));
+            retval = set_max_message_size(atoll(val2));
         } else if (val1) {
             if (val_str[0] == ':') {
-                retval = set_max_message_size(atoi(val1));
+                retval = set_max_message_size(atoll(val1));
             } else {
-                retval = set_min_message_size(atoi(val1));
+                retval = set_min_message_size(atoll(val1));
             }
         }
     }

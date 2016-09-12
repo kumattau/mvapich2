@@ -160,6 +160,50 @@ int     iba_lock(MPID_Win *, MPIDI_RMA_Op_t *, int);
 int     iba_unlock(MPID_Win *, MPIDI_RMA_Op_t *, int);
 int MRAILI_Handle_one_sided_completions(vbuf * v);                            
 
+#ifdef INFINIBAND_VERBS_EXP_H
+uint64_t ntohll(const uint64_t value)
+{
+   enum { TYP_INIT, TYP_SMLE, TYP_BIGE };
+
+   union
+   {
+      uint64_t ull;
+      uint8_t  c[8];
+   } x;
+
+   /* Test if on Big Endian system. */
+   static int typ = TYP_INIT;
+
+   if (typ == TYP_INIT)
+   {
+      x.ull = 0x01;
+      typ = (x.c[7] == 0x01) ? TYP_BIGE : TYP_SMLE;
+   }
+
+   /* System is Big Endian; return value as is. */
+   if (typ == TYP_BIGE)
+   {
+      return value;
+   }
+
+   /* Else convert value to Big Endian */
+   x.ull = value;
+
+   int8_t c = 0;
+   c = x.c[0]; x.c[0] = x.c[7]; x.c[7] = c;
+   c = x.c[1]; x.c[1] = x.c[6]; x.c[6] = c;
+   c = x.c[2]; x.c[2] = x.c[5]; x.c[5] = c;
+   c = x.c[3]; x.c[3] = x.c[4]; x.c[4] = c;
+
+   return x.ull;
+}
+
+uint64_t htonll(const uint64_t value)
+{
+   return ntohll(value);
+}
+#endif  /* INFINIBAND_VERBS_EXP_H */
+
 #undef FUNCNAME
 #define FUNCNAME mv2_allocate_shm_local
 #undef FCNAME
@@ -2066,7 +2110,14 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
                 {
                     target_addr = list_entry->target_addr;
                     origin_addr = list_entry->origin_addr;
-                    *((uint64_t *) target_addr) = *((uint64_t *) origin_addr);
+#ifdef INFINIBAND_VERBS_EXP_H
+                    if (g_atomics_support_be) {
+                        *((uint64_t *) target_addr) = ntohll(*((uint64_t *) origin_addr));
+                    } else
+#endif  /* INFINIBAND_VERBS_EXP_H */
+                    {
+                        *((uint64_t *) target_addr) = *((uint64_t *) origin_addr);
+                    }
                     --(list_entry->completion);
                     --(list_win_ptr->put_get_list_size);
                     --(list_win_ptr->rma_issued);
@@ -2077,7 +2128,14 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
                 {   
                     target_addr = list_entry->target_addr;
                     origin_addr = list_entry->origin_addr;
-                    *((uint64_t *) target_addr) = *((uint64_t *) origin_addr);
+#ifdef INFINIBAND_VERBS_EXP_H
+                    if (g_atomics_support_be) {
+                        *((uint64_t *) target_addr) = ntohll(*((uint64_t *) origin_addr));
+                    } else
+#endif /* INFINIBAND_VERBS_EXP_H */
+                    {
+                        *((uint64_t *) target_addr) = *((uint64_t *) origin_addr);
+                    }
                     --(list_entry->completion);
                     --(list_win_ptr->put_get_list_size);
                     --(list_win_ptr->rma_issued);
@@ -2116,14 +2174,28 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
                 }
             case (IBV_WR_ATOMIC_FETCH_AND_ADD):
                 {
-                    *((uint64_t *) v->result_addr) = *((uint64_t *) v->buffer);
+#ifdef INFINIBAND_VERBS_EXP_H
+                    if (g_atomics_support_be) {
+                        *((uint64_t *) v->result_addr) = ntohll(*((uint64_t *) v->buffer));
+                    } else 
+#endif /* INFINIBAND_VERBS_EXP_H */
+                    {
+                        *((uint64_t *) v->result_addr) = *((uint64_t *) v->buffer);
+                    }
                     --(list_win_ptr->rma_issued);
                     --(list_win_ptr->put_get_list_size_per_process[v->target_rank]);
                     break;
                 }
             case (IBV_WR_ATOMIC_CMP_AND_SWP):
                 {
-                    *((uint64_t *) v->result_addr) = *((uint64_t *) v->buffer);
+#ifdef INFINIBAND_VERBS_EXP_H
+                    if (g_atomics_support_be) {
+                        *((uint64_t *) v->result_addr) = ntohll(*((uint64_t *) v->buffer));
+                    } else 
+#endif /* INFINIBAND_VERBS_EXP_H */
+                    {
+                        *((uint64_t *) v->result_addr) = *((uint64_t *) v->buffer);
+                    }
                     --(list_win_ptr->rma_issued);
                     --(list_win_ptr->put_get_list_size_per_process[v->target_rank]);
                     break;

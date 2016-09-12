@@ -837,14 +837,16 @@ fi
 if test -n "$file_system_testfs"; then
     AC_DEFINE(ROMIO_TESTFS,1,[Define for ROMIO with TESTFS])
 fi
+
 #
 # Verify presence of lustre/lustre_user.h
 #
 if test -n "$file_system_lustre"; then
-    AC_CHECK_HEADERS(lustre/lustre_user.h,
-        AC_DEFINE(ROMIO_LUSTRE,1,[Define for ROMIO with LUSTRE]),
-        AC_MSG_ERROR([LUSTRE support requested but cannot find lustre/lustre_user.h header file])                                        
-    )
+    AC_CHECK_TYPES([u_int64_t], [], [AC_DEFINE([u_int64_t], [uint64_t],
+                   [Define missing 64 bit type])])
+    AC_CHECK_HEADERS([lustre/lustre_user.h],
+            [AC_DEFINE([ROMIO_LUSTRE], [1], [Define for ROMIO with LUSTRE])],
+            [AC_MSG_ERROR([LUSTRE support requested but cannot find lustre/lustre_user.h header file])])
 fi
 
 if test -n "$file_system_xfs"; then

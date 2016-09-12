@@ -93,8 +93,8 @@ int main(int argc, char *argv[])
 
     if(use_heap){
 
-        s_buf_heap = shmalloc(MYBUFSIZE);
-        r_buf_heap = shmalloc(MYBUFSIZE);
+        s_buf_heap = (char *)shmalloc(MYBUFSIZE);
+        r_buf_heap = (char *)shmalloc(MYBUFSIZE);
 
         s_buf =
             (char *) (((unsigned long) s_buf_heap + (align_size - 1)) /

@@ -3,6 +3,22 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.2 (09/07/2016)
+
+* Features and Enhancements (since 2.2rc2):
+    - Single node collective tuning for Bridges@PSC, Stampede@TACC and other
+      architectures
+    - Enable PSM builds when both PSM and PSM2 libraries are present
+        - Thanks to Adam T. Moody@LLNL for the report and patch
+    - Add support for HCAs that return result of atomics in big endian notation
+    - Establish loopback connections by default if HCA supports atomics
+* Bug Fixes (since 2.2rc2):
+    - Fix minor error in use of communicator object in collectives
+    - Fix missing u_int64_t declaration with PGI compilers
+        - Thanks to Adam T. Moody@LLNL for the report and patch
+    - Fix memory leak in RMA rendezvous code path
+        - Thanks to Min Si@ANL for the report and patch
+
 MVAPICH2 2.2rc2 (08/08/2016)
 
 * Features and Enhancements (since 2.2rc1):
