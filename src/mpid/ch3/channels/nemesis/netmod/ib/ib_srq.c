@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -36,7 +36,7 @@ int power_two(int x)
 #undef FUNCNAME
 #define FUNCNAME lock_apm
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static void lock_apm()
 {
     pthread_spin_lock(&g_apm_lock);
@@ -46,7 +46,7 @@ static void lock_apm()
 #undef FUNCNAME
 #define FUNCNAME unlock_apm
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static void unlock_apm()
 {
     pthread_spin_unlock(&g_apm_lock);
@@ -304,7 +304,7 @@ void async_thread(void *context)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_allocate_srq
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_allocate_srq()
 {
     int mpi_errno = MPI_SUCCESS;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
 * reserved.
 *
 * This file is part of the MVAPICH2 software package developed by the
@@ -24,11 +24,11 @@ int (*MV2_Ibarrier_intra_node_function) (MPID_Comm *comm_ptr, MPID_Sched_t s) = 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ibarrier_tune_helper_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int MPIR_Ibarrier_tune_helper_MV2(MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int is_homogeneous, comm_size;
+    int is_homogeneous;
 
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
 
@@ -38,10 +38,9 @@ static int MPIR_Ibarrier_tune_helper_MV2(MPID_Comm *comm_ptr, MPID_Sched_t s)
         is_homogeneous = 0;
 #endif
     MPIU_Assert(is_homogeneous);
-    comm_size = comm_ptr->local_size;
 
     mpi_errno = MV2_Ibarrier_function(comm_ptr, s);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     
   fn_exit:
     return mpi_errno;
@@ -52,7 +51,7 @@ static int MPIR_Ibarrier_tune_helper_MV2(MPID_Comm *comm_ptr, MPID_Sched_t s)
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ibarrier_intra_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ibarrier_intra_MV2(MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -124,17 +123,14 @@ int MPIR_Ibarrier_intra_MV2(MPID_Comm *comm_ptr, MPID_Sched_t s)
         /* Code path should not enter this with the current algorithms*/
     }
 
-fn_exit:
     return mpi_errno;
-fn_fail:
-    goto fn_exit;
 }
 #endif                          /*#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ibarrier_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ibarrier_MV2(MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -150,8 +146,5 @@ int MPIR_Ibarrier_MV2(MPID_Comm *comm_ptr, MPID_Sched_t s)
         mpi_errno = MPIR_Ibarrier_inter(comm_ptr, s);
     }
 
-fn_exit:
     return mpi_errno;
-fn_fail:
-    goto fn_exit;
 }

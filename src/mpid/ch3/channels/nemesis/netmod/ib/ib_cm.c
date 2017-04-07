@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -191,7 +191,7 @@ static void set_pkey_index(uint16_t * pkey_index, int hca_num, int port_num)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_init_connection
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /**
  * Init connections
  *
@@ -217,7 +217,7 @@ int MPID_nem_ib_init_connection(int rank, int size)
 #undef FUNCNAME
 #define FUNCNAME rdma_cleanup_startup_ring
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_cleanup_startup_ring()
 {           
     int mpi_errno = MPI_SUCCESS;
@@ -225,17 +225,17 @@ int rdma_cleanup_startup_ring()
     UPMI_BARRIER(); 
         
     if(ibv_destroy_qp(process_info.boot_qp_hndl[0])) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                 "**fail %s", "could not destroy lhs QP");
     }   
     
     if(ibv_destroy_qp(process_info.boot_qp_hndl[1])) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                 "**fail %s", "could not destroy rhs QP");
     }   
     
     if(ibv_destroy_cq(process_info.boot_cq_hndl)) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                 "**fail %s", "could not destroy CQ");
     }
 
@@ -272,7 +272,7 @@ int MPID_nem_ib_free_conn_info(int size) {
     if(size > 1) {
         if ((mpi_errno = rdma_cleanup_startup_ring())
             != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
         }
     }
 
@@ -287,7 +287,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_alloc_process_init_info
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_alloc_process_init_info()
 {
     int mpi_errno = MPI_SUCCESS;
@@ -345,7 +345,7 @@ int MPID_nem_ib_alloc_process_init_info()
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_setup_conn
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_setup_conn(MPIDI_PG_t *pg)
 {
     /* Error codes */
@@ -385,7 +385,7 @@ int MPID_nem_ib_setup_conn(MPIDI_PG_t *pg)
         conn_info.connections[curRank].srp.credits = MPIU_Malloc(sizeof *(conn_info.connections->srp.credits) * rdma_num_rails);
         if (!conn_info.connections[curRank].rails
                 || !conn_info.connections[curRank].srp.credits) {
-            MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
+            MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
                 "**fail", "**fail %s", "Failed to allocate resources for "
                 "multirails");
         }
@@ -421,7 +421,7 @@ int MPID_nem_ib_setup_conn(MPIDI_PG_t *pg)
             conn_info.connections[curRank].rails[rail_index].qp_hndl = ibv_create_qp(hca_list[hca_index].ptag, &attr);
 
             if (!conn_info.connections[curRank].rails[rail_index].qp_hndl) {
-                MPIU_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
+                MPIR_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
                     "**fail", "%s%d", "Failed to create qp for rank ", curRank);
             }
 
@@ -443,7 +443,7 @@ int MPID_nem_ib_setup_conn(MPIDI_PG_t *pg)
                                     IBV_QP_PKEY_INDEX         |
                                     IBV_QP_PORT               |
                                     IBV_QP_ACCESS_FLAGS)) {
-                MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
+                MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
                     "**fail", "**fail %s", "Failed to modify QP to INIT");
             }
 
@@ -483,7 +483,7 @@ static inline uint16_t get_local_lid(struct ibv_context *ctx, int port)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_pmi_exchange
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_pmi_exchange()
 {
     int mpi_errno = MPI_SUCCESS;
@@ -507,7 +507,7 @@ int MPID_nem_ib_pmi_exchange()
         }
 
         /* Generate the key and value pair */
-        MPIU_Snprintf(rdmakey, 512, "%08x-%08x", conn_info.rank, i);
+        MPL_snprintf(rdmakey, 512, "%08x-%08x", conn_info.rank, i);
         buf = rdmavalue;
 
         for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
@@ -541,7 +541,7 @@ int MPID_nem_ib_pmi_exchange()
         */
         error = UPMI_KVS_PUT(kvsname, mv2_pmi_key, mv2_pmi_val);
         if (error != UPMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                     "**pmi_kvs_put", "**pmi_kvs_put %d", error);
         }
 
@@ -551,13 +551,13 @@ int MPID_nem_ib_pmi_exchange()
         */
         error = UPMI_KVS_COMMIT(kvsname);
         if (error != UPMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                     "**pmi_kvs_commit", "**pmi_kvs_commit %d", error);
         }
     }
     error = UPMI_BARRIER();
     if (error != UPMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                 "**pmi_barrier", "**pmi_barrier %d", error);
     }
 
@@ -573,12 +573,12 @@ int MPID_nem_ib_pmi_exchange()
         }
 
         /* Generate the key */
-        MPIU_Snprintf(rdmakey, 512, "%08x-%08x", i, conn_info.rank);
+        MPL_snprintf(rdmakey, 512, "%08x-%08x", i, conn_info.rank);
         MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
 
         error = UPMI_KVS_GET(kvsname, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
         if (error != UPMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                     "**pmi_kvs_get", "**pmi_kvs_get %d", error);
         }
 
@@ -602,7 +602,7 @@ int MPID_nem_ib_pmi_exchange()
      */
     error = UPMI_BARRIER();
     if (error != UPMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                 "**pmi_barrier", "**pmi_barrier %d", error);
     }
 
@@ -613,7 +613,7 @@ int MPID_nem_ib_pmi_exchange()
         }
 
         /* Generate the key and value pair */
-        MPIU_Snprintf(rdmakey, 512, "1-%08x-%08x", conn_info.rank, i);
+        MPL_snprintf(rdmakey, 512, "1-%08x-%08x", conn_info.rank, i);
         buf = rdmavalue;
 
         for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
@@ -633,20 +633,20 @@ int MPID_nem_ib_pmi_exchange()
 
         error = UPMI_KVS_PUT(kvsname, mv2_pmi_key, mv2_pmi_val);
         if (error != UPMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                     "**pmi_kvs_put", "**pmi_kvs_put %d", error);
         }
 
         error = UPMI_KVS_COMMIT(kvsname);
         if (error != UPMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                     "**pmi_kvs_commit", "**pmi_kvs_commit %d", error);
         }
     }
 
     error = UPMI_BARRIER();
     if (error != UPMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                 "**pmi_barrier", "**pmi_barrier %d", error);
     }
 
@@ -657,11 +657,11 @@ int MPID_nem_ib_pmi_exchange()
         }
 
         /* Generate the key */
-        MPIU_Snprintf(rdmakey, 512, "1-%08x-%08x", i, conn_info.rank);
+        MPL_snprintf(rdmakey, 512, "1-%08x-%08x", i, conn_info.rank);
         MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
         error = UPMI_KVS_GET(kvsname, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
         if (error != UPMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                     "**pmi_kvs_get", "**pmi_kvs_get %d", error);
         }
         MPIU_Strncpy(rdmavalue, mv2_pmi_val, mv2_pmi_max_vallen);
@@ -679,7 +679,7 @@ int MPID_nem_ib_pmi_exchange()
 
     error = UPMI_BARRIER();
     if (error != UPMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                 "**pmi_barrier", "**pmi_barrier %d", error);
     }
 
@@ -765,7 +765,7 @@ void rdma_param_handle_heterogeneity(mv2_arch_hca_type arch_hca_type[], int pg_s
 #undef FUNCNAME
 #define FUNCNAME _ring_boot_exchange
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
             MPIDI_PG_t *pg, int pg_rank)
 {
@@ -813,7 +813,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         sg_entry_r.length = addr_packet_size(pg_size);
 
         if(ibv_post_recv(process_info.boot_qp_hndl[0], &rr, &bad_wr_r)) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                     MPI_ERR_INTERN,
                     "**fail",
                     "**fail %s",
@@ -829,13 +829,13 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
     result = gethostname(hostname, HOSTNAME_LEN);
     if (result!=0) {
-        MPIU_Error_printf("Could not get hostname\n");
+        MPL_error_printf("Could not get hostname\n");
         exit(1);
     }
 
     hostent = gethostbyname(hostname);
     if (hostent == NULL) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
                 "**gethostbyname", "**gethostbyname %s %d",
                 hstrerror(h_errno), h_errno );
     }
@@ -890,7 +890,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
             last_send         = sr.wr_id;
 
             if (ibv_post_send(process_info.boot_qp_hndl[1], &sr, &bad_wr_s)) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                         MPI_ERR_INTERN,
                         "**fail",
                         "**fail %s",
@@ -904,13 +904,13 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
             while(1) {
                 ne = ibv_poll_cq(process_info.boot_cq_hndl, 1, &rc);
                 if (ne < 0) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                             MPI_ERR_INTERN,
                             "**fail",
                             "**fail %s",
                             "Poll CQ failed!\n");
                 } else if (ne > 1) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                             MPI_ERR_INTERN,
                             "**fail",
                             "**fail %s",
@@ -921,7 +921,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
                             DEBUG_PRINT("Got IBV_WC_RETRY_EXC_ERR\n");
                         }
 
-                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                        MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                                 MPI_ERR_INTERN,
                                 "**fail",
                                 "**fail %s",
@@ -972,7 +972,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
                             addr_packet_buffer(addr_poolProxy, rr.wr_id, pg_size);
                         sg_entry_r.length = addr_packet_size(pg_size);
                         if(ibv_post_recv(process_info.boot_qp_hndl[0], &rr, &bad_wr_r)) {
-                            MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                            MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                                     MPI_ERR_INTERN,
                                     "**fail",
                                     "**fail %s",
@@ -991,7 +991,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         ne = ibv_poll_cq(process_info.boot_cq_hndl, 1, &rc);
         if(ne == 1) {
             if (rc.status != IBV_WC_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+                MPIR_ERR_SETFATALANDJUMP2(mpi_errno,
                         MPI_ERR_INTERN,
                         "**fail",
                         "**fail %s %d",
@@ -1013,7 +1013,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME rdma_ring_boot_exchange
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_ring_boot_exchange(MPIDI_PG_t *pg, int pg_rank)
 {
     struct ibv_mr * addr_hndl;
@@ -1027,7 +1027,7 @@ int rdma_ring_boot_exchange(MPIDI_PG_t *pg, int pg_rank)
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
         
     if(addr_hndl == NULL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                 MPI_ERR_INTERN,
                 "**fail",
                 "**fail %s",
@@ -1036,7 +1036,7 @@ int rdma_ring_boot_exchange(MPIDI_PG_t *pg, int pg_rank)
 
     mpi_errno = _ring_boot_exchange(addr_hndl, addr_pool, pg, pg_rank);
     if(mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     ibv_dereg_mr(addr_hndl);
     MPIU_Free(addr_pool);
@@ -1054,7 +1054,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_exchange_conn
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_exchange_conn(MPIDI_PG_t *pg, int rank)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -1072,13 +1072,13 @@ int MPID_nem_ib_exchange_conn(MPIDI_PG_t *pg, int rank)
         if (process_info.has_ring_startup) {
             mpi_errno = rdma_ring_boot_exchange(pg, rank);
             if(mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
 
         } else
         {
             if ((mpi_errno = MPID_nem_ib_pmi_exchange()) != MPI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
                         "**fail %s", "Failed to get HCA attrs");
             }
             rdma_param_handle_heterogeneity(conn_info.init_info->arch_hca_type, conn_info.size);
@@ -1099,7 +1099,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_establish_conn
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_establish_conn()
 {
     int mpi_errno = MPI_SUCCESS;
@@ -1419,7 +1419,7 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
 #undef FUNCNAME
 #define FUNCNAME rdma_setup_startup_ring
 #undef FCNAME                                
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_setup_startup_ring(int pg_rank, int pg_size)
 {
     struct init_addr_inf neighbor_addr[2];
@@ -1431,7 +1431,7 @@ int rdma_setup_startup_ring(int pg_rank, int pg_size)
         
     port = _find_active_port(hca_list[0].nic_context);
     if (port < 0) {
-        MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out, "**fail",
+        MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out, "**fail",
                 "**fail %s", "could not find active port");
     }
 
@@ -1439,21 +1439,21 @@ int rdma_setup_startup_ring(int pg_rank, int pg_size)
                                        rdma_default_max_cq_size,
                                        NULL, NULL, 0);
     if (!process_info.boot_cq_hndl) {  
-        MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out,
+        MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out,
                 "**fail", "**fail %s", "cannot create cq");
     }
 
     process_info.boot_qp_hndl[0] = create_qp(hca_list[0].ptag, process_info.boot_cq_hndl,
                                       process_info.boot_cq_hndl);
     if (!process_info.boot_qp_hndl[0]) {
-        MPIU_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto out,
+        MPIR_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto out,
                 "**fail", "%s%d", "Fail to create qp on rank ", pg_rank);
     }
 
     process_info.boot_qp_hndl[1] = create_qp(hca_list[0].ptag, process_info.boot_cq_hndl,
                                       process_info.boot_cq_hndl);
     if (!process_info.boot_qp_hndl[1]) {
-        MPIU_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto out,
+        MPIR_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto out,
                 "**fail", "%s%d", "Fail to create qp on rank ", pg_rank);
     }
 
@@ -1539,7 +1539,7 @@ out:
 #undef FUNCNAME
 #define FUNCNAME rdma_ring_based_allgather
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_ring_based_allgather(void *sbuf, int data_size,
         int pg_rank, void *rbuf, int pg_size)
 {       
@@ -1551,7 +1551,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
         
     if(addr_hndl == NULL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                 MPI_ERR_INTERN,
                 "**fail",
                 "**fail %s",
@@ -1598,7 +1598,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
             sg_entry_r.length = data_size;
 
             if(ibv_post_recv(process_info.boot_qp_hndl[0], &rr, &bad_wr_r)) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                         MPI_ERR_INTERN,
                         "**fail",
                         "**fail %s",
@@ -1636,7 +1636,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
                 sg_entry_s.lkey   = addr_hndl->lkey;
 
                 if (ibv_post_send(process_info.boot_qp_hndl[1], &sr, &bad_wr_s)) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                             MPI_ERR_INTERN,
                             "**fail",
                             "**fail %s",
@@ -1649,13 +1649,13 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
 
             ne = ibv_poll_cq(process_info.boot_cq_hndl, 1, &rc);
             if (ne < 0) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                         MPI_ERR_INTERN,
                         "**fail",
                         "**fail %s",
                         "Poll CQ failed!\n");
             } else if (ne > 1) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                         MPI_ERR_INTERN,
                         "**fail",
                         "**fail %s",
@@ -1665,7 +1665,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
                     if(rc.status == IBV_WC_RETRY_EXC_ERR) {
                         DEBUG_PRINT("Got IBV_WC_RETRY_EXC_ERR\n");
                     }
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                             MPI_ERR_INTERN,
                             "**fail",
                             "**fail %s",
@@ -1685,7 +1685,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
                         sg_entry_r.length = data_size;
 
                         if(ibv_post_recv(process_info.boot_qp_hndl[0], &rr, &bad_wr_r)) {
-                            MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                            MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                                     MPI_ERR_INTERN,
                                     "**fail",
                                     "**fail %s",
@@ -1718,7 +1718,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_setup_startup_ring
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_setup_startup_ring(MPIDI_PG_t *pg, int rank)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -1736,7 +1736,7 @@ int MPID_nem_ib_setup_startup_ring(MPIDI_PG_t *pg, int rank)
          */
         mpi_errno = rdma_setup_startup_ring(rank, pg_size);
         if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
 
         my_arch_hca_type = process_info.arch_hca_type;
@@ -1744,7 +1744,7 @@ int MPID_nem_ib_setup_startup_ring(MPIDI_PG_t *pg, int rank)
         mpi_errno = rdma_ring_based_allgather(&my_arch_hca_type, sizeof(my_arch_hca_type),
                                         rank, conn_info.init_info->arch_hca_type, pg_size);
         if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
         /* Check heterogeneity */
         rdma_param_handle_heterogeneity(conn_info.init_info->arch_hca_type, pg_size);

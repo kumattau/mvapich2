@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,7 +26,7 @@ MPID_nem_ib_channel_manager *arriving_tail = NULL;
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_init_cmanager
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /**
  * init cmanager_info
  *

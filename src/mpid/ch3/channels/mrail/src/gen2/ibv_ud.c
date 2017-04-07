@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -14,6 +14,7 @@
 #include "vbuf.h"
 
 #ifdef _ENABLE_UD_
+#include "cm.h"
 #include "mv2_ud.h"
 #include "mv2_ud_inline.h"
 #include <debug_utils.h>

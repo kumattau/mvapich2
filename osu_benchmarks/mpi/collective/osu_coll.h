@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2002-2016 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2017 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -289,7 +289,7 @@ void print_stats_nbc (int rank, int size, double ovrl, double cpu, double comm,
 /*
  * Memory Management
  */
-int allocate_buffer (void ** buffer, size_t size, enum accel_type type);
+int osu_allocate_buffer (void ** buffer, size_t size, enum accel_type type);
 void free_buffer (void * buffer, enum accel_type type);
 void set_buffer (void * buffer, enum accel_type type, int data, size_t size);
 

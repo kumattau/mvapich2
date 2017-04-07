@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,7 +32,7 @@
  /* 16k inline data for puts/gets/accums. 1024 byte buffer for packet
     and dataloop content */
 
-#define  PSM_VBUFSZ             17408
+#define  PSM_VBUFSZ             16384
 #define  PSM_INITIAL_POOL_SZ    256
 #define  PSM_SECONDARY_POOL_SZ  64
 

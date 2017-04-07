@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -24,6 +24,13 @@
 #include <cr.h>
 #endif
 
+#if defined (_SHARP_SUPPORT_)
+#include "api/sharp_coll.h"
+#include "ibv_sharp.h"
+extern int mv2_sharp_tuned_msg_size;
+#endif
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_sharp);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_shm_rd);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_shm_rs);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_shm_intra);
@@ -36,14 +43,98 @@ int (*MV2_Allreduce_function)(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)=NULL;
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)=NULL;
 
 
 int (*MV2_Allreduce_intra_function)(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)=NULL;
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)=NULL;
+
+#if defined (_SHARP_SUPPORT_)
+#undef FCNAME
+#define FCNAME "MPIR_Sharp_Allreduce_MV2"
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Sharp_Allreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
+                        MPI_Datatype datatype, MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+{
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_sharp, 1);
+
+    int mpi_errno = MPI_SUCCESS;
+    int is_contig = 0;
+    int is_inplace = 0;
+    struct sharp_coll_reduce_spec reduce_spec;
+    struct sharp_reduce_datatyepe_size * dt_size = NULL; 
+    struct sharp_coll_comm * sharp_comm = NULL;
+    MPID_Datatype * dtp = NULL;
+    
+    if (HANDLE_GET_KIND(datatype) == HANDLE_KIND_BUILTIN) {
+        is_contig = 1;
+    } else {
+        MPID_Datatype_get_ptr(datatype, dtp);
+        is_contig = dtp->is_contig;
+    }
+
+    dt_size = mv2_get_sharp_datatype(datatype);
+    reduce_spec.dtype = dt_size->sharp_data_type;
+
+    if (reduce_spec.dtype == SHARP_DTYPE_NULL) {
+        mpi_errno = SHARP_COLL_ENOT_SUPP;
+        goto fn_fail;
+    }
+ 
+    reduce_spec.op = mv2_get_sharp_reduce_op(op);;     
+    if (reduce_spec.op == SHARP_OP_NULL) {
+        mpi_errno = SHARP_COLL_ENOT_SUPP;
+        goto fn_fail;
+    }
+
+    if (is_contig == 1) {
+        reduce_spec.sbuf_desc.buffer.length = count * dt_size->size;
+        if (sendbuf != MPI_IN_PLACE) {
+            reduce_spec.sbuf_desc.buffer.ptr    = (void *)sendbuf;
+        } else {
+            is_inplace = 1;
+            reduce_spec.sbuf_desc.buffer.ptr    = MPIU_Malloc(reduce_spec.sbuf_desc.buffer.length);
+            MPIU_Memcpy(reduce_spec.sbuf_desc.buffer.ptr, recvbuf, reduce_spec.sbuf_desc.buffer.length);
+        }
+        reduce_spec.sbuf_desc.type          = SHARP_DATA_BUFFER;
+        reduce_spec.sbuf_desc.buffer.mem_handle = NULL;
+        reduce_spec.rbuf_desc.buffer.ptr    = recvbuf;
+        reduce_spec.rbuf_desc.buffer.length = count * dt_size->size;
+        reduce_spec.rbuf_desc.type          = SHARP_DATA_BUFFER;
+        reduce_spec.rbuf_desc.buffer.mem_handle = NULL;    
+    } else {
+        /* NOT implementated in Sharp */
+        mpi_errno = SHARP_COLL_ENOT_SUPP;
+        goto fn_fail;
+    }
+
+    reduce_spec.length = count;     
+    sharp_comm = ((sharp_info_t *)comm_ptr->dev.ch.sharp_coll_info)->sharp_comm_module->sharp_coll_comm;
+    mpi_errno = sharp_coll_do_allreduce(sharp_comm, &reduce_spec);
+    if (mpi_errno != SHARP_COLL_SUCCESS) {
+        goto fn_fail;
+    }
+    
+    mpi_errno = MPI_SUCCESS;
+
+fn_exit:
+    MPIU_Free(dt_size);
+    if (is_inplace)
+        MPIU_Free(reduce_spec.sbuf_desc.buffer.ptr);
+    return (mpi_errno);
+
+fn_fail:
+    PRINT_DEBUG(DEBUG_Sharp_verbose, "Continue without SHArP: %s \n", sharp_coll_strerror(mpi_errno));
+    mpi_errno = MPI_ERR_INTERN;
+    goto fn_exit;
+}
+
+#endif /* end of defined (_SHARP_SUPPORT_) */
+
 
 /* This is the default implementation of allreduce. The algorithm is:
    
@@ -97,7 +188,7 @@ int MPIR_Allreduce_mcst_reduce_two_level_helper_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 { 
     return 0;
 }
@@ -106,7 +197,7 @@ int MPIR_Allreduce_mcst_reduce_redscat_gather_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     return 0;
 }
@@ -117,12 +208,12 @@ int MPIR_Allreduce_mcst_reduce_redscat_gather_MV2(const void *sendbuf,
 #undef FCNAME
 #define FCNAME "MPIR_Allreduce_pt2pt_rd_MV2"
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_shm_rd, 1);
     int comm_size, rank;
@@ -133,7 +224,6 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
     void *tmp_buf;
     MPI_User_function *uop;
     MPID_Op *op_ptr;
-    MPI_Comm comm;
     MPIU_THREADPRIV_DECL;
 #ifdef HAVE_CXX_BINDING
     int is_cxx_uop = 0;
@@ -143,7 +233,6 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
     if (count == 0) {
         return MPI_SUCCESS;
     }
-    comm = comm_ptr->handle;
 
     MPIU_THREADPRIV_GET;
 
@@ -202,7 +291,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
         mpi_errno =
             MPIR_Localcopy(sendbuf, count, datatype, recvbuf, count,
                            datatype);
-        MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
                             "**fail");
     }
 
@@ -221,12 +310,12 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
         if (rank % 2 == 0) {
             /* even */
             mpi_errno = MPIC_Send(recvbuf, count, datatype, rank + 1,
-                                     MPIR_ALLREDUCE_TAG, comm, errflag);
+                                     MPIR_ALLREDUCE_TAG, comm_ptr, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
 
             /* temporarily set the rank to -1 so that this
@@ -236,13 +325,13 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
         } else {
             /* odd */
             mpi_errno = MPIC_Recv(tmp_buf, count, datatype, rank - 1,
-                                     MPIR_ALLREDUCE_TAG, comm,
+                                     MPIR_ALLREDUCE_TAG, comm_ptr,
                                      MPI_STATUS_IGNORE, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
 
             /* do the reduction on received data. since the
@@ -287,14 +376,14 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
             mpi_errno = MPIC_Sendrecv(recvbuf, count, datatype,
                                          dst, MPIR_ALLREDUCE_TAG,
                                          tmp_buf, count, datatype, dst,
-                                         MPIR_ALLREDUCE_TAG, comm,
+                                         MPIR_ALLREDUCE_TAG, comm_ptr,
                                          MPI_STATUS_IGNORE, errflag);
 
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
 
             /* tmp_buf contains data received in this step.
@@ -329,7 +418,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
                     /* copy result back into recvbuf */
                     mpi_errno = MPIR_Localcopy(tmp_buf, count, datatype,
                                                    recvbuf, count, datatype);
-                    MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno,
+                    MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno,
                                             MPI_ERR_OTHER, "**fail");
                 }
                     mask <<= 1;
@@ -343,19 +432,19 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
         if (rank % 2) {     /* odd */
             mpi_errno = MPIC_Send(recvbuf, count,
                                      datatype, rank - 1,
-                                     MPIR_ALLREDUCE_TAG, comm, errflag);
+                                     MPIR_ALLREDUCE_TAG, comm_ptr, errflag);
         } else {            /* even */
 
             mpi_errno = MPIC_Recv(recvbuf, count,
                                   datatype, rank + 1,
-                                  MPIR_ALLREDUCE_TAG, comm,
+                                  MPIR_ALLREDUCE_TAG, comm_ptr,
                                   MPI_STATUS_IGNORE, errflag);
         }
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
-            *errflag = TRUE;
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
     }
 
@@ -382,12 +471,12 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
 #undef FCNAME
 #define FCNAME "MPIR_Allreduce_pt2pt_rs_MV2"
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_shm_rs, 1);
     int comm_size, rank;
@@ -399,7 +488,6 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
     void *tmp_buf;
     MPI_User_function *uop;
     MPID_Op *op_ptr;
-    MPI_Comm comm;
     MPIU_THREADPRIV_DECL;
 #ifdef HAVE_CXX_BINDING
     int is_cxx_uop = 0;
@@ -409,7 +497,6 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
     if (count == 0) {
         return MPI_SUCCESS;
     }
-    comm = comm_ptr->handle;
 
     MPIU_THREADPRIV_GET;
 
@@ -467,7 +554,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
         mpi_errno =
             MPIR_Localcopy(sendbuf, count, datatype, recvbuf, count,
                            datatype);
-        MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
                             "**fail");
     }
 
@@ -486,12 +573,12 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
         if (rank % 2 == 0) {
             /* even */
             mpi_errno = MPIC_Send(recvbuf, count, datatype, rank + 1,
-                                     MPIR_ALLREDUCE_TAG, comm, errflag);
+                                     MPIR_ALLREDUCE_TAG, comm_ptr, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
 
             /* temporarily set the rank to -1 so that this
@@ -501,13 +588,13 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
         } else {
             /* odd */
             mpi_errno = MPIC_Recv(tmp_buf, count, datatype, rank - 1,
-                                     MPIR_ALLREDUCE_TAG, comm,
+                                     MPIR_ALLREDUCE_TAG, comm_ptr,
                                      MPI_STATUS_IGNORE, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
 
             /* do the reduction on received data. since the
@@ -553,14 +640,14 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                 mpi_errno = MPIC_Sendrecv(recvbuf, count, datatype,
                                              dst, MPIR_ALLREDUCE_TAG,
                                              tmp_buf, count, datatype, dst,
-                                             MPIR_ALLREDUCE_TAG, comm,
+                                             MPIR_ALLREDUCE_TAG, comm_ptr,
                                              MPI_STATUS_IGNORE, errflag);
 
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
-                    *errflag = TRUE;
-                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                 }
 
                 /* tmp_buf contains data received in this step.
@@ -595,7 +682,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                     /* copy result back into recvbuf */
                     mpi_errno = MPIR_Localcopy(tmp_buf, count, datatype,
                                                recvbuf, count, datatype);
-                    MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno,
+                    MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno,
                                         MPI_ERR_OTHER, "**fail");
                 }
                 mask <<= 1;
@@ -654,13 +741,13 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                                              (char *) tmp_buf +
                                              disps[recv_idx] * extent,
                                              recv_cnt, datatype, dst,
-                                             MPIR_ALLREDUCE_TAG, comm,
+                                             MPIR_ALLREDUCE_TAG, comm_ptr,
                                              MPI_STATUS_IGNORE, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
-                    *errflag = TRUE;
-                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                 }
 
                 /* tmp_buf contains data received in this step.
@@ -723,13 +810,13 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                                              (char *) recvbuf +
                                              disps[recv_idx] * extent,
                                              recv_cnt, datatype, dst,
-                                             MPIR_ALLREDUCE_TAG, comm,
+                                             MPIR_ALLREDUCE_TAG, comm_ptr,
                                              MPI_STATUS_IGNORE, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
-                    *errflag = TRUE;
-                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                 }
 
                 if (newrank > newdst) {
@@ -748,19 +835,19 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
         if (rank % 2) {     /* odd */
             mpi_errno = MPIC_Send(recvbuf, count,
                                      datatype, rank - 1,
-                                     MPIR_ALLREDUCE_TAG, comm, errflag);
+                                     MPIR_ALLREDUCE_TAG, comm_ptr, errflag);
         } else {            /* even */
 
             mpi_errno = MPIC_Recv(recvbuf, count,
                                   datatype, rank + 1,
-                                  MPIR_ALLREDUCE_TAG, comm,
+                                  MPIR_ALLREDUCE_TAG, comm_ptr,
                                   MPI_STATUS_IGNORE, errflag);
         }
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
-            *errflag = TRUE;
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
     }
 
@@ -786,12 +873,12 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
 #undef FCNAME
 #define FCNAME "MPIR_Allreduce_pt2pt_old_MV2"
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
 #ifdef MPID_HAS_HETERO
     int rc;
@@ -807,7 +894,6 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
     void *tmp_buf;
     MPI_User_function *uop;
     MPID_Op *op_ptr;
-    MPI_Comm comm;
     MPIU_THREADPRIV_DECL;
 #ifdef HAVE_CXX_BINDING
     int is_cxx_uop = 0;
@@ -817,7 +903,6 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
     if (count == 0) {
         return MPI_SUCCESS;
     }
-    comm = comm_ptr->handle;
 
     MPIU_THREADPRIV_GET;
 
@@ -900,7 +985,7 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
             mpi_errno =
                 MPIR_Localcopy(sendbuf, count, datatype, recvbuf, count,
                                datatype);
-            MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
                                 "**fail");
         }
 
@@ -921,12 +1006,12 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
             if (rank % 2 == 0) {
                 /* even */
                 mpi_errno = MPIC_Send(recvbuf, count, datatype, rank + 1,
-                                         MPIR_ALLREDUCE_TAG, comm, errflag);
+                                         MPIR_ALLREDUCE_TAG, comm_ptr, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
-                    *errflag = TRUE;
-                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                 }
 
                 /* temporarily set the rank to -1 so that this
@@ -936,13 +1021,13 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
             } else {
                 /* odd */
                 mpi_errno = MPIC_Recv(tmp_buf, count, datatype, rank - 1,
-                                         MPIR_ALLREDUCE_TAG, comm,
+                                         MPIR_ALLREDUCE_TAG, comm_ptr,
                                          MPI_STATUS_IGNORE, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
-                    *errflag = TRUE;
-                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                 }
 
                 /* do the reduction on received data. since the
@@ -988,14 +1073,14 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
                     mpi_errno = MPIC_Sendrecv(recvbuf, count, datatype,
                                                  dst, MPIR_ALLREDUCE_TAG,
                                                  tmp_buf, count, datatype, dst,
-                                                 MPIR_ALLREDUCE_TAG, comm,
+                                                 MPIR_ALLREDUCE_TAG, comm_ptr,
                                                  MPI_STATUS_IGNORE, errflag);
 
                     if (mpi_errno) {
                         /* for communication errors, just record the error but continue */
-                        *errflag = TRUE;
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                        *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                     }
 
                     /* tmp_buf contains data received in this step.
@@ -1030,7 +1115,7 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
                         /* copy result back into recvbuf */
                         mpi_errno = MPIR_Localcopy(tmp_buf, count, datatype,
                                                    recvbuf, count, datatype);
-                        MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno,
+                        MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno,
                                             MPI_ERR_OTHER, "**fail");
                     }
                     mask <<= 1;
@@ -1089,13 +1174,13 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
                                                  (char *) tmp_buf +
                                                  disps[recv_idx] * extent,
                                                  recv_cnt, datatype, dst,
-                                                 MPIR_ALLREDUCE_TAG, comm,
+                                                 MPIR_ALLREDUCE_TAG, comm_ptr,
                                                  MPI_STATUS_IGNORE, errflag);
                     if (mpi_errno) {
                         /* for communication errors, just record the error but continue */
-                        *errflag = TRUE;
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                        *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                     }
 
                     /* tmp_buf contains data received in this step.
@@ -1158,13 +1243,13 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
                                                  (char *) recvbuf +
                                                  disps[recv_idx] * extent,
                                                  recv_cnt, datatype, dst,
-                                                 MPIR_ALLREDUCE_TAG, comm,
+                                                 MPIR_ALLREDUCE_TAG, comm_ptr,
                                                  MPI_STATUS_IGNORE, errflag);
                     if (mpi_errno) {
                         /* for communication errors, just record the error but continue */
-                        *errflag = TRUE;
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                        *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                     }
 
                     if (newrank > newdst) {
@@ -1183,19 +1268,19 @@ int MPIR_Allreduce_pt2pt_old_MV2(const void *sendbuf,
             if (rank % 2) {     /* odd */
                 mpi_errno = MPIC_Send(recvbuf, count,
                                          datatype, rank - 1,
-                                         MPIR_ALLREDUCE_TAG, comm, errflag);
+                                         MPIR_ALLREDUCE_TAG, comm_ptr, errflag);
             } else {            /* even */
 
                 mpi_errno = MPIC_Recv(recvbuf, count,
                                       datatype, rank + 1,
-                                      MPIR_ALLREDUCE_TAG, comm,
+                                      MPIR_ALLREDUCE_TAG, comm_ptr,
                                       MPI_STATUS_IGNORE, errflag);
             }
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
         }
 
@@ -1220,7 +1305,7 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_shm_intra, 1);
     int mpi_errno = MPI_SUCCESS;
@@ -1333,7 +1418,7 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
             mpi_errno = MPIR_Localcopy(recvbuf, count, datatype, local_buf,
                                        count, datatype);
         }
-        MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
                             "**fail");
         MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank,
                                                     shmem_comm_rank);
@@ -1351,7 +1436,7 @@ int MPIR_Allreduce_reduce_p2p_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_intra_p2p, 1);
     int mpi_errno = MPI_SUCCESS;
@@ -1385,9 +1470,9 @@ int MPIR_Allreduce_reduce_p2p_MV2(const void *sendbuf,
                             shmem_commptr, errflag);
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
-            *errflag = TRUE;
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
 
     } else {
@@ -1405,9 +1490,9 @@ int MPIR_Allreduce_reduce_p2p_MV2(const void *sendbuf,
         }
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
-            *errflag = TRUE;
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
     }
 
@@ -1419,7 +1504,7 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_2lvl, 1);
     int mpi_errno = MPI_SUCCESS;
@@ -1450,7 +1535,7 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
         if (sendbuf != MPI_IN_PLACE) {
             mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf,
                                        count, datatype);
-            MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
                                 "**fail");
         }
     }
@@ -1471,27 +1556,44 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
 
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
-            *errflag = TRUE;
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
 
         if (local_size != total_size) {
             /* inter-node allreduce */
+            
             if(MV2_Allreduce_function == &MPIR_Allreduce_pt2pt_rd_MV2){
                 mpi_errno =
                     MPIR_Allreduce_pt2pt_rd_MV2(MPI_IN_PLACE, recvbuf, count, datatype, op,
                                       leader_commptr, errflag);
-            } else {
+            } else 
+#if defined (_SHARP_SUPPORT_)
+            if (MV2_Allreduce_function == &MPIR_Sharp_Allreduce_MV2) {
+                mpi_errno =
+                    MPIR_Sharp_Allreduce_MV2(MPI_IN_PLACE, recvbuf, count, datatype, op,
+                                  comm_ptr , errflag);
+                if (mpi_errno != MPI_SUCCESS) {
+                    /* fall back to RD algorithm if SHArP is not supported */
+                    mpi_errno =
+                        MPIR_Allreduce_pt2pt_rd_MV2(MPI_IN_PLACE, recvbuf, count, datatype, op,
+                                          leader_commptr, errflag); 
+                }
+            } else
+#endif 
+            {
                 mpi_errno =
                     MPIR_Allreduce_pt2pt_rs_MV2(MPI_IN_PLACE, recvbuf, count, datatype, op,
                                       leader_commptr, errflag);
             }
+            
+
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
         }
     } else {
@@ -1509,9 +1611,9 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
         }
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
     }
 
@@ -1520,9 +1622,9 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
     mpi_errno = MPIR_Shmem_Bcast_MV2(recvbuf, count, datatype, 0, shmem_commptr, errflag);
     if (mpi_errno) {
         /* for communication errors, just record the error but continue */
-        *errflag = TRUE;
-        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+        *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
     }
 
   fn_exit:
@@ -1537,7 +1639,7 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_shmem, 1);
     int mpi_errno = MPI_SUCCESS;
@@ -1607,7 +1709,7 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
         if (sendbuf != MPI_IN_PLACE) {
             mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf,
                                        count, datatype);
-            MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
                                 "**fail");
         }
     }
@@ -1655,9 +1757,9 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
                                 shmem_commptr, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
 
         }
@@ -1667,9 +1769,9 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
                                    leader_commptr, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
         }
     } else {
@@ -1685,7 +1787,7 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
                 mpi_errno = MPIR_Localcopy(recvbuf, count, datatype, local_buf,
                                            count, datatype);
             }
-            MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
                                 "**fail");
             MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank,
                                                     shmem_comm_rank);
@@ -1704,9 +1806,9 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
             }
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
         }
     }
@@ -1717,9 +1819,9 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
         MPIR_Bcast_MV2(recvbuf, count, datatype, 0, shmem_commptr, errflag);
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
-            *errflag = TRUE;
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
     }
 
@@ -1735,12 +1837,12 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
 #undef FCNAME
 #define FCNAME "MPIR_Allreduce_mcst_MV2"
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_mcast, 1);
     MPI_Aint true_lb, true_extent;
@@ -1804,9 +1906,9 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
     }
     if (mpi_errno) {
         /* for communication errors, just record the error but continue */
-        *errflag = TRUE;
-        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+        *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
     }
 
     /* Now do a mcst-bcast operation with rank0 as the root */
@@ -1820,7 +1922,7 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
             mpi_errno = MPIR_Pack_impl(recvbuf, count, datatype, tmp_buf, nbytes,
                                        &position);
             if (mpi_errno)
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
         }
         mpi_errno = MPIR_Mcast_inter_node_MV2(tmp_buf, nbytes, MPI_BYTE,
                                      root, comm_ptr, errflag);
@@ -1831,9 +1933,9 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
    
     if (mpi_errno) {
         /* for communication errors, just record the error but continue */
-        *errflag = TRUE;
-        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+        *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
     }
     
     if (!is_contig) {
@@ -1844,7 +1946,7 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
             mpi_errno = MPIR_Unpack_impl(tmp_buf, nbytes, &position, recvbuf,
                                          count, datatype);
             if (mpi_errno)
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
         }
     }
 
@@ -1858,9 +1960,9 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
             MPIR_Bcast_MV2(recvbuf, count, datatype, 0, shmem_commptr, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
         }
     } 
@@ -1878,12 +1980,12 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allreduce_new_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Allreduce_new_MV2(const void *sendbuf,
                        void *recvbuf,
                        int count,
                        MPI_Datatype datatype,
-                       MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                       MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
 #ifdef MPID_HAS_HETERO
     int rc;
@@ -1895,11 +1997,11 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
    
     mpi_errno = PMPI_Comm_size(comm_ptr->handle, &comm_size);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     mpi_errno = PMPI_Comm_rank(comm_ptr->handle, &rank);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if (count == 0) {
@@ -2112,7 +2214,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
 	comm_ptr->dev.ch.intra_node_done=0;
 	
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
@@ -2133,12 +2235,12 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allreduce_index_tuned_intra_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
                        void *recvbuf,
                        int count,
                        MPI_Datatype datatype,
-                       MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                       MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
 #ifdef MPID_HAS_HETERO
     int rc;
@@ -2173,11 +2275,11 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
    
     mpi_errno = PMPI_Comm_size(comm_ptr->handle, &comm_size);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     mpi_errno = PMPI_Comm_rank(comm_ptr->handle, &rank);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if (count == 0) {
@@ -2191,6 +2293,20 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
 
     MPID_Datatype_get_size_macro(datatype, sendtype_size);
     nbytes = count * sendtype_size;
+
+#if defined (_SHARP_SUPPORT_)
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 && nbytes <= mv2_sharp_tuned_msg_size
+        && mv2_enable_sharp_coll == 2) {
+        /* Direct flat algorithm in which every process calls Sharp
+         * MV2_ENABLE_SHARP should be set to 2 */
+        mpi_errno = MPIR_Sharp_Allreduce_MV2(sendbuf, recvbuf, count,
+                                             datatype, op, comm_ptr, errflag);
+        if (mpi_errno == MPI_SUCCESS) {
+            goto fn_exit;
+        }
+        /* SHArP collective is not supported, continue without using SHArP */
+    }
+#endif /* end of defined (_SHARP_SUPPORT_) */
 
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
     MPID_Op *op_ptr;
@@ -2400,8 +2516,16 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
 		if(is_two_level != 1) {
 		    MV2_Allreduce_function = &MPIR_Allreduce_pt2pt_rd_MV2;
 		}
-	    } 
+	    }
+#if defined (_SHARP_SUPPORT_)
+        if (comm_ptr->dev.ch.is_sharp_ok == 1 && nbytes <= mv2_sharp_tuned_msg_size
+                && mv2_enable_sharp_coll == 1) {
+            is_two_level = 1;
+            MV2_Allreduce_function = &MPIR_Sharp_Allreduce_MV2;
 
+        }
+#endif 
+                
 	    if(is_two_level == 1) {
 #if defined(_MCST_SUPPORT_)
 		if((MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2)||
@@ -2454,7 +2578,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
     comm_ptr->dev.ch.intra_node_done=0;
 	
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
@@ -2471,15 +2595,23 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
 
 }
 
+
+
+
+
+
+
+
+
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allreduce_old_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Allreduce_old_MV2(const void *sendbuf,
                        void *recvbuf,
                        int count,
                        MPI_Datatype datatype,
-                       MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                       MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
 
@@ -2596,7 +2728,7 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
 	comm_ptr->dev.ch.intra_node_done=0;
 	
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
@@ -2616,17 +2748,20 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allreduce_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Allreduce_MV2(const void *sendbuf,
                        void *recvbuf,
                        int count,
                        MPI_Datatype datatype,
-                       MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                       MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
     if (count == 0) {
         return MPI_SUCCESS;
     }
+
+
+
     if(mv2_use_old_allreduce == 1){
         mpi_errno = MPIR_Allreduce_old_MV2(sendbuf, recvbuf, count,
                                         datatype, op, comm_ptr, errflag);
@@ -2642,3 +2777,7 @@ int MPIR_Allreduce_MV2(const void *sendbuf,
     }
     return (mpi_errno);
 }
+
+
+
+

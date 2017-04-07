@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,7 +32,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_flush
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_flush()
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_NEM_IB_FLUSH);
@@ -66,13 +66,13 @@ int MPIDI_nem_ib_flush()
         for (rail = 0; rail < rdma_num_rails; rail++) {
             while (0 != VC_FIELD(vc, connection)->srp.credits[rail].backlog.len) {
                 if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
             }
 
             while (NULL != VC_FIELD(vc, connection)->rails[rail].ext_sendq_head) {
                 if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
             }
         }
@@ -90,7 +90,7 @@ int MPIDI_nem_ib_flush()
 #undef FUNCNAME
 #define FUNCNAME MPIDI_NEM_IB_FREE_VC
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_free_vc(MPIDI_VC_t * vc)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -101,20 +101,20 @@ int MPIDI_nem_ib_free_vc(MPIDI_VC_t * vc)
     for (rail = 0; rail < rdma_num_rails; rail++) {
         while (0 != VC_FIELD(vc, connection)->srp.credits[rail].backlog.len) {
             if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
         }
 
         while (NULL != VC_FIELD(vc, connection)->rails[rail].ext_sendq_head) {
             if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
         }
 
         while ((rdma_default_max_send_wqe) !=
                VC_FIELD(vc, connection)->rails[rail].send_wqes_avail) {
             if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
         }
 
@@ -133,7 +133,7 @@ int MPIDI_nem_ib_free_vc(MPIDI_VC_t * vc)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_finalize
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_finalize(void)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_NEM_IB_FINALIZE);
@@ -201,14 +201,14 @@ int MPID_nem_ib_finalize(void)
                     ibv_dereg_mr(VC_FIELD(vc, connection)->
                                  rfp.RDMA_send_buf_mr[hca_index]);
                 if (err)
-                    MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
+                    MPL_error_printf("Failed to deregister mr (%d)\n", err);
             }
             if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[hca_index]) {
                 err =
                     ibv_dereg_mr(VC_FIELD(vc, connection)->
                                  rfp.RDMA_recv_buf_mr[hca_index]);
                 if (err)
-                    MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
+                    MPL_error_printf("Failed to deregister mr (%d)\n", err);
             }
         }
 
@@ -245,7 +245,7 @@ int MPID_nem_ib_finalize(void)
                 ibv_destroy_qp(conn_info.connections[i].
                                rails[rail_index].qp_hndl);
             if (err)
-                MPIU_Error_printf("Failed to destroy QP (%d)\n", err);
+                MPL_error_printf("Failed to destroy QP (%d)\n", err);
         }
 
         MPIU_Free(conn_info.connections[i].rails);
@@ -273,18 +273,18 @@ int MPID_nem_ib_finalize(void)
             pthread_mutex_unlock(&srq_info.async_mutex_lock[i]);
             pthread_mutex_destroy(&srq_info.async_mutex_lock[i]);
             if (err)
-                MPIU_Error_printf("Failed to destroy SRQ (%d)\n", err);
+                MPL_error_printf("Failed to destroy SRQ (%d)\n", err);
         }
 
 
         err = ibv_destroy_cq(hca_list[i].cq_hndl);
         if (err)
-            MPIU_Error_printf("[%d] Failed to destroy CQ (%d)\n", pg_rank, err);
+            MPL_error_printf("[%d] Failed to destroy CQ (%d)\n", pg_rank, err);
 
         if (hca_list[i].send_cq_hndl) {
             err = ibv_destroy_cq(hca_list[i].send_cq_hndl);
             if (err) {
-                MPIU_Error_printf("[%d] Failed to destroy send CQ (%d)\n",
+                MPL_error_printf("[%d] Failed to destroy send CQ (%d)\n",
                                   pg_rank, err);
             }
         }
@@ -292,7 +292,7 @@ int MPID_nem_ib_finalize(void)
         if (hca_list[i].recv_cq_hndl) {
             err = ibv_destroy_cq(hca_list[i].recv_cq_hndl);
             if (err) {
-                MPIU_Error_printf("[%d] Failed to destroy recv CQ (%d)\n",
+                MPL_error_printf("[%d] Failed to destroy recv CQ (%d)\n",
                                   pg_rank, err);
             }
         }
@@ -300,7 +300,7 @@ int MPID_nem_ib_finalize(void)
         if (rdma_use_blocking) {
             err = ibv_destroy_comp_channel(hca_list[i].comp_channel);
             if (err)
-                MPIU_Error_printf("[%d] Failed to destroy CQ channel (%d)\n",
+                MPL_error_printf("[%d] Failed to destroy CQ channel (%d)\n",
                                   pg_rank, err);
         }
 
@@ -313,14 +313,14 @@ int MPID_nem_ib_finalize(void)
         err = ibv_dealloc_pd(hca_list[i].ptag);
 
         if (err) {
-            MPIU_Error_printf("[%d] Failed to dealloc pd (%s)\n",
+            MPL_error_printf("[%d] Failed to dealloc pd (%s)\n",
                               pg_rank, strerror(errno));
         }
 
         err = ibv_close_device(hca_list[i].nic_context);
 
         if (err) {
-            MPIU_Error_printf("[%d] Failed to close ib device (%s)\n",
+            MPL_error_printf("[%d] Failed to close ib device (%s)\n",
                               pg_rank, strerror(errno));
         }
 

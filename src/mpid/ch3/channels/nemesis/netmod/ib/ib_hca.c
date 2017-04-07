@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -66,44 +66,44 @@ static int check_attrs( struct ibv_port_attr *port_attr, struct ibv_device_attr 
     }
 #endif /* _ENABLE_XRC_ */
     if(port_attr->active_mtu < rdma_default_mtu) {
-    	MPIU_Error_printf( "Active MTU is %d, MV2_DEFAULT_MTU set to %d. See User Guide\n",
+    	MPL_error_printf( "Active MTU is %d, MV2_DEFAULT_MTU set to %d. See User Guide\n",
                 port_attr->active_mtu, rdma_default_mtu);
         ret = 1;
     }
 
     if(dev_attr->max_qp_rd_atom < rdma_default_qp_ous_rd_atom) {
-    	MPIU_Error_printf( "Max MV2_DEFAULT_QP_OUS_RD_ATOM is %d, set to %d\n",
+    	MPL_error_printf( "Max MV2_DEFAULT_QP_OUS_RD_ATOM is %d, set to %d\n",
                 dev_attr->max_qp_rd_atom, rdma_default_qp_ous_rd_atom);
         ret = 1;
     }
 
     if(process_info.has_srq) {
         if(dev_attr->max_srq_sge < rdma_default_max_sg_list) {
-        	MPIU_Error_printf( "Max MV2_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
+        	MPL_error_printf( "Max MV2_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
                     dev_attr->max_srq_sge, rdma_default_max_sg_list);
             ret = 1;
         }
 
         if(dev_attr->max_srq_wr < mv2_srq_alloc_size) {
-        	MPIU_Error_printf( "Max MV2_SRQ_SIZE is %d, set to %d\n",
+        	MPL_error_printf( "Max MV2_SRQ_SIZE is %d, set to %d\n",
                     dev_attr->max_srq_wr, (int) mv2_srq_alloc_size);
             ret = 1;
         }
     } else {
         if(dev_attr->max_sge < rdma_default_max_sg_list) {
-        	MPIU_Error_printf( "Max MV2_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
+        	MPL_error_printf( "Max MV2_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
                     dev_attr->max_sge, rdma_default_max_sg_list);
             ret = 1;
         }
 
         if(dev_attr->max_qp_wr < rdma_default_max_send_wqe) {
-        	MPIU_Error_printf( "Max MV2_DEFAULT_MAX_SEND_WQE is %d, set to %d\n",
+        	MPL_error_printf( "Max MV2_DEFAULT_MAX_SEND_WQE is %d, set to %d\n",
                     dev_attr->max_qp_wr, (int) rdma_default_max_send_wqe);
             ret = 1;
         }
     }
     if(dev_attr->max_cqe < rdma_default_max_cq_size) {
-    	MPIU_Error_printf( "Max MV2_DEFAULT_MAX_CQ_SIZE is %d, set to %d\n",
+    	MPL_error_printf( "Max MV2_DEFAULT_MAX_CQ_SIZE is %d, set to %d\n",
                 dev_attr->max_cqe, (int) rdma_default_max_cq_size);
         ret = 1;
     }
@@ -183,7 +183,7 @@ static char *port_phy_state_str[] = {
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_init_hca
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /**
  * Initialize the HCAs
  * Look at rdma_open_hca() & rdma_iba_hca_init_noqp() in
@@ -217,20 +217,20 @@ int MPID_nem_ib_init_hca()
     /* Get the list of devices */
     dev_list = ibv_get_device_list(&num_devices);
     if (dev_list==NULL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
 	            "**fail %s", "No IB device found");
     }
 
     /* Runtime checks */
     MPIU_Assert( num_devices<=MAX_NUM_HCAS );
     if ( num_devices> MAX_NUM_HCAS) {
-        MPIU_Error_printf( "WARNING: found %d IB devices, the maximum is %d (MAX_NUM_HCAS). ",
+        MPL_error_printf( "WARNING: found %d IB devices, the maximum is %d (MAX_NUM_HCAS). ",
         		num_devices, MAX_NUM_HCAS);
         num_devices = MAX_NUM_HCAS;
     }
 
     if ( ib_hca_num_hcas > num_devices) {
-    	MPIU_Error_printf( "WARNING: user requested %d IB devices, the available number is %d. ",
+    	MPL_error_printf( "WARNING: user requested %d IB devices, the available number is %d. ",
         		ib_hca_num_hcas, num_devices);
         ib_hca_num_hcas = num_devices;
     }
@@ -264,7 +264,7 @@ int MPID_nem_ib_init_hca()
         /* Check if device has been identified */
         hca_list[nHca].ib_dev = ib_dev;
         if (!ib_dev) {
-	        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+	        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
 		            "**fail %s", "No IB device found");
         }
 
@@ -274,13 +274,13 @@ int MPID_nem_ib_init_hca()
 
         hca_list[nHca].nic_context = ibv_open_device(ib_dev);
         if (hca_list[nHca].nic_context==NULL) {
-	        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+	        MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
 		            "%s %d", "Failed to open HCA number", nHca);
         }
 
         hca_list[nHca].ptag = ibv_alloc_pd(hca_list[nHca].nic_context);
         if (!hca_list[nHca].ptag) {
-            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
                     "**fail", "%s%d", "Failed to alloc pd number ", nHca);
         }
 
@@ -290,7 +290,7 @@ int MPID_nem_ib_init_hca()
         if (process_info.use_iwarp_mode) {
     	    if ((mpi_errno = rdma_cm_get_hca_type(process_info.use_iwarp_mode, &process_info.hca_type)) != MPI_SUCCESS)
     	    {
-    		    MPIU_ERR_POP(mpi_errno);
+    		    MPIR_ERR_POP(mpi_errno);
     	    }
 
     	    if (process_info.hca_type == CHELSIO_T3)
@@ -329,7 +329,7 @@ int MPID_nem_ib_init_hca()
                 	hca_list[0].ib_dev = ib_dev;
                 	hca_list[0].ptag = ibv_alloc_pd(hca_list[0].nic_context);
                     if (!hca_list[0].ptag) {
-                        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+                        MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
                              "**fail", "%s%d", "Failed to alloc pd number ", nHca);
                     }
                 }
@@ -378,7 +378,7 @@ struct ibv_srq *create_srq(int hca_num)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_open_ports
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /**
  * the first step in original MPID_nem_ib_setup_conn() function
  * open hca, create ptags  and create cqs
@@ -398,7 +398,7 @@ int MPID_nem_ib_open_ports()
 
     for (nHca = 0; nHca < ib_hca_num_hcas; nHca++) {
         if (ibv_query_device(hca_list[nHca].nic_context, &dev_attr)) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                     "**fail %s", "Error getting HCA attributes");
         }
 
@@ -414,7 +414,7 @@ int MPID_nem_ib_open_ports()
                         if (ibv_query_gid(hca_list[nHca].nic_context,
                                         nPort, 0, &hca_list[nHca].gids[k])) {
                             /* new error information function needed */
-                            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                     "**fail", "Failed to retrieve gid on rank %d", process_info.rank);
                         }
                         DEBUG_PRINT("[%d] %s(%d): Getting gid[%d][%d] for"
@@ -429,14 +429,14 @@ int MPID_nem_ib_open_ports()
                     hca_list[nHca].ports[k++] = nPort;
 
                     if (check_attrs(&port_attr, &dev_attr)) {
-                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                 "**fail", "**fail %s",
                                 "Attributes failed sanity check");
                     }
                 }
             }
             if (k < ib_hca_num_ports) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                         "**activeports", "**activeports %d", ib_hca_num_ports);
             }
         } else {
@@ -444,7 +444,7 @@ int MPID_nem_ib_open_ports()
                         rdma_default_port, &port_attr)
                 || (!port_attr.lid && !use_iboeth)
                 || (port_attr.state != IBV_PORT_ACTIVE)) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                         "**portquery", "**portquery %d", rdma_default_port);
             }
 
@@ -453,12 +453,12 @@ int MPID_nem_ib_open_ports()
             if (use_iboeth) {
                 if (ibv_query_gid(hca_list[nHca].nic_context, 0, 0, &hca_list[nHca].gids[0])) {
                     /* new error function needed */
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                             "**fail", "Failed to retrieve gid on rank %d", process_info.rank);
                 }
 
                 if (check_attrs(&port_attr, &dev_attr)) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                             "**fail", "**fail %s", "Attributes failed sanity check");
                 }
             } else {
@@ -470,7 +470,7 @@ int MPID_nem_ib_open_ports()
             hca_list[nHca].comp_channel = ibv_create_comp_channel(hca_list[nHca].nic_context);
 
             if (!hca_list[nHca].comp_channel) {
-                MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
+                MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
                         "**fail", "**fail %s", "cannot create completion channel");
             }
 
@@ -479,12 +479,12 @@ int MPID_nem_ib_open_ports()
             hca_list[nHca].cq_hndl = ibv_create_cq(hca_list[nHca].nic_context,
                     rdma_default_max_cq_size, NULL, hca_list[nHca].comp_channel, 0);
             if (!hca_list[nHca].cq_hndl) {
-                MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
+                MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
                         "**fail", "**fail %s", "cannot create cq");
             }
 
             if (ibv_req_notify_cq(hca_list[nHca].cq_hndl, 0)) {
-                MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
+                MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
                         "**fail", "**fail %s", "cannot request cq notification");
             }
         } else {
@@ -495,7 +495,7 @@ int MPID_nem_ib_open_ports()
             hca_list[nHca].cq_hndl = ibv_create_cq(hca_list[nHca].nic_context,
                     rdma_default_max_cq_size, NULL, NULL, 0);
             if (!hca_list[nHca].cq_hndl) {
-                MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
+                MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
                         "**fail", "**fail %s", "cannot create cq");
             }
         }

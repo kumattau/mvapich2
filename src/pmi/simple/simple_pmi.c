@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -57,8 +57,8 @@
 #include <sys/socket.h>
 #endif
 
-#include "mpibase.h"            /* Get ATTRIBUTE, some base functions */
-/* mpimem includes the definitions for MPIU_Snprintf, MPIU_Malloc, and 
+#include "mpl.h"            /* Get ATTRIBUTE, some base functions */
+/* mpimem includes the definitions for MPL_snprintf, MPIU_Malloc, and 
    MPIU_Free */
 #include "mpimem.h"
 
@@ -358,8 +358,15 @@ int PMI_Finalize( void )
 
 int PMI_Abort(int exit_code, const char error_msg[])
 {
+    char buf[PMIU_MAXLINE];
+
+    /* include exit_code in the abort command */
+    MPL_snprintf( buf, PMIU_MAXLINE, "cmd=abort exitcode=%d\n", exit_code);
+
     PMIU_printf(1, "aborting job:\n%s\n", error_msg);
-    MPIU_Exit(exit_code);
+    GetResponse( buf, "", 0 );
+
+    /* the above command should not return */
     return -1;
 }
 
@@ -377,7 +384,7 @@ int PMI_KVS_Get_my_name( char kvsname[], int length )
 	/* Return a dummy name */
 	/* FIXME: We need to support a distinct kvsname for each 
 	   process group */
-	MPIU_Snprintf( kvsname, length, "singinit_kvs_%d_0", (int)getpid() );
+	MPL_snprintf( kvsname, length, "singinit_kvs_%d_0", (int)getpid() );
 	return 0;
     }
     err = GetResponse( "cmd=get_my_kvsname\n", "my_kvsname", 0 );
@@ -426,7 +433,7 @@ int PMI_KVS_Put( const char kvsname[], const char key[], const char value[] )
 	return 0;
     }
     
-    rc = MPIU_Snprintf( buf, PMIU_MAXLINE, 
+    rc = MPL_snprintf( buf, PMIU_MAXLINE, 
 			"cmd=put kvsname=%s key=%s value=%s\n",
 			kvsname, key, value);
     if (rc < 0) return PMI_FAIL;
@@ -455,7 +462,7 @@ int PMI_KVS_Get( const char kvsname[], const char key[], char value[],
        which MPICH uses PMI, this is where the test needs to be. */
     if (PMIi_InitIfSingleton() != 0) return -1;
 
-    rc = MPIU_Snprintf( buf, PMIU_MAXLINE, "cmd=get kvsname=%s key=%s\n", 
+    rc = MPL_snprintf( buf, PMIU_MAXLINE, "cmd=get kvsname=%s key=%s\n", 
 			kvsname, key );
     if (rc < 0) return PMI_FAIL;
 
@@ -483,7 +490,7 @@ int PMI_Publish_name( const char service_name[], const char port[] )
     int err;
 
     if ( PMI_initialized > SINGLETON_INIT_BUT_NO_PM) {
-        MPIU_Snprintf( cmd, PMIU_MAXLINE, 
+        MPL_snprintf( cmd, PMIU_MAXLINE, 
 		       "cmd=publish_name service=%s port=%s\n",
 		       service_name, port );
 	err = GetResponse( cmd, "publish_result", 0 );
@@ -512,7 +519,7 @@ int PMI_Unpublish_name( const char service_name[] )
     int err = PMI_SUCCESS;
 
     if ( PMI_initialized > SINGLETON_INIT_BUT_NO_PM) {
-        MPIU_Snprintf( cmd, PMIU_MAXLINE, "cmd=unpublish_name service=%s\n", 
+        MPL_snprintf( cmd, PMIU_MAXLINE, "cmd=unpublish_name service=%s\n", 
 		       service_name );
 	err = GetResponse( cmd, "unpublish_result", 0 );
 	if (err == PMI_SUCCESS) {
@@ -540,7 +547,7 @@ int PMI_Lookup_name( const char service_name[], char port[] )
     int err;
 
     if ( PMI_initialized > SINGLETON_INIT_BUT_NO_PM) {
-        MPIU_Snprintf( cmd, PMIU_MAXLINE, "cmd=lookup_name service=%s\n", 
+        MPL_snprintf( cmd, PMIU_MAXLINE, "cmd=lookup_name service=%s\n", 
 		       service_name );
 	err = GetResponse( cmd, "lookup_result", 0 );
 	if (err == PMI_SUCCESS) {
@@ -609,14 +616,14 @@ int PMI_Spawn_multiple(int count,
     {
         total_num_processes += maxprocs[spawncnt];
 
-        rc = MPIU_Snprintf(buf, PMIU_MAXLINE, 
+        rc = MPL_snprintf(buf, PMIU_MAXLINE, 
 			   "mcmd=spawn\nnprocs=%d\nexecname=%s\n",
 			   maxprocs[spawncnt], cmds[spawncnt] );
 	if (rc < 0) {
 	    return PMI_FAIL;
 	}
 
-	rc = MPIU_Snprintf(tempbuf, PMIU_MAXLINE,
+	rc = MPL_snprintf(tempbuf, PMIU_MAXLINE,
 			   "totspawns=%d\nspawnssofar=%d\n",
 			   count, spawncnt+1);
 
@@ -642,7 +649,7 @@ int PMI_Spawn_multiple(int count,
 		   of the commands will permit any character other than a 
 		   new line in the argument, since the form is 
 		   argn=<any nonnewline><newline> */
-                rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"arg%d=%s\n",
+                rc = MPL_snprintf(tempbuf,PMIU_MAXLINE,"arg%d=%s\n",
 				   i+1,argvs[spawncnt][i]);
 		if (rc < 0) {
 		    return PMI_FAIL;
@@ -664,7 +671,7 @@ int PMI_Spawn_multiple(int count,
 
             }
         }
-        rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"argcnt=%d\n",argcnt);
+        rc = MPL_snprintf(tempbuf,PMIU_MAXLINE,"argcnt=%d\n",argcnt);
 	if (rc < 0) {
 	    return PMI_FAIL;
 	}
@@ -673,7 +680,7 @@ int PMI_Spawn_multiple(int count,
 	    return PMI_FAIL;
 	}
     
-        rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"preput_num=%d\n", 
+        rc = MPL_snprintf(tempbuf,PMIU_MAXLINE,"preput_num=%d\n", 
 			   preput_keyval_size);
 	if (rc < 0) {
 	    return PMI_FAIL;
@@ -684,7 +691,7 @@ int PMI_Spawn_multiple(int count,
 	    return PMI_FAIL;
 	}
         for (i=0; i < preput_keyval_size; i++) {
-	    rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"preput_key_%d=%s\n",
+	    rc = MPL_snprintf(tempbuf,PMIU_MAXLINE,"preput_key_%d=%s\n",
 			       i,preput_keyval_vector[i].key);
 	    if (rc < 0) {
 		return PMI_FAIL;
@@ -693,7 +700,7 @@ int PMI_Spawn_multiple(int count,
 	    if (rc != 0) {
 		return PMI_FAIL;
 	    }
-	    rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"preput_val_%d=%s\n",
+	    rc = MPL_snprintf(tempbuf,PMIU_MAXLINE,"preput_val_%d=%s\n",
 			       i,preput_keyval_vector[i].val);
 	    if (rc < 0) {
 		return PMI_FAIL;
@@ -703,7 +710,7 @@ int PMI_Spawn_multiple(int count,
 		return PMI_FAIL;
 	    }
         } 
-        rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"info_num=%d\n", 
+        rc = MPL_snprintf(tempbuf,PMIU_MAXLINE,"info_num=%d\n", 
 			   info_keyval_sizes[spawncnt]);
 	if (rc < 0) {
 	    return PMI_FAIL;
@@ -714,7 +721,7 @@ int PMI_Spawn_multiple(int count,
 	}
 	for (i=0; i < info_keyval_sizes[spawncnt]; i++)
 	{
-	    rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"info_key_%d=%s\n",
+	    rc = MPL_snprintf(tempbuf,PMIU_MAXLINE,"info_key_%d=%s\n",
 			       i,info_keyval_vectors[spawncnt][i].key);
 	    if (rc < 0) {
 		return PMI_FAIL;
@@ -723,7 +730,7 @@ int PMI_Spawn_multiple(int count,
 	    if (rc != 0) {
 		return PMI_FAIL;
 	    }
-	    rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"info_val_%d=%s\n",
+	    rc = MPL_snprintf(tempbuf,PMIU_MAXLINE,"info_val_%d=%s\n",
 			       i,info_keyval_vectors[spawncnt][i].val);
 	    if (rc < 0) {
 		return PMI_FAIL;
@@ -799,7 +806,7 @@ static int PMII_getmaxes( int *kvsname_max, int *keylen_max, int *vallen_max )
     char buf[PMIU_MAXLINE], cmd[PMIU_MAXLINE], errmsg[PMIU_MAXLINE];
     int err, rc;
 
-    rc = MPIU_Snprintf( buf, PMIU_MAXLINE, 
+    rc = MPL_snprintf( buf, PMIU_MAXLINE, 
 			"cmd=init pmi_version=%d pmi_subversion=%d\n",
 			PMI_VERSION, PMI_SUBVERSION );
     if (rc < 0) {
@@ -822,7 +829,7 @@ static int PMII_getmaxes( int *kvsname_max, int *keylen_max, int *vallen_max )
     cmd[0] = 0;
     PMIU_getval( "cmd", cmd, PMIU_MAXLINE );
     if ( strncmp( cmd, "response_to_init", PMIU_MAXLINE ) != 0 ) {
-	MPIU_Snprintf(errmsg, PMIU_MAXLINE, 
+	MPL_snprintf(errmsg, PMIU_MAXLINE, 
 		      "got unexpected response to init :%s: (full line = %s)",
 		      cmd, buf  );
 	UPMI_ABORT( -1, errmsg );
@@ -833,7 +840,7 @@ static int PMII_getmaxes( int *kvsname_max, int *keylen_max, int *vallen_max )
         if ( strncmp( buf, "0", PMIU_MAXLINE ) != 0 ) {
             PMIU_getval( "pmi_version", buf, PMIU_MAXLINE );
             PMIU_getval( "pmi_subversion", buf1, PMIU_MAXLINE );
-	    MPIU_Snprintf(errmsg, PMIU_MAXLINE, 
+	    MPL_snprintf(errmsg, PMIU_MAXLINE, 
 			  "pmi_version mismatch; client=%d.%d mgr=%s.%s",
 			  PMI_VERSION, PMI_SUBVERSION, buf, buf1 );
 	    UPMI_ABORT( -1, errmsg );
@@ -1069,7 +1076,7 @@ static int PMII_Set_from_port( int fd, int id )
     }
     /* Handshake and initialize from a port */
 
-    rc = MPIU_Snprintf( buf, PMIU_MAXLINE, "cmd=initack pmiid=%d\n", id );
+    rc = MPL_snprintf( buf, PMIU_MAXLINE, "cmd=initack pmiid=%d\n", id );
     if (rc < 0) {
 	return PMI_FAIL;
     }
@@ -1235,7 +1242,7 @@ static int PMII_singinit(void)
     rc = bind(singinit_listen_sock, (struct sockaddr *)&sin ,sizeof(sin));
     len = sizeof(struct sockaddr_in);
     rc = getsockname( singinit_listen_sock, (struct sockaddr *) &sin, &len ); 
-    MPIU_Snprintf(port_c, sizeof(port_c), "%d",ntohs(sin.sin_port));
+    MPL_snprintf(port_c, sizeof(port_c), "%d",ntohs(sin.sin_port));
     rc = listen(singinit_listen_sock, 5);
 
     PMIU_printf( PMI_debug_init, "Starting mpiexec with %s\n", port_c );
@@ -1253,7 +1260,7 @@ static int PMII_singinit(void)
 	/* FIXME: Use a valid hostname */
 	newargv[3] = "default_interface";  /* default interface name, for now */
 	newargv[4] = "default_key";   /* default authentication key, for now */
-	MPIU_Snprintf(charpid, sizeof(charpid), "%d",getpid());
+	MPL_snprintf(charpid, sizeof(charpid), "%d",getpid());
 	newargv[5] = charpid;
 	newargv[6] = NULL;
 	rc = execvp(newargv[0], (char **)newargv);
@@ -1293,7 +1300,7 @@ static int PMII_singinit(void)
 	/* p = PMIU_getval( "authstring", cmd, PMIU_MAXLINE ); */
 	
 	/* If we're successful, send back our own singinit */
-	rc = MPIU_Snprintf( buf, PMIU_MAXLINE, 
+	rc = MPL_snprintf( buf, PMIU_MAXLINE, 
      "cmd=singinit pmi_version=%d pmi_subversion=%d stdio=yes authtype=none\n",
 			PMI_VERSION, PMI_SUBVERSION );
 	if (rc < 0) {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Comm_spawn_multiple
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Comm_spawn_multiple(int count, char **commands,
                                   char ***argvs, int *maxprocs,
                                   MPID_Info ** info_ptrs, int root,
@@ -48,7 +48,7 @@ int MPIDI_CH3_Comm_spawn_multiple(int count, char **commands,
 
         if ((mpi_errno = MPIDI_CH3_Open_port(port_name)) != MPI_SUCCESS)
         {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
 
         preput_keyval_vector.key = "PARENT_ROOT_PORT_NAME";
@@ -90,7 +90,7 @@ int MPIDI_CH3_Comm_spawn_multiple(int count, char **commands,
         comm_ptr,
         intercomm)) != MPI_SUCCESS)
     {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
 fn_exit:

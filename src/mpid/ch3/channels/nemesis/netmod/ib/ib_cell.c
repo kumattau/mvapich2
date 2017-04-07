@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -34,7 +34,7 @@ MPID_nem_ib_cell_pool_t MPID_nem_ib_cell_pool;
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_add_cells
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 int MPID_nem_ib_add_cells(int n)
 {
@@ -70,7 +70,7 @@ int MPID_nem_ib_add_cells(int n)
         mpi_errno = MPID_nem_ib_queue_new_elem(&qe, &ce[i]);
 
         if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
 
         MPID_nem_ib_queue_enqueue(MPID_nem_ib_cell_pool.queue, qe);
@@ -88,7 +88,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_init_cell_pool
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 int MPID_nem_ib_init_cell_pool(int n)
 {
@@ -104,7 +104,7 @@ int MPID_nem_ib_init_cell_pool(int n)
     mpi_errno = MPID_nem_ib_add_cells(n);
 
     if(mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     pthread_spin_init(&MPID_nem_ib_cell_pool.lock, 0);
@@ -118,7 +118,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_finalize_cell_pool
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 void MPID_nem_ib_finalize_cell_pool()
 {
@@ -142,7 +142,7 @@ void MPID_nem_ib_finalize_cell_pool()
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_get_cell
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 int MPID_nem_ib_get_cell(
         MPID_nem_ib_cell_elem_t **e)
@@ -173,7 +173,7 @@ int MPID_nem_ib_get_cell(
                 MPID_nem_ib_dev_param_ptr->sec_pool_size);
 
         if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
 
         /* Atleast one cell is available now! */
@@ -201,7 +201,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_return_cell
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 void MPID_nem_ib_return_cell(
         MPID_nem_ib_cell_elem_t *ce)
@@ -221,7 +221,7 @@ void MPID_nem_ib_return_cell(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_prep_cell_recv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 void MPID_nem_ib_prep_cell_recv(
         MPID_nem_ib_cell_elem_t *ce,
@@ -240,7 +240,7 @@ void MPID_nem_ib_prep_cell_recv(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_prep_cell_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 void MPID_nem_ib_prep_cell_send(
         MPID_nem_ib_cell_elem_t *ce,

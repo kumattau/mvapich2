@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -146,6 +146,10 @@ int mv2_use_mcast_allreduce = 1;
 int mv2_mcast_allreduce_small_msg_size = 1024;
 int mv2_mcast_allreduce_large_msg_size = 128 * 1024;
 #endif                          /*   #if defined(_MCST_SUPPORT_)  */
+#if defined (_SHARP_SUPPORT_)
+/* max collective message that uses SHArP */
+int mv2_sharp_tuned_msg_size = MV2_DEFAULT_SHARP_MAX_MSG_SIZE;
+#endif
 int mv2_enable_shmem_reduce = 1;
 int mv2_use_knomial_reduce = 1;
 int mv2_reduce_inter_knomial_factor = -1;
@@ -748,14 +752,14 @@ void MPIDI_CH3I_SHMEM_COLL_Unlink()
 #undef FUNCNAME
 #define FUNCNAME mv2_post_zcpy_mid_request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static inline int mv2_post_zcpy_mid_request(MPID_Comm *leader_commptr, shmem_info_t * shmem)
 {
     int mpi_errno = MPI_SUCCESS;
     /* Post Ibarrier with mid-request */ 
     mpi_errno = MPIR_Ibarrier_impl(leader_commptr, &(shmem->mid_request));
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     shmem->mid_request_active = 1;
 
@@ -768,7 +772,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME mv2_flush_zcpy_mid_request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static inline int mv2_flush_zcpy_mid_request(shmem_info_t * shmem)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -777,7 +781,7 @@ static inline int mv2_flush_zcpy_mid_request(shmem_info_t * shmem)
     /* Wait for previous ibarrier with mid-request to complete */
     mpi_errno = MPIR_Wait_impl(&(shmem->mid_request), &status);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     shmem->mid_request = MPI_REQUEST_NULL;
     shmem->mid_request_active = 0;
@@ -791,14 +795,14 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME mv2_post_zcpy_end_request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static inline int mv2_post_zcpy_end_request(MPID_Comm *leader_commptr, shmem_info_t * shmem)
 {
     int mpi_errno = MPI_SUCCESS;
     /* Post Ibarrier with mid-request */ 
     mpi_errno = MPIR_Ibarrier_impl(leader_commptr, &(shmem->end_request));
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     shmem->end_request_active = 1;
 
@@ -811,7 +815,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME mv2_flush_zcpy_end_request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static inline int mv2_flush_zcpy_end_request(shmem_info_t * shmem)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -820,7 +824,7 @@ static inline int mv2_flush_zcpy_end_request(shmem_info_t * shmem)
     /* Wait for previous ibarrier with end-request to complete */ 
     mpi_errno = MPIR_Wait_impl(&(shmem->end_request), &status);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     shmem->end_request = MPI_REQUEST_NULL;
     shmem->end_request_active = 0;
@@ -835,7 +839,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_Helper_fn
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
                                 char *prefix, int *fd, size_t file_size)
 {
@@ -865,7 +869,7 @@ int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
 
     /* Get hostname to create unique shared file name */
     if (gethostname(mv2_hostname, sizeof (char) * HOSTNAME_LEN) < 0) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
+        MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
                                   "gethostname", strerror(errno));
     }
  
@@ -876,7 +880,7 @@ int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
     *filename = (char *) MPIU_Malloc(sizeof (char) *
                             (pathlen + HOSTNAME_LEN + 26 + PID_CHAR_LEN));
     if (!*filename) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                   "**nomem %s", "mv2_shmem_coll_file");
     }
 
@@ -893,7 +897,7 @@ int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
 
         *fd = open(*filename, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
         if (*fd < 0) {
-            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
                                       "**fail", "%s: %s", "open", strerror(errno));
         }
     }
@@ -973,7 +977,7 @@ int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_INIT);
@@ -999,7 +1003,7 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
                                 "ib_shmem_coll", &mv2_shmem_coll_obj.fd,
                                 mv2_shmem_coll_size);
     if (mpi_errno != MPI_SUCCESS) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if (mv2_tune_parameter == 1) {
@@ -1018,7 +1022,7 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Mmap
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
 {
     int i = 0;
@@ -1139,7 +1143,7 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_finalize
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_SHMEM_COLL_finalize(int local_id, int num_local_nodes)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_FINALIZE);
@@ -1203,11 +1207,11 @@ void MPIDI_CH3I_SHMEM_Coll_Block_Clear_Status(int block_id)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_GetShmemBuf
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank,
                                        void **output_buf)
 {
-    int i = 1, cnt = 0;
+    int i = 1, cnt = 0, err = 0;
     char *shmem_coll_buf = (char *) (&(shmem_coll->shmem_coll_buf));
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF);
@@ -1229,14 +1233,14 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank,
 #endif
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                     MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
                     MPIU_THREAD_CHECK_END
 #endif
                         do {
                     } while (0);
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                     MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
                     MPIU_THREAD_CHECK_END
 #endif
 #if defined(CKPT)
@@ -1270,14 +1274,14 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank,
 #endif
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                 MPIU_THREAD_CHECK_BEGIN
-                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
                 MPIU_THREAD_CHECK_END
 #endif
                     do {
                 } while (0);
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                 MPIU_THREAD_CHECK_BEGIN
-                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
                 MPIU_THREAD_CHECK_END
 #endif
 #if defined(CKPT)
@@ -1299,11 +1303,11 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_Bcast_GetBuf
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
                                    int shmem_comm_rank, void **output_buf)
 {
-    int i = 1, cnt = 0;
+    int i = 1, cnt = 0, err = 0;
     char *shmem_coll_buf = (char *) (&(shmem_coll->shmem_coll_buf) +
                                      mv2_g_shmem_coll_blocks * SHMEM_COLL_BLOCK_SIZE);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_BCAST_GETBUF);
@@ -1326,14 +1330,14 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
 #endif
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                     MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
                     MPIU_THREAD_CHECK_END
 #endif
                         do {
                     } while (0);
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                     MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
                     MPIU_THREAD_CHECK_END
 #endif
 #if defined(CKPT)
@@ -1361,14 +1365,14 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
 #endif
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                 MPIU_THREAD_CHECK_BEGIN
-                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
                 MPIU_THREAD_CHECK_END
 #endif
                     do {
                 } while (0);
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                 MPIU_THREAD_CHECK_BEGIN
-                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
                 MPIU_THREAD_CHECK_END
 #endif
 #if defined(CKPT)
@@ -1387,7 +1391,7 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_Bcast_Complete
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3I_SHMEM_Bcast_Complete(int size, int rank, int shmem_comm_rank)
 {
     int i = 1;
@@ -1409,7 +1413,7 @@ void MPIDI_CH3I_SHMEM_Bcast_Complete(int size, int rank, int shmem_comm_rank)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_SetGatherComplete
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int size, int rank, int shmem_comm_rank)
 {
     int i = 1;
@@ -1431,10 +1435,10 @@ void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int size, int rank, int shmem_comm_
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Barrier_gather
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_rank)
 {
-    int i = 1, cnt = 0;
+    int i = 1, cnt = 0, err = 0;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_GATHER);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_GATHER);
 
@@ -1455,14 +1459,14 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
 #endif
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                     MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
                     MPIU_THREAD_CHECK_END
 #endif
                         do {
                     } while (0);
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                     MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
                     MPIU_THREAD_CHECK_END
 #endif
 #if defined(CKPT)
@@ -1487,10 +1491,10 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Barrier_bcast
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank)
 {
-    int i = 1, cnt = 0;
+    int i = 1, cnt = 0, err = 0;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_BCAST);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_BCAST);
@@ -1516,14 +1520,14 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
 #endif
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                 MPIU_THREAD_CHECK_BEGIN
-                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
                 MPIU_THREAD_CHECK_END
 #endif
                     do {
                 } while (0);
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                 MPIU_THREAD_CHECK_BEGIN
-                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
                 MPIU_THREAD_CHECK_END
 #endif
 #if defined(CKPT)
@@ -1580,11 +1584,11 @@ int mv2_increment_shmem_coll_counter(MPID_Comm *comm_ptr)
             disable_split_comm(pthread_self());
             mpi_errno = create_2level_comm(comm_ptr->handle, comm_ptr->local_size, comm_ptr->rank);
             if(mpi_errno) {
-               MPIU_ERR_POP(mpi_errno);
+               MPIR_ERR_POP(mpi_errno);
             }
             enable_split_comm(pthread_self());
             if(mpi_errno) {
-               MPIU_ERR_POP(mpi_errno);
+               MPIR_ERR_POP(mpi_errno);
             }
         } 
    } 
@@ -1598,7 +1602,8 @@ fn_fail:
 
 int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr)
 {   
-   int mpi_errno = MPI_SUCCESS, flag=0, errflag=0;
+   MPIR_Errflag_t errflag = MPIR_ERR_NONE;
+   int mpi_errno = MPI_SUCCESS, flag=0;
    PMPI_Comm_test_inter(comm_ptr->handle, &flag);
 
    if(flag == 0 
@@ -1615,7 +1620,7 @@ int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr)
                  * create them now */ 
                 mpi_errno = create_2level_comm(comm_ptr->handle, comm_ptr->local_size, comm_ptr->rank);
                 if(mpi_errno) {
-                   MPIU_ERR_POP(mpi_errno);
+                   MPIR_ERR_POP(mpi_errno);
                 }
             } 
 
@@ -1624,12 +1629,12 @@ int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr)
                  * the sub-communicators are actually ready */ 
                 mpi_errno = create_allgather_comm(comm_ptr, &errflag);
                 if(mpi_errno) {
-                   MPIU_ERR_POP(mpi_errno);
+                   MPIR_ERR_POP(mpi_errno);
                 }
             } 
             enable_split_comm(pthread_self());
             if(mpi_errno) {
-               MPIU_ERR_POP(mpi_errno);
+               MPIR_ERR_POP(mpi_errno);
             }
         }
    }
@@ -1827,6 +1832,15 @@ void MV2_Read_env_vars(void)
             mv2_mcast_allreduce_large_msg_size = flag;
     }
 #endif                          /* #if defined(_MCST_SUPPORT_) */
+#if defined (_SHARP_SUPPORT_)
+    if ((value = getenv("MV2_SHARP_MAX_MSG_SIZE")) != NULL) {
+        /* Force SHArP for the message range that user specified */
+        mv2_sharp_tuned_msg_size = atoi(value);
+        if (mv2_sharp_tuned_msg_size < 0) {
+            mv2_sharp_tuned_msg_size = MV2_DEFAULT_SHARP_MAX_MSG_SIZE;
+        }
+    } 
+#endif 
     if ((value = getenv("MV2_USE_SHMEM_REDUCE")) != NULL) {
         mv2_enable_shmem_reduce = !!atoi(value);
     }
@@ -2941,7 +2955,7 @@ int MPIDI_CH3I_LIMIC_Gather_Start(void *buf, MPI_Aint size, int sendbuf_offset,
                                   int comm_size, int rank, int shmem_comm_rank,
                                   MPID_Comm * comm_ptr)
 {
-    int i = 1, cnt = 0;
+    int i = 1, cnt = 0, err = 0;
     int mpi_errno = MPI_SUCCESS;
     int tx_init_size;
 
@@ -2966,14 +2980,14 @@ int MPIDI_CH3I_LIMIC_Gather_Start(void *buf, MPI_Aint size, int sendbuf_offset,
 #endif
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                     MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
                     MPIU_THREAD_CHECK_END
 #endif
                         do {
                     } while (0);
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                     MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
                     MPIU_THREAD_CHECK_END
 #endif
 #if defined(CKPT)
@@ -3012,14 +3026,14 @@ int MPIDI_CH3I_LIMIC_Gather_Start(void *buf, MPI_Aint size, int sendbuf_offset,
 #endif
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                 MPIU_THREAD_CHECK_BEGIN
-                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
                 MPIU_THREAD_CHECK_END
 #endif
                     do {
                 } while (0);
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                 MPIU_THREAD_CHECK_BEGIN
-                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
                 MPIU_THREAD_CHECK_END
 #endif
 #if defined(CKPT)
@@ -3037,10 +3051,10 @@ int MPIDI_CH3I_LIMIC_Gather_Start(void *buf, MPI_Aint size, int sendbuf_offset,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_LIMIC_Bcast_Complete
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_LIMIC_Gather_Complete(int rank, int comm_size, int shmem_comm_rank)
 {
-    int i = 1, cnt = 0;
+    int i = 1, cnt = 0, err = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_LIMIC_COLL_GATHER_COMPLETE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_LIMIC_COLL_GATHER_COMPLETE);
@@ -3068,14 +3082,14 @@ int MPIDI_CH3I_LIMIC_Gather_Complete(int rank, int comm_size, int shmem_comm_ran
 #endif
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                     MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
                     MPIU_THREAD_CHECK_END
 #endif
                         do {
                     } while (0);
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                     MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
                     MPIU_THREAD_CHECK_END
 #endif
 #if defined(CKPT)
@@ -3111,11 +3125,11 @@ int MPIR_Limic_Gather_OSU(void *recvbuf,
 
     mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     mpi_errno = PMPI_Comm_size(shmem_comm, &local_size);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if (local_size == 1 || sendbytes == 0 || recvbytes == 0) {
@@ -3126,7 +3140,7 @@ int MPIR_Limic_Gather_OSU(void *recvbuf,
                                               local_size, local_rank,
                                               shmem_comm_rank, shmem_comm_ptr);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if (local_rank == 0) {
@@ -3143,7 +3157,7 @@ int MPIR_Limic_Gather_OSU(void *recvbuf,
 
         err = limic_tx_comp(limic_fd, (void *) sendbuf, sendbytes, &(local_limic_hndl));
         if (!err) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                       "**fail", "**fail %s",
                                       "LiMIC: (MPIR_Limic_Gather_OSU) limic_tx_comp fail");
         }
@@ -3157,7 +3171,7 @@ int MPIR_Limic_Gather_OSU(void *recvbuf,
         local_limic_hndl.length = shmem_coll->limic_hndl[shmem_comm_rank].length;
     }
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
   fn_fail:
     return mpi_errno;
@@ -3167,6 +3181,7 @@ int MPIR_Limic_Gather_OSU(void *recvbuf,
 
 static inline void mv2_shm_progress(int *nspin)
 {
+    int err = 0;
 #if defined(CKPT)
     Wait_for_CR_Completion();
 #endif
@@ -3177,13 +3192,13 @@ static inline void mv2_shm_progress(int *nspin)
         MPIDI_CH3I_CR_unlock();
 #endif
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-        MPIU_THREAD_CHECK_BEGIN MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+        MPIU_THREAD_CHECK_BEGIN MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
         MPIU_THREAD_CHECK_END
 #endif
             do {
         } while (0);
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-        MPIU_THREAD_CHECK_BEGIN MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+        MPIU_THREAD_CHECK_BEGIN MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
         MPIU_THREAD_CHECK_END
 #endif
 #if defined(CKPT)
@@ -3415,12 +3430,12 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
 
             if(shmem->end_request_active == 1){ 
                 mpi_errno = mv2_flush_zcpy_end_request(shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             } 
 
             if(shmem->mid_request_active == 0){ 
                 mpi_errno = mv2_post_zcpy_mid_request(leader_commptr, shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             } 
         } 
         shmem->half_full_complete = 1;
@@ -3434,12 +3449,12 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
 
             if(shmem->mid_request_active == 1){ 
                 mpi_errno = mv2_flush_zcpy_mid_request(shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             }
 
             if(shmem->end_request_active == 0){ 
                 mpi_errno = mv2_post_zcpy_end_request(leader_commptr, shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             }
         }
         shmem->tail = shmem->read;
@@ -3468,7 +3483,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                        MPID_Comm *comm_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
-    int errflag = FALSE;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     int nspin = 0, i=0, intra_node_root=0;
     int windex = shmem->write % mv2_shm_window_size;
     int rindex = shmem->read % mv2_shm_window_size;
@@ -3498,7 +3513,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
            mpi_errno = mv2_shm_coll_reg_buffer(shmem->buffer, shmem->size,
                                                shmem->mem_handle, &(shmem->buffer_registered));
            if(mpi_errno) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
            }
        }
     }
@@ -3528,9 +3543,9 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                     } while( i < rdma_num_hcas);
 
                     mpi_errno = MPIC_Send(&pkt, sizeof(shm_coll_pkt), MPI_BYTE, src,
-                                             MPIR_BCAST_TAG, comm_ptr->dev.ch.leader_comm, &errflag);
+                                             MPIR_BCAST_TAG, leader_commptr, &errflag);
                     if (mpi_errno) {
-                                MPIU_ERR_POP(mpi_errno);
+                                MPIR_ERR_POP(mpi_errno);
                     }
                     remote_handle_info_parent->peer_rank = src;
                 }
@@ -3543,9 +3558,9 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                     /* Sending to dst. Receive its key info */
                     int j=0;
                     mpi_errno = MPIC_Recv(&pkt, sizeof(shm_coll_pkt), MPI_BYTE, dst_array[i],
-                                              MPIR_BCAST_TAG, comm_ptr->dev.ch.leader_comm, MPI_STATUS_IGNORE, &errflag);
+                                              MPIR_BCAST_TAG, leader_commptr, MPI_STATUS_IGNORE, &errflag);
                     if (mpi_errno) {
-                        MPIU_ERR_POP(mpi_errno);
+                        MPIR_ERR_POP(mpi_errno);
                     }
 
                     do {
@@ -3641,7 +3656,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                                    len, MPI_BYTE,
                                    buf, len, MPI_BYTE);
                     if (mpi_errno) {
-                        MPIU_ERR_POP(mpi_errno);
+                        MPIR_ERR_POP(mpi_errno);
                     }
                 } else
 #endif
@@ -3655,7 +3670,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                 mpi_errno = MPIR_Localcopy(buf, len, MPI_BYTE,
                     shmem->queue[intra_node_root].shm_slots[windex]->buf, len, MPI_BYTE);
                 if (mpi_errno) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
             } else
 #endif
@@ -3676,7 +3691,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
             mpi_errno = MPIR_Localcopy(shmem->queue[intra_node_root].shm_slots[rindex]->buf, len, MPI_BYTE,
                             buf, len, MPI_BYTE);
             if (mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
         } else
 #endif
@@ -3696,12 +3711,12 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
             
             if(shmem->end_request_active == 1){ 
                 mpi_errno = mv2_flush_zcpy_end_request(shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             } 
 
             if(shmem->mid_request_active == 0){ 
                 mpi_errno = mv2_post_zcpy_mid_request(leader_commptr, shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             } 
         } 
         shmem->half_full_complete = 1; 
@@ -3715,12 +3730,12 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
 
             if(shmem->mid_request_active == 1){ 
                 mpi_errno = mv2_flush_zcpy_mid_request(shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             } 
 
             if(shmem->end_request_active == 0){ 
                 mpi_errno = mv2_post_zcpy_end_request(leader_commptr, shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             } 
         }
         shmem->tail = shmem->read;
@@ -3741,7 +3756,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                          int expected_recv_count, int *src_array,
                          int expected_send_count, int dst,
                          int knomial_degree,
-                         MPID_Comm * comm_ptr, int *errflag)
+                         MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     void *buf=NULL; 
     int mpi_errno = MPI_SUCCESS;
@@ -3780,12 +3795,12 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
             
             if(shmem->mid_request_active == 0){
                 mpi_errno = mv2_post_zcpy_mid_request(leader_commptr, shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             } 
 
             if(shmem->end_request_active == 1){
                 mpi_errno = mv2_flush_zcpy_end_request(shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             }
      
         }
@@ -3808,13 +3823,13 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
             leader_commptr->local_size > 1) {
             if(shmem->end_request_active == 0){
                 mpi_errno = mv2_post_zcpy_end_request(leader_commptr, shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             }
             
             
             if(shmem->mid_request_active == 1){
                 mpi_errno = mv2_flush_zcpy_mid_request(shmem);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             }
 
         } 
@@ -3878,7 +3893,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                 mpi_errno = mv2_shm_coll_reg_buffer(shmem->buffer, shmem->size,
                                                    shmem->mem_handle, &(shmem->buffer_registered));
                 if(mpi_errno) {   
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }                 
             }
 
@@ -3902,7 +3917,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                     remote_handle_info_parent = MPIU_Malloc(sizeof(shm_coll_pkt)*
                                                   expected_send_count);
                     if (remote_handle_info_parent == NULL) {
-                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                                   "**nomem %s", "mv2_shmem_file");
                     }
                     j=0;
@@ -3910,10 +3925,10 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                     /* I am sending data to "dst". I will be needing dst's 
                      * RDMA info */ 
                     mpi_errno = MPIC_Recv(&pkt, sizeof(shm_coll_pkt), MPI_BYTE, dst,
-                                          MPIR_REDUCE_TAG, comm_ptr->dev.ch.leader_comm, 
+                                          MPIR_REDUCE_TAG, leader_commptr,
                                           &status, errflag);
                     if (mpi_errno) {
-                         MPIU_ERR_POP(mpi_errno);
+                         MPIR_ERR_POP(mpi_errno);
                     }
 
                    do {
@@ -3934,19 +3949,19 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
  
                if(expected_recv_count > 0) { 
                     int j=0; 
-                    MPI_Request *request_array = NULL; 
+                    MPID_Request **request_array = NULL; 
                     MPI_Status *status_array = NULL; 
                     shm_coll_pkt *pkt_array = NULL; 
                     remote_handle_info_children = MPIU_Malloc(sizeof(shm_coll_pkt)*
                                                   expected_recv_count);
 
                     pkt_array = MPIU_Malloc(sizeof(shm_coll_pkt)*expected_recv_count); 
-                    request_array = MPIU_Malloc(sizeof(MPI_Request)*expected_recv_count); 
+                    request_array = (MPID_Request **) MPIU_Malloc(sizeof(MPID_Request*)*expected_recv_count); 
                     status_array = MPIU_Malloc(sizeof(MPI_Status)*expected_recv_count); 
 
                     if (pkt_array == NULL || request_array == NULL || 
                         status_array == NULL || remote_handle_info_children == NULL) {
-                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                                   "**nomem %s", "mv2_shmem_file");
                     }
 
@@ -3965,17 +3980,17 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                         src = src_array[i]; 
                         pkt_array[i].recv_id =  i;
                         mpi_errno = MPIC_Isend(&pkt_array[i], sizeof(shm_coll_pkt), MPI_BYTE, src,
-                                             MPIR_REDUCE_TAG, comm_ptr->dev.ch.leader_comm, 
+                                             MPIR_REDUCE_TAG, leader_commptr,
                                              &request_array[i], errflag);
                         if (mpi_errno) {
-                                MPIU_ERR_POP(mpi_errno);
+                                MPIR_ERR_POP(mpi_errno);
                         }
                         remote_handle_info_children[i].peer_rank = src_array[i];
                     }
                     mpi_errno = MPIC_Waitall(expected_recv_count, request_array, 
                                                 status_array, errflag); 
                     if (mpi_errno) {
-                          MPIU_ERR_POP(mpi_errno);
+                          MPIR_ERR_POP(mpi_errno);
                     }
                     MPIU_Free(request_array); 
                     MPIU_Free(status_array); 
@@ -3991,7 +4006,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                    inter_node_reduce_status_array = MPIU_Malloc(sizeof(int)*
                                                     shmem->reduce_expected_recv_count); 
                     if (inter_node_reduce_status_array == NULL) {  
-                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                                   "**nomem %s", "mv2_shmem_file");
                     }
                    MPIU_Memset(inter_node_reduce_status_array, '0', 
@@ -4045,9 +4060,11 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                             count, datatype, uop);
                     } else
 #endif
+                    {
                        (*uop) (shmem->queue[i].shm_slots[(rindex+1)]->buf, buf, &count, &datatype);
-                       inter_node_reduce_completions++; 
-                       inter_node_reduce_status_array[i] = 1; 
+                    }
+                    inter_node_reduce_completions++;
+                    inter_node_reduce_status_array[i] = 1;
                    }
                } 
            } 
@@ -4162,7 +4179,8 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     char s_hostname[SHMEM_COLL_HOSTNAME_LEN];
     struct stat file_status;
     shmem_info_t *shmem = NULL;
-    int errflag = 0, max_local_size = 0;
+    int max_local_size = 0;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     MPID_Comm *shmem_ptr = NULL;
  
     MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_ptr);
@@ -4200,7 +4218,7 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     mpi_errno = MPIR_Reduce_impl(&local_size, &max_local_size, 1, MPI_INT,
 				 MPI_MAX, 0, shmem_ptr, &errflag);
     if (mpi_errno) {
-      MPIU_ERR_POP(mpi_errno);
+      MPIR_ERR_POP(mpi_errno);
     }
 
     size = (shmem->count) * slot_len * max_local_size;
@@ -4219,7 +4237,7 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
                                               SHMEM_COLL_HOSTNAME_LEN + 26 +
                                               PID_CHAR_LEN));
     if (!shmem->file_name) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                   "**nomem %s", "mv2_shmem_file");
     }
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -39,12 +39,12 @@
     #define PSM_MQ_RNDV_SHM_SZ          PSM2_MQ_RNDV_SHM_SZ
     #define PSM_MQ_FLAG_SENDSYNC        PSM2_MQ_FLAG_SENDSYNC
     /* Currently PSM2 has a max transfer limit of 4GB */
-    #define DEFAULT_IPATH_MAX_TRANSFER_SIZE (4*1024*1024*1024 - 1)
+    #define DEFAULT_IPATH_MAX_TRANSFER_SIZE (4L*1024*1024*1024 - 256)
 #elif HAVE_LIBPSM_INFINIPATH
     #include <psm.h>
     #include <psm_mq.h>
     /* Currently PSM has a max transfer limit of 1GB */
-    #define DEFAULT_IPATH_MAX_TRANSFER_SIZE (1*1024*1024*1024)
+    #define DEFAULT_IPATH_MAX_TRANSFER_SIZE (1L*1024*1024*1024)
 #endif
 
 #define PSM_2_1_VERSION         0x0201
@@ -54,12 +54,15 @@
 #include <pthread.h>
 #include "mpidimpl.h"
 #include "upmi.h"
+#include <debug_utils.h>
 
 #define MPID_PSM_UUID           "uuid"      /* pmi key for uuid */
 #define WRBUFSZ                 1024        /* scratch buffer */
 #define ROOT                    0           
 #define TIMEOUT                 50          /* connect timeout */
 #define MQ_FLAGS_NONE           0 
+
+#define MPIDI_PSM_DEFAULT_ON_DEMAND_THRESHOLD   64
 
 /* tag selection macros, taken from mvapich-psm code */
 #if PSM_VERNO >= PSM_2_1_VERSION
@@ -79,20 +82,6 @@
     #define MQ_TAGSEL_ANY_SOURCE    (MQ_TAGSEL_ALL << SRC_RANK_BITS)
 #endif
 #define SEC_IN_NS               1000000000ULL
-
-//#define DEBUG_PSM
-#ifdef DEBUG_PSM
-#define DBG(args...)                                                 \
-    do {                                                             \
-        int __rank;                                                  \
-        UPMI_GET_RANK(&__rank);                                       \
-        fprintf(stderr, "[%d][%s:%d]\t\t", __rank, __FILE__, __LINE__); \
-        fprintf(stderr, args);                                       \
-        fflush(stderr);                                              \
-    } while (0)
-#else /* defined(DEBUG_) */
-#define DBG(args...)
-#endif /* defined(DEBUG) */
 
 #define PSM_ERR_ABORT(args...) do {                                          \
     int __rank; UPMI_GET_RANK(&__rank);                                       \
@@ -218,6 +207,16 @@ int (*psm_unlock_fn)(pthread_spinlock_t *);
 int (*psm_progress_lock_fn)(pthread_spinlock_t *);
 int (*psm_progress_unlock_fn)(pthread_spinlock_t *);
 
+#define MAX_PROGRESS_HOOKS 4
+typedef int (*progress_func_ptr_t) (int* made_progress);
+
+typedef struct progress_hook_slot {
+    progress_func_ptr_t func_ptr;
+    int active;
+} progress_hook_slot_t;
+
+progress_hook_slot_t progress_hooks[MAX_PROGRESS_HOOKS];
+
 #define _psm_enter_  psm_lock_fn(&psmlock)
 #define _psm_exit_   psm_unlock_fn(&psmlock)
 
@@ -246,6 +245,8 @@ struct psmdev_info_t {
 #define psm_tot_rndv_gets       psmdev_cw.cnt[7]
 #define psm_tot_accs            psmdev_cw.cnt[8]
 
+#define PSM_ADDR_RESOLVED(peer) (psmdev_cw.epaddrs[peer] != NULL)
+
 /* externs */
 extern struct psmdev_info_t psmdev_cw;
 extern uint32_t             ipath_rndv_thresh;
@@ -262,7 +263,8 @@ int psm_do_cancel(MPID_Request *req);
 PSM_ERROR_T psm_probe(int src, int tag, int context, MPI_Status *stat);
 void psm_init_1sided();
 int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank);   
-int psm_istartmsgv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request **rptr);
+int psm_connect_peer(int peer);
+int psm_istartmsgv(MPIDI_VC_t *vc, MPL_IOV *iov, int iov_n, MPID_Request **rptr);
 /* PSM2 uses psm2_mq_tag_t instead of a uint64_t. */
 #if PSM_VERNO >= PSM_2_1_VERSION
     int psm_post_large_msg_irecv(void *buf, MPIDI_msg_sz_t buflen, MPID_Request **request, psm2_mq_tag_t *rtag, psm2_mq_tag_t *rtagsel);
@@ -271,7 +273,7 @@ int psm_istartmsgv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request **rptr
 #endif
 int psm_recv(int rank, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
              MPI_Status *stat, MPID_Request **req);
-int psm_isendv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request *rptr);
+int psm_isendv(MPIDI_VC_t *vc, MPL_IOV *iov, int iov_n, MPID_Request *rptr);
 int psm_irecv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
         MPID_Request *req);
 int psm_istartmsg(MPIDI_VC_t *vc, void *upkt, MPIDI_msg_sz_t pkt_sz, MPID_Request **rptr);
@@ -289,19 +291,19 @@ void psm_update_mpistatus(MPI_Status *, PSM_MQ_STATUS_T, int);
 PSM_ERROR_T psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m,
                         int dest, void *buf, MPIDI_msg_sz_t buflen);
 int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen);
-int psm_1sided_putpkt(MPIDI_CH3_Pkt_put_t *pkt, MPID_IOV *iov, int iov_n,
+int psm_1sided_putpkt(MPIDI_CH3_Pkt_put_t *pkt, MPL_IOV *iov, int iov_n,
                        MPID_Request **rptr);
-int psm_1sided_atomicpkt(MPIDI_CH3_Pkt_t *pkt, MPID_IOV *iov, int iov_n,
+int psm_1sided_atomicpkt(MPIDI_CH3_Pkt_t *pkt, MPL_IOV *iov, int iov_n,
                        int rank, int srank, MPID_Request **rptr);
-int psm_1sided_accumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPID_IOV *iov, int iov_n,
+int psm_1sided_accumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPL_IOV *iov, int iov_n,
                        MPID_Request **rptr);
-int psm_1sided_getaccumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPID_IOV *iov, int iov_n,
+int psm_1sided_getaccumpkt(MPIDI_CH3_Pkt_get_accum_t *pkt, MPL_IOV *iov, int iov_n,
                        MPID_Request **rptr);
-int psm_1sided_getresppkt(MPIDI_CH3_Pkt_get_resp_t *pkt, MPID_IOV *iov, int iov_n,
+int psm_1sided_getresppkt(MPIDI_CH3_Pkt_get_resp_t *pkt, MPL_IOV *iov, int iov_n,
                        MPID_Request **rptr);
 int psm_getresp_complete(MPID_Request *req); 
 int psm_getaccumresp_complete(MPID_Request *req); 
-int psm_1sided_getpkt(MPIDI_CH3_Pkt_get_t *pkt, MPID_IOV *iov, int iov_n,
+int psm_1sided_getpkt(MPIDI_CH3_Pkt_get_t *pkt, MPL_IOV *iov, int iov_n,
         MPID_Request **rptr);
 int psm_1sc_get_rndvrecv(MPID_Request *savreq, MPIDI_CH3_Pkt_t *pkt, int from_rank);
 int psm_dt_1scop(MPID_Request *req, char *buf, int len);
@@ -331,4 +333,14 @@ int MPID_Probe(int source, int tag, MPID_Comm * comm, int context_offset,
 	       MPI_Status * status);
 int MPIDI_CH3I_comm_create(MPID_Comm *comm, void *param);
 int MPIDI_CH3I_comm_destroy(MPID_Comm *comm, void *param);
+
+extern int mv2_pmi_max_keylen;
+extern int mv2_pmi_max_vallen;
+extern char *mv2_pmi_key;
+extern char *mv2_pmi_val;
+extern int mv2_use_pmi_ibarrier;
+
+int mv2_allocate_pmi_keyval(void);
+void mv2_free_pmi_keyval(void);
+
 #endif 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -196,14 +196,14 @@ void vbuf_address_send(MPIDI_VC_t *vc);
 void vbuf_address_reply_send(MPIDI_VC_t *vc, uint8_t data);
 int MPIDI_nem_ib_fast_rdma_ok(MPIDI_VC_t * vc, int len);
 int MPIDI_nem_ib_fast_rdma_send_complete(MPIDI_VC_t * vc,
-                                              MPID_IOV * iov,
+                                              MPL_IOV * iov,
                                               int n_iov,
                                               int *num_bytes_ptr,
                                               vbuf ** vbuf_handle);
 int MPIDI_nem_ib_post_send(MPIDI_VC_t * vc, vbuf * v, int rail);
 int MPIDI_nem_ib_post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail);
 int MPIDI_nem_ib_eager_send(MPIDI_VC_t * vc,
-                        MPID_IOV * iov,
+                        MPL_IOV * iov,
                         int n_iov,
                         int pkt_len,
                         int *num_bytes_ptr,

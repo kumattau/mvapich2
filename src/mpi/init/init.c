@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -138,8 +138,9 @@ int MPI_Init( int *argc, char ***argv )
     int threadLevel, provided;
     MPID_MPI_INIT_STATE_DECL(MPID_STATE_MPI_INIT);
 
-    if (MPIR_Process.initialized == MPICH_POST_FINALIZED) {
-        MPIR_Process.initialized = MPICH_PRE_INIT;
+    /* Handle mpich_state in case of Re-init */
+    if (OPA_load_int(&MPIR_Process.mpich_state) == MPICH_POST_FINALIZED) {
+        OPA_store_int(&MPIR_Process.mpich_state, MPICH_PRE_INIT);
     }
     rc = MPID_Wtime_init();
 #ifdef USE_DBG_LOGGING
@@ -155,7 +156,7 @@ int MPI_Init( int *argc, char ***argv )
     {
         MPID_BEGIN_ERROR_CHECKS;
         {
-            if (MPIR_Process.initialized != MPICH_PRE_INIT) {
+            if (OPA_load_int(&MPIR_Process.mpich_state) != MPICH_PRE_INIT) {
                 mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
 						  "**inittwice", NULL );
 	    }
@@ -186,7 +187,7 @@ int MPI_Init( int *argc, char ***argv )
     else if (!strcmp(MPIR_CVAR_DEFAULT_THREAD_LEVEL, "MPI_THREAD_SINGLE"))
         threadLevel = MPI_THREAD_SINGLE;
     else {
-        MPIU_Error_printf("Unrecognized thread level %s\n", MPIR_CVAR_DEFAULT_THREAD_LEVEL);
+        MPL_error_printf("Unrecognized thread level %s\n", MPIR_CVAR_DEFAULT_THREAD_LEVEL);
         exit(1);
     }
 

@@ -1,7 +1,7 @@
 dnl -*- Autoconf -*-
 dnl
-dnl Copyright © 2009-2015 Inria.  All rights reserved.
-dnl Copyright © 2009-2012, 2015 Université Bordeaux
+dnl Copyright © 2009-2016 Inria.  All rights reserved.
+dnl Copyright © 2009-2012, 2015-2017 Université Bordeaux
 dnl Copyright © 2004-2005 The Trustees of Indiana University and Indiana
 dnl                         University Research and Technology
 dnl                         Corporation.  All rights reserved.
@@ -9,7 +9,7 @@ dnl Copyright © 2004-2012 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright © 2004-2008 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
-dnl Copyright © 2006-2015 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright © 2006-2017 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright © 2012  Blue Brain Project, BBP/EPFL. All rights reserved.
 dnl Copyright © 2012       Oracle and/or its affiliates.  All rights reserved.
 dnl See COPYING in top-level directory.
@@ -263,7 +263,8 @@ EOF])
         AC_MSG_WARN([***********************************************************])
         AC_MSG_WARN([*** hwloc does not support this system.])
         AC_MSG_WARN([*** hwloc will *attempt* to build (but it may not work).])
-        AC_MSG_WARN([*** hwloc run-time results may be reduced to showing just one processor.])
+        AC_MSG_WARN([*** hwloc run-time results may be reduced to showing just one processor,])
+        AC_MSG_WARN([*** and binding will likely not be supported.])
         AC_MSG_WARN([*** You have been warned.])
         AC_MSG_WARN([*** Pausing to give you time to read this message...])
         AC_MSG_WARN([***********************************************************])
@@ -367,7 +368,7 @@ EOF])
     AC_CHECK_HEADERS([dirent.h])
     AC_CHECK_HEADERS([strings.h])
     AC_CHECK_HEADERS([ctype.h])
-    
+
     AC_CHECK_FUNCS([strncasecmp], [
       _HWLOC_CHECK_DECL([strncasecmp], [
 	AC_DEFINE([HWLOC_HAVE_DECL_STRNCASECMP], [1], [Define to 1 if function `strncasecmp' is declared by system headers])
@@ -405,15 +406,18 @@ EOF])
     AC_CHECK_LIB([gdi32], [main],
                  [HWLOC_LIBS="-lgdi32 $HWLOC_LIBS"
                   AC_DEFINE([HAVE_LIBGDI32], 1, [Define to 1 if we have -lgdi32])])
+    AC_CHECK_LIB([user32], [PostQuitMessage], [hwloc_have_user32="yes"])
 
     AC_CHECK_HEADER([windows.h], [
       AC_DEFINE([HWLOC_HAVE_WINDOWS_H], [1], [Define to 1 if you have the `windows.h' header.])
     ])
 
     AC_CHECK_HEADERS([sys/lgrp_user.h], [
-      AC_CHECK_LIB([lgrp], [lgrp_latency_cookie],
+      AC_CHECK_LIB([lgrp], [lgrp_init],
                    [HWLOC_LIBS="-llgrp $HWLOC_LIBS"
-                    AC_DEFINE([HAVE_LIBLGRP], 1, [Define to 1 if we have -llgrp])])
+                    AC_DEFINE([HAVE_LIBLGRP], 1, [Define to 1 if we have -llgrp])
+                    AC_CHECK_DECLS([lgrp_latency_cookie],,,[[#include <sys/lgrp_user.h>]])
+      ])
     ])
     AC_CHECK_HEADERS([kstat.h], [
       AC_CHECK_LIB([kstat], [main],
@@ -458,7 +462,16 @@ EOF])
       #endif
     ])
 
-    AC_CHECK_DECLS([strtoull], [], [], [AC_INCLUDES_DEFAULT])
+    AC_CHECK_DECLS([strtoull], [], [AC_CHECK_FUNCS([strtoull])], [AC_INCLUDES_DEFAULT])
+
+    # Needed for Windows in private/misc.h
+    AC_CHECK_TYPES([ssize_t])
+    AC_CHECK_DECLS([snprintf], [], [], [AC_INCLUDES_DEFAULT])
+    AC_CHECK_DECLS([strcasecmp], [], [], [AC_INCLUDES_DEFAULT])
+    # strdup and putenv are declared in windows headers but marked deprecated
+    AC_CHECK_DECLS([_strdup], [], [], [AC_INCLUDES_DEFAULT])
+    AC_CHECK_DECLS([_putenv], [], [], [AC_INCLUDES_DEFAULT])
+    # Could add mkdir and access for hwloc-gather-cpuid.c on Windows
 
     # Do a full link test instead of just using AC_CHECK_FUNCS, which
     # just checks to see if the symbol exists or not.  For example,
@@ -488,7 +501,9 @@ EOF])
     # program_invocation_name and __progname may be available but not exported in headers
     AC_MSG_CHECKING([for program_invocation_name])
     AC_TRY_LINK([
-		#define _GNU_SOURCE
+		#ifndef _GNU_SOURCE
+		# define _GNU_SOURCE
+		#endif
 		#include <errno.h>
 		#include <stdio.h>
 		extern char *program_invocation_name;
@@ -536,7 +551,9 @@ EOF])
       CFLAGS="$CFLAGS $HWLOC_STRICT_ARGS_CFLAGS"
       AC_COMPILE_IFELSE([
           AC_LANG_PROGRAM([[
-              #define _GNU_SOURCE
+              #ifndef _GNU_SOURCE
+              # define _GNU_SOURCE
+              #endif
               #include <sched.h>
               static unsigned long mask;
               ]], [[ sched_setaffinity(0, (void*) &mask); ]])],
@@ -545,7 +562,9 @@ EOF])
           [AC_MSG_RESULT([no])])
       CFLAGS=$hwloc_save_CFLAGS
     ], , [[
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE
+#endif
 #include <sched.h>
 ]])
 
@@ -647,13 +666,28 @@ EOF])
       AC_DEFINE([HWLOC_HAVE_CLZL], [1], [Define to 1 if you have the `clzl' function.])
     ])
 
-    AC_CHECK_FUNCS([openat], [hwloc_have_openat=yes])
+    AS_IF([test "$hwloc_c_vendor" != "android"], [AC_CHECK_FUNCS([openat], [hwloc_have_openat=yes])])
+
 
     AC_CHECK_HEADERS([malloc.h])
     AC_CHECK_FUNCS([getpagesize memalign posix_memalign])
 
     AC_CHECK_HEADERS([sys/utsname.h])
     AC_CHECK_FUNCS([uname])
+
+    dnl Don't check for valgrind in embedded mode because this may conflict
+    dnl with the embedder projects also checking for it.
+    dnl We only use Valgrind to nicely disable the x86 backend with a warning,
+    dnl but we can live without it in embedded mode (it auto-disables itself
+    dnl because of invalid CPUID outputs).
+    dnl Non-embedded checks usually go to hwloc_internal.m4 but this one is
+    dnl is really for the core library.
+    AS_IF([test "$hwloc_mode" != "embedded"],
+        [AC_CHECK_HEADERS([valgrind/valgrind.h])
+         AC_CHECK_DECLS([RUNNING_ON_VALGRIND],,[:],[[#include <valgrind/valgrind.h>]])
+	],[
+	 AC_DEFINE([HAVE_DECL_RUNNING_ON_VALGRIND], [0], [Embedded mode; just assume we do not have Valgrind support])
+	])
 
     AC_CHECK_HEADERS([pthread_np.h])
     AC_CHECK_DECLS([pthread_setaffinity_np],,[:],[[
@@ -707,6 +741,9 @@ EOF])
 	enable_migrate_pages=yes
 	AC_DEFINE([HWLOC_HAVE_MIGRATE_PAGES], [1], [Define to 1 if migrate_pages is available.])
       ])
+      AC_CHECK_LIB([numa], [move_pages], [
+	AC_DEFINE([HWLOC_HAVE_MOVE_PAGES], [1], [Define to 1 if move_pages is available.])
+      ])
 
       LIBS="$tmp_save_LIBS"
     fi
@@ -714,7 +751,10 @@ EOF])
     # Linux libudev support
     if test "x$enable_libudev" != xno; then
       AC_CHECK_HEADERS([libudev.h], [
-	AC_CHECK_LIB([udev], [udev_device_new_from_subsystem_sysname], [HWLOC_LIBS="$HWLOC_LIBS -ludev"])
+	AC_CHECK_LIB([udev], [udev_device_new_from_subsystem_sysname], [
+	  HWLOC_LIBS="$HWLOC_LIBS -ludev"
+	  AC_DEFINE([HWLOC_HAVE_LIBUDEV], [1], [Define to 1 if you have libudev.])
+	])
       ])
     fi
 
@@ -725,6 +765,10 @@ EOF])
     if test "x$enable_pci" != xno; then
       hwloc_pci_happy=yes
       HWLOC_PKG_CHECK_MODULES([PCIACCESS], [pciaccess], [pci_slot_match_iterator_create], [pciaccess.h], [:], [hwloc_pci_happy=no])
+
+      # Only add the REQUIRES if we got pciaccess through pkg-config.
+      # Otherwise we don't know if pciaccess.pc is installed
+      AS_IF([test "$hwloc_pci_happy" = "yes"], [HWLOC_PCIACCESS_REQUIRES=pciaccess])
 
       # Just for giggles, if we didn't find a pciaccess pkg-config,
       # just try looking for its header file and library.
@@ -737,8 +781,7 @@ EOF])
          ])
 
       AS_IF([test "$hwloc_pci_happy" = "yes"],
-         [HWLOC_PCIACCESS_REQUIRES=pciaccess
-          hwloc_pci_lib=pciaccess
+         [hwloc_pci_lib=pciaccess
           hwloc_components="$hwloc_components pci"
           hwloc_pci_component_maybeplugin=1])
     fi
@@ -912,6 +955,8 @@ EOF])
             AC_DEFINE([HWLOC_HAVE_GL], [1], [Define to 1 if you have the GL module components.])
 	    HWLOC_GL_LIBS="-lXNVCtrl -lXext -lX11"
 	    AC_SUBST(HWLOC_GL_LIBS)
+	    # FIXME we actually don't know if xext.pc and x11.pc are installed
+	    # since we didn't look for Xext and X11 using pkg-config
 	    HWLOC_GL_REQUIRES="xext x11"
             hwloc_have_gl=yes
 	    hwloc_components="$hwloc_components gl"
@@ -1192,6 +1237,7 @@ AC_DEFUN([HWLOC_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([HWLOC_HAVE_SET_MEMPOLICY], [test "x$enable_set_mempolicy" != "xno"])
         AM_CONDITIONAL([HWLOC_HAVE_MBIND], [test "x$enable_mbind" != "xno"])
         AM_CONDITIONAL([HWLOC_HAVE_BUNZIPP], [test "x$BUNZIPP" != "xfalse"])
+        AM_CONDITIONAL([HWLOC_HAVE_USER32], [test "x$hwloc_have_user32" = "xyes"])
 
         AM_CONDITIONAL([HWLOC_BUILD_DOXYGEN],
                        [test "x$hwloc_generate_doxs" = "xyes"])
@@ -1261,19 +1307,22 @@ AC_DEFUN([_HWLOC_CHECK_DIFF_W], [
 
 dnl HWLOC_CHECK_DECL
 dnl
-dnl Check declaration of given function by trying to call it with an insane
-dnl number of arguments (10). Success means the compiler couldn't really check.
+dnl Check that the declaration of the given function has a complete prototype
+dnl with argument list by trying to call it with an insane dnl number of
+dnl arguments (10). Success means the compiler couldn't really check.
 AC_DEFUN([_HWLOC_CHECK_DECL], [
-  AC_MSG_CHECKING([whether function $1 is declared])
-  AC_REQUIRE([AC_PROG_CC])
-  AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
-       [AC_INCLUDES_DEFAULT([$4])
-	void * $1;],
-    )],
-    [AC_MSG_RESULT([no])
-     $3],
-    [AC_MSG_RESULT([yes])
-     $2]
+  AC_CHECK_DECL([$1], [
+    AC_MSG_CHECKING([whether function $1 has a complete prototype])
+    AC_REQUIRE([AC_PROG_CC])
+    AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
+         [AC_INCLUDES_DEFAULT([$4])],
+         [$1(1,2,3,4,5,6,7,8,9,10);]
+      )],
+      [AC_MSG_RESULT([no])
+       $3],
+      [AC_MSG_RESULT([yes])
+       $2]
+    )], [$3], $4
   )
 ])
 

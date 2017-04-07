@@ -3,7 +3,7 @@
  *  (C) 2006 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,7 +23,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_queue_init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 int MPID_nem_ib_queue_init(
         MPID_nem_ib_queue_t **q)
@@ -53,7 +53,7 @@ int MPID_nem_ib_queue_init(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_queue_new_elem
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 int MPID_nem_ib_queue_new_elem(
         MPID_nem_ib_queue_elem_t **e, void *init_ptr)
@@ -80,7 +80,7 @@ int MPID_nem_ib_queue_new_elem(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_queue_empty
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 int MPID_nem_ib_queue_empty(
         MPID_nem_ib_queue_t *q)
@@ -91,7 +91,7 @@ int MPID_nem_ib_queue_empty(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_queue_dequeue
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 void MPID_nem_ib_queue_dequeue(
         MPID_nem_ib_queue_t *q,
@@ -112,7 +112,7 @@ void MPID_nem_ib_queue_dequeue(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_queue_enqueue
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 void MPID_nem_ib_queue_enqueue(
         MPID_nem_ib_queue_t *q,
@@ -131,7 +131,7 @@ void MPID_nem_ib_queue_enqueue(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_queue_free
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 void MPID_nem_ib_queue_free(
         MPID_nem_ib_queue_t *q,
@@ -144,7 +144,7 @@ void MPID_nem_ib_queue_free(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_queue_alloc
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 int MPID_nem_ib_queue_alloc(
         MPID_nem_ib_queue_t *q,
@@ -174,7 +174,7 @@ int MPID_nem_ib_queue_alloc(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_queue_finalize
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 void MPID_nem_ib_queue_finalize(
         MPID_nem_ib_queue_t *q)

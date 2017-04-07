@@ -6,7 +6,7 @@
  */
 
 /*
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -83,7 +83,7 @@ int MPI_Request_free(MPI_Request *request)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_REQUEST_FREE);
 
     if (*request == MPI_REQUEST_NULL) {
@@ -190,7 +190,7 @@ int MPI_Request_free(MPI_Request *request)
     
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_REQUEST_FREE);
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     return mpi_errno;
 
   fn_fail:

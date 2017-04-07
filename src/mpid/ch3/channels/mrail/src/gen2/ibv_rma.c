@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,11 +39,11 @@ MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAILI_Get_rndv_rput
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc, 
                                     MPID_Request * req,
                                     MPIDI_CH3I_MRAILI_Rndv_info_t * rndv,
-                				    MPID_IOV *iov)
+                				    MPL_IOV *iov)
 {
     /* This function will register the local buf, send rdma write to target, and send
      * get_resp_kt as rput finsh. Currently, we assume the local buffer is contiguous,

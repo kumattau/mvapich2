@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -939,7 +939,8 @@ int mv2_setup_multicast(mcast_info_t * minfo, MPID_Comm * comm_ptr)
     MPID_Comm *leader_ptr;
     mcast_init_info_t init_info;
     mcast_init_info_t *all_init_info = NULL;
-    int leader_rank, leader_comm_size, errflag = 0;
+    int leader_rank, leader_comm_size;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     int comm_id;
 
     MPID_Comm_get_ptr(comm_ptr->dev.ch.leader_comm, leader_ptr);
@@ -1218,7 +1219,7 @@ void mv2_mcast_recv(bcast_info_t * bcast_info, char *buf, int len, int root)
     mv2_mcast_remove_recvwin(&bcast_info->recv_window, v);
 
     PRINT_DEBUG(DEBUG_MCST_verbose > 3,
-                "mcast recv size:%d psn:%d len:%d\n", v->content_size, p->psn, len);
+                "mcast recv size:%zu psn:%d len:%d\n", v->content_size, p->psn, len);
     if (len != (v->content_size - sizeof(MPIDI_CH3_Pkt_mcast_t))) {
         PRINT_DEBUG(1, "mismatch in size\n");
     }

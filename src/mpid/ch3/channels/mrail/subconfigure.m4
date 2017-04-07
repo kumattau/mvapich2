@@ -181,6 +181,20 @@ AC_ARG_ENABLE([mcast],
               [],
               [enable_mcast=yes])
 
+AC_ARG_ENABLE([multi-subnet],
+              [AS_HELP_STRING([--enable-multi-subnet],
+                              [enable hardware multicast])
+              ],
+              [],
+              [enable_multi_subnet=no])
+
+AC_ARG_ENABLE([sharp],
+              [AS_HELP_STRING([--enable-sharp],
+                              [enable SHARP support])
+              ],
+              [enable_sharp=yes],
+              [enable_sharp=no])
+
 AC_ARG_ENABLE([3dtorus-support],
               [AS_HELP_STRING([--enable-3dtorus-support],
                               [Enable support for 3D torus networks])
@@ -553,6 +567,19 @@ if test "$with_rdma" = "gen2"; then
         fi
     fi
 
+    if test "$enable_multi_subnet" = "yes" ; then
+        if test "$enable_rdma_cm" = "yes"; then
+            AC_CHECKING([for inter subnet communication support])
+            AC_CHECK_DECLS([RAI_FAMILY],[rai_family=yes],[rai_family=no],[[#include <rdma/rdma_cma.h>]])
+            if test $rai_family = "yes"; then
+                AC_DEFINE(_MULTI_SUBNET_SUPPORT_, 1 , [Define to enable inter subnet communication support.])
+                AC_MSG_NOTICE([inter subnet communication support enabled])
+            fi
+        else
+            AC_MSG_ERROR(['Support for inter subnet communication requires RDMA_CM support. Please retry with --enable-rdma-cm or after removing --enable-multi-subnet'])
+        fi
+    fi
+
     if test "$enable_mcast" != "no"; then
         AC_CHECKING([for Hardware multicast support enabled])
         AC_SEARCH_LIBS(mad_get_field, ibmad, lib_mad_found="yes", lib_mad_found="no",)
@@ -562,6 +589,14 @@ if test "$with_rdma" = "gen2"; then
             AC_MSG_NOTICE([Hardware multicast support enabled])
         fi
     fi
+
+    if test "$enable_sharp" != "no"; then
+        AC_CHECKING([for SHARP support enabled])
+        AC_CHECK_HEADER([api/sharp_coll.h],,[AC_MSG_ERROR(['api/sharp_coll.h  not found. Please retry without --enable-sharp'])])
+        AC_DEFINE(_SHARP_SUPPORT_, 1 , [Define to enable switch IB-2 sharp support.])
+        AC_MSG_NOTICE([SHARP support enabled])
+    fi
+
 
     AC_ARG_WITH([cuda],
         [AS_HELP_STRING([--with-cuda=@<:@CUDA installation path@:>@],

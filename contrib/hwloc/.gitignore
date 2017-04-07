@@ -53,6 +53,7 @@ test-suite.log
 /doc/examples/cpuset+bitmap+cpubind
 /doc/examples/nodeset+membind+policy
 /doc/examples/sharedcaches
+/doc/examples/get-knl-modes
 /doc/examples/*.o
 /doc/examples/*.log
 /doc/examples/*.trs
@@ -113,6 +114,10 @@ test-suite.log
 /tests/linux/test-topology.sh
 /tests/linux/*.log
 /tests/linux/*.trs
+
+/tests/linux/allowed/test-topology.sh
+/tests/linux/allowed/*.log
+/tests/linux/allowed/*.trs
 
 /tests/linux/gather/test-gather-topology.sh
 /tests/linux/gather/*.log
@@ -176,3 +181,4 @@ test-suite.log
 /utils/lstopo/test-*.sh.log
 /utils/lstopo/test-*.sh.trs
 
+/contrib/systemd/hwloc-dump-hwdata.service

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <mpimem.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 struct PMI_keyval_t;
 int _size, _rank, _appnum;
@@ -45,9 +47,6 @@ int UPMI_INIT( int *spawned ) {
     int pmi_ret_val;
     #ifdef USE_PMI2_API
     pmi_ret_val = PMI2_Init( spawned, &_size, &_rank, &_appnum );
-    if (_appnum == -1) {
-        _singleton_mode = 1;
-    }
     #else
     UPMI_lock_init();
     pmi_ret_val = PMI_Init( spawned );
@@ -315,10 +314,10 @@ int UPMI_KVS_GET_VALUE_LENGTH_MAX( int *length ) {
 int UPMI_KVS_GET_MY_NAME( char kvsname[], int length ) {
     int pmi_ret_val;
     #ifdef USE_PMI2_API
-    if (!_singleton_mode) {
-        pmi_ret_val = PMI2_Job_GetId( kvsname, length );
-    } else {
-        sprintf(kvsname, "%s", "singleton_kvs");
+    pmi_ret_val = PMI2_Job_GetId( kvsname, length );
+    if (pmi_ret_val == PMI2_ERR_OTHER && _size == 1) {
+        _singleton_mode = 1;
+        sprintf(kvsname, "singleton_kvs_%llu", getpid());
         pmi_ret_val = UPMI_SUCCESS;
     }
     #else

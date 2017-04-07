@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,6 +20,9 @@
 #if defined(_MCST_SUPPORT_)
 #include "ibv_mcast.h"
 #endif
+#if defined (_SHARP_SUPPORT_)
+#include "ibv_sharp.h"
+#endif
 
 #define MPIDI_CH3I_HOST_DESCRIPTION_KEY "description"
 
@@ -32,20 +35,20 @@ extern int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank);
 #undef FUNCNAME
 #define FUNCNAME split_type
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int split_type(MPID_Comm * comm_ptr, int stype, int key,
                       MPID_Info *info_ptr, MPID_Comm ** newcomm_ptr)
 {
     MPID_Node_id_t id;
-    MPIR_Rank_t nid;
+    MPIDI_Rank_t nid;
     int mpi_errno = MPI_SUCCESS;
 
     mpi_errno = MPID_Get_node_id(comm_ptr, comm_ptr->rank, &id);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     nid = (stype == MPI_COMM_TYPE_SHARED) ? id : MPI_UNDEFINED;
     mpi_errno = MPIR_Comm_split_impl(comm_ptr, nid, key, newcomm_ptr);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
   fn_exit:
     return mpi_errno;
@@ -63,7 +66,7 @@ static MPID_CommOps comm_fns = {
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -83,7 +86,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     if (MPIDI_CH3_Pkt_size_index[MPIDI_CH3_PKT_CLOSE] !=
         sizeof(MPIDI_CH3_Pkt_close_t)) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s",
                                   "Failed sanity check! Packet size table mismatch");
     }
@@ -94,7 +97,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     mv2_allocate_pmi_keyval();
 
     mpi_errno = MPIDI_CH3U_Comm_register_create_hook(MPIDI_CH3I_comm_create, NULL);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     
     /* Default startup */
     MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
@@ -115,9 +118,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     MPIDI_CH3I_Process.has_dpm = dpm;
 #ifdef _ENABLE_UD_
     if (MPIDI_CH3I_Process.has_dpm) {
-        MPIU_Error_printf("Error: DPM is not supported with Hybrid builds.\n"
+        MPL_error_printf("Error: DPM is not supported with Hybrid builds.\n"
                           "Please reconfigure MVAPICH2 library without --enable-hybrid option.\n");
-        MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
     }
 #endif /* _ENABLE_UD_ */
     if (MPIDI_CH3I_Process.has_dpm) {
@@ -132,9 +135,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
                 cuda_get_user_parameters();
             }
 #else
-            MPIU_Error_printf("GPU CUDA support is not configured. "
+            MPL_error_printf("GPU CUDA support is not configured. "
                               "Please reconfigure MVAPICH2 library with --enable-cuda option.\n");
-            MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
 #endif
         }
     }
@@ -208,7 +211,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         value = getenv("MV2_USE_XRC");
         if (value && (pg_rank == 0)) {
             if (atoi(value)) {
-                MPIU_Error_printf("Error: XRC does not work with RDMA CM. "
+                MPL_error_printf("Error: XRC does not work with RDMA CM. "
                                   "Proceeding without XRC support.\n");
             }
         }
@@ -239,10 +242,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #if defined(CKPT)
 #if defined(RDMA_CM)
     if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
-        MPIU_Error_printf("Error: Checkpointing does not work with RDMA CM.\n"
+        MPL_error_printf("Error: Checkpointing does not work with RDMA CM.\n"
                           "Please configure and compile MVAPICH2 with checkpointing disabled "
                           "or without support for RDMA CM.\n");
-        MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
     }
 #endif /* defined(RDMA_CM) */
 
@@ -273,7 +276,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     /* Initialize Progress Engine */
     if ((mpi_errno = MPIDI_CH3I_Progress_init())) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     /* Get parameters from the job-launcher */
@@ -302,7 +305,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         if (pg->ch.local_process_id == -1) {
             mpi_errno = MPIDI_Get_local_host(pg, pg_rank);
             if (mpi_errno) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                         "**fail %s", "MPIDI_Get_local_host");
             }
         }
@@ -313,7 +316,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         /* Reading the values from user first and then allocating the memory */
         mpi_errno = rdma_get_control_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
         if (mpi_errno) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                     "**fail %s", "rdma_get_control_parameters");
         }
         /* Set default values for parameters */
@@ -324,12 +327,12 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         /* Allocate structures to store CM information
          * This MUST come after reading env vars */
         mpi_errno = MPIDI_CH3I_MRAIL_CM_Alloc(pg);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
 #if !defined(DISABLE_PTMALLOC)
         if (mvapich2_minit()) {
             if (pg_rank == 0) {
-                MPIU_Error_printf("WARNING: Error in initializing MVAPICH2 ptmalloc library."
+                MPL_error_printf("WARNING: Error in initializing MVAPICH2 ptmalloc library."
                 "Continuing without InfiniBand registration cache support.\n");
             }
             mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister = 0;
@@ -346,21 +349,21 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             case MPIDI_CH3I_CM_RDMA_CM:
                 mpi_errno = MPIDI_CH3I_RDMA_CM_Init(pg, pg_rank, &conn_info);
                 if (mpi_errno != MPI_SUCCESS) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
                 break;
 #endif /* defined(RDMA_CM) */
             case MPIDI_CH3I_CM_ON_DEMAND:
                 mpi_errno = MPIDI_CH3I_CM_Init(pg, pg_rank, &conn_info);
                 if (mpi_errno != MPI_SUCCESS) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
                 break;
             default:
                 /*call old init to setup all connections */
                 if ((mpi_errno =
                      MPIDI_CH3I_RDMA_init(pg, pg_rank)) != MPI_SUCCESS) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
 
                 /* All vc should be connected */
@@ -375,14 +378,14 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
 #if defined(CKPT)
 #if defined(DISABLE_PTMALLOC)
-    MPIU_Error_printf("Error: Checkpointing does not work without registration "
+    MPL_error_printf("Error: Checkpointing does not work without registration "
                       "caching enabled.\nPlease configure and compile MVAPICH2 without checkpointing "
                       " or enable registration caching.\n");
-    MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
+    MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
 #endif /* defined(DISABLE_PTMALLOC) */
 
     if ((mpi_errno = MPIDI_CH3I_CR_Init(pg, pg_rank, pg_size))) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 #endif /* defined(CKPT) */
 
@@ -391,7 +394,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         if (dpm) {
 	        mpi_errno = MPIDI_PG_SetConnInfo(pg_rank, (const char *) conn_info);
 	        if (mpi_errno != MPI_SUCCESS) {
-	            MPIU_ERR_POP(mpi_errno);
+	            MPIR_ERR_POP(mpi_errno);
 	        }
         }
         MPIU_Free(conn_info);
@@ -401,7 +404,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     /* Initialize the smp channel */
     if ((mpi_errno = MPIDI_CH3I_SMP_init(pg))) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if (SMP_INIT) {
@@ -472,16 +475,31 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
 #endif
 
+#if defined(_SHARP_SUPPORT_)
+    if ((value = getenv("MV2_ENABLE_SHARP")) != NULL) {
+        mv2_enable_sharp_coll = atoi(value);
+    }
+    if ((value = getenv("MV2_SHARP_PORT")) != NULL) {
+        mv2_sharp_port = atoi(value);
+    }
+    if ((value = getenv("MV2_SHARP_HCA_NAME")) != NULL) {
+        mv2_sharp_hca_name = MPIU_Malloc(sizeof(value));
+        MPIU_Memcpy(mv2_sharp_hca_name, value, sizeof(value));
+    }
+#endif
+
     if (mv2_rdma_init_timers) {
         mv2_init_timers();
     }
 
     mpi_errno = MPIDI_CH3U_Comm_register_destroy_hook(MPIDI_CH3I_comm_destroy, NULL);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
-    if (g_atomics_support || ((rdma_use_blocking) && (pg_size > threshold))) {
-        MPIDI_PG_Get_vc(pg, pg_rank, &vc);
-        MPIDI_CH3I_CM_Connect_self(vc);
+    if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) {
+        if (g_atomics_support || ((rdma_use_blocking) && (pg_size > threshold))) {
+            MPIDI_PG_Get_vc(pg, pg_rank, &vc);
+            MPIDI_CH3I_CM_Connect_self(vc);
+        }
     }
 
   fn_exit:
@@ -495,7 +513,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_VC_Init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_VC_Init(MPIDI_VC_t * vc)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_VC_INIT);
@@ -562,7 +580,7 @@ int MPIDI_CH3_VC_Init(MPIDI_VC_t * vc)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_PortFnsInit
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_PortFnsInit(MPIDI_PortFns * portFns)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_RDMA_PORTFNSINIT);
@@ -583,7 +601,7 @@ int MPIDI_CH3_PortFnsInit(MPIDI_PortFns * portFns)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Connect_to_root
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Connect_to_root(const char *port_name, MPIDI_VC_t ** new_vc)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -608,31 +626,31 @@ int MPIDI_CH3_Connect_to_root(const char *port_name, MPIDI_VC_t ** new_vc)
     if (str_errno != MPIU_STR_SUCCESS) {
         /* --BEGIN ERROR HANDLING */
         if (str_errno == MPIU_STR_FAIL) {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER,
                                 "**argstr_missinghost");
         } else {
             /* MPIU_STR_TRUNCATED or MPIU_STR_NONEM */
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**argstr_hostd");
+            MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**argstr_hostd");
         }
         /* --END ERROR HANDLING-- */
     }
 
     vc = MPIU_Malloc(sizeof(MPIDI_VC_t));
     if (!vc) {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
     }
     MPIDI_VC_Init(vc, NULL, 0);
 
     mpi_errno = MPIDI_CH3I_CM_Connect_raw_vc(vc, ifname);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     while (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
         mpi_errno = MPID_Progress_test();
         /* --BEGIN ERROR HANDLING-- */
         if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
     }
 
@@ -646,12 +664,12 @@ int MPIDI_CH3_Connect_to_root(const char *port_name, MPIDI_VC_t ** new_vc)
     pkt.vc_addr = vc->mrail.remote_vc_addr;
     mpi_errno = MPIDI_GetTagFromPort(port_name, &pkt.port_name_tag);
     if (mpi_errno != MPIU_STR_SUCCESS) {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**argstr_port_name_tag");
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**argstr_port_name_tag");
     }
 
     mpi_errno = MPIDI_CH3_iStartMsg(vc, &pkt, sizeof(pkt), &sreq);
     if (mpi_errno != MPI_SUCCESS) {
-        MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s",
+        MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s",
                              "Failed to send cm establish message");
     }
 
@@ -677,7 +695,7 @@ int MPIDI_CH3_Connect_to_root(const char *port_name, MPIDI_VC_t ** new_vc)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Get_business_card
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
 {
     char ifname[MAX_HOST_DESCRIPTION_LEN];
@@ -687,7 +705,7 @@ int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
 
     mpi_errno = MPIDI_CH3I_CM_Get_port_info(ifname, MAX_HOST_DESCRIPTION_LEN);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     mpi_errno = MPIU_Str_add_string_arg(&value, &length,
@@ -695,9 +713,9 @@ int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
                                         ifname);
     if (mpi_errno != MPIU_STR_SUCCESS) {
         if (mpi_errno == MPIU_STR_NOMEM) {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
+            MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
         } else {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard");
+            MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard");
         }
     }
 
@@ -711,7 +729,7 @@ int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_PG_Init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_PG_Init(MPIDI_PG_t * pg)
 {
     char *value     = NULL;
@@ -728,14 +746,14 @@ int MPIDI_CH3_PG_Init(MPIDI_PG_t * pg)
 
     pg->ch.mrail = MPIU_Malloc(sizeof(MPIDI_CH3I_MRAIL_CM_t));
     if (pg->ch.mrail == NULL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
                 "**nomem %s", "ud_cm mrail");
     }
     MPIU_Memset(pg->ch.mrail, 0, sizeof(MPIDI_CH3I_MRAIL_CM_t));
 
     pg->ch.mrail->cm_ah = MPIU_Malloc(pg->size * sizeof(struct ibv_ah *));
     if (pg->ch.mrail->cm_ah == NULL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
                 "**nomem %s", "cm_ah");
     }
     MPIU_Memset(pg->ch.mrail->cm_ah, 0, pg->size * sizeof(struct ibv_ah *));
@@ -744,7 +762,7 @@ int MPIDI_CH3_PG_Init(MPIDI_PG_t * pg)
         pg->ch.mrail->cm_shmem.ud_cm =
                 MPIU_Malloc(pg->size * sizeof(MPIDI_CH3I_MRAIL_UD_CM_t));
         if (pg->ch.mrail->cm_shmem.ud_cm == NULL) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
                     "**nomem %s", "ud_cm");
         }
         MPIU_Memset(pg->ch.mrail->cm_shmem.ud_cm, 0,
@@ -760,7 +778,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_PG_Destroy
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_PG_Destroy(struct MPIDI_PG *pg)
 {
     return MPIDI_CH3I_MRAIL_CM_Dealloc(pg);
@@ -771,7 +789,7 @@ int MPIDI_CH3_PG_Destroy(struct MPIDI_PG *pg)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_VC_Destroy
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_VC_Destroy(struct MPIDI_VC *vc)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_VC_DESTROY);
@@ -814,7 +832,7 @@ int MPIDI_CH3_VC_Destroy(struct MPIDI_VC *vc)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_InitCompleted
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_InitCompleted(void)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_INITCOMPLETED);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,7 +29,7 @@ typedef struct {
     int min;
     int max;
     int (*MV2_pt_Bcast_function) (void *buf, int count, MPI_Datatype datatype,
-                                  int root, MPID_Comm * comm_ptr, int *errflag);
+                                  int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
     int zcpy_pipelined_knomial_factor;
 } mv2_bcast_tuning_element;
 
@@ -59,7 +59,7 @@ extern int mv2_use_old_bcast;
 typedef struct {
     int msg_sz;
     int (*MV2_pt_Bcast_function) (void *buf, int count, MPI_Datatype datatype,
-                                  int root, MPID_Comm * comm_ptr, int *errflag);
+                                  int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
     int zcpy_pipelined_knomial_factor;
 } mv2_bcast_indexed_tuning_element;
 
@@ -85,56 +85,56 @@ extern mv2_bcast_indexed_tuning_table **mv2_bcast_indexed_thresholds_table;
 extern int MPIR_Bcast_binomial_MV2(void *buffer,
                                    int count,
                                    MPI_Datatype datatype,
-                                   int root, MPID_Comm * comm_ptr, int *errflag);
+                                   int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Bcast_scatter_doubling_allgather_MV2(void *buffer,
                                                      int count,
                                                      MPI_Datatype datatype,
                                                      int root,
-                                                     MPID_Comm * comm_ptr, int *errflag);
+                                                     MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Bcast_scatter_ring_allgather_MV2(void *buffer,
                                                  int count,
                                                  MPI_Datatype datatype,
                                                  int root,
-                                                 MPID_Comm * comm_ptr, int *errflag);
+                                                 MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Bcast_scatter_ring_allgather_shm_MV2(void *buffer,
                                                         int count,
                                                         MPI_Datatype datatype,
                                                         int root,
                                                         MPID_Comm * comm_ptr,
-                                                        int *errflag);
+                                                        MPIR_Errflag_t *errflag);
 
 extern int MPIR_Knomial_Bcast_inter_node_MV2(void *buffer,
                                              int count,
                                              MPI_Datatype datatype,
                                              int root, int knomial_factor,
-                                             MPID_Comm * comm_ptr, int *errflag);
+                                             MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Knomial_Bcast_inter_node_wrapper_MV2(void *buffer,
                                                      int count,
                                                      MPI_Datatype datatype,
                                                      int root, MPID_Comm * comm_ptr, 
-                                                     int *errflag);
+                                                     MPIR_Errflag_t *errflag);
 
 extern int MPIR_Pipelined_Bcast_MV2(void *buffer,
                                     int count,
                                     MPI_Datatype datatype,
-                                    int root, MPID_Comm * comm_ptr, int *errflag);
+                                    int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 
 /* Use for intra-node in case of two lvl algo */
 extern int MPIR_Shmem_Bcast_MV2(void *buffer,
                                 int count,
                                 MPI_Datatype datatype,
-                                int root, MPID_Comm * shmem_comm_ptr, int *errflag);
+                                int root, MPID_Comm * shmem_comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Knomial_Bcast_intra_node_MV2(void *buffer,
                                              int count,
                                              MPI_Datatype datatype,
                                              int root,
-                                             MPID_Comm * comm_ptr, int *errflag);
+                                             MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Knomial_Bcast_inter_node_trace_MV2(int root, int mv2_bcast_knomial_factor,
                  int *src, int *expected_send_count,
@@ -145,7 +145,7 @@ extern int MPIR_Knomial_Bcast_inter_node_trace_MV2(int root, int mv2_bcast_knomi
 extern int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
                          int count,
                          MPI_Datatype datatype,
-                         int root, MPID_Comm * comm_ptr, int *errflag); 
+                         int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag); 
 #endif
 
 extern int MPIR_Shmem_Bcast_Zcpy_MV2(void *buffer,
@@ -156,13 +156,13 @@ extern int MPIR_Shmem_Bcast_Zcpy_MV2(void *buffer,
                          int *dst_array, int expected_send_count,
                          int knomial_factor,
                          MPID_Comm *comm_ptr,
-                         int *errflag); 
+                         MPIR_Errflag_t *errflag); 
 
 #if defined(_MCST_SUPPORT_)
 extern int MPIR_Mcast_inter_node_MV2(void *buffer,
                                      int count,
                                      MPI_Datatype datatype,
-                                     int root, MPID_Comm * comm_ptr, int *errflag);
+                                     int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 #endif                          /* #if defined(_MCST_SUPPORT_) */
 
 /* Architecture detection tuning */

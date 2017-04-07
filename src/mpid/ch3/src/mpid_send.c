@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,8 +25,8 @@
 #undef FUNCNAME
 #define FUNCNAME MPID_Send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank, 
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPID_Send(const void * buf, MPI_Aint count, MPI_Datatype datatype, int rank,
 	      int tag, MPID_Comm * comm, int context_offset,
 	      MPID_Request ** request)
 {
@@ -39,7 +39,7 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif    
-    int eager_threshold = -1;
+    MPIDI_msg_sz_t eager_threshold = -1;
     int mpi_errno = MPI_SUCCESS;    
 #ifdef _ENABLE_CUDA_
     int cuda_transfer_mode = 0;
@@ -55,9 +55,9 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 
     /* Check to make sure the communicator hasn't already been revoked */
     if (comm->revoked &&
-            MPIR_AGREE_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask) &&
-            MPIR_SHRINK_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask)) {
-        MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
+            MPIR_AGREE_TAG != MPIR_TAG_MASK_ERROR_BITS(tag & ~MPIR_Process.tagged_coll_mask) &&
+            MPIR_SHRINK_TAG != MPIR_TAG_MASK_ERROR_BITS(tag & ~MPIR_Process.tagged_coll_mask)) {
+        MPIR_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
     }
 
 /* psm internally has a self-send mode no
@@ -74,13 +74,13 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 	   will not be made (long-term FIXME) */
 #       ifndef MPICH_IS_THREADED
 	{
-	    if (sreq != NULL && sreq->cc != 0) {
-		MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
+	    if (sreq != NULL && MPID_cc_get(sreq->cc) != 0) {
+		MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
 				    "**dev|selfsenddeadlock");
 	    }
 	}
 #	endif
-	if (mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
+	if (mpi_errno != MPI_SUCCESS) { MPIR_ERR_POP(mpi_errno); }
 	goto fn_exit;
     }
 #endif /*CHANNEL_PSM*/
@@ -92,6 +92,7 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
     }
 
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+    MPIR_ERR_CHKANDJUMP1(vc->state == MPIDI_VC_STATE_MORIBUND, mpi_errno, MPIX_ERR_PROC_FAILED, "**comm_fail", "**comm_fail %d", rank);
 
 #ifdef ENABLE_COMM_OVERRIDES
     if (vc->comm_ops && vc->comm_ops->send)
@@ -139,13 +140,13 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 	MPIDI_VC_FAI_send_seqnum(vc, seqnum);
 	MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
 	
-	MPIU_THREAD_CS_ENTER(CH3COMM,vc);
+	MPID_THREAD_CS_ENTER(POBJ, vc->pobj_mutex);
 	mpi_errno = MPIDI_CH3_iStartMsg(vc, eager_pkt, sizeof(*eager_pkt), &sreq);
-	MPIU_THREAD_CS_EXIT(CH3COMM,vc);
+	MPID_THREAD_CS_EXIT(POBJ, vc->pobj_mutex);
 	/* --BEGIN ERROR HANDLING-- */
 	if (mpi_errno != MPI_SUCCESS)
 	{
-	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|eagermsg");
+	    MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|eagermsg");
 	}
 	/* --END ERROR HANDLING-- */
 	if (sreq != NULL)

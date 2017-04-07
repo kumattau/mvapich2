@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -43,10 +43,10 @@ Used indirectly by mpid_irecv, mpid_recv (through MPIDI_CH3_RecvFromSelf) and
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Buffer_copy
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3U_Buffer_copy(
-    const void * const sbuf, int scount, MPI_Datatype sdt, int * smpi_errno,
-    void * const rbuf, int rcount, MPI_Datatype rdt, MPIDI_msg_sz_t * rsz,
+    const void * const sbuf, MPI_Aint scount, MPI_Datatype sdt, int * smpi_errno,
+    void * const rbuf, MPI_Aint rcount, MPI_Datatype rdt, MPIDI_msg_sz_t * rsz,
     int * rmpi_errno)
 {
     int sdt_contig;
@@ -238,7 +238,7 @@ void MPIDI_CH3U_Buffer_copy(
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Buffer_copy_cuda
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3U_Buffer_copy_cuda(
         const void * const sbuf, int scount, MPI_Datatype sdt, int * smpi_errno,
         void * const rbuf, int rcount, MPI_Datatype rdt, MPIDI_msg_sz_t * rsz,
@@ -389,10 +389,11 @@ fn_exit:
  * This routine is called by mpid_recv and mpid_irecv when a request
  * matches a send-to-self message 
  */
-int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, int count, 
+int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, MPI_Aint count,
 			    MPI_Datatype datatype )
 {
     MPID_Request * const sreq = rreq->partner_request;
+    int mpi_errno = MPI_SUCCESS;
 
     if (sreq != NULL)
     {
@@ -403,8 +404,10 @@ int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, int count,
 			       buf, count, datatype, &data_sz, 
 			       &rreq->status.MPI_ERROR);
 	MPIR_STATUS_SET_COUNT(rreq->status, data_sz);
-	MPID_REQUEST_SET_COMPLETED(sreq);
-	MPID_Request_release(sreq);
+	mpi_errno = MPID_Request_complete(sreq);
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIR_ERR_POP(mpi_errno);
+        }
     }
     else
     {
@@ -415,9 +418,13 @@ int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, int count,
     
     /* no other thread can possibly be waiting on rreq, so it is safe to 
        reset ref_count and cc */
-    /* FIXME DJG really? shouldn't we at least decr+assert? */
-    MPID_cc_set(rreq->cc_ptr, 0);
-    MPIU_Object_set_ref(rreq, 1);
+    mpi_errno = MPID_Request_complete(rreq);
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIR_ERR_POP(mpi_errno);
+    }
 
-    return MPI_SUCCESS;
+ fn_exit:
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
 }

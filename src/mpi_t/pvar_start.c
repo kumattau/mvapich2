@@ -30,7 +30,7 @@ int MPI_T_pvar_start(MPI_T_pvar_session session, MPI_T_pvar_handle handle) __att
 #undef FUNCNAME
 #define FUNCNAME MPIR_T_pvar_start_impl
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_T_pvar_start_impl(MPI_T_pvar_session session, MPI_T_pvar_handle handle)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -67,10 +67,7 @@ int MPIR_T_pvar_start_impl(MPI_T_pvar_session session, MPI_T_pvar_handle handle)
     /* OK, let's get started */
     MPIR_T_pvar_set_started(handle);
 
-fn_exit:
     return mpi_errno;
-fn_fail:
-    goto fn_exit;
 }
 
 #endif /* MPICH_MPI_FROM_PMPI */
@@ -78,7 +75,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPI_T_pvar_start
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /*@
 MPI_T_pvar_start - Start a performance variable
 

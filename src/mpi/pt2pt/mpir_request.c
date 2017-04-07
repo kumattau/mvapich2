@@ -6,7 +6,7 @@
  */
 
 /*
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,7 +23,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIR_Progress_wait_request
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /*@
   MPIR_Progress_wait_request
 
@@ -46,7 +46,7 @@ int MPIR_Progress_wait_request(MPID_Request *req)
             {
                 /* --BEGIN ERROR HANDLING-- */
                 MPID_Progress_end(&progress_state);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                 /* --END ERROR HANDLING-- */
             }
         }
@@ -59,7 +59,7 @@ fn_fail: /* no special err handling at this level */
 #undef FUNCNAME
 #define FUNCNAME MPIR_Request_complete
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /* Complete a request, saving the status data if necessary.
    "active" has meaning only if the request is a persistent request; this 
    allows the completion routines to indicate that a persistent request 
@@ -87,7 +87,7 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr,
 	    mpi_errno = request_ptr->status.MPI_ERROR;
 	    MPIR_SENDQ_FORGET(request_ptr);
 	    MPID_Request_release(request_ptr);
-	    *request = MPI_REQUEST_NULL;
+            if (NULL != request) *request = MPI_REQUEST_NULL;
 	    break;
 	}
 	case MPID_REQUEST_RECV:
@@ -98,7 +98,7 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr,
 	    MPIR_Request_extract_status(request_ptr, status);
 	    mpi_errno = request_ptr->status.MPI_ERROR;
 	    MPID_Request_release(request_ptr);
-	    *request = MPI_REQUEST_NULL;
+            if (NULL != request) *request = MPI_REQUEST_NULL;
 	    break;
 	}
 			
@@ -232,7 +232,7 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr,
             }
             
             MPID_Request_release(request_ptr);
-            *request = MPI_REQUEST_NULL;
+            if (NULL != request) *request = MPI_REQUEST_NULL;
 	    
 	    break;
 	}
@@ -243,9 +243,10 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr,
 #ifdef CHANNEL_MRAIL
         MPIU_Assert(request_ptr->ch.reqtype != REQUEST_LIGHT);
 #endif
+            mpi_errno = request_ptr->status.MPI_ERROR;
             MPIR_Request_extract_status(request_ptr, status);
             MPID_Request_release(request_ptr);
-            *request = MPI_REQUEST_NULL;
+            if (NULL != request) *request = MPI_REQUEST_NULL;
             break;
         }
 	
@@ -253,7 +254,7 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr,
 	{
 	    /* --BEGIN ERROR HANDLING-- */
 	    /* This should not happen */
-	    MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN,;, "**badcase",
+	    MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN,;, "**badcase",
 		"**badcase %d", request_ptr->kind);
 	    break;
 	    /* --END ERROR HANDLING-- */
@@ -267,7 +268,7 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr,
 #undef FUNCNAME
 #define FUNCNAME MPIR_Request_get_error
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /* FIXME: What is this routine for?
  *  
  * [BRT] it is used by testall, although looking at testall now, I think the
@@ -339,7 +340,7 @@ int MPIR_Request_get_error(MPID_Request * request_ptr)
 		    rc = (request_ptr->greq_fns->query_fn)(
 			request_ptr->greq_fns->grequest_extra_state,
 			&request_ptr->status);
-		    MPIU_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno,
+		    MPIR_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno,
 			MPI_ERR_OTHER,;, "**user", "**userquery %d", rc);
 		    break;
 #ifdef HAVE_FORTRAN_BINDING
@@ -354,7 +355,7 @@ int MPIR_Request_get_error(MPID_Request * request_ptr)
 		    rc = (int) ierr;
 		    if (rc == MPI_SUCCESS)
 			PMPI_Status_f2c( is, &request_ptr->status );
-		    MPIU_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno,
+		    MPIR_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno,
 			MPI_ERR_OTHER,;, "**user", "**userquery %d", rc);
 		    break;
 		}
@@ -364,7 +365,7 @@ int MPIR_Request_get_error(MPID_Request * request_ptr)
 		{
 		    /* --BEGIN ERROR HANDLING-- */
 		    /* This should not happen */
-		    MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN,;, 
+		    MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN,;, 
 				 "**badcase", 
 				 "**badcase %d", request_ptr->greq_fns->greq_lang);
 		    break;
@@ -379,7 +380,7 @@ int MPIR_Request_get_error(MPID_Request * request_ptr)
 	{
 	    /* --BEGIN ERROR HANDLING-- */
 	    /* This should not happen */
-	    MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN,;, "**badcase", 
+	    MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN,;, "**badcase", 
 				 "**badcase %d", request_ptr->kind);
 	    break;
 	    /* --END ERROR HANDLING-- */
@@ -405,7 +406,7 @@ void MPIR_Grequest_set_lang_f77( MPI_Request greq )
 #undef FUNCNAME
 #define FUNCNAME MPIR_Grequest_cancel
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Grequest_cancel(MPID_Request * request_ptr, int complete)
 {
     int rc;
@@ -419,7 +420,7 @@ int MPIR_Grequest_cancel(MPID_Request * request_ptr, int complete)
 #endif
 	    rc = (request_ptr->greq_fns->cancel_fn)(
 		request_ptr->greq_fns->grequest_extra_state, complete);
-	    MPIU_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno,
+	    MPIR_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno,
 		MPI_ERR_OTHER,;, "**user", "**usercancel %d", rc);
 	    break;
 #ifdef HAVE_FORTRAN_BINDING
@@ -432,7 +433,7 @@ int MPIR_Grequest_cancel(MPID_Request * request_ptr, int complete)
 	    ((MPIR_Grequest_f77_cancel_function *)(request_ptr->greq_fns->cancel_fn))(
 		request_ptr->greq_fns->grequest_extra_state, &icomplete, &ierr);
 	    rc = (int) ierr;
-	    MPIU_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno, MPI_ERR_OTHER,
+	    MPIR_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno, MPI_ERR_OTHER,
 		{;}, "**user", "**usercancel %d", rc);
 	    break;
 	}
@@ -442,7 +443,7 @@ int MPIR_Grequest_cancel(MPID_Request * request_ptr, int complete)
 	{
 	    /* --BEGIN ERROR HANDLING-- */
 	    /* This should not happen */
-	    MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN,;, "**badcase",
+	    MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN,;, "**badcase",
 		"**badcase %d", request_ptr->greq_fns->greq_lang);
 	    break;
 	    /* --END ERROR HANDLING-- */
@@ -456,7 +457,7 @@ int MPIR_Grequest_cancel(MPID_Request * request_ptr, int complete)
 #undef FUNCNAME
 #define FUNCNAME MPIR_Grequest_query
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Grequest_query(MPID_Request * request_ptr)
 {
     int rc;
@@ -470,7 +471,7 @@ int MPIR_Grequest_query(MPID_Request * request_ptr)
 #endif
 	    rc = (request_ptr->greq_fns->query_fn)(request_ptr->greq_fns->grequest_extra_state,
 		&request_ptr->status);
-	    MPIU_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno, MPI_ERR_OTHER,
+	    MPIR_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno, MPI_ERR_OTHER,
 		{;}, "**user", "**userquery %d", rc);
 	    break;
 #ifdef HAVE_FORTRAN_BINDING
@@ -484,7 +485,7 @@ int MPIR_Grequest_query(MPID_Request * request_ptr)
 	    rc = (int)ierr;
 	    if (rc == MPI_SUCCESS) 
 		PMPI_Status_f2c( is, &request_ptr->status );
-	    MPIU_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno, MPI_ERR_OTHER,
+	    MPIR_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno, MPI_ERR_OTHER,
 		{;}, "**user", "**userquery %d", rc);
 	}
 	break;
@@ -493,7 +494,7 @@ int MPIR_Grequest_query(MPID_Request * request_ptr)
 	{
 	    /* --BEGIN ERROR HANDLING-- */
 	    /* This should not happen */
-	    MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN,;, "**badcase",
+	    MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN,;, "**badcase",
 		"**badcase %d", request_ptr->greq_fns->greq_lang);
 	    break;
 	    /* --END ERROR HANDLING-- */
@@ -507,7 +508,7 @@ int MPIR_Grequest_query(MPID_Request * request_ptr)
 #undef FUNCNAME
 #define FUNCNAME MPIR_Grequest_free
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Grequest_free(MPID_Request * request_ptr)
 {
     int rc;
@@ -520,7 +521,7 @@ int MPIR_Grequest_free(MPID_Request * request_ptr)
 	case MPID_LANG_CXX:
 #endif
 	    rc = (request_ptr->greq_fns->free_fn)(request_ptr->greq_fns->grequest_extra_state);
-	    MPIU_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno, MPI_ERR_OTHER,
+	    MPIR_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno, MPI_ERR_OTHER,
 		{;}, "**user", "**userfree %d", rc);
 	    break;
 #ifdef HAVE_FORTRAN_BINDING
@@ -532,7 +533,7 @@ int MPIR_Grequest_free(MPID_Request * request_ptr)
 	    ((MPIR_Grequest_f77_free_function *)(request_ptr->greq_fns->free_fn))(
 		request_ptr->greq_fns->grequest_extra_state, &ierr);
 	    rc = (int) ierr;
-	    MPIU_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno, MPI_ERR_OTHER,
+	    MPIR_ERR_CHKANDSTMT1((rc != MPI_SUCCESS), mpi_errno, MPI_ERR_OTHER,
 		{;}, "**user", "**userfree %d", rc);
 	    break;
 	}
@@ -542,7 +543,7 @@ int MPIR_Grequest_free(MPID_Request * request_ptr)
 	{
 	    /* --BEGIN ERROR HANDLING-- */
 	    /* This should not happen */
-	    MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN, {;}, "**badcase",
+	    MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_INTERN, {;}, "**badcase",
 		"**badcase %d", request_ptr->greq_fns->greq_lang);
 	    break;
 	    /* --END ERROR HANDLING-- */
@@ -559,7 +560,7 @@ int MPIR_Grequest_free(MPID_Request * request_ptr)
 #undef FUNCNAME
 #define FUNCNAME MPIR_Grequest_progress_poke
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Grequest_progress_poke(int count, 
 		MPID_Request **request_ptrs, 
 		MPI_Status array_of_statuses[] )
@@ -606,7 +607,7 @@ int MPIR_Grequest_progress_poke(int count,
                 request_ptrs[i]->greq_fns->poll_fn != NULL)
             {
 		mpi_errno = (request_ptrs[i]->greq_fns->poll_fn)(request_ptrs[i]->greq_fns->grequest_extra_state, &(array_of_statuses[i]));
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 	    }
 	}
     }
@@ -623,7 +624,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIR_Grequest_waitall
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Grequest_waitall(int count, MPID_Request * const * request_ptrs)
 {
     void ** state_ptrs;
@@ -671,7 +672,7 @@ int MPIR_Grequest_waitall(int count, MPID_Request * const * request_ptrs)
             /* greq with a new class: wait on the list of greqs we've
                created, then start a new list*/
             mpi_error = (wait_fn)(n_greq, state_ptrs, 0, NULL);
-            if (mpi_error) MPIU_ERR_POP(mpi_error);
+            if (mpi_error) MPIR_ERR_POP(mpi_error);
 
             curr_class = request_ptrs[i]->greq_fns->greq_class;
             wait_fn = request_ptrs[i]->greq_fns->wait_fn;
@@ -684,7 +685,7 @@ int MPIR_Grequest_waitall(int count, MPID_Request * const * request_ptrs)
     {
         /* wait on the last group of greqs */
         mpi_error = (wait_fn)(n_greq, state_ptrs, 0, NULL);
-        if (mpi_error) MPIU_ERR_POP(mpi_error);
+        if (mpi_error) MPIR_ERR_POP(mpi_error);
 
     }
 #else
@@ -700,7 +701,7 @@ int MPIR_Grequest_waitall(int count, MPID_Request * const * request_ptrs)
         }
 
         mpi_error = (request_ptrs[i]->greq_fns->wait_fn)(1, &request_ptrs[i]->greq_fns->grequest_extra_state, 0, NULL);
-        if (mpi_error) MPIU_ERR_POP(mpi_error);
+        if (mpi_error) MPIR_ERR_POP(mpi_error);
         MPIU_Assert(MPID_Request_is_complete(request_ptrs[i]));
     }
 

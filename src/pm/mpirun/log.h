@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,7 +23,6 @@ void log_fi(struct fuse_file_info *fi);
 void log_stat(struct stat *si);
 void log_statvfs(struct statvfs *sv);
 void log_utime(struct utimbuf *buf);
-
-inline void log_msg(const char *format, ...);
+void log_msg(const char *format, ...);
 
 #endif                          // end of _LOG_H_

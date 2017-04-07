@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,7 +39,7 @@ int deregister_memory(struct ibv_mr * mr)
 #undef FUNCNAME
 #define FUNCNAME vbuf_fast_rdma_alloc
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /*vbuf_fast_rdma_alloc in iba_priv.c*/
 int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 {

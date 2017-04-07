@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,7 @@
 #include "ib_vbuf.h"
 #include "ib_vc.h"
 #include "ib_errors.h"
-int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
+int MPIDI_nem_ib_parse_header(MPIDI_VC_t * vc,
                                   vbuf * v, void **pkt, int *header_size);
 int MPIDI_nem_ib_fill_request(MPID_Request * req, vbuf * v,
                                   int header_size, int *nb);

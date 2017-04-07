@@ -3,6 +3,58 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.3a (03/29/2017)
+
+* Features and Enhancements (since 2.2):
+    - Based on and ABI compatible with MPICH 3.2
+    - Support collective offload using Mellanox's SHArP for Allreduce
+        - Enhance tuning framework for Allreduce using SHArP
+    - Introduce capability to run MPI jobs across multiple InfiniBand subnets
+    - Introduce basic support for executing MPI jobs in Singularity
+    - Enhance collective tuning for Intel Knight's Landing and Intel Omni-path
+    - Enhance process mapping support for multi-threaded MPI applications
+        - Introduce MV2_CPU_BINDING_POLICY=hybrid
+        - Introduce MV2_THREADS_PER_PROCESS
+    - On-demand connection management for PSM-CH3 and PSM2-CH3 channels
+    - Enhance PSM-CH3 and PSM2-CH3 job startup to use non-blocking PMI calls
+    - Enhance debugging support for PSM-CH3 and PSM2-CH3 channels
+    - Improve performance of architecture detection
+    - Introduce run time parameter MV2_SHOW_HCA_BINDING to show process to HCA
+      bindings
+    - Enhance MV2_SHOW_CPU_BINDING to enable display of CPU bindings on all
+      nodes
+    - Deprecate OFA-IB-Nemesis channel
+    - Update to hwloc version 1.11.6
+* Bug Fixes (since 2.2):
+    - Fix issue with ring startup in multi-rail systems
+    - Fix startup issue with SLURM and PMI-1
+        - Thanks to Manuel Rodriguez for the report
+    - Fix startup issue caused by fix for bash `shellshock' bug
+    - Fix issue with very large messages in PSM
+    - Fix issue with singleton jobs and PMI-2
+        - Thanks to Adam T. Moody@LLNL for the report
+    - Fix incorrect reporting of non-existing files with Luster ADIO
+        - Thanks to Wei Kang@NWU for the report
+    - Fix hang in MPI_Probe
+        - Thanks to John Westlund@Intel for the report
+    - Fix issue while setting affinity with Torque Cgroups
+        - Thanks to Doug Johnson@OSC for the report
+    - Fix runtime errors observed when running MVAPICH2 on aarch64 platforms
+        - Thanks to Sreenidhi Bharathkar Ramesh@Broadcom for posting
+          the original patch
+        - Thanks to Michal Schmidt@RedHat for reposting it
+    - Fix failure in mv2_show_cpu_affinity with affinity disabled
+        - Thanks to Carlos Rosales-Fernandez@TACC for the report
+    - Fix mpirun_rsh error when running short-lived non-MPI jobs
+        - Thanks to Kevin Manalo@OSC for the report
+    - Fix comment and spelling mistake
+        - Thanks to Maksym Planeta for the report
+    - Ignore cpusets and cgroups that may have been set by resource manager
+        - Thanks to Adam T. Moody@LLNL for the report and the patch
+    - Fix reduce tuning table entry for 2ppn 2node
+    - Fix compilation issues due to inline keyword with GCC 5 and newer
+    - Fix compilation warnings and memory leaks
+
 MVAPICH2 2.2 (09/07/2016)
 
 * Features and Enhancements (since 2.2rc2):

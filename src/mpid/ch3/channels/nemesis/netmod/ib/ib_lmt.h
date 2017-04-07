@@ -1,5 +1,5 @@
 /*!\file */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -118,8 +118,8 @@ typedef struct{
 int MPID_nem_lmt_ib_initiate_lmt(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *rts_pkt,
                                            struct MPID_Request *req);
 int MPID_nem_lmt_ib_start_send(struct MPIDI_VC *vc, struct MPID_Request *sreq,
-                                           MPID_IOV r_cookie);
-int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, MPID_IOV s_cookie);
+                                           MPL_IOV r_cookie);
+int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, MPL_IOV s_cookie);
 int MPID_nem_ib_lmt_done_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq);
 int MPIDI_nem_ib_lmt_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer);
 void MPIDI_nem_ib_lmt_r3_recv_ack(MPIDI_VC_t * vc,

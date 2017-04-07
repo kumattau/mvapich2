@@ -5,6 +5,8 @@
 /f90/datatype/Makefile.am
 /f90/datatype/hindex1f90.f90
 /f90/datatype/hindexed_blockf90.f90
+/f90/datatype/bottomf90.f90
+/f90/datatype/bottomc.c
 /f90/ext/Makefile.am
 /f90/ext/stamp-Makefile.am
 /f90/io/Makefile.am
@@ -38,6 +40,7 @@
 /f77/init/checksizes.c
 /f90/datatype/allctypesf90.f90
 /io/test.ord
+/io/i_setviewcur
 /threads/pt2pt/greq_test
 /threads/pt2pt/greq_wait
 /threads/pt2pt/multisend
@@ -100,8 +103,9 @@
 /coll/scatterv
 /coll/scattern
 /coll/rerr
-/coll/bcast2
-/coll/bcast3
+/coll/bcast_full
+/coll/bcast_min_datatypes
+/coll/bcast_comm_world
 /coll/exscan2
 /coll/exscan
 /coll/icallgather
@@ -117,12 +121,14 @@
 /coll/icscatterv
 /coll/allgatherv2
 /coll/alltoallv0
+/coll/testlist
 /comm/dup
 /comm/ic1
 /comm/cfree
 /comm/commname
 /comm/dupic
 /comm/ctxalloc
+/comm/comm_idup_iallreduce
 /cxx/testlist
 /cxx/topo/testlist
 /cxx/coll/uallreduce
@@ -185,6 +191,7 @@
 /cxx/io/writeatallbenosx
 /cxx/io/writeallbenosx
 /cxx/pt2pt/bsend1cxx
+/cxx/spawn/testlist
 /cxx/spawn/namepubx
 /cxx/spawn/spawnintrax
 /cxx/spawn/spawnintrax
@@ -211,6 +218,8 @@
 /errhan/errring
 /errors/testlist
 /errors/coll/noalias
+/errors/coll/noalias2
+/errors/coll/noalias3
 /errors/coll/rerr
 /errors/coll/bcastlength
 /errors/cxx/testlist
@@ -224,9 +233,11 @@
 /errors/f77/testlist
 /errors/group/rerr
 /errors/io/fileerrret
+/errors/io/file_errhdl
 /errors/pt2pt/proberank
 /errors/pt2pt/truncmsg2
 /errors/spawn/badport
+/errors/spawn/testlist
 /errors/topo/cartsmall
 /f77/testlist
 /f77/attr/baseattr
@@ -246,6 +257,7 @@
 /f77/io/writeordbef.f
 /f77/io/writeshf.f
 /f77/io/writeatallf.f
+/f77/io/iwriteatallf.f
 /f77/io/writeatallbef.f
 /f77/io/writeallbef.f
 /f77/io/iwritef
@@ -259,11 +271,13 @@
 /f77/io/writeatall
 /f77/io/writeatallbef
 /f77/io/writeallbef
+/f77/io/i_setviewcurf
 /f77/io/iooffset.h
 /f77/io/iodisp.h
 /f77/io/ioaint.h
 /f77/pt2pt/attr1aints.h
 /f77/rma/addsize.h
+/f77/rma/testlist
 /f77/spawn/type1aint.h
 /f77/spawn/connaccf
 /f77/spawn/namepubf
@@ -279,6 +293,7 @@
 /f90/attr/commattrf90.f90
 /f90/attr/commattr2f90.f90
 /f90/attr/commattr3f90.f90
+/f90/attr/commattr4f90.f90
 /f90/attr/typeattrf90.f90
 /f90/attr/typeattr2f90.f90
 /f90/attr/typeattr3f90.f90
@@ -342,6 +357,7 @@
 /f90/io/writeordbef90.f90
 /f90/io/writeshf90.f90
 /f90/io/writeatallf90.f90
+/f90/io/iwriteatallf90.f90
 /f90/io/writeatallbef90.f90
 /f90/io/writeallbef90.f90
 /f90/io/c2f2ciof90.f90
@@ -349,8 +365,10 @@
 /f90/io/c2f90multio.c
 /f90/io/Makefile.sm
 /f90/io/testlist
+/f90/io/testlist.in
 /f90/io/ioharness.defn
 /f90/io/ioharness.tlt
+/f90/io/i_setviewcurf90.f90
 /f90/misc/sizeof
 /f90/misc/f77tof90
 /f90/pt2pt/Makefile.sm
@@ -361,6 +379,7 @@
 /f90/pt2pt/statusesf90
 /f90/rma/Makefile.sm
 /f90/rma/testlist
+/f90/rma/testlist.in
 /f90/rma/winaccf90.f90
 /f90/rma/winerrf90.f90
 /f90/rma/winfencef90.f90
@@ -377,6 +396,7 @@
 /f90/rma/winnamef90
 /f90/rma/winscale1f90
 /f90/rma/winscale2f90
+/f90/rma/aintf90.f90
 /f90/rma/c2f2cwinf90.f90
 /f90/rma/c2f902cwin.c
 /f90/spawn/Makefile.sm
@@ -438,6 +458,12 @@
 /f08/datatype/trf08
 /f08/datatype/get_elem_d
 /f08/datatype/get_elem_u
+/f08/rma/testlist
+/f08/spawn/testlist
+/f08/io/iwriteatallf90.f90
+/f08/io/iwriteatallf90
+/f08/io/i_fcoll_test
+/f08/io/testlist
 /group/errstring
 /group/grouptest
 /group/groupcreate
@@ -513,6 +539,16 @@
 /rma/putfence1
 /rma/putpscw1
 /rma/wintest
+/rma/manyget
+/rma/lock_dt
+/rma/lock_dt_flush
+/rma/lock_dt_flushlocal
+/rma/lockall_dt
+/rma/lockall_dt_flush
+/rma/lockall_dt_flushall
+/rma/lockall_dt_flushlocal
+/rma/lockall_dt_flushlocalall
+/rma/lock_contention_dt
 /spawn/namepub
 /spawn/disconnect3
 /spawn/spaiccreate
@@ -554,6 +590,7 @@
 /coll/bcastzerotype
 /coll/gather
 /coll/gather2
+/coll/gather_big
 /coll/iallred
 /coll/ibarrier
 /coll/icalltoallv
@@ -748,6 +785,7 @@
 /f77/attr/baseattrf
 /f77/attr/commattr2f
 /f77/attr/commattr3f
+/f77/attr/commattr4f
 /f77/attr/commattrf
 /f77/attr/typeattr2f
 /f77/attr/typeattr3f
@@ -779,6 +817,7 @@
 /f77/datatype/typenamef
 /f77/datatype/typesnamef
 /f77/datatype/typesubf
+/f77/datatype/bottom
 /f77/ext/c2fmult
 /f77/ext/ctypesinf
 /f77/info/infotest2f
@@ -794,6 +833,8 @@
 /f77/io/setviewcurf
 /f77/io/shpositionf
 /f77/io/writeatallf
+/f77/io/iwriteatallf
+/f77/io/testlist
 /f77/pt2pt/allpairf
 /f77/pt2pt/greqf
 /f77/pt2pt/mprobef
@@ -820,6 +861,7 @@
 /f90/attr/baseattrf90
 /f90/attr/commattr2f90
 /f90/attr/commattr3f90
+/f90/attr/commattr4f90
 /f90/attr/commattrf90
 /f90/attr/fandcattrf90
 /f90/attr/typeattr2f90
@@ -862,6 +904,7 @@
 /f90/io/writeallf90
 /f90/io/writeatallbef90
 /f90/io/writeatallf90
+/f90/io/iwriteatallf90
 /f90/io/writeatf90
 /f90/io/writef90
 /f90/io/writeordbef90
@@ -894,6 +937,7 @@
 /mpi_t/mpi_t_str
 /mpi_t/mpit_vars
 /mpi_t/cvarwrite
+/mpi_t/getindex
 /perf/allredtrace
 /perf/commcreatep
 /perf/dtpack
@@ -923,6 +967,7 @@
 /pt2pt/rqstatus
 /pt2pt/scancel
 /pt2pt/scancel2
+/pt2pt/scancel_unmatch
 /pt2pt/sendall
 /pt2pt/sendflood
 /pt2pt/sendrecv1
@@ -1008,6 +1053,7 @@
 /rma/win_shared_noncontig_put
 /rma/wincall
 /rma/window_creation
+/spawn/testlist
 /spawn/concurrent_spawns
 /spawn/disconnect
 /spawn/disconnect2
@@ -1037,10 +1083,15 @@
 /threads/comm/ctxdup
 /threads/comm/ctxidup
 /threads/comm/dup_leak_test
+/threads/comm/idup_nb
+/threads/comm/testlist
 /threads/init/initth
 /threads/pt2pt/threads
 /threads/spawn/multispawn
 /threads/spawn/th_taskmaster
+/threads/coll/iallred
+/threads/coll/allred
+/threads/coll/testlist
 /topo/cartcreates
 /topo/cartzero
 /topo/dgraph_unwgt

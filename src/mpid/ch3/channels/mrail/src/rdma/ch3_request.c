@@ -20,7 +20,7 @@ MPIU_Object_alloc_t MPID_Request_mem = {
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Request_create
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 MPID_Request *MPIDI_CH3_Request_create()
 {
     MPID_Request *req;
@@ -46,7 +46,7 @@ MPID_Request *MPIDI_CH3_Request_create()
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Request_add_ref
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3_Request_add_ref(MPID_Request * req)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQUEST_ADD_REF);
@@ -61,7 +61,7 @@ void MPIDI_CH3_Request_add_ref(MPID_Request * req)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Request_release_ref
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3_Request_release_ref(MPID_Request * req, int *ref_count)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQUEST_RELEASE_REF);
@@ -76,7 +76,7 @@ void MPIDI_CH3_Request_release_ref(MPID_Request * req, int *ref_count)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Request_destroy
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3_Request_destroy(MPID_Request * req)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQUEST_DESTROY);

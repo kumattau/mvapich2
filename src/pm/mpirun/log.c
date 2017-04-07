@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -51,7 +51,7 @@ FILE *log_open(char *lfname)
     return logfile;
 }
 
-inline void log_msg(const char *format, ...)
+void log_msg(const char *format, ...)
 {
     va_list ap;
     va_start(ap, format);

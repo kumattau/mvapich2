@@ -15,7 +15,9 @@
 
 if BUILD_NEMESIS_NETMOD_IB
 
-AM_CPPFLAGS += -DNEMESIS_BUILD -I$(top_srcdir)/src/mpid/ch3/channels/nemesis/netmod/ib
+AM_CPPFLAGS += -DNEMESIS_BUILD \
+	       -I$(top_srcdir)/src/mpid/ch3/channels/nemesis/netmod/ib \
+	       -I$(top_builddir)/src/mpid/ch3/channels/nemesis/netmod/ib
 
 mpi_core_sources +=				\
     src/mpid/ch3/channels/nemesis/netmod/ib/ib_init.c           \

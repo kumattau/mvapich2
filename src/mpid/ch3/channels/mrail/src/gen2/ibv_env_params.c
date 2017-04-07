@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,7 +22,7 @@
 **      datatype,
 **      name,
 **      addr of variables which stores the param value
-**      default on/off
+**      externally visible 1 or 0
 **      descrption of the parameter.
 **  }
 */
@@ -2418,29 +2418,29 @@ mv2_runlog_info_list_t runlog_info[] = {
 #undef FUNCNAME
 #define FUNCNAME mv2_print_param_info
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static inline int mv2_print_param_info(MPID_Comm *comm_ptr, mv2_runlog_info_list_t *item, int level)
 {
     char param_avg[16], param_min[16], param_max[16];
     int root=0;
     int mpi_errno = MPI_SUCCESS;
-    int errflag = FALSE;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
     if (level == 2 ) {
         mpi_errno =  MPIR_Reduce_binomial_MV2(item->param, param_max, 1, item->datatype,
                 MPI_MAX, root, comm_ptr, &errflag);
         if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
         mpi_errno = MPIR_Reduce_binomial_MV2(item->param, param_min, 1, item->datatype,
                 MPI_MIN, root, comm_ptr, &errflag);
         if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
         mpi_errno = MPIR_Reduce_binomial_MV2(item->param, param_avg, 1, item->datatype,
                 MPI_SUM, root, comm_ptr, &errflag);
         if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
     }
 

@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2015 Inria.  All rights reserved.
+ * Copyright © 2009-2017 Inria.  All rights reserved.
  * Copyright © 2009-2012, 2015 Université Bordeaux
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -21,6 +21,9 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <assert.h>
+#ifdef HAVE_TIME_T
+#include <time.h>
+#endif
 
 #ifdef LSTOPO_HAVE_GRAPHICS
 #ifdef HWLOC_HAVE_CAIRO
@@ -272,6 +275,37 @@ lstopo_add_collapse_attributes(hwloc_topology_t topology)
   }
 }
 
+static void
+lstopo_populate_userdata(hwloc_obj_t parent)
+{
+  hwloc_obj_t child;
+  struct lstopo_obj_userdata *save = malloc(sizeof(*save));
+
+  save->common.buffer = NULL; /* so that it is ignored on XML export */
+  save->common.next = parent->userdata;
+  save->fontsize = (unsigned) -1;
+  save->gridsize = (unsigned) -1;
+  parent->userdata = save;
+
+  for(child = parent->first_child; child; child = child->next_sibling)
+    lstopo_populate_userdata(child);
+}
+
+static void
+lstopo_destroy_userdata(hwloc_obj_t parent)
+{
+  hwloc_obj_t child;
+  struct lstopo_obj_userdata *save = parent->userdata;
+
+  if (save) {
+    parent->userdata = save->common.next;
+    free(save);
+  }
+
+  for(child = parent->first_child; child; child = child->next_sibling)
+    lstopo_destroy_userdata(child);
+}
+
 void usage(const char *name, FILE *where)
 {
   fprintf (where, "Usage: %s [ options ] ... [ filename.format ]\n\n", name);
@@ -421,6 +455,11 @@ main (int argc, char *argv[])
   enum output_format output_format = LSTOPO_OUTPUT_DEFAULT;
   char *restrictstring = NULL;
   struct lstopo_output loutput;
+#ifdef HAVE_CLOCK_GETTIME
+  struct timespec ts1, ts2;
+  unsigned long ms;
+  int measure_load_time = !!getenv("HWLOC_DEBUG_LOAD_TIME");
+#endif
   int opt;
   unsigned i;
 
@@ -523,6 +562,14 @@ main (int argc, char *argv[])
 	lstopo_collapse = 0;
       else if (!strcmp (argv[0], "--thissystem"))
 	flags |= HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM;
+      else if (!strcmp (argv[0], "--flags")) {
+	if (argc < 2) {
+	  usage (callname, stderr);
+	  exit(EXIT_FAILURE);
+	}
+	flags = strtoul(argv[1], NULL, 0);
+	opt = 1;
+      }
       else if (!strcmp (argv[0], "--restrict")) {
 	if (argc < 2) {
 	  usage (callname, stderr);
@@ -596,13 +643,19 @@ main (int argc, char *argv[])
 	loutput.legend = 0;
       }
       else if (!strcmp (argv[0], "--append-legend")) {
+	char **tmp;
 	if (argc < 2) {
 	  usage (callname, stderr);
 	  exit(EXIT_FAILURE);
 	}
-	lstopo_append_legends = realloc(lstopo_append_legends, (lstopo_append_legends_nr+1) * sizeof(*lstopo_append_legends));
-	lstopo_append_legends[lstopo_append_legends_nr] = strdup(argv[1]);
-	lstopo_append_legends_nr++;
+	tmp = realloc(lstopo_append_legends, (lstopo_append_legends_nr+1) * sizeof(*lstopo_append_legends));
+	if (!tmp) {
+	  fprintf(stderr, "Failed to realloc legend append array, legend ignored.\n");
+	} else {
+	  lstopo_append_legends = tmp;
+	  lstopo_append_legends[lstopo_append_legends_nr] = strdup(argv[1]);
+	  lstopo_append_legends_nr++;
+	}
 	opt = 1;
       }
 
@@ -644,7 +697,11 @@ main (int argc, char *argv[])
   if (lstopo_show_only != (hwloc_obj_type_t)-1)
     merge = 0;
 
-  hwloc_topology_set_flags(topology, flags);
+  err = hwloc_topology_set_flags(topology, flags);
+  if (err < 0) {
+    fprintf(stderr, "Failed to set flags %lx (%s).\n", flags, strerror(errno));
+    return EXIT_FAILURE;
+  }
 
   if (ignorecache > 1) {
     hwloc_topology_ignore_type(topology, HWLOC_OBJ_CACHE);
@@ -655,7 +712,7 @@ main (int argc, char *argv[])
     hwloc_topology_ignore_all_keep_structure(topology);
 
   if (input) {
-    err = hwloc_utils_enable_input_format(topology, input, input_format, loutput.verbose_mode > 1, callname);
+    err = hwloc_utils_enable_input_format(topology, input, &input_format, loutput.verbose_mode > 1, callname);
     if (err)
       return err;
   }
@@ -666,34 +723,6 @@ main (int argc, char *argv[])
       perror("Setting target pid");
       return EXIT_FAILURE;
     }
-  }
-
-  err = hwloc_topology_load (topology);
-  if (err) {
-    fprintf(stderr, "hwloc_topology_load() failed (%s).\n", strerror(errno));
-    return EXIT_FAILURE;
-  }
-
-  if (top)
-    add_process_objects(topology);
-
-  if (restrictstring) {
-    hwloc_bitmap_t restrictset = hwloc_bitmap_alloc();
-    if (!strcmp (restrictstring, "binding")) {
-      if (lstopo_pid_number > 0)
-	hwloc_get_proc_cpubind(topology, lstopo_pid, restrictset, HWLOC_CPUBIND_PROCESS);
-      else
-	hwloc_get_cpubind(topology, restrictset, HWLOC_CPUBIND_PROCESS);
-    } else {
-      hwloc_bitmap_sscanf(restrictset, restrictstring);
-    }
-    err = hwloc_topology_restrict (topology, restrictset, restrict_flags);
-    if (err) {
-      perror("Restricting the topology");
-      /* fallthrough */
-    }
-    hwloc_bitmap_free(restrictset);
-    free(restrictstring);
   }
 
   /* if the output format wasn't enforced, look at the filename */
@@ -720,6 +749,55 @@ main (int argc, char *argv[])
       output_format = LSTOPO_OUTPUT_CONSOLE;
   }
 
+  if (input_format == HWLOC_UTILS_INPUT_XML
+      && output_format == LSTOPO_OUTPUT_XML) {
+    /* must be after parsing output format and before loading the topology */
+    putenv("HWLOC_XML_USERDATA_NOT_DECODED=1");
+    hwloc_topology_set_userdata_import_callback(topology, hwloc_utils_userdata_import_cb);
+    hwloc_topology_set_userdata_export_callback(topology, hwloc_utils_userdata_export_cb);
+  }
+
+#ifdef HAVE_CLOCK_GETTIME
+  if (measure_load_time)
+    clock_gettime(CLOCK_MONOTONIC, &ts1);
+#endif
+
+  err = hwloc_topology_load (topology);
+  if (err) {
+    fprintf(stderr, "hwloc_topology_load() failed (%s).\n", strerror(errno));
+    return EXIT_FAILURE;
+  }
+
+#ifdef HAVE_CLOCK_GETTIME
+  if (measure_load_time) {
+    clock_gettime(CLOCK_MONOTONIC, &ts2);
+    ms = (ts2.tv_nsec-ts1.tv_nsec)/1000000+(ts2.tv_sec-ts1.tv_sec)*1000UL;
+    printf("hwloc_topology_load() took %lu ms\n", ms);
+  }
+#endif
+
+  if (top)
+    add_process_objects(topology);
+
+  if (restrictstring) {
+    hwloc_bitmap_t restrictset = hwloc_bitmap_alloc();
+    if (!strcmp (restrictstring, "binding")) {
+      if (lstopo_pid_number > 0)
+	hwloc_get_proc_cpubind(topology, lstopo_pid, restrictset, HWLOC_CPUBIND_PROCESS);
+      else
+	hwloc_get_cpubind(topology, restrictset, HWLOC_CPUBIND_PROCESS);
+    } else {
+      hwloc_bitmap_sscanf(restrictset, restrictstring);
+    }
+    err = hwloc_topology_restrict (topology, restrictset, restrict_flags);
+    if (err) {
+      perror("Restricting the topology");
+      /* fallthrough */
+    }
+    hwloc_bitmap_free(restrictset);
+    free(restrictstring);
+  }
+
   if (loutput.logical == -1) {
     if (output_format == LSTOPO_OUTPUT_CONSOLE)
       loutput.logical = 1;
@@ -729,6 +807,8 @@ main (int argc, char *argv[])
 
   loutput.topology = topology;
   loutput.file = NULL;
+
+  lstopo_populate_userdata(hwloc_get_root_obj(topology));
 
   if (output_format != LSTOPO_OUTPUT_XML && lstopo_collapse)
     lstopo_add_collapse_attributes(topology);
@@ -803,7 +883,8 @@ main (int argc, char *argv[])
       exit(EXIT_FAILURE);
   }
 
-  output_draw_clear(&loutput);
+  lstopo_destroy_userdata(hwloc_get_root_obj(topology));
+  hwloc_utils_userdata_free_recursive(hwloc_get_root_obj(topology));
   hwloc_topology_destroy (topology);
 
   for(i=0; i<lstopo_append_legends_nr; i++)

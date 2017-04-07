@@ -19,7 +19,7 @@
  * \file src/mpid_finalize.c
  * \brief Normal job termination code
  *
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -73,7 +73,8 @@ int MPID_Finalize()
 {
   pami_result_t rc;
   int mpierrno = MPI_SUCCESS;
-  MPIR_Barrier_impl(MPIR_Process.comm_world, &mpierrno);
+  MPIR_Errflag_t errflag=MPIR_ERR_NONE;
+  MPIR_Barrier_impl(MPIR_Process.comm_world, &errflag);
 
 #ifdef MPIDI_STATISTICS
   if (MPIDI_Process.mp_statistics) {

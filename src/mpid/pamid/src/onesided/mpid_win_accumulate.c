@@ -148,7 +148,7 @@ MPIDI_Accumulate(pami_context_t   context,
 #undef FUNCNAME
 #define FUNCNAME MPID_Accumulate
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int
 MPID_Accumulate(const void   *origin_addr,
                 int           origin_count,

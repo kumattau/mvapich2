@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,7 +23,7 @@
 #undef FUNCNAME
 #define FUNCNAME isend_update_request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static void isend_update_request(MPID_Request* sreq, void* pkt, int pkt_sz, int nb)
 {
     MPIDI_STATE_DECL(MPID_STATE_ISEND_UPDATE_REQUEST);
@@ -31,12 +31,12 @@ static void isend_update_request(MPID_Request* sreq, void* pkt, int pkt_sz, int 
 #ifdef _ENABLE_CUDA_
     sreq->dev.pending_pkt = MPIU_Malloc(pkt_sz - nb);
     MPIU_Memcpy(sreq->dev.pending_pkt, (char *) pkt+ nb,  pkt_sz - nb);
-    sreq->dev.iov[0].MPID_IOV_BUF = (char *) sreq->dev.pending_pkt;
+    sreq->dev.iov[0].MPL_IOV_BUF = (char *) sreq->dev.pending_pkt;
 #else
     sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) pkt;
-    sreq->dev.iov[0].MPID_IOV_BUF = (char *) &sreq->dev.pending_pkt + nb;
+    sreq->dev.iov[0].MPL_IOV_BUF = (char *) &sreq->dev.pending_pkt + nb;
 #endif
-    sreq->dev.iov[0].MPID_IOV_LEN = pkt_sz - nb;
+    sreq->dev.iov[0].MPL_IOV_LEN = pkt_sz - nb;
     sreq->dev.iov_count = 1;
     sreq->dev.iov_offset = 0;
     MPIDI_FUNC_EXIT(MPID_STATE_ISEND_UPDATE_REQUEST);
@@ -50,14 +50,14 @@ static int MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_iSend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
                     MPIDI_msg_sz_t pkt_sz)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_ISEND);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_ISEND);
     int mpi_errno = MPI_SUCCESS;
-    MPID_IOV iov[1];
+    MPL_IOV iov[1];
     int complete;
 
     MPIU_DBG_PRINTF(("ch3_isend\n"));
@@ -71,7 +71,7 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
         vc->smp.local_nodes != g_smpi.my_local_id)
     {
         mpi_errno = MPIDI_CH3_SMP_iSend(vc, sreq, pkt, pkt_sz);
-        if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno != MPI_SUCCESS) MPIR_ERR_POP(mpi_errno);
         goto fn_exit;
     }
 
@@ -104,8 +104,8 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
         /* MT: need some signalling to lock down our right to use the channel, thus insuring that the progress engine does
            also try to write */
 
-        iov[0].MPID_IOV_BUF = pkt;
-        iov[0].MPID_IOV_LEN = pkt_sz;
+        iov[0].MPL_IOV_BUF = pkt;
+        iov[0].MPL_IOV_LEN = pkt_sz;
 
         mpi_errno =
             MPIDI_CH3I_MRAILI_Eager_send(vc, iov, 1, pkt_sz, &nb, &buf);
@@ -146,7 +146,7 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
              * */
             sreq->status.MPI_ERROR = MPI_ERR_INTERN;
             /* MT - CH3U_Request_complete performs write barrier */
-            MPIDI_CH3U_Request_complete(sreq);
+            MPID_Request_complete(sreq);
 
         }
         goto fn_exit;
@@ -171,7 +171,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_iSend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
                         MPIDI_msg_sz_t pkt_sz)
 {
@@ -183,9 +183,9 @@ static int MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
 
     if (MPIDI_CH3I_SMP_SendQ_empty(vc)) {       /* MT */
         int nb;
-        MPID_IOV iov[1];
-        iov[0].MPID_IOV_BUF = pkt;
-        iov[0].MPID_IOV_LEN = pkt_sz;
+        MPL_IOV iov[1];
+        iov[0].MPL_IOV_BUF = pkt;
+        iov[0].MPL_IOV_LEN = pkt_sz;
 
         MPIDI_CH3I_SMP_writev(vc, iov, 1, &nb);
         DEBUG_PRINT("wrote %d bytes\n", nb);
@@ -195,7 +195,7 @@ static int MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
             int complete;
             DEBUG_PRINT("write complete, calling MPIDI_CH3U_Handle_send_req()\n");
             mpi_errno = MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
-            if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
+            if (mpi_errno != MPI_SUCCESS) MPIR_ERR_POP(mpi_errno);
 
             if (!complete)
             {

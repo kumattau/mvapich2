@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,9 +23,9 @@
 #undef FUNCNAME
 #define FUNCNAME MPIR_Scan_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Scan_MV2(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
-                   MPI_Op op, MPID_Comm *comm_ptr, int *errflag)
+                   MPI_Op op, MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
 
@@ -70,7 +70,7 @@ int MPIR_Scan_MV2(const void *sendbuf, void *recvbuf, int count, MPI_Datatype da
 
     mpi_errno = MPIR_Scan(sendbuf, recvbuf, count, datatype,
 			  op, comm_ptr, errflag);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 #ifdef _ENABLE_CUDA_
     if(rdma_enable_cuda && recv_mem_type){
         recvbuf = temp_recvbuf;
@@ -95,7 +95,7 @@ int MPIR_Scan_MV2(const void *sendbuf, void *recvbuf, int count, MPI_Datatype da
 #endif
     
     if (mpi_errno)
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     
   fn_exit:
     return mpi_errno;

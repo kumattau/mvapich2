@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,14 +29,14 @@ extern int mv2_cuda_allgather_store_buf_size;
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allgather_cuda_intra_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                              int sendcount,
                              MPI_Datatype sendtype,
                              void *recvbuf,
                              int recvcount,
                              MPI_Datatype recvtype,
-                             MPID_Comm * comm_ptr, int *errflag)
+                             MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
@@ -44,22 +44,20 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
     MPI_Aint recvtype_extent = 0;
     int j, i;
     int curr_cnt, dst, left, right, jnext;
-    MPI_Comm comm;
     int mask, dst_tree_root, my_tree_root,
         send_offset, recv_offset;
     int comm_size_is_pof2;
     MPI_Status status;
     int page_size = 0;
     int result, max_size;
-    MPI_Request recv_req;
-    MPI_Request send_req;
+    MPID_Request recv_req;
+    MPID_Request send_req;
     cudaError_t cudaerr;
 
     if (((sendcount == 0) && (sendbuf != MPI_IN_PLACE)) || (recvcount == 0)) {
         return MPI_SUCCESS;
     }
 
-    comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
     comm_size_is_pof2 = comm_ptr->dev.ch.is_pof2;
@@ -85,7 +83,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
             mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                     FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
                     "posix_memalign", strerror(errno));
-            MPIU_ERR_POP (mpi_errno);
+            MPIR_ERR_POP (mpi_errno);
         }
         ibv_cuda_register(mv2_cuda_allgather_store_buf, max_size);
         mv2_cuda_allgather_store_buf_size = max_size;
@@ -101,7 +99,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                         rank * recvcount * recvtype_extent),
                                        recvcount, recvtype);
             if (mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
         }
         
@@ -127,21 +125,21 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                 MPI_BYTE,
                                 left,
                                 MPIR_ALLGATHER_TAG,
-                                comm,
+                                comm_ptr,
                                 &recv_req );
         mpi_errno = MPIC_Isend(((char *)recvbuf + j*recvcount*recvtype_extent),
                             recvcount*recvtype_extent,
                             MPI_BYTE,
                             right,
                             MPIR_ALLGATHER_TAG,
-                            comm,
+                            comm_ptr,
                             &send_req, errflag);
         mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
 	    if (mpi_errno) {
             /* for communication errors, just record the error but continue */
-            *errflag = TRUE;
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
 	    }
 
         MPIU_Memcpy_CUDA_Async((void *)((char *)recvbuf + jnext*recvcount*recvtype_extent),
@@ -153,9 +151,9 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
         mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
 	    if (mpi_errno) {
             /* for communication errors, just record the error but continue */
-            *errflag = TRUE;
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
 	    }
 
         j       = jnext;
@@ -168,21 +166,21 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                     recvtype,
                                     left,
                                     MPIR_ALLGATHER_TAG,
-                                    comm,
+                                    comm_ptr,
                                     &recv_req );
             mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + j*recvcount*recvtype_extent),
                                     recvcount,
                                     recvtype,
                                     right,
                                     MPIR_ALLGATHER_TAG,
-                                    comm,
+                                    comm_ptr,
                                     &send_req, errflag);
             mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
 	        if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
 	        }
                     
             MPIU_Memcpy_CUDA_Async((void *)((char *)recvbuf + jnext*recvcount*recvtype_extent),
@@ -194,9 +192,9 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
             mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
 	        if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
 	        }
 
             j	    = jnext;
@@ -210,43 +208,40 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                     recvtype,
                     left,
                     MPIR_ALLGATHER_TAG,
-                    comm,
+                    comm_ptr,
                     &recv_req );
             mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + j*recvcount*recvtype_extent),
                     recvcount,
                     recvtype,
                     right,
                     MPIR_ALLGATHER_TAG,
-                    comm,
+                    comm_ptr,
                     &send_req, errflag);
             mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
 	        if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
 	        }
             mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
 	        if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
 	        }
 
         }
 
     } else { /*Recursive Doubling*/
-            MPI_Request recv_req;
-            MPI_Request send_req;
-
             if (sendbuf != MPI_IN_PLACE) {
                 mpi_errno = MPIR_Localcopy(sendbuf, sendcount, sendtype,
                                            ((char *) recvbuf +
                                             rank * recvcount * recvtype_extent),
                                            recvcount, recvtype);
                 if (mpi_errno) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
             }
     /* This synchronization is needed because MPIR_Localcopy calls cudamemcpy
@@ -288,22 +283,22 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                         recvtype, 
                                         dst, 
                                         MPIR_ALLGATHER_TAG,
-                                        comm,
+                                        comm_ptr,
                                         &recv_req );
                 mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + send_offset),
                                         curr_cnt, 
                                         recvtype, 
                                         dst, 
                                         MPIR_ALLGATHER_TAG,
-                                        comm,
+                                        comm_ptr,
                                         &send_req, errflag);
 
                 mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
                 if (mpi_errno) {
                            /* for communication errors, just record the error but continue */
-                            *errflag = TRUE;
-                            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                 }
 
                 MPIU_Memcpy_CUDA_Async((void*)((char *)recvbuf + recv_offset),
@@ -315,9 +310,9 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                 mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
                 if (mpi_errno) {
                            /* for communication errors, just record the error but continue */
-                            *errflag = TRUE;
-                            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                 }
 
                 curr_cnt += mask*recvcount; 
@@ -351,7 +346,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                                 recvtype, 
                                                 dst, 
                                                 MPIR_ALLGATHER_TAG,
-                                                comm,
+                                                comm_ptr,
                                                 &recv_req );
                     } else {
                         mpi_errno = MPIC_Irecv( ((char *)mv2_cuda_allgather_store_buf + recv_offset),
@@ -359,7 +354,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                                 recvtype, 
                                                 dst, 
                                                 MPIR_ALLGATHER_TAG,
-                                                comm,
+                                                comm_ptr,
                                                 &recv_req );
                     }
                     mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + send_offset),
@@ -367,14 +362,14 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                             recvtype, 
                                             dst, 
                                             MPIR_ALLGATHER_TAG,
-                                            comm,
+                                            comm_ptr,
                                             &send_req, errflag);
                     mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
                     if (mpi_errno) {
                                /* for communication errors, just record the error but continue */
-                                *errflag = TRUE;
-                                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                     }
 
                     if (mask < comm_size/2) {
@@ -387,9 +382,9 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                     mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
                     if (mpi_errno) {
                                /* for communication errors, just record the error but continue */
-                                *errflag = TRUE;
-                                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                     }
                     
                     curr_cnt += mask*recvcount;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,7 +32,7 @@ int (*MV2_Ialltoall_intra_node_function) (const void *sendbuf, int sendcount,
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ialltoall_tune_helper_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int MPIR_Ialltoall_tune_helper_MV2(const void *sendbuf, int sendcount,
                                           MPI_Datatype sendtype, void *recvbuf,
                                           int recvcount, MPI_Datatype recvtype,
@@ -58,7 +58,7 @@ static int MPIR_Ialltoall_tune_helper_MV2(const void *sendbuf, int sendcount,
         mpi_errno = MV2_Ialltoall_function(sendbuf, sendcount, sendtype, recvbuf,
                                            recvcount, recvtype, comm_ptr, s);
     }
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     
   fn_exit:
     return mpi_errno;
@@ -69,7 +69,7 @@ static int MPIR_Ialltoall_tune_helper_MV2(const void *sendbuf, int sendcount,
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ialltoall_intra_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ialltoall_intra_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                              void *recvbuf, int recvcount, MPI_Datatype recvtype,
                              MPID_Comm *comm_ptr, MPID_Sched_t s)
@@ -148,17 +148,14 @@ int MPIR_Ialltoall_intra_MV2(const void *sendbuf, int sendcount, MPI_Datatype se
         /* Code path should not enter this with the current algorithms*/
     }
 
-fn_exit:
     return mpi_errno;
-fn_fail:
-    goto fn_exit;
 }
 #endif                          /*#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ialltoall_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ialltoall_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                        void *recvbuf, int recvcount, MPI_Datatype recvtype,
                        MPID_Comm *comm_ptr, MPID_Sched_t s)
@@ -179,8 +176,5 @@ int MPIR_Ialltoall_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
 				       recvcount, recvtype, comm_ptr, s);
     }
 
-fn_exit:
     return mpi_errno;
-fn_fail:
-    goto fn_exit;
 }

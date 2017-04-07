@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -74,7 +74,7 @@ int MRAILI_Send_select_rail(MPIDI_VC_t * vc)
 #undef FUNCNAME
 #define FUNCNAME vbuf_fast_rdma_alloc
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 {
     vbuf * v;

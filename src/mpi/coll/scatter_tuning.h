@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -54,7 +54,7 @@ typedef struct {
                                    void *recvbuf,
                                    int recvcnt,
                                    MPI_Datatype recvtype,
-                                   int root, MPID_Comm * comm_ptr, int *errflag);
+                                   int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 } mv2_scatter_tuning_element;
 
 typedef struct {
@@ -78,7 +78,7 @@ typedef struct {
                                    void *recvbuf,
                                    int recvcnt,
                                    MPI_Datatype recvtype,
-                                   int root, MPID_Comm * comm_ptr, int *errflag);
+                                   int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 } mv2_scatter_indexed_tuning_element;
 
 typedef struct {
@@ -102,7 +102,7 @@ extern int MPIR_Scatter_mcst_MV2(const void *sendbuf,
                               void *recvbuf,
                               int recvcnt,
                               MPI_Datatype recvtype,
-                              int root, MPID_Comm * comm_ptr, int *errflag);
+                              int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 
 extern int MPIR_Scatter_mcst_wrap_MV2(const void *sendbuf,
@@ -111,7 +111,7 @@ extern int MPIR_Scatter_mcst_wrap_MV2(const void *sendbuf,
                               void *recvbuf,
                               int recvcnt,
                               MPI_Datatype recvtype,
-                              int root, MPID_Comm * comm_ptr, int *errflag);
+                              int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
                               int sendcnt,
@@ -119,7 +119,7 @@ extern int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
                               void *recvbuf,
                               int recvcnt,
                               MPI_Datatype recvtype,
-                              int root, MPID_Comm * comm_ptr, int *errflag);
+                              int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 
 extern int MPIR_Scatter_MV2_Direct(const void *sendbuf,
@@ -128,7 +128,7 @@ extern int MPIR_Scatter_MV2_Direct(const void *sendbuf,
                               void *recvbuf,
                               int recvcnt,
                               MPI_Datatype recvtype,
-                              int root, MPID_Comm * comm_ptr, int *errflag);
+                              int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Scatter_MV2_Direct_Blk(const void *sendbuf,
                               int sendcnt,
@@ -136,7 +136,7 @@ extern int MPIR_Scatter_MV2_Direct_Blk(const void *sendbuf,
                               void *recvbuf,
                               int recvcnt,
                               MPI_Datatype recvtype,
-                              int root, MPID_Comm * comm_ptr, int *errflag);
+                              int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 
 extern int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
@@ -145,7 +145,7 @@ extern int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
                               void *recvbuf,
                               int recvcnt,
                               MPI_Datatype recvtype,
-                              int root, MPID_Comm * comm_ptr, int *errflag);
+                              int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 
 extern int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
@@ -154,7 +154,7 @@ extern int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
                               void *recvbuf,
                               int recvcnt,
                               MPI_Datatype recvtype,
-                              int root, MPID_Comm * comm_ptr, int *errflag);
+                              int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 /* Architecture detection tuning */
 int MV2_set_scatter_tuning_table();

@@ -12,7 +12,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Open_port
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Open_port(char *port_name)
 {
     int mpi_errno = MPI_SUCCESS;

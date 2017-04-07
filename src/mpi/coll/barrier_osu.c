@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,13 +23,12 @@
 #include <cr.h>
 #endif
 
-static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
+static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
 
     int size, rank;
     int d, dst, src;
     int mpi_errno = MPI_SUCCESS;
-    MPI_Comm comm;
 
     size = comm_ptr->local_size;
     /* Trivial barriers return immediately */
@@ -37,7 +36,6 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
         return MPI_SUCCESS;
 
     rank = comm_ptr->rank;
-    comm = comm_ptr->handle;
 
     /*  N2_prev = greatest power of two < size of Comm  */
     int N2_prev = comm_ptr->dev.ch.gpof2;
@@ -49,7 +47,7 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
             /* get the fanin letter from the upper "half" process: */
             dst = N2_prev + rank;
             mpi_errno = MPIC_Recv(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG,
-                                     comm, MPI_STATUS_IGNORE, errflag);
+                                     comm_ptr, MPI_STATUS_IGNORE, errflag);
         }
 
         /* combine on embedded N2_prev power-of-two processes */
@@ -57,7 +55,7 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
             dst = (rank ^ d);
             mpi_errno =
                 MPIC_Sendrecv(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG, NULL,
-                                 0, MPI_BYTE, dst, MPIR_BARRIER_TAG, comm,
+                                 0, MPI_BYTE, dst, MPIR_BARRIER_TAG, comm_ptr,
                                  MPI_STATUS_IGNORE, errflag);
         }
 
@@ -65,21 +63,21 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
         if (rank < surfeit) {
             dst = N2_prev + rank;
             mpi_errno = MPIC_Send(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG,
-                                     comm, errflag);
+                                     comm_ptr, errflag);
         }
     } else {
         /* fanin data to power of 2 subset */
         src = rank - N2_prev;
         mpi_errno = MPIC_Sendrecv(NULL, 0, MPI_BYTE, src, MPIR_BARRIER_TAG,
                                      NULL, 0, MPI_BYTE, src, MPIR_BARRIER_TAG,
-                                     comm, MPI_STATUS_IGNORE, errflag);
+                                     comm_ptr, MPI_STATUS_IGNORE, errflag);
     }
 
     return mpi_errno;
 
 }
 
-static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
+static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
 
     int mpi_errno = MPI_SUCCESS;
@@ -143,8 +141,8 @@ static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
 #undef FUNCNAME
 #define FUNCNAME MPIR_Barrier_intra_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, int *errflag)
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     int size;
     int mpi_errno = MPI_SUCCESS;
@@ -171,9 +169,9 @@ int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, int *errflag)
 
     if (mpi_errno) {
         /* for communication errors, just record the error but continue */
-        *errflag = TRUE;
-        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+        *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
     }
 
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
@@ -184,13 +182,13 @@ int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, int *errflag)
 #undef FUNCNAME
 #define FUNCNAME MPIR_Barrier_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
     mpi_errno = MPIR_Barrier_intra_MV2(comm_ptr, errflag);
     if (mpi_errno)
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
 
   fn_exit:
     return mpi_errno;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -210,7 +210,7 @@ static int check_attrs(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
         if (!user_set_rc_mtu) {
             rdma_default_mtu = port_attr->active_mtu;
         } else {
-            MPIU_Usage_printf(
+            MPL_usage_printf(
                     "MV2_DEFAULT_MTU is set to %s, but maximum the HCA supports is %s.\n"
                     "Please reset MV2_DEFAULT_MTU to a value <= %s\n",
                     mv2_ibv_mtu_enum_to_string(rdma_default_mtu),
@@ -235,7 +235,7 @@ static int check_attrs(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
         if (!user_set_ud_mtu) {
             rdma_default_ud_mtu = mv2_ibv_mtu_enum_to_value(port_attr->active_mtu);
         } else {
-            MPIU_Usage_printf(
+            MPL_usage_printf(
                     "MV2_UD_MTU is set to %d, but maximum the HCA supports is %d.\n"
                     "Please reset MV2_UD_MTU to a value <= %d\n", rdma_default_ud_mtu,
                     mv2_ibv_mtu_enum_to_value(port_attr->active_mtu),
@@ -388,7 +388,7 @@ int rdma_find_active_port(struct ibv_context *context,
 #undef FUNCNAME
 #define FUNCNAME rdma_find_network_type
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
                            int *num_usable_hcas)
 {
@@ -450,7 +450,7 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
 #undef FUNCNAME
 #define FUNCNAME rdma_skip_network_card
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_skip_network_card(mv2_iba_network_classes network_type,
                            struct ibv_device *ib_dev)
 {
@@ -477,18 +477,18 @@ void ring_rdma_close_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     proc->boot_device = NULL;
     err = ibv_dealloc_pd(proc->boot_ptag);
     if (err) {
-        MPIU_Error_printf("Failed to dealloc pd (%s)\n", strerror(errno));
+        MPL_error_printf("Failed to dealloc pd (%s)\n", strerror(errno));
     }
     err = ibv_close_device(proc->boot_context);
     if (err) {
-        MPIU_Error_printf("Failed to close ib device (%s)\n", strerror(errno));
+        MPL_error_printf("Failed to close ib device (%s)\n", strerror(errno));
     }
 }
 
 #undef FUNCNAME
 #define FUNCNAME ring_rdma_open_hca
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int ring_rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int i = 0, j = 0;
@@ -531,7 +531,7 @@ int ring_rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             /* No active ports. Go to next device */
             err = ibv_close_device(proc->boot_context);
             if (err) {
-                MPIU_Error_printf("Failed to close ib device (%s)\n",
+                MPL_error_printf("Failed to close ib device (%s)\n",
                                   strerror(errno));
             }
             continue;
@@ -541,7 +541,7 @@ int ring_rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         if (!proc->boot_ptag) {
             err = ibv_close_device(proc->boot_context);
             if (err) {
-                MPIU_Error_printf("Failed to close ib device (%s)\n",
+                MPL_error_printf("Failed to close ib device (%s)\n",
                                   strerror(errno));
             }
             continue;
@@ -574,7 +574,7 @@ int ring_rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #undef FUNCNAME
 #define FUNCNAME rdma_open_hca
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int i = 0, j = 0;
@@ -609,7 +609,7 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                 PRINT_ERROR("HCA not found on the system. "
                             "DPM functionaly requires an active HCA.\n");
             }
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s", "No IB device found");
         }
     }
@@ -652,7 +652,7 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         if (!ib_dev) {
             /* Clean up before exit */
             ibv_free_device_list(dev_list);
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s", "No IB device found");
         }
 
@@ -662,7 +662,7 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         if (!proc->nic_context[rdma_num_hcas]) {
             /* Clean up before exit */
             ibv_free_device_list(dev_list);
-            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "%s %d", "Failed to open HCA number",
                                       rdma_num_hcas);
         }
@@ -679,7 +679,7 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         if (!proc->ptag[rdma_num_hcas]) {
             /* Clean up before exit */
             ibv_free_device_list(dev_list);
-            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
                                       "**fail", "%s%d",
                                       "Failed to alloc pd number ",
                                       rdma_num_hcas);
@@ -695,7 +695,7 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
     if (unlikely(rdma_num_hcas == 0)) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
                                   "**fail", "%s %d",
                                   "No active HCAs found on the system!!!",
                                   rdma_num_hcas);
@@ -707,15 +707,13 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     return mpi_errno;
 
   fn_fail:
-    /* Clean up before exit */
-    ibv_free_device_list(dev_list);
     goto fn_exit;
 }
 
 #undef FUNCNAME
 #define FUNCNAME rdma_iba_hca_init_noqp
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                            int pg_rank, int pg_size)
 {
@@ -730,7 +728,7 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 
         MPIU_Memset(&gid, 0, sizeof(gid));
         if (ibv_query_device(proc->nic_context[i], &dev_attr)) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                                       MPI_ERR_INTERN,
                                       "**fail",
                                       "**fail %s",
@@ -766,7 +764,7 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                     if (ibv_query_gid
                             (mv2_MPIDI_CH3I_RDMA_Process.nic_context[i], j, rdma_default_gid_index,
                              &gid)) {
-                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                 "**fail",
                                 "Failed to retrieve gid on rank %d",
                                 pg_rank);
@@ -778,7 +776,7 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 
                     if (check_attrs(proc, &port_attr, &dev_attr,
                                     (rdma_default_port == RDMA_DEFAULT_PORT)?0:1)) {
-                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                        MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                                                   MPI_ERR_INTERN,
                                                   "**fail",
                                                   "**fail %s",
@@ -787,7 +785,7 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                 }
             }
             if (k < rdma_num_ports) {
-                MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+                MPIR_ERR_SETFATALANDJUMP2(mpi_errno,
                                           MPI_ERR_INTERN,
                                           "**fail",
                                           "**fail %s %d",
@@ -800,7 +798,7 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                                rdma_default_port, &port_attr)
                 || (!port_attr.lid && !use_iboeth)
                 || (port_attr.state != IBV_PORT_ACTIVE)) {
-                MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+                MPIR_ERR_SETFATALANDJUMP2(mpi_errno,
                                           MPI_ERR_INTERN,
                                           "**fail",
                                           "**fail %s %d",
@@ -810,7 +808,7 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
             }
             if (ibv_query_gid(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i],
                         rdma_default_port, rdma_default_gid_index, &gid)) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                         "**fail",
                         "Failed to retrieve gid on rank %d",
                         pg_rank);
@@ -820,7 +818,7 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
             mv2_MPIDI_CH3I_RDMA_Process.ports[i][0] = rdma_default_port;
 
             if (check_attrs(proc, &port_attr, &dev_attr, 1)) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                                           MPI_ERR_INTERN,
                                           "**fail",
                                           "**fail %s",
@@ -907,7 +905,7 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 #undef FUNCNAME
 #define FUNCNAME rdma_iba_hca_init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                       MPIDI_PG_t * pg, struct process_init_info *info)
 {
@@ -936,7 +934,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
         /* step 1: open hca, create ptags  and create cqs */
         for (i = 0; i < rdma_num_hcas; i++) {
             if (ibv_query_device(proc->nic_context[i], &dev_attr)) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                           "**fail %s",
                                           "Error getting HCA attributes");
             }
@@ -969,7 +967,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                         if (ibv_query_gid
                                 (mv2_MPIDI_CH3I_RDMA_Process.nic_context[i], j,
                                  rdma_default_gid_index, &gids[i][k])) {
-                            MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                            MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                                     MPI_ERR_OTHER,
                                     "**fail",
                                     "Failed to retrieve gid on rank %d",
@@ -989,14 +987,14 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 
                         if (check_attrs(proc, &port_attr, &dev_attr,
                                     (rdma_default_port == RDMA_DEFAULT_PORT)?0:1)) {
-                            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                                       "**fail", "**fail %s",
                                                       "Attributes failed sanity check");
                         }
                     }
                 }
                 if (k < rdma_num_ports) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**activeports",
                                               "**activeports %d",
                                               rdma_num_ports);
@@ -1006,7 +1004,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                                    rdma_default_port, &port_attr)
                     || (!port_attr.lid && !use_iboeth)
                     || (port_attr.state != IBV_PORT_ACTIVE)) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**portquery", "**portquery %d",
                                               rdma_default_port);
                 }
@@ -1017,14 +1015,14 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 if (ibv_query_gid
                         (mv2_MPIDI_CH3I_RDMA_Process.nic_context[i],
                          rdma_default_port, rdma_default_gid_index, &gids[i][0])) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                             "**fail",
                             "Failed to retrieve gid on rank %d",
                             pg_rank);
                 }
 
                 if (check_attrs(proc, &port_attr, &dev_attr, 1)) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                             "**fail", "**fail %s",
                             "Attributes failed sanity check");
                 }
@@ -1037,7 +1035,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                     ibv_create_comp_channel(proc->nic_context[i]);
 
                 if (!proc->comp_channel[i]) {
-                    MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER,
+                    MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER,
                                               goto err, "**fail", "**fail %s",
                                               "cannot create completion channel");
                 }
@@ -1049,13 +1047,13 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 proc->recv_cq_hndl[i] = NULL;
 
                 if (!proc->cq_hndl[i]) {
-                    MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER,
+                    MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER,
                                               goto err, "**fail", "**fail %s",
                                               "cannot create cq");
                 }
 
                 if (ibv_req_notify_cq(proc->cq_hndl[i], 0)) {
-                    MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER,
+                    MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER,
                                               goto err, "**fail", "**fail %s",
                                               "cannot request cq notification");
                 }
@@ -1068,7 +1066,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 proc->recv_cq_hndl[i] = NULL;
 
                 if (!proc->cq_hndl[i]) {
-                    MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER,
+                    MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER,
                                               goto err, "**fail", "**fail %s",
                                               "cannot create cq");
                 }
@@ -1110,7 +1108,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
             (sizeof *vc->mrail.rails * vc->mrail.num_rails);
 
         if (!vc->mrail.rails) {
-            MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
+            MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
                                       "**fail", "**fail %s",
                                       "Failed to allocate resources for "
                                       "multirails");
@@ -1122,7 +1120,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
         vc->mrail.srp.credits = MPIU_Malloc
             (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails);
         if (!vc->mrail.srp.credits) {
-            MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
+            MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
                                       "**fail", "**fail %s",
                                       "Failed to allocate resources for "
                                       "credits array");
@@ -1130,7 +1128,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
         MPIU_Memset(vc->mrail.srp.credits, 0,
                     (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails));
 
-        if ((i == pg_rank) || !qp_required(vc, pg_rank, i)) {
+        if (!qp_required(vc, pg_rank, i)) {
             continue;
         }
 #ifdef RDMA_CM
@@ -1164,7 +1162,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 ibv_create_qp(proc->ptag[hca_index], &attr);
 
             if (!vc->mrail.rails[rail_index].qp_hndl) {
-                MPIU_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto err_cq,
+                MPIR_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto err_cq,
                                           "**fail", "%s%d",
                                           "Failed to create qp for rank ", i);
             }
@@ -1213,7 +1211,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                               IBV_QP_STATE |
                               IBV_QP_PKEY_INDEX |
                               IBV_QP_PORT | IBV_QP_ACCESS_FLAGS)) {
-                MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
+                MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
                                           "**fail", "**fail %s",
                                           "Failed to modify QP to INIT");
             }
@@ -1224,7 +1222,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
     if (proc->use_rdma_cm) {
         if ((mpi_errno =
              ib_init_rdma_cm(proc, pg_rank, pg_size)) != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
     }
 #endif
@@ -1434,7 +1432,7 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     pg_size = MPIDI_PG_Get_size(pg);
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
-        if ((i == pg_rank) || !qp_required(vc, pg_rank, i)) {
+        if (!qp_required(vc, pg_rank, i)) {
             continue;
         }
 
@@ -1517,7 +1515,7 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
 
-        if ((i == pg_rank) || !qp_required(vc, pg_rank, i)) {
+        if (!qp_required(vc, pg_rank, i)) {
             continue;
         }
 

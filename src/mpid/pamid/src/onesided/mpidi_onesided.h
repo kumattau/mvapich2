@@ -29,6 +29,8 @@ pami_rget_simple_t zero_rget_parms;
 pami_get_simple_t zero_get_parms;
 pami_rput_simple_t zero_rput_parms;
 pami_put_simple_t zero_put_parms;
+pami_rput_typed_t zero_rput_typed_parms;
+pami_rget_typed_t zero_rget_typed_parms;
 pami_send_t   zero_send_parms;
 pami_send_immediate_t   zero_send_immediate_parms;
 pami_recv_t   zero_recv_parms;
@@ -42,7 +44,7 @@ pami_rmw_t   zero_rmw_parms;
     do {                                                                                   \
         pthread_mutex_t *shm_mutex = (pthread_mutex_t *) &win->mpid.shm->ctrl->mutex_lock; \
         int rval = pthread_mutex_lock(shm_mutex);                                          \
-        MPIU_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_lock",             \
+        MPIR_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_lock",             \
                              "**pthread_lock %s", strerror(rval));                         \
     } while (0); }
 
@@ -52,7 +54,7 @@ pami_rmw_t   zero_rmw_parms;
     do {                                                                                   \
         pthread_mutex_t *shm_mutex = (pthread_mutex_t *) &win->mpid.shm->ctrl->mutex_lock; \
         int rval = pthread_mutex_unlock(shm_mutex);                                        \
-        MPIU_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_unlock",           \
+        MPIR_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_unlock",           \
                              "**pthread_unlock %s", strerror(rval));                       \
     } while (0); }
 
@@ -65,16 +67,16 @@ pami_rmw_t   zero_rmw_parms;
         pthread_mutex_t *shm_mutex = (pthread_mutex_t *) &win->mpid.shm->ctrl->mutex_lock; \
                                                                                            \
         rval = pthread_mutexattr_init(&attr);                                              \
-        MPIU_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_mutex",            \
+        MPIR_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_mutex",            \
                              "**pthread_mutex %s", strerror(rval));                        \
         rval = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);                \
-        MPIU_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_mutex",            \
+        MPIR_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_mutex",            \
                              "**pthread_mutex %s", strerror(rval));                        \
         rval = pthread_mutex_init(shm_mutex, &attr);                                       \
-        MPIU_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_mutex",            \
+        MPIR_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_mutex",            \
                              "**pthread_mutex %s", strerror(rval));                        \
         rval = pthread_mutexattr_destroy(&attr);                                           \
-        MPIU_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_mutex",            \
+        MPIR_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_mutex",            \
                              "**pthread_mutex %s", strerror(rval));                        \
     } while (0);
 
@@ -83,7 +85,7 @@ pami_rmw_t   zero_rmw_parms;
     do {                                                                                    \
         pthread_mutex_t *shm_mutex = (pthread_mutex_t *) &(win)->mpid.shm->ctrl->mutex_lock;\
         int rval = pthread_mutex_destroy(shm_mutex);                                        \
-        MPIU_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_mutex",             \
+        MPIR_ERR_CHKANDJUMP1(rval, mpi_errno, MPI_ERR_OTHER, "**pthread_mutex",             \
                              "**pthread_mutex %s", strerror(rval));                         \
     } while (0); }
 

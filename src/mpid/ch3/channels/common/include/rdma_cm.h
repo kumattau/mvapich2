@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,19 +25,24 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <rdma/rdma_cma.h>
+#include <infiniband/verbs.h>
+#include <infiniband/ib.h>
 #include "rdma_impl.h"
 
 extern int g_num_smp_peers;
 extern int *rdma_cm_host_list;
+#ifdef _MULTI_SUBNET_SUPPORT_
+extern union ibv_gid *rdma_cm_host_gid_list;
+#endif /*_MULTI_SUBNET_SUPPORT_*/
 
 /* Initiate all active connect requests */
-int rdma_cm_connect_all(int *hosts, int pg_rank, MPIDI_PG_t *pg);
+int rdma_cm_connect_all(int pg_rank, MPIDI_PG_t *pg);
 
 /* Initiate single active connect request */
 int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int ipnum, int rail_index);
 
 /* Exchange the ip information with all the processes */
-int *rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg);
+int rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg);
 
 /* Initialize rdma_cm resources + cm_ids + bind port + connection thrd */
 int ib_init_rdma_cm(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,

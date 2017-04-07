@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -253,11 +253,11 @@ void ib_connection_release(struct ib_connection *conn);
 //int   ib_connection_buf_init(struct ib_connection* conn, int sendsize, int recvsize, int rdmasize);
 int ib_connection_buf_init(struct ib_HCA *hca, int sendsize, int recvsize, int rdmasize);
 
-int inline ib_connection_post_send(struct ib_connection *conn, int qp_index, int sbuf_slot, int size);
-int inline ib_connection_post_recv(struct ib_connection *conn, int qp_index, int rbuf_slot, int size);
-int inline ib_connection_fillup_srq(struct ib_HCA *hca);
-int inline ib_connection_send_RR_rqst(struct ib_connection *conn, int qpidx, int rbufid, int rprocid, int rckptid, int size, int offset, int is_last_chunk);
-void inline ib_connection_send_terminate_rqst(struct ib_connection *connarray);
+int ib_connection_post_send(struct ib_connection *conn, int qp_index, int sbuf_slot, int size);
+int ib_connection_post_recv(struct ib_connection *conn, int qp_index, int rbuf_slot, int size);
+int ib_connection_fillup_srq(struct ib_HCA *hca);
+int ib_connection_send_RR_rqst(struct ib_connection *conn, int qpidx, int rbufid, int rprocid, int rckptid, int size, int offset, int is_last_chunk);
+void ib_connection_send_terminate_rqst(struct ib_connection *connarray);
 
 //int server_loop(struct ib_connection* conn );
 int ib_server_loop(struct ib_connection *conn, struct thread_pool *tp);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,7 +25,7 @@ int (*MV2_Ireduce_scatter_intra_node_function) (const void *sendbuf, void *recvb
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ireduce_scatter_noncomm
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ireduce_scatter_noncomm(const void *sendbuf, void *recvbuf,
                                         const int recvcounts[], MPI_Datatype datatype, MPI_Op op,
                                         MPID_Comm *comm_ptr, MPID_Sched_t s)
@@ -79,7 +79,7 @@ int MPIR_Ireduce_scatter_noncomm(const void *sendbuf, void *recvbuf,
                                     block_size, datatype,
                                     ((char *)tmp_buf0 + (MPIU_Mirror_permutation(i, log2_comm_size) * true_extent * block_size)),
                                     block_size, datatype, s);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         MPID_SCHED_BARRIER(s);
     }
     buf0_was_inout = 1;
@@ -105,10 +105,10 @@ int MPIR_Ireduce_scatter_noncomm(const void *sendbuf, void *recvbuf,
 
         mpi_errno = MPID_Sched_send((outgoing_data + send_offset*true_extent),
                                     size, datatype, peer, comm_ptr, s);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         mpi_errno = MPID_Sched_recv((incoming_data + recv_offset*true_extent),
                                     size, datatype, peer, comm_ptr, s);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         MPID_SCHED_BARRIER(s);
 
         /* always perform the reduction at recv_offset, the data at send_offset
@@ -118,14 +118,14 @@ int MPIR_Ireduce_scatter_noncomm(const void *sendbuf, void *recvbuf,
             mpi_errno = MPID_Sched_reduce((incoming_data + recv_offset*true_extent),
                                           (outgoing_data + recv_offset*true_extent),
                                           size, datatype, op, s);
-            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+            if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         }
         else {
             /* lower ranked value so need to call op(my_data, received_data) */
             mpi_errno = MPID_Sched_reduce((outgoing_data + recv_offset*true_extent),
                                           (incoming_data + recv_offset*true_extent),
                                           size, datatype, op, s);
-            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+            if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             buf0_was_inout = !buf0_was_inout;
         }
         MPID_SCHED_BARRIER(s);
@@ -141,7 +141,7 @@ int MPIR_Ireduce_scatter_noncomm(const void *sendbuf, void *recvbuf,
     result_ptr = (char *)(buf0_was_inout ? tmp_buf0 : tmp_buf1) + recv_offset * true_extent;
     mpi_errno = MPID_Sched_copy(result_ptr, size, datatype,
                                 recvbuf, size, datatype, s);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
     return mpi_errno;
@@ -153,7 +153,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ireduce_scatter_tune_helper_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int MPIR_Ireduce_scatter_tune_helper_MV2(const void *sendbuf, void *recvbuf, const int *recvcount,
                                         MPI_Datatype datatype, MPI_Op op,
                                         MPID_Comm *comm_ptr, MPID_Sched_t s)
@@ -209,7 +209,7 @@ static int MPIR_Ireduce_scatter_tune_helper_MV2(const void *sendbuf, void *recvb
         }
     }
 
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     
   fn_exit:
     return mpi_errno;
@@ -220,7 +220,7 @@ static int MPIR_Ireduce_scatter_tune_helper_MV2(const void *sendbuf, void *recvb
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ireduce_scatter_intra_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ireduce_scatter_intra_MV2(const void *sendbuf, void *recvbuf, const int *recvcount,
                                         MPI_Datatype datatype, MPI_Op op,
                                         MPID_Comm *comm_ptr, MPID_Sched_t s)
@@ -301,16 +301,13 @@ int MPIR_Ireduce_scatter_intra_MV2(const void *sendbuf, void *recvbuf, const int
         /* Code path should not enter this with the current algorithms*/
     }
 
-fn_exit:
     return mpi_errno;
-fn_fail:
-    goto fn_exit;
 }
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ireduce_scatter_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ireduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvcount,
                                         MPI_Datatype datatype, MPI_Op op,
                                         MPID_Comm *comm_ptr, MPID_Sched_t s)
@@ -331,8 +328,5 @@ int MPIR_Ireduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recv
 					       op, comm_ptr, s);
     }
 
-fn_exit:
     return mpi_errno;
-fn_fail:
-    goto fn_exit;
 }

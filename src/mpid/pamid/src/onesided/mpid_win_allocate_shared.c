@@ -29,7 +29,7 @@
 #undef FUNCNAME 
 #define FUNCNAME MPID_Win_allocate_shared
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 #define SHM_KEY_TAIL 0xfdbc         /* If this value is changed, change  */
                                       /* in PMD (mp_pmd.c) as well.        */
@@ -159,7 +159,7 @@ MPID_getSharedSegment_mmap(MPID_Win * win)
 {
   int rank, rc, fd;
   int mpi_errno = MPI_SUCCESS;
-  int errflag = FALSE;
+  MPIR_Errflag_t errflag = MPIR_ERR_NONE;
   int first = 0;
 
   snprintf (win->mpid.shm->shm_key, 63, "/mpich.comm-%d.win_shared", win->comm_ptr->context_id);
@@ -169,15 +169,15 @@ MPID_getSharedSegment_mmap(MPID_Win * win)
     first = 1;
   } else {
     rc = shm_open (win->mpid.shm->shm_key, O_RDWR, 0);
-    MPIU_ERR_CHKANDJUMP((rc == -1), mpi_errno, MPI_ERR_RMA_SHARED, "**rmashared");
+    MPIR_ERR_CHKANDJUMP((rc == -1), mpi_errno, MPI_ERR_RMA_SHARED, "**rmashared");
   }
 
   fd = rc;
   rc = ftruncate (fd, win->mpid.shm->segment_len);
-  MPIU_ERR_CHKANDJUMP((rc == -1), mpi_errno, MPI_ERR_RMA_SHARED, "**rmashared");
+  MPIR_ERR_CHKANDJUMP((rc == -1), mpi_errno, MPI_ERR_RMA_SHARED, "**rmashared");
 
   win->mpid.shm->base_addr = mmap (NULL, win->mpid.shm->segment_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  MPIU_ERR_CHKANDJUMP((win->mpid.shm->base_addr == MAP_FAILED), mpi_errno, MPI_ERR_RMA_SHARED, "**rmashared");
+  MPIR_ERR_CHKANDJUMP((win->mpid.shm->base_addr == MAP_FAILED), mpi_errno, MPI_ERR_RMA_SHARED, "**rmashared");
 
   close (fd); /* no longer needed */
 
@@ -188,7 +188,7 @@ MPID_getSharedSegment_mmap(MPID_Win * win)
   }
 
   mpi_errno = MPIR_Barrier_impl(win->comm_ptr, &errflag);
-  MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+  MPIR_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
   win->mpid.shm->allocated = 1;
 
@@ -205,7 +205,7 @@ int
 MPID_getSharedSegment_sysv(MPID_Win * win)
 {
     int mpi_errno = MPI_SUCCESS;
-    int errflag = FALSE;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     uint32_t shm_key;
     int rank;
     char *cp;
@@ -265,10 +265,10 @@ MPID_getSharedSegment_sysv(MPID_Win * win)
         MPID_assert(shm_key != -1);
 
         win->mpid.shm->shm_id = shmget(shm_key, win->mpid.shm->segment_len, shm_flag);
-        MPIU_ERR_CHKANDJUMP((win->mpid.shm->shm_id == -1), mpi_errno, MPI_ERR_RMA_SHARED, "**rmashared");
+        MPIR_ERR_CHKANDJUMP((win->mpid.shm->shm_id == -1), mpi_errno, MPI_ERR_RMA_SHARED, "**rmashared");
 
         win->mpid.shm->base_addr = (void *) shmat(win->mpid.shm->shm_id,0,0);
-        MPIU_ERR_CHKANDJUMP((win->mpid.shm->base_addr == (void*) -1), mpi_errno,MPI_ERR_BUFFER, "**bufnull");
+        MPIR_ERR_CHKANDJUMP((win->mpid.shm->base_addr == (void*) -1), mpi_errno,MPI_ERR_BUFFER, "**bufnull");
 
         /* set mutex_lock address and initialize it */
         win->mpid.shm->ctrl = (MPIDI_Win_shm_ctrl_t *) win->mpid.shm->base_addr;
@@ -279,7 +279,7 @@ MPID_getSharedSegment_sysv(MPID_Win * win)
 
     } else { /* task other than task 0  */
         mpi_errno = MPIR_Bcast_impl((void *) &shm_key,  sizeof(int), MPI_CHAR, 0, win->comm_ptr, &errflag);
-        MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+        MPIR_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
         win->mpid.shm->shm_id = shmget(shm_key, 0, 0);
         if (win->mpid.shm->shm_id != -1) { /* shm segment is available */
@@ -308,7 +308,7 @@ MPID_getSharedSegment(MPI_Aint     size,
 {
     int mpi_errno = MPI_SUCCESS;
     int i, comm_size, rank;
-    int errflag = FALSE;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     MPI_Aint pageSize,pageSize2, len,new_size;
     MPID_Win  *win;
     int    padSize;
@@ -484,6 +484,7 @@ MPID_Win_allocate_shared(MPI_Aint     size,
                          MPID_Win  ** win_ptr)
 {
   int mpi_errno  = MPI_SUCCESS;
+  MPIR_Errflag_t errflag = MPIR_ERR_NONE;
   int onNode     = 0;
   MPID_Win    *win = NULL;
   int rank, prev_size;
@@ -496,7 +497,7 @@ MPID_Win_allocate_shared(MPI_Aint     size,
   /* Verify all ranks are on-node */
   mpi_errno=CheckRankOnNode(comm_ptr,&onNode);
   if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-  MPIU_ERR_CHKANDJUMP((onNode == 0), mpi_errno, MPI_ERR_RMA_SHARED, "**rmashared");
+  MPIR_ERR_CHKANDJUMP((onNode == 0), mpi_errno, MPI_ERR_RMA_SHARED, "**rmashared");
   
   /* Initialize the window */
   mpi_errno =MPIDI_Win_init(size,disp_unit,win_ptr, info, comm_ptr, MPI_WIN_FLAVOR_SHARED, MPI_WIN_UNIFIED);
@@ -545,7 +546,7 @@ MPID_Win_allocate_shared(MPI_Aint     size,
 
   *(void**) base_ptr = (void *) win->mpid.info[rank].base_addr;
 
-  mpi_errno = MPIR_Barrier_impl(comm_ptr, &mpi_errno);
+  mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
 fn_exit:
     return mpi_errno;
     /* --BEGIN ERROR HANDLING-- */

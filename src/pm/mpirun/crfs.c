@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -75,7 +75,7 @@ static int pipe_fd;
 //////////////////////////////////////////////////////
 
 // Report errors to logfile and give -errno to caller
-inline int crfs_error(char *str)
+static inline int crfs_error(char *str)
 {
     int ret = -errno;
     //log_msg("    %s: %s\n", str, strerror(errno));
@@ -90,7 +90,7 @@ In order to get to the underlying filesystem, need to concatenate:
 Mount-point dir is saved to CRFS_DATA->rootdir in main().
 Whenever I need a path for something I'll call this to construct it.
 **/
-inline void crfs_fullpath(char *fpath, const char *path)
+static inline void crfs_fullpath(char *fpath, const char *path)
 {
     strcpy(fpath, CRFS_DATA->rootdir);
     strncat(fpath, path, MAX_PATH_LEN); // ridiculously long paths will break here

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,7 +25,7 @@
 #define Calculate_IOV_len(_iov, _n_iov, _len)                   \
 {   int _i; (_len) = 0;                                         \
     for (_i = 0; _i < (_n_iov); _i ++) {                        \
-        (_len) += (_iov)[_i].MPID_IOV_LEN;                      \
+        (_len) += (_iov)[_i].MPL_IOV_LEN;                      \
     }                                                           \
 }
 
@@ -66,7 +66,7 @@ __LINE__,(_rail), (_v)->rail);
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_rndv_initiate
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_lmt_ib_initiate_lmt(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
                                            struct MPID_Request *req) 
 {
@@ -101,13 +101,13 @@ int MPID_nem_lmt_ib_initiate_lmt(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 
         /*need to look into where OnDataAvail is used for non-contig*/
         req->dev.OnDataAvail = 0;
-        req->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)
+        req->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)
                              ((char*)req->dev.user_buf + dt_true_lb);
-        req->dev.iov[0].MPID_IOV_LEN = data_sz;
+        req->dev.iov[0].MPL_IOV_LEN = data_sz;
         req->dev.iov_count = 1;
 
-        REQ_FIELD(req, rndv_buf) = req->dev.iov[0].MPID_IOV_BUF;
-        REQ_FIELD(req, rndv_buf_sz) = req->dev.iov[0].MPID_IOV_LEN;
+        REQ_FIELD(req, rndv_buf) = req->dev.iov[0].MPL_IOV_BUF;
+        REQ_FIELD(req, rndv_buf_sz) = req->dev.iov[0].MPL_IOV_LEN;
         REQ_FIELD(req, rndv_buf_alloc) = 0;
 
    } else {
@@ -115,7 +115,7 @@ int MPID_nem_lmt_ib_initiate_lmt(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         req->dev.segment_ptr = MPID_Segment_alloc();
         MPID_Segment_init(req->dev.user_buf, req->dev.user_count,
                req->dev.datatype, req->dev.segment_ptr, 0);
-        req->dev.iov_count = MPID_IOV_LIMIT;
+        req->dev.iov_count = MPL_IOV_LIMIT;
         req->dev.segment_first = 0;
         req->dev.segment_size = data_sz; 
         /* One the initial load of a send iov req, set the OnFinal action (null
@@ -182,7 +182,7 @@ int MPID_nem_lmt_ib_initiate_lmt(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #undef FUNCNAME
 #define FUNCNAME vbuf_init_rndv_rput
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void vbuf_init_rndv_rput(
     vbuf* v,
     void* local_address,
@@ -217,7 +217,7 @@ void vbuf_init_rndv_rput(
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_rput
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_rput(struct MPIDI_VC *vc, struct MPID_Request *sreq)
 {
   vbuf *v;  
@@ -241,14 +241,14 @@ int MPIDI_nem_ib_rput(struct MPIDI_VC *vc, struct MPID_Request *sreq)
       do {
 
          for (i = 0; i < sreq->dev.iov_count; i++) {
-             MPIU_Memcpy((void *) buf, sreq->dev.iov[i].MPID_IOV_BUF,
-                       sreq->dev.iov[i].MPID_IOV_LEN);
-             buf += sreq->dev.iov[i].MPID_IOV_LEN;
+             MPIU_Memcpy((void *) buf, sreq->dev.iov[i].MPL_IOV_BUF,
+                       sreq->dev.iov[i].MPL_IOV_LEN);
+             buf += sreq->dev.iov[i].MPL_IOV_LEN;
          }
 
          if (sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV) {
              complete = 0;
-             sreq->dev.iov_count = MPID_IOV_LIMIT;
+             sreq->dev.iov_count = MPL_IOV_LIMIT;
              mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq,
                           sreq->dev.iov,
                           &sreq->dev.iov_count);
@@ -326,7 +326,7 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_NEM_IB_R3_SEND
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_r3_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 {
     vbuf *buf;
@@ -336,15 +336,15 @@ int MPIDI_nem_ib_r3_send(MPIDI_VC_t * vc, MPID_Request * sreq)
     int msg_buffered = 0;
     int nb;
     int complete;
-    MPID_IOV iov[MPID_IOV_LIMIT + 1];
+    MPL_IOV iov[MPL_IOV_LIMIT + 1];
     MPIDI_CH3_Pkt_rndv_r3_data_t pkt_head;
 
     MPIDI_STATE_DECL(MPIDI_NEM_IB_R3_SEND);
     MPIDI_FUNC_ENTER(MPIDI_NEM_IB_R3_SEND);
 
     MPIDI_Pkt_init(&pkt_head, MPIDI_CH3_PKT_RNDV_R3_DATA);
-    iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t);
-    iov[0].MPID_IOV_BUF = (void*) &pkt_head;
+    iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t);
+    iov[0].MPL_IOV_BUF = (void*) &pkt_head;
     pkt_head.receiver_req_id = (sreq)->ch.lmt_req_id;
 
     do{
@@ -363,7 +363,7 @@ int MPIDI_nem_ib_r3_send(MPIDI_VC_t * vc, MPID_Request * sreq)
             MPIU_Memcpy((void *) &iov[1],
                    &sreq->dev.iov[sreq->dev.iov_offset],
                    (sreq->dev.iov_count -
-                    sreq->dev.iov_offset) * sizeof(MPID_IOV));
+                    sreq->dev.iov_offset) * sizeof(MPL_IOV));
             n_iov = sreq->dev.iov_count - sreq->dev.iov_offset + 1;
 
             Calculate_IOV_len(iov, n_iov, pkt_len);
@@ -375,7 +375,7 @@ int MPIDI_nem_ib_r3_send(MPIDI_VC_t * vc, MPID_Request * sreq)
             if (MPI_SUCCESS != mpi_errno
                 && MPI_MRAIL_MSG_QUEUED != mpi_errno) {
                 sreq->status.MPI_ERROR = MPI_ERR_INTERN;
-                MPIDI_CH3U_Request_complete(sreq);
+                MPID_Request_complete(sreq);
                 goto fn_exit;
             } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
                 msg_buffered = 1;
@@ -412,14 +412,14 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_rndv_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_lmt_ib_start_send(struct MPIDI_VC *vc, struct MPID_Request *sreq,
-                                           MPID_IOV r_cookie)
+                                           MPL_IOV r_cookie)
 {
 
    /*all variable declarations must be done before state declaration*/
    int mpi_errno = MPI_SUCCESS;
-   MPID_nem_ib_lmt_cookie *cookie = (MPID_nem_ib_lmt_cookie *)r_cookie.MPID_IOV_BUF;
+   MPID_nem_ib_lmt_cookie *cookie = (MPID_nem_ib_lmt_cookie *)r_cookie.MPL_IOV_BUF;
 
    MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_LMT_IB_START_SEND);
    MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_LMT_IB_START_SEND);
@@ -468,7 +468,7 @@ int MPID_nem_lmt_ib_start_send(struct MPIDI_VC *vc, struct MPID_Request *sreq,
             break;
        case MV2_LMT_PROTOCOL_RGET:
             /*we should not get a CTS for RGET protocol*/
-            MPIU_Error_printf( "CTS for RGET protocol" );
+            MPL_error_printf( "CTS for RGET protocol" );
             exit( EXIT_FAILURE );
             break;
        default:
@@ -492,7 +492,7 @@ int MPID_nem_lmt_ib_start_send(struct MPIDI_VC *vc, struct MPID_Request *sreq,
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_lmt_ib_process_rndv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPID_nem_lmt_ib_process_rndv()
 {
     int mpi_errno = MPI_SUCCESS;

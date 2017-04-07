@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,9 +22,9 @@
 
 #if MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE
 static MPID_Comm *progress_comm_ptr;
-static MPIU_Thread_id_t progress_thread_id;
-static MPIU_Thread_mutex_t progress_mutex;
-static MPIU_Thread_cond_t progress_cond;
+static MPID_Thread_id_t progress_thread_id;
+static MPID_Thread_mutex_t progress_mutex;
+static MPID_Thread_cond_t progress_cond;
 static volatile int progress_thread_done = 0;
 
 #if defined(CHANNEL_MRAIL)
@@ -40,7 +40,7 @@ extern int smpi_set_progress_thread_affinity();
 #undef FUNCNAME
 #define FUNCNAME progress_fn
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static void progress_fn(void * data)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -51,7 +51,7 @@ static void progress_fn(void * data)
     /* Explicitly add CS_ENTER/EXIT since this thread is created from
      * within an internal function and will call NMPI functions
      * directly. */
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
 #if defined(_ENABLE_CUDA_)
     if (rdma_enable_cuda && 
@@ -82,18 +82,18 @@ static void progress_fn(void * data)
     MPIU_Assert(!mpi_errno);
 
     /* Send a signal to the main thread saying we are done */
-    MPIU_Thread_mutex_lock(&progress_mutex, &mpi_errno);
+    MPID_Thread_mutex_lock(&progress_mutex, &mpi_errno);
     MPIU_Assert(!mpi_errno);
 
     progress_thread_done = 1;
 
-    MPIU_Thread_mutex_unlock(&progress_mutex, &mpi_errno);
+    MPID_Thread_mutex_unlock(&progress_mutex, &mpi_errno);
     MPIU_Assert(!mpi_errno);
 
-    MPIU_Thread_cond_signal(&progress_cond, &mpi_errno);
+    MPID_Thread_cond_signal(&progress_cond, &mpi_errno);
     MPIU_Assert(!mpi_errno);
 
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
     return;
 }
@@ -103,7 +103,7 @@ static void progress_fn(void * data)
 #undef FUNCNAME
 #define FUNCNAME MPIR_Init_async_thread
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Init_async_thread(void)
 {
 #if MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE
@@ -118,16 +118,16 @@ int MPIR_Init_async_thread(void)
     /* Dup comm world for the progress thread */
     MPID_Comm_get_ptr(MPI_COMM_SELF, comm_self_ptr);
     mpi_errno = MPIR_Comm_dup_impl(comm_self_ptr, &progress_comm_ptr);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
-    MPIU_Thread_cond_create(&progress_cond, &err);
-    MPIU_ERR_CHKANDJUMP1(err, mpi_errno, MPI_ERR_OTHER, "**cond_create", "**cond_create %s", strerror(err));
+    MPID_Thread_cond_create(&progress_cond, &err);
+    MPIR_ERR_CHKANDJUMP1(err, mpi_errno, MPI_ERR_OTHER, "**cond_create", "**cond_create %s", strerror(err));
     
-    MPIU_Thread_mutex_create(&progress_mutex, &err);
-    MPIU_ERR_CHKANDJUMP1(err, mpi_errno, MPI_ERR_OTHER, "**mutex_create", "**mutex_create %s", strerror(err));
+    MPID_Thread_mutex_create(&progress_mutex, &err);
+    MPIR_ERR_CHKANDJUMP1(err, mpi_errno, MPI_ERR_OTHER, "**mutex_create", "**mutex_create %s", strerror(err));
     
-    MPIU_Thread_create((MPIU_Thread_func_t) progress_fn, NULL, &progress_thread_id, &err);
-    MPIU_ERR_CHKANDJUMP1(err, mpi_errno, MPI_ERR_OTHER, "**mutex_create", "**mutex_create %s", strerror(err));
+    MPID_Thread_create((MPID_Thread_func_t) progress_fn, NULL, &progress_thread_id, &err);
+    MPIR_ERR_CHKANDJUMP1(err, mpi_errno, MPI_ERR_OTHER, "**mutex_create", "**mutex_create %s", strerror(err));
     
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_INIT_ASYNC_THREAD);
 
@@ -143,7 +143,7 @@ int MPIR_Init_async_thread(void)
 #undef FUNCNAME
 #define FUNCNAME MPIR_Finalize_async_thread
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Finalize_async_thread(void)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -163,28 +163,28 @@ int MPIR_Finalize_async_thread(void)
     MPIU_Assert(!mpi_errno);
 
     /* XXX DJG why is this unlock/lock necessary?  Should we just YIELD here or later?  */
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
-    MPIU_Thread_mutex_lock(&progress_mutex, &mpi_errno);
+    MPID_Thread_mutex_lock(&progress_mutex, &mpi_errno);
     MPIU_Assert(!mpi_errno);
 
     while (!progress_thread_done) {
-        MPIU_Thread_cond_wait(&progress_cond, &progress_mutex, &mpi_errno);
+        MPID_Thread_cond_wait(&progress_cond, &progress_mutex, &mpi_errno);
         MPIU_Assert(!mpi_errno);
     }
 
-    MPIU_Thread_mutex_unlock(&progress_mutex, &mpi_errno);
+    MPID_Thread_mutex_unlock(&progress_mutex, &mpi_errno);
     MPIU_Assert(!mpi_errno);
 
     mpi_errno = MPIR_Comm_free_impl(progress_comm_ptr);
     MPIU_Assert(!mpi_errno);
 
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
-    MPIU_Thread_cond_destroy(&progress_cond, &mpi_errno);
+    MPID_Thread_cond_destroy(&progress_cond, &mpi_errno);
     MPIU_Assert(!mpi_errno);
 
-    MPIU_Thread_mutex_destroy(&progress_mutex, &mpi_errno);
+    MPID_Thread_mutex_destroy(&progress_mutex, &mpi_errno);
     MPIU_Assert(!mpi_errno);
 
     MPIR_async_thread_initialized = 0;

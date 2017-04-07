@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -97,7 +97,7 @@ ckpt_chunk_t *alloc_ckpt_chunk()
     return chk;
 }
 
-inline void ckpt_free_chunk(ckpt_chunk_t * chunk)
+void ckpt_free_chunk(ckpt_chunk_t * chunk)
 {
     free_buf_slot(hca.rdma_buf, chunk->bufid, 0);
     //free(chunk);
@@ -203,7 +203,7 @@ void dump_chunk(ckpt_chunk_t * ck)
 cr_restart needs a data-chunk starting at (offset) from the ckpt_file.
 It may block here waiting for the availability of that chunk
 **/
-inline ckpt_chunk_t *get_chunk_from_ckpt_file(ckpt_file_t * cfile, int offset)
+ckpt_chunk_t *get_chunk_from_ckpt_file(ckpt_file_t * cfile, int offset)
 {
     ckpt_chunk_t *ck = NULL;
     int found = 0;

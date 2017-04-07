@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1804,6 +1804,9 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
         pglist->data[i].local_pid = pglist->data[i].pid;
     }
 
+    if (tmp) {
+        free(tmp);
+    }
     if (spawnfile) {
         unlink(spawnfile);
     }
@@ -1826,11 +1829,13 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
 {
     char *mpispawn_env, *tmp, *ld_library_path;
     char *name, *value;
-    int j, i, n, tmp_i, numBytes = 0, getpath_status;
+    int i, j, k, n, tmp_i;
+    int numBytes = 0, getpath_status;
     FILE *host_list_file_fp;
     char pathbuf[PATH_MAX];
     char *host_list = NULL;
-    int k;
+    char *ptr;
+    size_t max_npids = 0, record_sz;
 
     if ((ld_library_path = getenv("LD_LIBRARY_PATH"))) {
         mpispawn_env = mkstr("LD_LIBRARY_PATH=%s", ld_library_path);
@@ -1924,20 +1929,23 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
 
     if (!configfile_on) {
         for (k = 0; k < pglist->npgs; k++) {
+            if (pglist->data[k].npids > max_npids)
+                max_npids = pglist->data[k].npids;
+        }
+        record_sz = (MAX_HOST_LEN+2) + (max_npids+1)*MAX_PID_LEN;
+        host_list = (char*)malloc(record_sz * sizeof(char));
+        if (!host_list)
+            goto allocation_error;
+        ptr = host_list;
+        for (k = 0; k < pglist->npgs; k++) {
             /* Make a list of hosts and the number of processes on each host */
             /* NOTE: RFCs do not allow : or ; in hostnames */
-            if (host_list)
-                host_list = mkstr("%s:%s:%d", host_list, pglist->data[k].hostname, pglist->data[k].npids);
-            else
-                host_list = mkstr("%s:%d", pglist->data[k].hostname, pglist->data[k].npids);
-            if (!host_list)
-                goto allocation_error;
+            ptr += sprintf(ptr, "%s:%d:", pglist->data[k].hostname, pglist->data[k].npids);
             for (n = 0; n < pglist->data[k].npids; n++) {
-                host_list = mkstr("%s:%d", host_list, pglist->data[k].plist_indices[n]);
-                if (!host_list)
-                    goto allocation_error;
+                ptr += sprintf(ptr, "%d:", pglist->data[k].plist_indices[n]);
             }
         }
+        *ptr = '\0';
     } else {
         /*In case of mpmd activated we need to pass to mpispawn the different names and arguments of executables */
         host_list = create_host_list_mpmd(pglist, plist);

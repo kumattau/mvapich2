@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -42,8 +42,8 @@
 do {                                                          \
     int rank;                                                 \
     UPMI_GET_RANK(&rank);                                      \
-    MPIU_Error_printf("[%d][%s:%d] ", rank, __FILE__, __LINE__);\
-    MPIU_Error_printf(args);                                    \
+    MPL_error_printf("[%d][%s:%d] ", rank, __FILE__, __LINE__);\
+    MPL_error_printf(args);                                    \
 } while (0)
 #else
 #define DEBUG_PRINT(args...)
@@ -76,7 +76,6 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     uint8_t                     has_ring_startup;
     uint8_t                     has_lazy_mem_unregister;
     uint8_t                     has_one_sided;
-    uint8_t                     shm_win_pt2pt;
     uint8_t                     has_flush;
     int                         maxtransfersize;
     int                         global_used_send_cq;
@@ -514,15 +513,17 @@ int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *);
 int mv2_post_ud_recv_buffers(int num_bufs, mv2_ud_ctx_t *ud_ctx);
 void mv2_ud_update_send_credits(vbuf *v);
 int rdma_init_ud(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
+int rdma_ud_post_buffers(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 int mv2_ud_setup_zcopy_rndv(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 int mv2_ud_get_remote_info(MPIDI_PG_t *pg, int pg_rank, int pg_size);
 void mv2_check_resend();
 void mv2_send_explicit_ack(MPIDI_VC_t *vc);
 int MPIDI_CH3I_UD_Generate_addr_handles(MPIDI_PG_t *pg, int pg_rank, int pg_size);
+int MPIDI_CH3I_UD_Generate_addr_handle_for_rank(MPIDI_PG_t * pg, int tgt_rank);
 void MRAILI_RC_Enable(MPIDI_VC_t *vc);
 void MPIDI_CH3I_UD_Stats(MPIDI_PG_t *pg);
 #endif /* _ENABLE_UD_ */
-int MRAILI_Fill_start_buffer(vbuf *v, MPID_IOV *iov, int n_iov);
+int MRAILI_Fill_start_buffer(vbuf *v, MPL_IOV *iov, int n_iov);
 int MPIDI_CH3I_MRAILI_Recv_addr(MPIDI_VC_t * vc, void *vstart);
 int MPIDI_CH3I_MRAILI_Recv_addr_reply(MPIDI_VC_t * vc, void *vstart);
 void MRAILI_RDMA_Put(MPIDI_VC_t * vc, vbuf *v,
@@ -537,10 +538,10 @@ int MRAILI_Send_select_rail(MPIDI_VC_t * vc);
 void vbuf_address_send(MPIDI_VC_t *vc);
 void vbuf_address_reply_send(MPIDI_VC_t *vc, uint8_t);
 int vbuf_fast_rdma_alloc (struct MPIDI_VC *, int dir);
-int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t *, MPID_IOV *,
+int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t *, MPL_IOV *,
                                     int, int *num_bytes_ptr, 
                                     vbuf **, int rail);
-int MPIDI_CH3I_MRAILI_rget_finish(MPIDI_VC_t *, MPID_IOV *,
+int MPIDI_CH3I_MRAILI_rget_finish(MPIDI_VC_t *, MPL_IOV *,
                                     int, int *num_bytes_ptr, 
                                     vbuf **, int rail);
 int MRAILI_Handle_one_sided_completions(vbuf * v);                            

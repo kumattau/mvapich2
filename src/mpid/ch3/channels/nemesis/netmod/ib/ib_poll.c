@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -34,7 +34,7 @@ static MPIDI_CH3_PktHandler_Fcn *pktArray[PKTARRAY_SIZE];
 #undef FUNCNAME
 #define FUNCNAME error_closed
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int error_closed(MPIDI_VC_t *const vc)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -45,7 +45,7 @@ static int error_closed(MPIDI_VC_t *const vc)
     VC_FIELD(vc, state) = MPID_NEM_IB_VC_STATE_ERROR;
 
     mpi_errno = MPIDI_CH3U_Handle_connection(vc, MPIDI_VC_EVENT_TERMINATED);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_ERROR_CLOSED);
@@ -89,7 +89,7 @@ static inline vbuf * MPIDI_CH3I_RDMA_poll(MPIDI_VC_t * vc)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_handle_read_individual
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -103,9 +103,9 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
 
     DEBUG_PRINT("[handle read] pheader: %p\n", buffer->pheader);
 
-    mpi_errno = MPIDI_CH3I_nem_ib_parse_header(vc, buffer, (void *)(&header), &header_size);
+    mpi_errno = MPIDI_nem_ib_parse_header(vc, buffer, (void *)(&header), &header_size);
     if(mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
 
@@ -187,7 +187,7 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
         &buflen,
         &VC_FIELD(vc, recv_active))) != MPI_SUCCESS)
     {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     /* DEBUG_PRINT("[recv: progress] about to fill request, recv_active %p\n", vc->ch.recv_active); */
@@ -204,7 +204,7 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
                     vc,
                     VC_FIELD(vc, recv_active))) != MPI_SUCCESS)
             {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
         }
 
@@ -216,7 +216,7 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
                 header_size,
                 &nb)) != MPI_SUCCESS)
         {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
 
         req = VC_FIELD(vc, recv_active);
@@ -224,7 +224,7 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
             "[recv: handle read] nb %d, iov n %d, len %d, VBUFSIZE %d\n",
             nb,
             req->dev.iov_count,
-            req->dev.iov[0].MPID_IOV_LEN,
+            req->dev.iov[0].MPL_IOV_LEN,
             VBUF_BUFFER_SIZE
         );
 
@@ -241,7 +241,7 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
                     req,
                     &complete)) != MPI_SUCCESS)
             {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
 
             DEBUG_PRINT("[recv: handle read] adjust req fine, complete %d\n", complete);
@@ -257,14 +257,14 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
                         header_size,
                         &nb)) != MPI_SUCCESS)
                 {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
 
                 if (!MPIDI_nem_ib_request_adjust_iov(req, nb))
                 {
                     if (!packetized_recv)
                     {
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
                     }
 
                     goto fn_exit;
@@ -276,7 +276,7 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
                         &complete)
                     ) != MPI_SUCCESS)
                 {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
             }
 
@@ -285,12 +285,12 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
             /* packetized codes */
             if (packetized_recv)
             {
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
             }
         }
         else if (!packetized_recv)
         {
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
         }
 #if defined(DEBUG)
         else
@@ -324,7 +324,7 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_read_progress
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocking)
 {
     static MPIDI_VC_t   *pending_vc = NULL;
@@ -409,7 +409,7 @@ int MPIDI_nem_ib_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_bloc
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_handle_read
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_handle_read(MPIDI_VC_t * vc, vbuf * buffer)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -439,7 +439,7 @@ int MPIDI_nem_ib_handle_read(MPIDI_VC_t * vc, vbuf * buffer)
 
         if ((mpi_errno = handle_read_individual(vc, buffer, &header_type)) != MPI_SUCCESS)
         {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
 
         buffer->pheader = (void *) ((uintptr_t) buffer->pheader + buffer->content_consumed);
@@ -464,7 +464,7 @@ int MPIDI_nem_ib_handle_read(MPIDI_VC_t * vc, vbuf * buffer)
 #else /* defined(MPIDI_MRAILI_COALESCE_ENABLED) */
     if ((mpi_errno = MPIDI_nem_ib_handle_read_individual(vc, buffer, &header_type)) != MPI_SUCCESS)
     {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 #endif /* defined(MPIDI_MRAILI_COALESCE_ENABLED) */
 
@@ -482,7 +482,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_poll
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_poll(int in_blocking_poll)
 {
 
@@ -496,7 +496,7 @@ int MPID_nem_ib_poll(int in_blocking_poll)
 
     if((mpi_errno = MPIDI_nem_ib_read_progress(&vc_ptr, &buffer, in_blocking_poll)) != MPI_SUCCESS)
     {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if (vc_ptr == NULL) {
@@ -504,7 +504,7 @@ int MPID_nem_ib_poll(int in_blocking_poll)
     } else {
         if ((mpi_errno = MPIDI_nem_ib_handle_read(vc_ptr, buffer)) != MPI_SUCCESS)
         {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
     }
 
@@ -545,24 +545,17 @@ static inline int GetSeqNumVbuf(vbuf * buf)
         case MPIDI_CH3_PKT_CANCEL_SEND_REQ:
         case MPIDI_CH3_PKT_CANCEL_SEND_RESP:
         case MPIDI_CH3_PKT_PUT:
+        case MPIDI_CH3_PKT_PUT_IMMED:
         case MPIDI_CH3_PKT_GET:
         case MPIDI_CH3_PKT_GET_RESP:
         case MPIDI_CH3_PKT_ACCUMULATE:
         case MPIDI_CH3_PKT_LOCK:
-        case MPIDI_CH3_PKT_LOCK_GRANTED:
-        case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:
-        case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:
-        case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
-        case MPIDI_CH3_PKT_ACCUM_IMMED:
         case MPIDI_CH3_PKT_FLUSH:
         case MPIDI_CH3_PKT_UNLOCK:
         case MPIDI_CH3_PKT_GET_ACCUM:
         case MPIDI_CH3_PKT_GET_ACCUM_RESP:
-        case MPIDI_CH3_PKT_CAS:
-        case MPIDI_CH3_PKT_CAS_RESP:
         case MPIDI_CH3_PKT_FOP:
         case MPIDI_CH3_PKT_FOP_RESP:
-        case MPIDI_CH3_PKT_PT_RMA_DONE:
         case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
         case MPIDI_CH3_PKT_CLOSE:
         case MPIDI_NEM_PKT_LMT_RTS:
@@ -614,11 +607,11 @@ static int MPIDI_nem_ib_test_pkt(vbuf **vbuf_handle)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_MPIDI_nem_ib_cq_poll
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
         MPIDI_VC_t * vc_req, int receiving, int is_blocking)
 {
-    int ne, ret;
+    int ne, ret, err = 0;
     *vbuf_handle = NULL;
     int num_cqs = 0;
     int is_send_completion;
@@ -891,7 +884,7 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
 
         #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                         MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
                         MPIU_THREAD_CHECK_END
         #endif
                         do {
@@ -905,7 +898,7 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
                         } while (ret && errno == EINTR);
         #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                         MPIU_THREAD_CHECK_BEGIN
-                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
                         MPIU_THREAD_CHECK_END
         #endif
 
@@ -1184,7 +1177,7 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_request_adjust_iov
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_request_adjust_iov(MPID_Request * req, MPIDI_msg_sz_t nb)
 {
     int offset = req->dev.iov_offset;
@@ -1194,13 +1187,13 @@ int MPIDI_nem_ib_request_adjust_iov(MPID_Request * req, MPIDI_msg_sz_t nb)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_NEM_IB_REQUEST_ADJUST_IOV);
 
     while (offset < count) {
-        if (req->dev.iov[offset].MPID_IOV_LEN <= (unsigned int) nb) {
-            nb -= req->dev.iov[offset].MPID_IOV_LEN;
+        if (req->dev.iov[offset].MPL_IOV_LEN <= (unsigned int) nb) {
+            nb -= req->dev.iov[offset].MPL_IOV_LEN;
             ++offset;
         } else {
-            req->dev.iov[offset].MPID_IOV_BUF =
-                ((char *) req->dev.iov[offset].MPID_IOV_BUF) + nb;
-            req->dev.iov[offset].MPID_IOV_LEN -= nb;
+            req->dev.iov[offset].MPL_IOV_BUF =
+                ((char *) req->dev.iov[offset].MPL_IOV_BUF) + nb;
+            req->dev.iov[offset].MPL_IOV_LEN -= nb;
             req->dev.iov_offset = offset;
             MPIDI_DBG_PRINTF((60, FCNAME, "adjust_iov returning FALSE"));
             MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_NEM_IB_REQUEST_ADJUST_IOV);

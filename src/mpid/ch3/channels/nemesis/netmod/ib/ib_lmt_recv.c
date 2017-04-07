@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -27,7 +27,7 @@
 
 /** these are supposed to be in ib_param.c **/
 
-int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, MPID_IOV s_cookie);
+int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, MPL_IOV s_cookie);
 int MPIDI_CH3U_Post_data_receive_found_temp(MPID_Request * rreq);
 int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req);
 int MPIDI_NEM_Prepare_ib_lmt_r_cookie(MPIDI_VC_t * vc,
@@ -61,8 +61,8 @@ int MPID_nem_ib_lmt_done_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq);
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_lmt_start_recv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, MPID_IOV s_cookie)
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, MPL_IOV s_cookie)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_nem_ib_lmt_cookie *rndv_info, *r_cookie_buf;
@@ -72,19 +72,19 @@ int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, M
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_IB_LMT_START_RECV);
 
     r_cookie_buf = MPIU_Malloc(sizeof(MPID_nem_ib_lmt_cookie));
-    rndv_info = (MPID_nem_ib_lmt_cookie *)s_cookie.MPID_IOV_BUF;
+    rndv_info = (MPID_nem_ib_lmt_cookie *)s_cookie.MPL_IOV_BUF;
     MPIDI_NEM_RNDV_SET_REQ_INFO(rreq,rndv_info);    
     
     /* whether this should be integrated here ?? */
     if (rreq->dev.recv_data_sz == 0) {
-        MPIDI_CH3U_Request_complete(rreq);
+        MPID_Request_complete(rreq);
     }
     else {
         /* put the rreq->user_buf to rreq->dev.iov[] */
         mpi_errno = MPIDI_CH3U_Post_data_receive_found_temp(rreq);
                 /* --BEGIN ERROR HANDLING-- */
         if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
-              MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
+              MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
                                     "**nem|loadsendiov");
         }
     }
@@ -93,23 +93,23 @@ int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, M
     {
 /*         mpi_errno = MPIDI_CH3_Prepare_rndv_get(vc, rreq);
          if (mpi_errno != MPI_SUCCESS) {
-             MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
+             MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
          }
 
          mpi_errno = MPIDI_CH3_Rndv_transfer(vc,
                   NULL, rreq, NULL, rts_pkt);                             //rts_pkt needs to be modified
          if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
-              MPIU_ERR_SETANDJUMP(mpi_errno,
+              MPIR_ERR_SETANDJUMP(mpi_errno,
                      MPI_ERR_OTHER,"**ch3|senddata");
          }
 */
-        MPIU_Error_printf("Function not implemented");
+        MPL_error_printf("Function not implemented");
         exit( EXIT_FAILURE );
     } else {
         mpi_errno = MPIDI_NEM_Prepare_ib_lmt_r_cookie(VC, r_cookie_buf, rreq);
         if (mpi_errno != MPI_SUCCESS)
         {
-            MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nem_ib|rndv");
+            MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nem_ib|rndv");
         }
         
         r_cookie_len = sizeof(MPID_nem_ib_lmt_cookie);
@@ -135,7 +135,7 @@ int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, M
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Post_data_receive_found_temp
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Post_data_receive_found_temp(MPID_Request * rreq)
 {
     int dt_contig;
@@ -176,9 +176,9 @@ int MPIDI_CH3U_Post_data_receive_found_temp(MPID_Request * rreq)
            entire message.  However, we haven't yet *read* the data 
            (this code describes how to read the data into the destination) */
         MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"IOV loaded for contiguous read");
-        rreq->dev.iov[0].MPID_IOV_BUF =
-            (MPID_IOV_BUF_CAST)((char*)(rreq->dev.user_buf) + dt_true_lb);
-        rreq->dev.iov[0].MPID_IOV_LEN = data_sz;
+        rreq->dev.iov[0].MPL_IOV_BUF =
+            (MPL_IOV_BUF_CAST)((char*)(rreq->dev.user_buf) + dt_true_lb);
+        rreq->dev.iov[0].MPL_IOV_LEN = data_sz;
         rreq->dev.iov_count = 1;
         /* FIXME: We want to set the OnDataAvail to the appropriate 
            function, which depends on whether this is an RMA 
@@ -190,14 +190,14 @@ int MPIDI_CH3U_Post_data_receive_found_temp(MPID_Request * rreq)
            the entire message */
         MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"IOV loaded for non-contiguous read");
         rreq->dev.segment_ptr = MPID_Segment_alloc( );
-        MPIU_ERR_CHKANDJUMP1((rreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
+        MPIR_ERR_CHKANDJUMP1((rreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
         MPID_Segment_init(rreq->dev.user_buf, rreq->dev.user_count,
                           rreq->dev.datatype, rreq->dev.segment_ptr, 0);
         rreq->dev.segment_first = 0;
         rreq->dev.segment_size = data_sz;
         mpi_errno = MPIDI_CH3U_Request_load_recv_iov(rreq);
         if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,
                                      "**ch3|loadrecviov");
         }
     }
@@ -227,8 +227,8 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
                 (req->dev.OnDataAvail == req->dev.OnFinal) ||
                 (req->dev.OnDataAvail ==
                  MPIDI_CH3_ReqHandler_UnpackSRBufComplete))) {
-        REQ_FIELD(req, rndv_buf) = req->dev.iov[0].MPID_IOV_BUF;
-        REQ_FIELD(req, rndv_buf_sz) = req->dev.iov[0].MPID_IOV_LEN;
+        REQ_FIELD(req, rndv_buf) = req->dev.iov[0].MPL_IOV_BUF;
+        REQ_FIELD(req, rndv_buf_sz) = req->dev.iov[0].MPL_IOV_LEN;
         REQ_FIELD(req, rndv_buf_alloc) = 0;
     } else {
         REQ_FIELD(req, rndv_buf_sz) = req->dev.segment_size;
@@ -290,7 +290,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Rndv_transfer
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
         MPID_Request * sreq,
         MPID_Request * rreq,
@@ -371,7 +371,7 @@ int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_NEM_Prepare_ib_lmt_r_cookie
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_NEM_Prepare_ib_lmt_r_cookie(MPIDI_VC_t * vc,
                                MPID_nem_ib_lmt_cookie *r_cookie_buf,
                                MPID_Request * rreq)
@@ -442,7 +442,7 @@ int MPIDI_nem_ib_Finish_request(MPID_Request *rreq)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_lmt_done_recv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_lmt_done_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq){
     int mpi_errno = MPI_SUCCESS;
     int complete;
@@ -461,10 +461,10 @@ int MPID_nem_ib_lmt_done_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq){
 
         for (iter=0; iter < rreq->dev.iov_count; ++iter)
         {
-          MPIU_Memcpy(rreq->dev.iov[iter].MPID_IOV_BUF,
-                   (void *) buf, rreq->dev.iov[iter].MPID_IOV_LEN);
-            buf += rreq->dev.iov[iter].MPID_IOV_LEN;
-            copied += rreq->dev.iov[iter].MPID_IOV_LEN;
+          MPIU_Memcpy(rreq->dev.iov[iter].MPL_IOV_BUF,
+                   (void *) buf, rreq->dev.iov[iter].MPL_IOV_LEN);
+            buf += rreq->dev.iov[iter].MPL_IOV_LEN;
+            copied += rreq->dev.iov[iter].MPL_IOV_LEN;
         }
 
         MPIDI_nem_ib_request_adjust_iov(rreq, copied);
@@ -500,10 +500,10 @@ int MPID_nem_ib_lmt_done_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq){
 
             for (iter = 0; iter < rreq->dev.iov_count; ++iter)
             {
-                MPIU_Memcpy(rreq->dev.iov[iter].MPID_IOV_BUF,
-                       (void *) buf, rreq->dev.iov[iter].MPID_IOV_LEN);
-                buf += rreq->dev.iov[iter].MPID_IOV_LEN;
-                copied += rreq->dev.iov[iter].MPID_IOV_LEN;
+                MPIU_Memcpy(rreq->dev.iov[iter].MPL_IOV_BUF,
+                       (void *) buf, rreq->dev.iov[iter].MPL_IOV_LEN);
+                buf += rreq->dev.iov[iter].MPL_IOV_LEN;
+                copied += rreq->dev.iov[iter].MPL_IOV_LEN;
             }
 
             MPIDI_nem_ib_request_adjust_iov(rreq, copied);
@@ -548,7 +548,7 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_lmt_r3_recv_data
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_lmt_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
 {                       
     int mpi_errno = MPI_SUCCESS;
@@ -668,7 +668,7 @@ int MPIDI_nem_ib_lmt_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_lmt_r3_recv_ack 
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_nem_ib_lmt_r3_recv_ack(MPIDI_VC_t * vc,
                                void *vstart)
 {

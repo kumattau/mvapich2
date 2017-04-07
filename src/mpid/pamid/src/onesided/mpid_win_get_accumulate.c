@@ -338,7 +338,7 @@ MPIDI_Get_accumulate(pami_context_t   context,
 #undef FUNCNAME
 #define FUNCNAME MPID_Get_accumulate
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int 
 MPID_Get_accumulate(const void   * origin_addr, 
 		    int            origin_count,

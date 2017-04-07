@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -45,6 +45,8 @@
 #define MV2_INTER_NODE_KNOMIAL_FACTOR_MIN 2
 #define MV2_INTRA_NODE_KNOMIAL_FACTOR_MAX 8
 #define MV2_INTRA_NODE_KNOMIAL_FACTOR_MIN 2 
+
+#define MV2_DEFAULT_SHARP_MAX_MSG_SIZE 1024 
 
 #if defined(_IA32_)
 
@@ -164,7 +166,7 @@ int is_shmem_collectives_enabled();
 extern struct coll_runtime mv2_coll_param;
 void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
 void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
-int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag);
+int create_allgather_comm(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int mv2_tune_parameter;
 extern int mv2_use_indexed_bcast_tuning;
@@ -285,21 +287,21 @@ extern int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
                                      MPI_Datatype datatype,
                                      MPI_Op op,
                                      int root,
-                                     MPID_Comm * comm_ptr, int *errflag); 
+                                     MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag); 
 extern int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                                           void *recvbuf,
                                           int count,
                                           MPI_Datatype datatype,
                                           MPI_Op op,
                                           int root,
-                                          MPID_Comm * comm_ptr, int *errflag); 
+                                          MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag); 
 extern int MPIR_Reduce_binomial_MV2(const void *sendbuf,
                                     void *recvbuf,
                                     int count,
                                     MPI_Datatype datatype,
                                     MPI_Op op,
                                     int root,
-                                    MPID_Comm * comm_ptr, int *errflag); 
+                                    MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag); 
 
 
 
@@ -358,7 +360,7 @@ int (*reduce_fn)(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,
-                             MPI_Op op, int root, MPID_Comm * comm_ptr, int *errflag);
+                             MPI_Op op, int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 #ifdef _ENABLE_CUDA_
 int cuda_stage_alloc(void **, int, void **, int,
@@ -494,7 +496,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
                          int expected_recv_count, int *src_array,
                          int expected_send_count, int dst,
                          int knomial_degree,
-                         MPID_Comm * comm_ptr, int *errflag);
+                         MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 extern int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
                                 char *prefix, int *fd, size_t file_size);
 #endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */

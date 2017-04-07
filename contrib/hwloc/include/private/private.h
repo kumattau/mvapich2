@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009      CNRS
- * Copyright © 2009-2015 Inria.  All rights reserved.
+ * Copyright © 2009-2017 Inria.  All rights reserved.
  * Copyright © 2009-2012 Université Bordeaux
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  *
@@ -94,18 +94,22 @@ struct hwloc_topology {
     int (*get_proc_membind)(hwloc_topology_t topology, hwloc_pid_t pid, hwloc_nodeset_t nodeset, hwloc_membind_policy_t * policy, int flags);
     int (*set_area_membind)(hwloc_topology_t topology, const void *addr, size_t len, hwloc_const_nodeset_t nodeset, hwloc_membind_policy_t policy, int flags);
     int (*get_area_membind)(hwloc_topology_t topology, const void *addr, size_t len, hwloc_nodeset_t nodeset, hwloc_membind_policy_t * policy, int flags);
+    int (*get_area_memlocation)(hwloc_topology_t topology, const void *addr, size_t len, hwloc_nodeset_t nodeset, int flags);
     /* This has to return the same kind of pointer as alloc_membind, so that free_membind can be used on it */
     void *(*alloc)(hwloc_topology_t topology, size_t len);
     /* alloc_membind has to always succeed if !(flags & HWLOC_MEMBIND_STRICT).
      * see hwloc_alloc_or_fail which is convenient for that.  */
     void *(*alloc_membind)(hwloc_topology_t topology, size_t len, hwloc_const_nodeset_t nodeset, hwloc_membind_policy_t policy, int flags);
     int (*free_membind)(hwloc_topology_t topology, void *addr, size_t len);
+
+    int (*get_allowed_resources)(hwloc_topology_t topology);
   } binding_hooks;
 
   struct hwloc_topology_support support;
 
   void (*userdata_export_cb)(void *reserved, struct hwloc_topology *topology, struct hwloc_obj *obj);
   void (*userdata_import_cb)(struct hwloc_topology *topology, struct hwloc_obj *obj, const char *name, const void *buffer, size_t length);
+  int userdata_not_decoded;
 
   struct hwloc_os_distances_s {
     hwloc_obj_type_t type;

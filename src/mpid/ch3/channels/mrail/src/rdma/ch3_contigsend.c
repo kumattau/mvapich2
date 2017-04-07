@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -47,21 +47,21 @@ static inline MPID_Request * create_eagercontig_request_inline(MPIDI_VC_t * vc,
     MPIU_Object_set_ref(sreq, 2);
     sreq->kind = MPID_REQUEST_SEND;
 
-    sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)eager_pkt;
-    sreq->dev.iov[0].MPID_IOV_LEN = sizeof(*eager_pkt);
+    sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)eager_pkt;
+    sreq->dev.iov[0].MPL_IOV_LEN = sizeof(*eager_pkt);
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                 "sending smp contiguous eager message, data_sz=" 
                 MPIDI_MSG_SZ_FMT, data_sz));
-    sreq->dev.iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) buf;
-    sreq->dev.iov[1].MPID_IOV_LEN = data_sz;
+    sreq->dev.iov[1].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) buf;
+    sreq->dev.iov[1].MPL_IOV_LEN = data_sz;
 #ifdef _ENABLE_CUDA_
-    sreq->dev.pending_pkt = MPIU_Malloc(sreq->dev.iov[0].MPID_IOV_LEN);
+    sreq->dev.pending_pkt = MPIU_Malloc(sreq->dev.iov[0].MPL_IOV_LEN);
     MPIU_Memcpy(sreq->dev.pending_pkt, 
-            sreq->dev.iov[0].MPID_IOV_BUF, sreq->dev.iov[0].MPID_IOV_LEN);
-    sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) sreq->dev.pending_pkt;
+            sreq->dev.iov[0].MPL_IOV_BUF, sreq->dev.iov[0].MPL_IOV_LEN);
+    sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) sreq->dev.pending_pkt;
 #else
-    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) sreq->dev.iov[0].MPID_IOV_BUF;
-    sreq->dev.iov[0].MPID_IOV_BUF = (void *)&sreq->dev.pending_pkt;
+    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) sreq->dev.iov[0].MPL_IOV_BUF;
+    sreq->dev.iov[0].MPL_IOV_BUF = (void *)&sreq->dev.pending_pkt;
 #endif
     sreq->ch.reqtype = REQUEST_NORMAL;
     sreq->dev.iov_offset = 0;
@@ -78,7 +78,7 @@ static inline MPID_Request * create_eagercontig_request_inline(MPIDI_VC_t * vc,
 #undef FUNCNAME
 #define FUNCNAME create_eagercontig_request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 MPID_Request * create_eagercontig_request(MPIDI_VC_t * vc,
                          MPIDI_CH3_Pkt_type_t reqtype,
                          const void * buf, MPIDI_msg_sz_t data_sz, int rank,
@@ -92,7 +92,7 @@ MPID_Request * create_eagercontig_request(MPIDI_VC_t * vc,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_SMP_ContigSend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
                 MPID_Request **sreq_p, MPIDI_CH3_Pkt_type_t reqtype,
                 const void * buf, MPIDI_msg_sz_t data_sz, int rank,
@@ -122,7 +122,7 @@ static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
                     MPIDI_CH3_PKT_EAGER_SEND, buf, data_sz, rank, tag, comm,
                     context_offset);
             if (sreq == NULL) {
-                MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");
+                MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");
             }
             MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
             vc->smp.send_active = sreq;
@@ -132,7 +132,7 @@ static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
         sreq = create_eagercontig_request_inline(vc, MPIDI_CH3_PKT_EAGER_SEND,
                 buf, data_sz, rank, tag, comm, context_offset);
         if (sreq == NULL) {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");
+            MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");
         }
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
     }
@@ -147,7 +147,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_ContigSend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_ContigSend(MPID_Request **sreq_p,
                          MPIDI_CH3_Pkt_type_t reqtype,
                          const void * buf, MPIDI_msg_sz_t data_sz, int rank,
@@ -166,16 +166,16 @@ int MPIDI_CH3_ContigSend(MPID_Request **sreq_p,
     if (SMP_INIT && vc->smp.local_nodes >= 0 &&
             vc->smp.local_nodes != g_smpi.my_local_id)
     {
-        MPIU_THREAD_CS_ENTER(CH3COMM,vc);
+        MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
         if(MPIDI_CH3_SMP_ContigSend(vc, sreq_p, reqtype, 
                     buf, data_sz, rank, tag, comm, context_offset)) {
-            MPIU_THREAD_CS_EXIT(CH3COMM,vc);
+            MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 #ifdef CKPT
             MPIDI_CH3I_CR_unlock();
 #endif
             return 1;
         }
-        MPIU_THREAD_CS_EXIT(CH3COMM,vc);
+        MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 #ifdef CKPT
         MPIDI_CH3I_CR_unlock();
 #endif

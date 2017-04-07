@@ -1,6 +1,6 @@
 #define BENCHMARK "OSU MPI%s Reduce Latency Test"
 /*
- * Copyright (C) 2002-2016 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2017 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University.
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
     }
 
     bufsize = sizeof(float)*(options.max_message_size/sizeof(float));
-    if (allocate_buffer((void**)&recvbuf, bufsize,
+    if (osu_allocate_buffer((void**)&recvbuf, bufsize,
                 options.accel)) {
         fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
     set_buffer(recvbuf, options.accel, 1, bufsize);
 
     bufsize = sizeof(float)*(options.max_message_size/sizeof(float));
-    if (allocate_buffer((void**)&sendbuf, bufsize,
+    if (osu_allocate_buffer((void**)&sendbuf, bufsize,
                 options.accel)) {
         fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);

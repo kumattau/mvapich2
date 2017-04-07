@@ -31,6 +31,7 @@ mpi_core_sources +=   \
     src/mpid/ch3/channels/psm/src/psm_1sided.c   \
     src/mpid/ch3/channels/psm/src/psm_comm.c     \
     src/mpid/ch3/channels/psm/src/psm_vbuf.c     \
+    src/mpid/ch3/channels/psm/src/ch3_abort.c    \
     src/mpid/ch3/channels/psm/src/ch3_win_fns.c
 
 mpi_convenience_libs += libch3affinity.la

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -208,7 +208,7 @@ static inline int set_event(FTB_event_properties_t * ep, int etype, int rank)
 }
 #endif
 
-inline void MPIDI_CH3I_SMC_lock()
+static inline void MPIDI_CH3I_SMC_lock()
 {
     pthread_mutex_lock(&MPICR_SMC_lock);
     g_cr_in_progress = 1;
@@ -216,7 +216,7 @@ inline void MPIDI_CH3I_SMC_lock()
     lock1_count++;
 }
 
-inline void MPIDI_CH3I_SMC_unlock()
+static inline void MPIDI_CH3I_SMC_unlock()
 {
     pthread_mutex_lock(&MPICR_SMC_lock);
     g_cr_in_progress = 0;
@@ -237,7 +237,7 @@ void Wait_for_CR_Completion()
     pthread_mutex_unlock(&MPICR_SMC_lock);
 }
 
-int MPIDI_SMC_CR_Init()
+static inline int MPIDI_SMC_CR_Init()
 {
     pthread_mutexattr_t attr;
     g_cr_in_progress = 0;
@@ -250,7 +250,7 @@ int MPIDI_SMC_CR_Init()
     return (0);
 }
 
-inline int MPIDI_SMC_CR_Finalize()
+static inline int MPIDI_SMC_CR_Finalize()
 {
     pthread_cond_destroy(&MPICR_SMC_cond);
     pthread_mutex_destroy(&MPICR_SMC_lock);
@@ -1192,7 +1192,7 @@ void *CR_Thread_entry(void *arg)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_CR_Init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_CR_Init(MPIDI_PG_t * pg, int rank, int size)
 {
     MPICR_pg = pg;
@@ -1205,7 +1205,7 @@ int MPIDI_CH3I_CR_Init(MPIDI_PG_t * pg, int rank, int size)
 
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"Creating a new thread for running cr controller: MPICR_cs_lock\n");
     if (pthread_rwlock_init(&MPICR_cs_lock, &attr)) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s", "pthread_mutex_init", strerror(errno)
+        MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s", "pthread_mutex_init", strerror(errno)
             );
     }
 
@@ -1214,7 +1214,7 @@ int MPIDI_CH3I_CR_Init(MPIDI_PG_t * pg, int rank, int size)
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"Creating a new thread for running cr controller\n");
 
     if (pthread_create(&MPICR_child_thread, NULL, CR_Thread_entry, NULL)) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
                                                             "%s: %s",
                                                             "pthread_create",
                                                             strerror(errno));
@@ -1531,7 +1531,7 @@ int CR_IBU_Release_network()
 #undef FUNCNAME
 #define FUNCNAME CR_IBU_Rebuild_network
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int CR_IBU_Rebuild_network()
 {
     int mpi_errno = MPI_SUCCESS;
@@ -1562,14 +1562,14 @@ int CR_IBU_Rebuild_network()
 
     /* Open the device and create cq and qp's */
     if (rdma_open_hca(&mv2_MPIDI_CH3I_RDMA_Process)) {
-        MPIU_Error_printf("rdma_open_hca failed\n");
+        MPL_error_printf("rdma_open_hca failed\n");
         return -1;
     }
 
     mpi_errno = rdma_iba_hca_init_noqp(&mv2_MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
     if (mpi_errno) {
-        MPIU_Error_printf("Failed to Initialize HCA type\n");
-        MPIU_ERR_POP(mpi_errno);
+        MPL_error_printf("Failed to Initialize HCA type\n");
+        MPIR_ERR_POP(mpi_errno);
     }
 
     dreg_reregister_all();
@@ -1612,7 +1612,7 @@ int CR_IBU_Rebuild_network()
     mpi_errno = MPICM_Init_UD_CM(&ud_qpn_self);
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"init UD ret %d\n", mpi_errno);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if (pg_size == 1) {
@@ -1630,7 +1630,7 @@ int CR_IBU_Rebuild_network()
             int rv = gethostname(hostname, HOSTNAME_LEN);
 
             if (rv != 0) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s", "Could not get hostname");
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s", "Could not get hostname");
             }
 
             struct hostent *hostent = gethostbyname(hostname);
@@ -1652,7 +1652,7 @@ int CR_IBU_Rebuild_network()
             mpi_errno = rdma_ring_based_allgather(&self_info, sizeof(self_info), pg_rank, all_info, pg_size, &mv2_MPIDI_CH3I_RDMA_Process);
             if (mpi_errno) {
                 PRINT_DEBUG(DEBUG_CR_verbose > 2,"rdma-ring-based-allgather failed, ret=%d...\n", mpi_errno);
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
             for (i = 0; i < pg_size; ++i) {
                 /* Use the recalculated hostids on restart */
@@ -1668,7 +1668,7 @@ int CR_IBU_Rebuild_network()
             mpi_errno = rdma_cleanup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process);
 
             if (mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
         } else {
             /* Exchange the information about HCA_lid and qp_num. */
@@ -1745,7 +1745,7 @@ int CR_IBU_Rebuild_network()
     MPICM_Create_UD_threads();
 
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     PRINT_DEBUG(DEBUG_CR_verbose > 2,"Waiting in a UPMI_BARRIER\n");

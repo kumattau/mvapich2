@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -16,7 +16,7 @@
 #undef FUNCNAME
 #define FUNCNAME psm_post_large_msg_irecv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 #if PSM_VERNO >= PSM_2_1_VERSION
     int psm_post_large_msg_irecv(void *buf, MPIDI_msg_sz_t buflen, MPID_Request **request, psm2_mq_tag_t *rtag, psm2_mq_tag_t *rtagsel)
 #else
@@ -63,7 +63,7 @@
 #undef FUNCNAME
 #define FUNCNAME psm_recv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int psm_recv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
              MPI_Status *stat, MPID_Request **request)
 {
@@ -77,7 +77,7 @@ int psm_recv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
     int mpi_errno = MPI_SUCCESS;
 
     if(unlikely(buf == NULL && buflen > 0)) {
-        MPIU_ERR_SET(mpi_errno, MPI_ERR_BUFFER, "**fail");
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_BUFFER, "**fail");
         goto fn_fail;
     }
 
@@ -103,7 +103,7 @@ int psm_recv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
     if(!req) {
         req = psm_create_req();
         if(unlikely(req == NULL)) {
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_NO_MEM, "**nomem");
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_NO_MEM, "**nomem");
             goto fn_fail;
          }
         *request = req;
@@ -111,7 +111,7 @@ int psm_recv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
 
     req->kind = MPID_REQUEST_RECV;
 
-    DBG("psm_irecv: expecting data from %d, tag = %d\n", src, tag);
+    PRINT_DEBUG(DEBUG_CHM_verbose>1, "psm_irecv: expecting data from %d, tag = %d\n", src, tag);
     _psm_enter_;
     if ((unlikely(buflen > ipath_max_transfer_size))) {
         psmerr = PSM_LARGE_IRECV(buf, buflen, request, rtag, rtagsel);
@@ -122,14 +122,14 @@ int psm_recv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
     _psm_exit_;
     if(unlikely(psmerr != PSM_OK)) {
         mpi_errno = psm_map_error(psmerr);
-        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
         goto fn_fail;
     }
    
     /* we cannot do a blocking recv, poke prog-engine till this req completes */
     mpi_errno = psm_try_complete(req);
     if(unlikely(mpi_errno != MPI_SUCCESS)) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     if(stat != MPI_STATUS_IGNORE) {
         stat->MPI_TAG = req->status.MPI_TAG;
@@ -150,7 +150,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME psm_irecv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int psm_irecv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
         MPID_Request *req)
 {
@@ -163,7 +163,7 @@ int psm_irecv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen
     int mpi_errno = MPI_SUCCESS;
 
     if(unlikely(buf == NULL && buflen > 0)) {
-        MPIU_ERR_SET(mpi_errno, MPI_ERR_BUFFER, "**fail");
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_BUFFER, "**fail");
         goto fn_fail;
     }
 
@@ -175,7 +175,7 @@ int psm_irecv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen
             rtagsel.tag0 = MQ_TAGSEL_ANY_TAG;
         if(unlikely(src == MPI_ANY_SOURCE))
             rtagsel.tag1 = MQ_TAGSEL_ANY_SOURCE;
-        DBG("psm2_irecv: non-blocking\n");
+        PRINT_DEBUG(DEBUG_CHM_verbose>1, "psm2_irecv: non-blocking\n");
     #else
         rtag = 0;
         rtagsel = MQ_TAGSEL_ALL;
@@ -183,7 +183,7 @@ int psm_irecv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen
             rtagsel = MQ_TAGSEL_ANY_SOURCE;
         if(unlikely(tag == MPI_ANY_TAG))
             rtagsel = rtagsel & MQ_TAGSEL_ANY_TAG;
-        DBG("psm_irecv: non-blocking\n");
+        PRINT_DEBUG(DEBUG_CHM_verbose>1, "psm_irecv: non-blocking\n");
     #endif
 
     MAKE_PSM_SELECTOR(rtag, context_id, tag, src);
@@ -198,11 +198,11 @@ int psm_irecv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen
     _psm_exit_;
     if(unlikely(psmerr != PSM_OK)) {
         mpi_errno = psm_map_error(psmerr);
-        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
         goto fn_fail;
     }
             
-    DBG("irecv enqueue\n");
+    PRINT_DEBUG(DEBUG_CHM_verbose>1, "irecv enqueue\n");
     ++psm_tot_recvs;
 
 fn_fail:

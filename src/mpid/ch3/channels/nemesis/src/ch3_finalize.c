@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -24,7 +24,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Finalize
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Finalize(void)
 {
     extern int finalize_coll_comm;
@@ -34,17 +34,17 @@ int MPIDI_CH3_Finalize(void)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_FINALIZE);
 
     mpi_errno = MPIDI_CH3I_Progress_finalize();
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     
     mpi_errno = MPID_nem_finalize();
-    if (mpi_errno) MPIU_ERR_POP (mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP (mpi_errno);
 
 #ifdef _OSU_MVAPICH_
     if (mv2_enable_shmem_collectives || finalize_coll_comm == 1) {
         /* Freeing up shared memory collective resources*/
         mpi_errno = MPIDI_CH3I_SHMEM_COLL_finalize(MPID_nem_mem_region.local_rank,
                         MPID_nem_mem_region.num_local);
-        if (mpi_errno) MPIU_ERR_POP (mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP (mpi_errno);
 
         MV2_collectives_arch_finalize();
     }

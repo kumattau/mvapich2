@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -19,6 +19,11 @@
 #include <unistd.h>
 #if defined(_MCST_SUPPORT_)
 #include "ibv_mcast.h"
+#endif
+
+#if defined (_SHARP_SUPPORT_)
+#include "ibv_sharp.h"
+extern int mv2_sharp_tuned_msg_size;
 #endif
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_2level_comm_requests);
@@ -48,6 +53,9 @@ void clear_2level_comm (MPID_Comm* comm_ptr)
     comm_ptr->dev.ch.is_mcast_ok = 0;
 #endif
 
+#if defined(_SHARP_SUPPORT_)
+    comm_ptr->dev.ch.is_sharp_ok = 0;
+#endif
 }
 
 #if defined(_SMP_LIMIC_)    
@@ -71,13 +79,13 @@ int free_limic_comm (MPID_Comm* shmem_comm_ptr )
         }
     }
     if (intra_sock_comm_ptr != NULL)  { 
-        mpi_errno = MPIR_Comm_release(intra_sock_comm_ptr, 0);
+        mpi_errno = MPIR_Comm_release(intra_sock_comm_ptr);
         if (mpi_errno != MPI_SUCCESS) { 
             goto fn_fail;
         } 
     }
     if (intra_sock_leader_comm_ptr != NULL)  { 
-        mpi_errno = MPIR_Comm_release(intra_sock_leader_comm_ptr, 0);
+        mpi_errno = MPIR_Comm_release(intra_sock_leader_comm_ptr);
         if (mpi_errno != MPI_SUCCESS) { 
             goto fn_fail;
         } 
@@ -120,6 +128,15 @@ int free_2level_comm (MPID_Comm* comm_ptr)
     }
 
     local_rank = shmem_comm_ptr->rank;
+
+#if defined (_SHARP_SUPPORT_)
+    if (mv2_enable_sharp_coll && (comm_ptr->dev.ch.is_sharp_ok == 1)) {
+        mpi_errno = mv2_free_sharp_handlers(comm_ptr->dev.ch.sharp_coll_info); 
+        if (mpi_errno != MPI_SUCCESS) { 
+            goto fn_fail;
+        } 
+    }
+#endif /* if defined (_SHARP_SUPPORT_) */
     
     if(local_rank == 0 && shmem_comm_ptr->dev.ch.shmem_comm_rank >= 0) { 
         lock_shmem_region();
@@ -151,7 +168,7 @@ int free_2level_comm (MPID_Comm* comm_ptr)
         } 
     } 
     if (local_rank == 0 && leader_comm_ptr != NULL) { 
-        mpi_errno = MPIR_Comm_release(leader_comm_ptr, 0);
+        mpi_errno = MPIR_Comm_release(leader_comm_ptr);
         if (mpi_errno != MPI_SUCCESS) { 
             goto fn_fail;
         } 
@@ -162,13 +179,13 @@ int free_2level_comm (MPID_Comm* comm_ptr)
         if (shmem_comm_ptr->local_group != NULL) {
             MPIR_Group_release(shmem_comm_ptr->local_group);
         }
-        mpi_errno = MPIR_Comm_release(shmem_comm_ptr, 0);
+        mpi_errno = MPIR_Comm_release(shmem_comm_ptr);
         if (mpi_errno != MPI_SUCCESS) { 
             goto fn_fail;
         } 
     }
     if (allgather_comm_ptr != NULL)  { 
-        mpi_errno = MPIR_Comm_release(allgather_comm_ptr, 0);
+        mpi_errno = MPIR_Comm_release(allgather_comm_ptr);
         if (mpi_errno != MPI_SUCCESS) { 
             goto fn_fail;
         } 
@@ -214,7 +231,7 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
     int input_flag = 0, output_flag = 0;
     int my_local_size, my_local_id;
     int mpi_errno = MPI_SUCCESS;
-    int errflag = FALSE;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
     MPI_Group subgroup2;
     MPID_Group *group_ptr=NULL;
@@ -225,12 +242,12 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
     MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_ptr);
     mpi_errno = PMPI_Comm_rank(comm_ptr->dev.ch.shmem_comm, &my_local_id);
     if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
 
     mpi_errno = PMPI_Comm_size(comm_ptr->dev.ch.shmem_comm, &my_local_size);
     if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
 
     if(g_use_limic2_coll) {
@@ -248,7 +265,7 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
                 mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                         FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
                         "memory allocation failed", strerror(errno));
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
 
             }
 
@@ -257,7 +274,7 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
             mpi_errno = MPIR_Allgather_impl(&socket_bound, 1, MPI_INT,
                     intra_socket_map, 1, MPI_INT, shmem_ptr, &errflag);
             if(mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
 
             /*Check if all the proceses are not in same socket.
@@ -277,7 +294,7 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
             mpi_errno = PMPI_Comm_split(comm_ptr->dev.ch.shmem_comm, socket_bound, 
                     my_local_id, &(shmem_ptr->dev.ch.intra_sock_comm));
             if(mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
             int intra_socket_leader_id=-1;
             int intra_socket_leader_cnt=0;
@@ -295,7 +312,7 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
                 mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                         FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
                         "memory allocation failed", strerror(errno));
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
 
             }
             /*initialize the intra_socket_leader_map*/
@@ -305,7 +322,7 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
             mpi_errno = MPIR_Allgather_impl(&intra_socket_leader_id, 1, MPI_INT,
                     intra_socket_leader_map, 1, MPI_INT, shmem_ptr, &errflag);
             if(mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
 
             for(i=0;i<my_local_size;i++) {
@@ -319,7 +336,7 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
                 mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                         FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
                         "memory allocation failed", strerror(errno));
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
 
             /*Assuming homogeneous system, where every socket has same number
@@ -336,32 +353,32 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
              * intra socket leader comm*/
             mpi_errno = PMPI_Comm_group(comm_ptr->dev.ch.shmem_comm, &comm_group1);
             if(mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
 
             mpi_errno = PMPI_Group_incl(comm_group1, intra_socket_leader_cnt, 
                     intra_sock_leader_group, &subgroup2);
             if(mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
 
             /*Creating intra_sock_leader communicator*/
             mpi_errno = PMPI_Comm_create(comm_ptr->dev.ch.shmem_comm, subgroup2, 
                     &(shmem_ptr->dev.ch.intra_sock_leader_comm));
             if(mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
 
             if(intra_comm_rank == 0 ) {
                 mpi_errno = PMPI_Comm_rank(shmem_ptr->dev.ch.intra_sock_leader_comm, 
                         &intra_leader_comm_rank);
                 if(mpi_errno) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
                 mpi_errno = PMPI_Comm_size(shmem_ptr->dev.ch.intra_sock_leader_comm, 
                         &intra_leader_comm_size);
                 if(mpi_errno) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
             }
 
@@ -375,7 +392,7 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
                         shmem_ptr->dev.ch.socket_size, 1, MPI_INT, 
                         shmem_ptr->dev.ch.intra_sock_leader_comm);
                 if(mpi_errno) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
                 shmem_ptr->dev.ch.is_socket_uniform = 1; 
                 for(array_index=0; array_index < intra_leader_comm_size; 
@@ -392,12 +409,12 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
             if(group_ptr != NULL) { 
                 mpi_errno = PMPI_Group_free(&subgroup2);
                 if(mpi_errno) {
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                 }
             }
             mpi_errno=PMPI_Group_free(&comm_group1);
             if(mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
         }
 
@@ -423,7 +440,7 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
         mpi_errno = MPIR_Bcast_impl (&mv2_limic_comm_count, 1, MPI_INT, 
                 0, shmem_ptr, &errflag);
         if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
 
         if ((mv2_limic_comm_count <= mv2_max_limic_comms) &&
@@ -446,7 +463,7 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
         mpi_errno = MPIR_Allreduce_impl(&input_flag, &output_flag, 1, 
                 MPI_INT, MPI_LAND, comm_ptr, &errflag);
         if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
 
         if (output_flag == 1){
@@ -461,14 +478,14 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
                 if(group_ptr != NULL) { 
                     mpi_errno = PMPI_Group_free(&subgroup2);
                     if(mpi_errno) {
-                        MPIU_ERR_POP(mpi_errno);
+                        MPIR_ERR_POP(mpi_errno);
                     }
                 }
                 MPID_Group_get_ptr( comm_group1, group_ptr );
                 if(group_ptr != NULL) { 
                     mpi_errno = PMPI_Group_free(&comm_group1);
                     if(mpi_errno) {
-                        MPIU_ERR_POP(mpi_errno);
+                        MPIR_ERR_POP(mpi_errno);
                     }
                 }
                 free_limic_comm(shmem_ptr);
@@ -484,7 +501,7 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
 }
 #endif
 
-int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag)
+int create_allgather_comm(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     static const char FCNAME[] = "create_allgather_comm";
     int mpi_errno = MPI_SUCCESS; 
@@ -512,7 +529,7 @@ int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag)
         mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
                    "memory allocation failed", strerror(errno));
-                   MPIU_ERR_POP(mpi_errno);
+                   MPIR_ERR_POP(mpi_errno);
     }              
     
     MPIDI_VC_t* vc = NULL;
@@ -530,12 +547,12 @@ int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag)
 
     mpi_errno = PMPI_Comm_group(comm_ptr->handle, &comm_group);
     if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
 
     mpi_errno=MPIR_Bcast_impl(&leader_rank, 1, MPI_INT, 0, shmem_ptr, errflag);
     if(mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     } 
 
     for (i=1; i < shmem_grp_size; i++ ){
@@ -557,7 +574,7 @@ int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag)
     mpi_errno = MPIR_Allreduce_impl(&is_local_ok, &is_block, 1, 
                                     MPI_INT, MPI_LAND, comm_ptr, errflag);
     if(mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if (is_block) {
@@ -583,18 +600,18 @@ int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag)
                                     comm_ptr->dev.ch.allgather_new_ranks, 
                                     &allgather_group);
         if(mpi_errno) {
-             MPIU_ERR_POP(mpi_errno);
+             MPIR_ERR_POP(mpi_errno);
         }  
         mpi_errno = PMPI_Comm_create(comm_ptr->handle, allgather_group, 
                                      &(comm_ptr->dev.ch.allgather_comm));
         if(mpi_errno) {
-           MPIU_ERR_POP(mpi_errno);
+           MPIR_ERR_POP(mpi_errno);
         }
         comm_ptr->dev.ch.allgather_comm_ok = 1;
         
         mpi_errno=PMPI_Group_free(&allgather_group);
         if(mpi_errno) {
-           MPIU_ERR_POP(mpi_errno);
+           MPIR_ERR_POP(mpi_errno);
         }
 
     } else {
@@ -605,7 +622,7 @@ int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag)
 
     mpi_errno=PMPI_Group_free(&comm_group);
     if(mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
 fn_exit: 
@@ -624,7 +641,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     MPID_Group *group_ptr=NULL;
     int leader_comm_size, my_local_size, my_local_id;
     int input_flag = 0, output_flag = 0;
-    int errflag = FALSE;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     int leader_group_size = 0;
     int mv2_shmem_coll_blk_stat = 0;
     int iter;
@@ -663,7 +680,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
         mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
                    "memory allocation failed", strerror(errno));
-                   MPIU_ERR_POP(mpi_errno);
+                   MPIR_ERR_POP(mpi_errno);
     }
 
     /* Creating local shmem group */
@@ -672,6 +689,9 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     int grp_index = 0;
     comm_ptr->dev.ch.leader_comm=MPI_COMM_NULL;
     comm_ptr->dev.ch.shmem_comm=MPI_COMM_NULL;
+#if defined (_SHARP_SUPPORT_)
+    comm_ptr->dev.ch.sharp_coll_info = NULL;
+#endif
 
     MPIDI_VC_t* vc = NULL;
     for (; i < size ; ++i){
@@ -705,14 +725,14 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
             MPI_INT, MPI_LAND, comm_ptr, 
             &errflag);
     if(mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     } 
 
     mpi_errno = MPIR_Allreduce_impl(&blocked, &(comm_ptr->dev.ch.is_blocked), 1, 
             MPI_INT, MPI_LAND, comm_ptr, 
             &errflag);
     if(mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if (!output_flag) {
@@ -740,12 +760,12 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
         mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
                    "memory allocation failed", strerror(errno));
-                   MPIU_ERR_POP(mpi_errno);
+                   MPIR_ERR_POP(mpi_errno);
     }
     
     mpi_errno = MPIR_Allgather_impl (&leader, 1, MPI_INT , comm_ptr->dev.ch.leader_map, 1, MPI_INT, comm_ptr, &errflag);
     if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
 
     int* leader_group = MPIU_Malloc(sizeof(int) * size);
@@ -753,7 +773,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
        mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
                    "memory allocation failed", strerror(errno));
-                   MPIU_ERR_POP(mpi_errno);
+                   MPIR_ERR_POP(mpi_errno);
     }
 
     /* Gives the mapping from leader's rank in comm to 
@@ -763,7 +783,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
        mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
                    "memory allocation failed", strerror(errno));
-                   MPIU_ERR_POP(mpi_errno);
+                   MPIR_ERR_POP(mpi_errno);
     }
 
     for (i=0; i < size ; ++i){
@@ -783,17 +803,17 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
 
     mpi_errno = PMPI_Comm_group(comm, &comm_group);
     if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
 
     mpi_errno = PMPI_Group_incl(comm_group, leader_group_size, leader_group, &subgroup1);
      if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
 
     mpi_errno = PMPI_Comm_create(comm, subgroup1, &(comm_ptr->dev.ch.leader_comm));
     if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
 
     MPID_Comm *leader_ptr;
@@ -809,24 +829,24 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     if(group_ptr != NULL) { 
        mpi_errno = PMPI_Group_free(&subgroup1);
        if(mpi_errno) {
-               MPIU_ERR_POP(mpi_errno);
+               MPIR_ERR_POP(mpi_errno);
        }
     }
 
     mpi_errno = PMPI_Group_incl(comm_group, shmem_size, shmem_group, &subgroup1);
      if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
 
     mpi_errno = PMPI_Comm_create(comm, subgroup1, &(comm_ptr->dev.ch.shmem_comm));
     if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
     
     /*
     mpi_errno = PMPI_Comm_split(comm, leader, local_rank, &(comm_ptr->dev.ch.shmem_comm));
     if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
     */
 
@@ -840,11 +860,11 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     
     mpi_errno = PMPI_Comm_rank(comm_ptr->dev.ch.shmem_comm, &my_local_id);
     if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
     mpi_errno = PMPI_Comm_size(comm_ptr->dev.ch.shmem_comm, &my_local_size);
     if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     }
     comm_ptr->dev.ch.intra_node_done = 0;
 #if defined(_MCST_SUPPORT_)
@@ -865,14 +885,14 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
            int array_index=0;
            mpi_errno = PMPI_Comm_size(comm_ptr->dev.ch.leader_comm, &leader_comm_size);
            if(mpi_errno) {
-               MPIU_ERR_POP(mpi_errno);
+               MPIR_ERR_POP(mpi_errno);
            }
 
            comm_ptr->dev.ch.node_sizes = MPIU_Malloc(sizeof(int)*leader_comm_size);
            mpi_errno = PMPI_Allgather(&my_local_size, 1, MPI_INT,
 				 comm_ptr->dev.ch.node_sizes, 1, MPI_INT, comm_ptr->dev.ch.leader_comm);
            if(mpi_errno) {
-              MPIU_ERR_POP(mpi_errno);
+              MPIR_ERR_POP(mpi_errno);
            }
            comm_ptr->dev.ch.is_uniform = 1; 
            for(array_index=0; array_index < leader_comm_size; array_index++) { 
@@ -907,18 +927,18 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
                                   &(comm_ptr->dev.ch.is_global_block), 1, 
                                   MPI_INT, MPI_LAND, leader_ptr, &errflag);
         if(mpi_errno) {
-           MPIU_ERR_POP(mpi_errno);
+           MPIR_ERR_POP(mpi_errno);
         } 
         mpi_errno = MPIR_Bcast_impl(&(comm_ptr->dev.ch.is_global_block),1, MPI_INT, 0,
                                shmem_ptr, &errflag); 
         if(mpi_errno) {
-           MPIU_ERR_POP(mpi_errno);
+           MPIR_ERR_POP(mpi_errno);
         } 
     } else { 
         mpi_errno = MPIR_Bcast_impl(&(comm_ptr->dev.ch.is_global_block),1, MPI_INT, 0,
                                shmem_ptr, &errflag); 
         if(mpi_errno) {
-           MPIU_ERR_POP(mpi_errno);
+           MPIR_ERR_POP(mpi_errno);
         } 
     }      
 
@@ -927,14 +947,14 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     mpi_errno = MPIR_Bcast_impl(&(comm_ptr->dev.ch.is_uniform),1, MPI_INT, 0,
                            shmem_ptr, &errflag); 
     if(mpi_errno) {
-       MPIU_ERR_POP(mpi_errno);
+       MPIR_ERR_POP(mpi_errno);
     } 
 
     comm_ptr->dev.ch.allgather_comm_ok = 0;
 
     mpi_errno=PMPI_Group_free(&comm_group);
     if(mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
                              
     shmem_ptr->dev.ch.shmem_coll_ok = 0;
@@ -942,7 +962,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     mpi_errno = MPIR_Bcast_impl (&mv2_shmem_coll_blk_stat, 1, 
             MPI_INT, 0, shmem_ptr, &errflag);
     if(mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     MPIU_Assert(mv2_shmem_coll_blk_stat >= 0);
@@ -956,7 +976,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                     FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
                     "collective shmem allocation failed", strerror(errno));
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
         shmem_ptr->dev.ch.shmem_info = comm_ptr->dev.ch.shmem_info;
     }
@@ -967,7 +987,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     if(comm_ptr->dev.ch.shmem_coll_ok == 1) {
         mpi_errno = create_intra_node_multi_level_comm(comm_ptr);
         if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
     }
 
@@ -1000,7 +1020,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
 
         mpi_errno = MPIR_Bcast_impl (mcast_status, 2, MPI_INT, 0, shmem_ptr, &errflag);
         if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
 
         comm_ptr->dev.ch.is_mcast_ok = mcast_status[0];
@@ -1026,11 +1046,87 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     }
 
 #endif
+
+#if defined (_SHARP_SUPPORT_) 
+    if (comm == MPI_COMM_WORLD && mv2_enable_sharp_coll
+        && (leader_group_size > 1) && (comm_ptr->dev.ch.is_sharp_ok == 0)) {
+        sharp_info_t * sharp_coll_info = NULL;        
+
+        comm_ptr->dev.ch.sharp_coll_info = 
+            (sharp_info_t *)MPIU_Malloc(sizeof(sharp_info_t));
+        sharp_coll_info = comm_ptr->dev.ch.sharp_coll_info; 
+        sharp_coll_info->sharp_comm_module = NULL;
+        sharp_coll_info->sharp_conf = MPIU_Malloc(sizeof(sharp_conf_t));
+        
+        sharp_coll_log_early_init();  
+        mpi_errno = mv2_setup_sharp_env(sharp_coll_info->sharp_conf, MPI_COMM_WORLD);
+        if (mpi_errno) {
+           MPIR_ERR_POP(mpi_errno);  
+        }
+        
+        /* Initialize sharp */
+        if (mv2_enable_sharp_coll == 2) {
+            /* Flat algorithm in which every process uses SHArP */
+            mpi_errno = mv2_sharp_coll_init(sharp_coll_info->sharp_conf, my_local_id);
+        } else if (mv2_enable_sharp_coll == 1) {
+            /* Two-level hierarchical algorithm in which, one process at each
+             * node uses SHArP for inter-node communication */
+            mpi_errno = mv2_sharp_coll_init(sharp_coll_info->sharp_conf, 0);
+        } else {
+            PRINT_ERROR("Invalid value for MV2_ENABLE_SHARP \n");
+            mpi_errno = MPI_ERR_OTHER;
+        }
+        if (mpi_errno) {
+           mv2_free_sharp_handlers(comm_ptr->dev.ch.sharp_coll_info); 
+           /* avoid using sharp and fall back to other designs */
+           mpi_errno = MPI_SUCCESS;
+           goto sharp_fall_back;
+        }
+        
+        sharp_coll_info->sharp_comm_module = MPIU_Malloc(sizeof(coll_sharp_module_t));
+        MPIU_Memset(sharp_coll_info->sharp_comm_module, 0, sizeof(coll_sharp_module_t));
+        /* create sharp module which contains sharp communicator */
+        if (mv2_enable_sharp_coll == 2) {
+            sharp_coll_info->sharp_comm_module->comm = MPI_COMM_WORLD; 
+            mpi_errno = mv2_sharp_coll_comm_init(sharp_coll_info->sharp_comm_module);
+            if (mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);  
+            } 
+        } else if (my_local_id == 0) {
+            sharp_coll_info->sharp_comm_module->comm = comm_ptr->dev.ch.leader_comm;
+            mpi_errno = mv2_sharp_coll_comm_init(sharp_coll_info->sharp_comm_module);
+            if (mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);  
+            } 
+        }
+        comm_ptr->dev.ch.is_sharp_ok = 1;
+
+        /* If the user does not set the MV2_SHARP_MAX_MSG_SIZE then try to tune
+         * mv2_sharp_tuned_msg_size variable based on node count */
+        if (mv2_enable_sharp_coll == 1 &&
+            (getenv("MV2_SHARP_MAX_MSG_SIZE")) == NULL) {
+            if (leader_group_size == 2) {
+                    mv2_sharp_tuned_msg_size = 256;
+            } else if (leader_group_size <= 4) {
+                mv2_sharp_tuned_msg_size = 512;
+            } else {
+                /* in all other cases set max msg size to
+                 * MV2_DEFAULT_SHARP_MAX_MSG_SIZE */
+                mv2_sharp_tuned_msg_size = MV2_DEFAULT_SHARP_MAX_MSG_SIZE;
+            }
+        }
+    }
+sharp_fall_back:
+#endif /* if defined (_SHARP_SUPPORT_) */
+
     fn_exit:
        MPIU_Free(shmem_group);
        return (mpi_errno);
     fn_fail: 
        MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+#if defined (_SHARP_SUPPORT_)
+       mv2_free_sharp_handlers(comm_ptr->dev.ch.sharp_coll_info);
+#endif
        goto fn_exit; 
 }
 

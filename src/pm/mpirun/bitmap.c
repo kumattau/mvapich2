@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -54,7 +54,7 @@ Find first bit "1" in the bitmap, toggle it to "0", and return its position in t
 LSB's pos=0, with MSB's pos = size-1
 Return -1 if no bit "1" exists 
 */
-inline int bmp_ffs_and_toggle(struct bitmap *bmp)
+int bmp_ffs_and_toggle(struct bitmap *bmp)
 {
     unsigned char *c;
     int max;
@@ -81,7 +81,7 @@ Find first bit "0" in the bitmap, toggle it to "1", and return its position in t
 LSB's pos=0, with MSB's pos = size-1
 Return -1 if no bit "1" exists 
 */
-inline int bmp_ffz_and_toggle(struct bitmap *bmp)
+int bmp_ffz_and_toggle(struct bitmap *bmp)
 {
     unsigned char *c;           // 
     int max;
@@ -100,29 +100,6 @@ inline int bmp_ffz_and_toggle(struct bitmap *bmp)
     }
     printf("%s: Error: not bit 0 avail\n", __func__);
     return -1;
-}
-
-inline void bmp_set_bit(struct bitmap *bmp, int pos)
-{
-    unsigned char *c = bmp->bmp + (pos / 8);
-    int rem = pos % 8;
-
-    *c |= (unsigned char) (1 << rem);
-}
-
-inline void bmp_clear_bit(struct bitmap *bmp, int pos)
-{
-    unsigned char *c = bmp->bmp + (pos / 8);
-    int rem = pos % 8;
-
-    *c &= (~((unsigned char) (1 << rem)));
-}
-
-inline int bmp_get_pos(struct bitmap *bmp, int pos)
-{
-    unsigned char *c = bmp->bmp + (pos / 8);
-
-    return (*c & (1 << (pos % 8))) ? 1 : 0;
 }
 
 void bmp_dump(struct bitmap *bmp)

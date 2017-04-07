@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -944,7 +944,7 @@ vbuf* get_ud_vbuf(void)
 #undef FUNCNAME
 #define FUNCNAME vbuf_init_ud_recv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void vbuf_init_ud_recv(vbuf* v, unsigned long len, int hca_num)
 {
     MPIU_Assert(v != NULL);
@@ -1019,7 +1019,7 @@ void MRAILI_Release_recv_rdma(vbuf* v)
 #undef FUNCNAME
 #define FUNCNAME vbuf_reregister_all
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void vbuf_reregister_all()
 {
     int i = 0;

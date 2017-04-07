@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -22,7 +22,7 @@
 #endif
 
 #include "mv2_arch_hca_detect.h"
-
+#include "upmi.h"
 #include "debug_utils.h"
 
 static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
@@ -142,16 +142,62 @@ static const float get_link_speed(uint8_t speed)
     }   
 }
 
+int mv2_check_hca_type(mv2_hca_type type, int rank)
+{
+    if (type <= MV2_HCA_LIST_START        || type >= MV2_HCA_LIST_END        ||
+        type == MV2_HCA_IB_TYPE_START     || type == MV2_HCA_IB_TYPE_END     ||
+        type == MV2_HCA_MLX_START         || type == MV2_HCA_MLX_END         ||
+        type == MV2_HCA_IWARP_TYPE_START  || type == MV2_HCA_IWARP_TYPE_END  ||
+        type == MV2_HCA_CHLSIO_START      || type == MV2_HCA_CHLSIO_END      ||
+        type == MV2_HCA_INTEL_IWARP_START || type == MV2_HCA_INTEL_IWARP_END ||
+        type == MV2_HCA_QLGIC_START       || type == MV2_HCA_QLGIC_END       ||
+        type == MV2_HCA_INTEL_START       || type == MV2_HCA_INTEL_END) {
+
+        PRINT_INFO((rank==0), "Wrong value specified for MV2_FORCE_HCA_TYPE\n");
+        PRINT_INFO((rank==0), "Value must be greater than %d and less than %d \n",
+                    MV2_HCA_LIST_START, MV2_HCA_LIST_END);
+        PRINT_INFO((rank==0), "For IB Cards: Please enter value greater than %d and less than %d\n",
+                    MV2_HCA_MLX_START, MV2_HCA_MLX_END);
+        PRINT_INFO((rank==0), "For IBM Cards: Please enter value greater than %d and less than %d\n",
+                    MV2_HCA_IBM_START, MV2_HCA_IBM_END);
+        PRINT_INFO((rank==0), "For Intel IWARP Cards: Please enter value greater than %d and less than %d\n",
+                    MV2_HCA_INTEL_IWARP_START, MV2_HCA_INTEL_IWARP_END);
+        PRINT_INFO((rank==0), "For Chelsio IWARP Cards: Please enter value greater than %d and less than %d\n",
+                    MV2_HCA_CHLSIO_START, MV2_HCA_CHLSIO_END);
+        PRINT_INFO((rank==0), "For QLogic Cards: Please enter value greater than %d and less than %d\n",
+                    MV2_HCA_QLGIC_START, MV2_HCA_QLGIC_END);
+        PRINT_INFO((rank==0), "For Intel Cards: Please enter value greater than %d and less than %d\n",
+                    MV2_HCA_INTEL_START, MV2_HCA_INTEL_END);
+        return 1;
+    }
+    return 0;
+}
+
 #if defined(HAVE_LIBIBVERBS)
 mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
                                     struct ibv_device *ib_dev,
                                     uint64_t *guid)
 {
     int rate=0;
+    int my_rank = -1;
+    char *value = NULL;
     char *dev_name = NULL;
     struct ibv_device_attr device_attr;
     int max_ports = 0;
     mv2_hca_type hca_type = MV2_HCA_UNKWN;
+
+    UPMI_GET_RANK(&my_rank);
+
+    if ((value = getenv("MV2_FORCE_HCA_TYPE")) != NULL) {
+        hca_type = atoi(value);
+        int retval = mv2_check_hca_type(hca_type, my_rank);
+        if (retval) {
+            PRINT_INFO((my_rank==0), "Falling back to Automatic HCA detection\n");
+            hca_type = MV2_HCA_UNKWN;
+        } else {
+            return hca_type;
+        }
+    }
 
     dev_name = (char*) ibv_get_device_name( ib_dev );
 
@@ -171,7 +217,6 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
         hca_type = MV2_HCA_MLX_PCI_X;
 
         int query_port = 1;
-        char *value;
         struct ibv_port_attr port_attr;
 
         /* honor MV2_DEFAULT_PORT, if set */
@@ -245,8 +290,23 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
 mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 {
     int rate=0;
+    char *value = NULL;
     char *dev_name;
+    int my_rank = -1;
     mv2_hca_type hca_type = MV2_HCA_UNKWN;
+
+    UPMI_GET_RANK(&my_rank);
+
+    if ((value = getenv("MV2_FORCE_HCA_TYPE")) != NULL) {
+        hca_type = atoi(value);
+        int retval = mv2_check_hca_type(hca_type, my_rank);
+        if (retval) {
+            PRINT_INFO((my_rank==0), "Falling back to Automatic HCA detection\n");
+            hca_type = MV2_HCA_UNKWN;
+        } else {
+            return hca_type;
+        }
+    }
 
     dev_name = (char*) ibv_get_device_name( dev );
 
@@ -271,7 +331,6 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
         hca_type = MV2_HCA_MLX_PCI_X;
 #if !defined(HAVE_LIBIBUMAD)
         int query_port = 1;
-        char *value;
         struct ibv_context *ctx= NULL;
         struct ibv_port_attr port_attr;
 
@@ -416,7 +475,22 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 #else
 mv2_hca_type mv2_get_hca_type(void *dev)
 {
+    int my_rank = -1;
+    char *value = NULL;
     mv2_hca_type hca_type = MV2_HCA_UNKWN;
+
+    UPMI_GET_RANK(&my_rank);
+
+    if ((value = getenv("MV2_FORCE_HCA_TYPE")) != NULL) {
+        hca_type = atoi(value);
+        int retval = mv2_check_hca_type(hca_type, my_rank);
+        if (retval) {
+            PRINT_INFO((my_rank==0), "Falling back to Automatic HCA detection\n");
+            hca_type = MV2_HCA_UNKWN;
+        } else {
+            return hca_type;
+        }
+    }
 
 #ifdef HAVE_LIBPSM2
     hca_type = MV2_HCA_INTEL_HFI1;

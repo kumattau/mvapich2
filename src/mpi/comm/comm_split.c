@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,7 +17,7 @@
  *
  */
 
-#include "mpiimpl.h"
+#include "mpidimpl.h"
 #include "mpicomm.h"
 
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) || defined(CHANNEL_NEMESIS_IB)
@@ -149,12 +149,11 @@ static int sort_bitonic_merge(
     MPID_Comm *comm_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
-    int errflag = FALSE;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
     int scratch[CKRSIZE];
     if (num > 1) {
         /* get our rank in the communicator */
-        MPI_Comm comm = comm_ptr->handle;
         int rank = comm_ptr->rank;
 
         /* determine largest power of two that is smaller than num */
@@ -174,7 +173,7 @@ static int sort_bitonic_merge(
               mpi_errno = MPIC_Sendrecv(
                   value,   CKRSIZE, MPI_INT, dst_rank, tag0,
                   scratch, CKRSIZE, MPI_INT, dst_rank, tag0,
-                  comm, status, &errflag
+                  comm_ptr, status, &errflag
               );
               /* TODO: process error! */
 
@@ -197,7 +196,7 @@ static int sort_bitonic_merge(
               mpi_errno = MPIC_Sendrecv(
                   value,   CKRSIZE, MPI_INT, dst_rank, tag0,
                   scratch, CKRSIZE, MPI_INT, dst_rank, tag0,
-                  comm, status, &errflag
+                  comm_ptr, status, &errflag
               );
               /* TODO: process error! */
 
@@ -310,10 +309,10 @@ static int split_sorted(
     MPID_Comm *comm_ptr)
 {
     int k;
-    MPI_Request request[4];
+    MPID_Request *request[4];
     MPI_Status  status[4];
     int mpi_errno = MPI_SUCCESS;
-    int errflag = FALSE;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
     /* we will fill in four integer values (left, right, rank, size)
      * representing the chain data structure for the the globally
@@ -323,7 +322,6 @@ static int split_sorted(
 
     /* get our rank, number of ranks, and ranks of processes
      * that are one less (left) and one more (right) than our own */
-    MPI_Comm comm = comm_ptr->handle;
     int rank  = comm_ptr->rank;
     int ranks = comm_ptr->local_size;
 
@@ -345,14 +343,14 @@ static int split_sorted(
     if (left_rank != MPI_PROC_NULL) {
         mpi_errno = MPIC_Isend(
             (void*)val, CKRSIZE, MPI_INT, left_rank,
-            tag0, comm, &request[k], &errflag
+            tag0, comm_ptr, &request[k], &errflag
         );
         k++;
         /* TODO: process error! */
 
         mpi_errno = MPIC_Irecv(
             left_buf, CKRSIZE, MPI_INT, left_rank,
-            tag0, comm, &request[k]
+            tag0, comm_ptr, &request[k]
         );
         k++;
         /* TODO: process error! */
@@ -360,20 +358,20 @@ static int split_sorted(
     if (right_rank != MPI_PROC_NULL) {
         mpi_errno = MPIC_Isend(
             (void*)val, CKRSIZE, MPI_INT, right_rank,
-            tag0, comm, &request[k], &errflag
+            tag0, comm_ptr, &request[k], &errflag
         );
         k++;
         /* TODO: process error! */
 
         mpi_errno = MPIC_Irecv(
             right_buf, CKRSIZE, MPI_INT, right_rank,
-            tag0, comm, &request[k]
+            tag0, comm_ptr, &request[k]
         );
         k++;
         /* TODO: process error! */
     }
     if (k > 0) {
-        mpi_errno = MPIR_Waitall_impl(k, request, status);
+        mpi_errno = MPIC_Waitall(k, request, status, &errflag);
         /* TODO: process error! */
     }
 
@@ -429,7 +427,7 @@ static int split_sorted(
         if (left_rank != MPI_PROC_NULL) {
             mpi_errno = MPIC_Irecv(
                 recv_left_ints, SCANSIZE, MPI_INT, left_rank,
-                tag0, comm, &request[k]
+                tag0, comm_ptr, &request[k]
             );
             k++;
             /* TODO: process error! */
@@ -439,7 +437,7 @@ static int split_sorted(
             send_left_ints[SCAN_NEXT] = right_rank;
             mpi_errno = MPIC_Isend(
                 send_left_ints, SCANSIZE, MPI_INT, left_rank,
-                tag0, comm, &request[k], &errflag
+                tag0, comm_ptr, &request[k], &errflag
             );
             k++;
             /* TODO: process error! */
@@ -449,7 +447,7 @@ static int split_sorted(
         if (right_rank != MPI_PROC_NULL) {
             mpi_errno = MPIC_Irecv(
                 recv_right_ints, SCANSIZE, MPI_INT, right_rank,
-                tag0, comm, &request[k]
+                tag0, comm_ptr, &request[k]
             );
             k++;
             /* TODO: process error! */
@@ -459,7 +457,7 @@ static int split_sorted(
             send_right_ints[SCAN_NEXT] = left_rank;
             mpi_errno = MPIC_Isend(
                 send_right_ints, SCANSIZE, MPI_INT, right_rank,
-                tag0, comm, &request[k], &errflag
+                tag0, comm_ptr, &request[k], &errflag
             );
             k++;
             /* TODO: process error! */
@@ -467,7 +465,7 @@ static int split_sorted(
 
         /* wait for communication to finsih */
         if (k > 0) {
-            mpi_errno = MPIR_Waitall_impl(k, request, status);
+            mpi_errno = MPIC_Waitall(k, request, status, &errflag);
             /* TODO: process error! */
         }
 
@@ -516,15 +514,15 @@ static int split_sorted(
     int recv_group_ints[CHAINSIZE];
     mpi_errno = MPIC_Isend(
         send_group_ints, CHAINSIZE, MPI_INT, val[CKR_RANK],
-        tag1, comm, &request[0], &errflag
+        tag1, comm_ptr, &request[0], &errflag
     );
     /* TODO: process error! */
     mpi_errno = MPIC_Irecv(
         recv_group_ints, CHAINSIZE, MPI_INT, MPI_ANY_SOURCE,
-        tag1, comm, &request[1]
+        tag1, comm_ptr, &request[1]
     );
     /* TODO: process error! */
-    mpi_errno = MPIR_Waitall_impl(2, request, status);
+    mpi_errno = MPIC_Waitall(2, request, status, &errflag);
     /* TODO: process error! */
 
     /* execute barrier to ensure that everyone is done with
@@ -545,7 +543,7 @@ static int split_sorted(
 #undef FUNCNAME
 #define FUNCNAME chain_allgather_int
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int chain_allgather_int(
     int sendint,
     int recvbuf[],
@@ -557,16 +555,13 @@ static int chain_allgather_int(
 {
     int left_rank, right_rank, next_left, next_right, count;
     int mpi_errno = MPI_SUCCESS;
-    int errflag = FALSE;
-
-    /* get communicator handle */
-    MPI_Comm comm = comm_ptr->handle;
+    MPIR_Errflag_t errflag = FALSE;
 
     /* copy our own data into the receive buffer */
     recvbuf[rank] = sendint;
 
     /* execute the allgather operation */
-    MPI_Request request[8];
+    MPID_Request *request[8];
     MPI_Status status[8];
     left_rank  = left;
     right_rank = right;
@@ -580,7 +575,7 @@ static int chain_allgather_int(
             /* receive rank of next left neighbor from current left neighbor */
             mpi_errno = MPIC_Irecv(
                 &next_left, 1, MPI_INT, left_rank,
-                tag0, comm, &request[k]
+                tag0, comm_ptr, &request[k]
             );
             k++;
             /* TODO: process error! */
@@ -596,7 +591,7 @@ static int chain_allgather_int(
             /* issue receive for data from left partner */
             mpi_errno = MPIC_Irecv(
                 recvbuf + left_start, left_count, MPI_INT, left_rank,
-                tag0, comm, &request[k]
+                tag0, comm_ptr, &request[k]
             );
             k++;
             /* TODO: process error! */
@@ -604,7 +599,7 @@ static int chain_allgather_int(
             /* send the rank of our right neighbor */
             mpi_errno = MPIC_Isend(
                 &right_rank, 1, MPI_INT, left_rank,
-                tag0, comm, &request[k], &errflag
+                tag0, comm_ptr, &request[k], &errflag
             );
             k++;
             /* TODO: process error! */
@@ -618,7 +613,7 @@ static int chain_allgather_int(
             /* send our data to our left neighbor */
             mpi_errno = MPIC_Isend(
                 recvbuf + rank, left_send_count, MPI_INT, left_rank,
-                tag0, comm, &request[k], &errflag
+                tag0, comm_ptr, &request[k], &errflag
             );
             k++;
             /* TODO: process error! */
@@ -630,7 +625,7 @@ static int chain_allgather_int(
             /* receive rank of next right neighbor from current right neighbor */
             mpi_errno = MPIC_Irecv(
                 &next_right, 1, MPI_INT, right_rank,
-                tag0, comm, &request[k]
+                tag0, comm_ptr, &request[k]
             );
             k++;
             /* TODO: process error! */
@@ -645,7 +640,7 @@ static int chain_allgather_int(
             /* issue receive for data from right partner */
             mpi_errno = MPIC_Irecv(
                 recvbuf + right_start, right_count, MPI_INT, right_rank,
-                tag0, comm, &request[k]
+                tag0, comm_ptr, &request[k]
             );
             k++;
             /* TODO: process error! */
@@ -653,7 +648,7 @@ static int chain_allgather_int(
             /* send the rank of our left neighbor to our right neighbor */
             mpi_errno = MPIC_Isend(
                 &left_rank, 1, MPI_INT, right_rank,
-                tag0, comm, &request[k], &errflag
+                tag0, comm_ptr, &request[k], &errflag
             );
             k++;
             /* TODO: process error! */
@@ -669,7 +664,7 @@ static int chain_allgather_int(
             /* send the data */
             mpi_errno = MPIC_Isend(
                 recvbuf + right_send_start, right_send_count, MPI_INT, right_rank,
-                tag0, comm, &request[k], &errflag
+                tag0, comm_ptr, &request[k], &errflag
             );
             k++;
             /* TODO: process error! */
@@ -677,7 +672,7 @@ static int chain_allgather_int(
 
         /* wait for communication to complete */
         if (k > 0) {
-            mpi_errno = MPIR_Waitall_impl(k, request, status);
+            mpi_errno = MPIC_Waitall(k, request, status, &errflag);
             /* TODO: process error! */
         }
 
@@ -695,16 +690,13 @@ static int chain_allgather_int(
         count <<= 1;
     }
 
- fn_exit:
     return mpi_errno;
- fn_fail:
-    goto fn_exit;
 }
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Comm_split_intra_bitonic
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Comm_split_intra_bitonic(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **newcomm_ptr)
 {
     int i;
@@ -745,9 +737,9 @@ int MPIR_Comm_split_intra_bitonic(MPID_Comm *comm_ptr, int color, int key, MPID_
        resulting context id (by passing ignore_id==TRUE). */
     /* In the multi-threaded case, MPIR_Get_contextid assumes that the
        calling routine already holds the single criticial section */
-    MPIR_Context_id_t new_context_id;
+    MPIU_Context_id_t new_context_id;
     mpi_errno = MPIR_Get_contextid_sparse(comm_ptr, &new_context_id, !in_newcomm);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     MPIU_Assert(new_context_id != 0);
 
     *newcomm_ptr = NULL;
@@ -764,8 +756,8 @@ int MPIR_Comm_split_intra_bitonic(MPID_Comm *comm_ptr, int color, int key, MPID_
         (*newcomm_ptr)->comm_kind      = comm_ptr->comm_kind;
         (*newcomm_ptr)->context_id     = (*newcomm_ptr)->recvcontext_id;
         (*newcomm_ptr)->remote_size    = newranks;
-        MPID_VCRT_Create( newranks, &(*newcomm_ptr)->vcrt );
-        MPID_VCRT_Get_ptr( (*newcomm_ptr)->vcrt, &(*newcomm_ptr)->vcr );
+        MPIDI_VCRT_Create( newranks, &(*newcomm_ptr)->dev.vcrt );
+        MPIDI_VCRT_Get_ptr( (*newcomm_ptr)->dev.vcrt, &(*newcomm_ptr)->dev.vcr );
         
         /* Allocate memory to hold list of rank ids */
         int* members = NULL;
@@ -783,21 +775,20 @@ int MPIR_Comm_split_intra_bitonic(MPID_Comm *comm_ptr, int color, int key, MPID_
         /* duplicate each vcr in new comm */
         for (i=0; i < newranks; i++) {
             int orig_rank = members[i];
-            MPID_VCR_Dup(
-                comm_ptr->vcr[orig_rank], &(*newcomm_ptr)->vcr[i]
-            );
+            MPIDI_VCR_Dup(comm_ptr->dev.vcrt->vcr_table[orig_rank],
+                            &(*newcomm_ptr)->dev.vcrt->vcr_table[i]);
         }
 
         /* Inherit the error handler (if any) */
-        MPIU_THREAD_CS_ENTER(MPI_OBJ, comm_ptr);
+        MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
         (*newcomm_ptr)->errhandler = comm_ptr->errhandler;
         if (comm_ptr->errhandler) {
             MPIR_Errhandler_add_ref( comm_ptr->errhandler );
         }
-        MPIU_THREAD_CS_EXIT(MPI_OBJ, comm_ptr);
+        MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
         mpi_errno = MPIR_Comm_commit(*newcomm_ptr);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
     
  fn_exit:
@@ -890,7 +881,7 @@ static void MPIU_Sort_inttable( sorttype *keytable, int size )
 #undef FUNCNAME
 #define FUNCNAME MPIR_Comm_split_allgather
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Comm_split_allgather(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **newcomm_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -900,8 +891,9 @@ int MPIR_Comm_split_allgather(MPID_Comm *comm_ptr, int color, int key, MPID_Comm
     int rank, size, remote_size, i, new_size, new_remote_size,
 	first_entry = 0, first_remote_entry = 0, *last_ptr;
     int in_newcomm; /* TRUE iff *newcomm should be populated */
-    MPIR_Context_id_t   new_context_id, remote_context_id;
-    int errflag = FALSE;
+    MPIU_Context_id_t   new_context_id, remote_context_id;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
+    MPIR_Comm_map_t *mapper;
     MPIU_CHKLMEM_DECL(4);
 
     rank        = comm_ptr->rank;
@@ -927,8 +919,8 @@ int MPIR_Comm_split_allgather(MPID_Comm *comm_ptr, int color, int key, MPID_Comm
     }
     /* Gather information on the local group of processes */
     mpi_errno = MPIR_Allgather_impl( MPI_IN_PLACE, 2, MPI_INT, table, 2, MPI_INT, local_comm_ptr, &errflag );
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-    MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+    MPIR_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
     /* Step 2: How many processes have our same color? */
     new_size = 0;
@@ -975,8 +967,8 @@ int MPIR_Comm_split_allgather(MPID_Comm *comm_ptr, int color, int key, MPID_Comm
 	mypair.key   = key;
 	mpi_errno = MPIR_Allgather_impl( &mypair, 2, MPI_INT, remotetable, 2, MPI_INT,
                                          comm_ptr, &errflag );
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-        MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+        MPIR_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
         
 	/* Each process can now match its color with the entries in the table */
 	new_remote_size = 0;
@@ -1009,28 +1001,28 @@ int MPIR_Comm_split_allgather(MPID_Comm *comm_ptr, int color, int key, MPID_Comm
        be used by each (disjoint) collections of processes.  The
        processes whose color is MPI_UNDEFINED will not influence the
        resulting context id (by passing ignore_id==TRUE). */
-    /* In the multi-threaded case, MPIR_Get_contextid assumes that the
+    /* In the multi-threaded case, MPIR_Get_contextid_sparse assumes that the
        calling routine already holds the single criticial section */
     mpi_errno = MPIR_Get_contextid_sparse(local_comm_ptr, &new_context_id, !in_newcomm);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     MPIU_Assert(new_context_id != 0);
 
     /* In the intercomm case, we need to exchange the context ids */
     if (comm_ptr->comm_kind == MPID_INTERCOMM) {
 	if (comm_ptr->rank == 0) {
-	    mpi_errno = MPIC_Sendrecv( &new_context_id, 1, MPIR_CONTEXT_ID_T_DATATYPE, 0, 0,
-				       &remote_context_id, 1, MPIR_CONTEXT_ID_T_DATATYPE, 
-				       0, 0, comm_ptr->handle, MPI_STATUS_IGNORE, &errflag );
-	    if (mpi_errno) { MPIU_ERR_POP( mpi_errno ); }
-	    mpi_errno = MPIR_Bcast_impl( &remote_context_id, 1, MPIR_CONTEXT_ID_T_DATATYPE, 0, local_comm_ptr, &errflag );
-            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-            MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+	    mpi_errno = MPIC_Sendrecv( &new_context_id, 1, MPIU_CONTEXT_ID_T_DATATYPE, 0, 0,
+				       &remote_context_id, 1, MPIU_CONTEXT_ID_T_DATATYPE, 
+				       0, 0, comm_ptr, MPI_STATUS_IGNORE, &errflag );
+	    if (mpi_errno) { MPIR_ERR_POP( mpi_errno ); }
+	    mpi_errno = MPIR_Bcast_impl( &remote_context_id, 1, MPIU_CONTEXT_ID_T_DATATYPE, 0, local_comm_ptr, &errflag );
+            if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+            MPIR_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 	}
 	else {
 	    /* Broadcast to the other members of the local group */
-	    mpi_errno = MPIR_Bcast_impl( &remote_context_id, 1, MPIR_CONTEXT_ID_T_DATATYPE, 0, local_comm_ptr, &errflag );
-            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-            MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+	    mpi_errno = MPIR_Bcast_impl( &remote_context_id, 1, MPIU_CONTEXT_ID_T_DATATYPE, 0, local_comm_ptr, &errflag );
+            if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+            MPIR_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 	}
     }
 
@@ -1078,17 +1070,16 @@ int MPIR_Comm_split_allgather(MPID_Comm *comm_ptr, int color, int key, MPID_Comm
 	       corresponding process in the input communicator */
 	    MPIU_Sort_inttable( remotekeytable, new_remote_size );
 
-	    MPID_VCRT_Create( new_size, &(*newcomm_ptr)->local_vcrt );
-	    MPID_VCRT_Get_ptr( (*newcomm_ptr)->local_vcrt, 
-			       &(*newcomm_ptr)->local_vcr );
-	    for (i=0; i<new_size; i++) {
-		MPID_VCR_Dup( comm_ptr->local_vcr[keytable[i].color], 
-			      &(*newcomm_ptr)->local_vcr[i] );
-		if (keytable[i].color == comm_ptr->rank) {
+            MPIR_Comm_map_irregular(*newcomm_ptr, comm_ptr, NULL,
+                                    new_size, MPIR_COMM_MAP_DIR_L2L,
+                                    &mapper);
+
+            for (i = 0; i < new_size; i++) {
+                mapper->src_mapping[i] = keytable[i].color;
+		if (keytable[i].color == comm_ptr->rank)
 		    (*newcomm_ptr)->rank = i;
-		}
-	    }
-	    
+            }
+
 	    /* For the remote group, the situation is more complicated.
 	       We need to find the size of our "partner" group in the
 	       remote comm.  The easiest way (in terms of code) is for
@@ -1104,12 +1095,12 @@ int MPIR_Comm_split_allgather(MPID_Comm *comm_ptr, int color, int key, MPID_Comm
 	       is required to return MPI_COMM_NULL instead of an intercomm 
 	       with an empty remote group. */
 
-	    MPID_VCRT_Create( new_remote_size, &(*newcomm_ptr)->vcrt );
-	    MPID_VCRT_Get_ptr( (*newcomm_ptr)->vcrt, &(*newcomm_ptr)->vcr );
-	    for (i=0; i<new_remote_size; i++) {
-		MPID_VCR_Dup( comm_ptr->vcr[remotekeytable[i].color], 
-			      &(*newcomm_ptr)->vcr[i] );
-	    }
+            MPIR_Comm_map_irregular(*newcomm_ptr, comm_ptr, NULL,
+                                    new_remote_size,
+                                    MPIR_COMM_MAP_DIR_R2R, &mapper);
+
+            for (i = 0; i < new_remote_size; i++)
+                mapper->src_mapping[i] = remotekeytable[i].color;
 
 	    (*newcomm_ptr)->context_id     = remote_context_id;
 	    (*newcomm_ptr)->remote_size    = new_remote_size;
@@ -1121,27 +1112,28 @@ int MPIR_Comm_split_allgather(MPID_Comm *comm_ptr, int color, int key, MPID_Comm
 	    /* INTRA Communicator */
 	    (*newcomm_ptr)->context_id     = (*newcomm_ptr)->recvcontext_id;
 	    (*newcomm_ptr)->remote_size    = new_size;
-	    MPID_VCRT_Create( new_size, &(*newcomm_ptr)->vcrt );
-	    MPID_VCRT_Get_ptr( (*newcomm_ptr)->vcrt, &(*newcomm_ptr)->vcr );
-	    for (i=0; i<new_size; i++) {
-		MPID_VCR_Dup( comm_ptr->vcr[keytable[i].color], 
-			      &(*newcomm_ptr)->vcr[i] );
-		if (keytable[i].color == comm_ptr->rank) {
+
+            MPIR_Comm_map_irregular(*newcomm_ptr, comm_ptr, NULL,
+                                    new_size, MPIR_COMM_MAP_DIR_L2L,
+                                    &mapper);
+
+            for (i = 0; i < new_size; i++) {
+                mapper->src_mapping[i] = keytable[i].color;
+		if (keytable[i].color == comm_ptr->rank)
 		    (*newcomm_ptr)->rank = i;
-		}
-	    }
+            }
 	}
 
 	/* Inherit the error handler (if any) */
-        MPIU_THREAD_CS_ENTER(MPI_OBJ, comm_ptr);
+        MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_POBJ_COMM_MUTEX(comm_ptr));
 	(*newcomm_ptr)->errhandler = comm_ptr->errhandler;
 	if (comm_ptr->errhandler) {
 	    MPIR_Errhandler_add_ref( comm_ptr->errhandler );
 	}
-        MPIU_THREAD_CS_EXIT(MPI_OBJ, comm_ptr);
+        MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_COMM_MUTEX(comm_ptr));
 
         mpi_errno = MPIR_Comm_commit(*newcomm_ptr);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
     
  fn_exit:
@@ -1158,7 +1150,7 @@ int MPIR_Comm_split_allgather(MPID_Comm *comm_ptr, int color, int key, MPID_Comm
 #undef FUNCNAME
 #define FUNCNAME MPIR_Comm_split_impl
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **newcomm_ptr)
 {
     int rc;
@@ -1203,8 +1195,7 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
 #undef FUNCNAME
 #define FUNCNAME MPI_Comm_split
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
-
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /*@
 
 MPI_Comm_split - Creates new communicators based on colors and keys
@@ -1232,7 +1223,6 @@ Algorithm:
      communicator with that many processes.  If this process has
      'MPI_UNDEFINED' as the color, create a process with a single member.
   3. Use key to order the ranks
-  4. Set the VCRs using the ordered key values
 .ve
  
 .N Errors
@@ -1250,7 +1240,7 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_SPLIT);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -1285,9 +1275,9 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
     /* ... body of routine ...  */
     
     mpi_errno = MPIR_Comm_split_impl(comm_ptr, color, key, &newcomm_ptr);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     if (newcomm_ptr)
-        MPIU_OBJ_PUBLISH_HANDLE(*newcomm, newcomm_ptr->handle);
+        MPID_OBJ_PUBLISH_HANDLE(*newcomm, newcomm_ptr->handle);
     else
         *newcomm = MPI_COMM_NULL;
 
@@ -1295,7 +1285,7 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_SPLIT);
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     return mpi_errno;
     
   fn_fail:

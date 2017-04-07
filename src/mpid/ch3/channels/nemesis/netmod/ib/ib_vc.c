@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -37,7 +37,7 @@ static MPIDI_CH3_PktHandler_Fcn *pktArray[PKTARRAY_SIZE];
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_vc_init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /**
  * Initialize the virtual channel.
  * The connections should be initialized before this function.
@@ -197,7 +197,7 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_vc_destroy
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /**
  * Free any resources associated with this VC here.
  */
@@ -212,7 +212,7 @@ int MPID_nem_ib_vc_destroy(MPIDI_VC_t *vc)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_vc_terminate
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_vc_terminate (MPIDI_VC_t *vc)
 {
     return MPIDI_CH3U_Handle_connection(vc, MPIDI_VC_EVENT_TERMINATED);

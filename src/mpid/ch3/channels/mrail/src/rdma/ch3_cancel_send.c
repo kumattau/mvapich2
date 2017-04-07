@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -15,7 +15,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Cancel_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Cancel_send(MPIDI_VC_t * vc, MPID_Request * sreq,
                           int *cancelled)
 {

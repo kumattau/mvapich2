@@ -1,6 +1,6 @@
 #define BENCHMARK "OSU MPI%s Scatterv Latency Test"
 /*
- * Copyright (C) 2002-2016 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2017 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University.
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -68,24 +68,24 @@ int main(int argc, char *argv[])
     }
 
     if (0 == rank) {
-        if (allocate_buffer((void**)&sendcounts, numprocs*sizeof(int), none)) {
+        if (osu_allocate_buffer((void**)&sendcounts, numprocs*sizeof(int), none)) {
             fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         }
-        if (allocate_buffer((void**)&sdispls, numprocs*sizeof(int), none)) {
+        if (osu_allocate_buffer((void**)&sdispls, numprocs*sizeof(int), none)) {
             fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         }
 
         bufsize = options.max_message_size * numprocs;
-        if (allocate_buffer((void**)&sendbuf, bufsize, options.accel)) {
+        if (osu_allocate_buffer((void**)&sendbuf, bufsize, options.accel)) {
             fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         }
         set_buffer(sendbuf, options.accel, 1, bufsize);
     }
 
-    if (allocate_buffer((void**)&recvbuf, options.max_message_size,
+    if (osu_allocate_buffer((void**)&recvbuf, options.max_message_size,
                 options.accel)) {
         fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);

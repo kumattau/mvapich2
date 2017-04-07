@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -212,7 +212,7 @@ static void get_hca_user_parameters()
     	ib_hca_num_hcas = (int)atoi(value);
         if (ib_hca_num_hcas > MAX_NUM_HCAS) {
         	ib_hca_num_hcas = MAX_NUM_HCAS;
-            MPIU_Msg_printf("Warning, max hca is %d, change %s in ib_hca.h "
+            MPL_msg_printf("Warning, max hca is %d, change %s in ib_hca.h "
             		"to overide the option\n", MAX_NUM_HCAS, "MAX_NUM_HCAS");
         }
     }
@@ -223,7 +223,7 @@ static void get_hca_user_parameters()
     	ib_hca_num_ports = (int)atoi(value);
         if (ib_hca_num_ports > MAX_NUM_PORTS) {
         	ib_hca_num_ports = MAX_NUM_PORTS;
-	    MPIU_Usage_printf("Warning, max ports per hca is %d, change %s in "
+	    MPL_usage_printf("Warning, max ports per hca is %d, change %s in "
 		    "ibv_hca.h to overide the option\n", MAX_NUM_PORTS,
 		    "MAX_NUM_PORTS");
         }
@@ -282,7 +282,7 @@ static int check_hsam_parameters()
 #undef FUNCNAME
 #define FUNCNAME rdma_get_control_params_after_hcainit
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_get_control_params_after_hcainit()
 {
     MPIDI_STATE_DECL(MPID_STATE_RDMA_GET_CONTROL_PARAMS_AFTER);
@@ -360,7 +360,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
     if ((value = getenv("MV2_RNDV_EXT_SENDQ_SIZE")) != NULL) {
         rdma_rndv_ext_sendq_size = atoi(value);
         if (rdma_rndv_ext_sendq_size <= 1) {
-            MPIU_Usage_printf("Setting MV2_RNDV_EXT_SENDQ_SIZE smaller than 1 "
+            MPL_usage_printf("Setting MV2_RNDV_EXT_SENDQ_SIZE smaller than 1 "
                               "will severely limit the MPI bandwidth.\n");
         }
     }
@@ -368,7 +368,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
     if ((value = getenv("MV2_COALESCE_THRESHOLD")) != NULL) {
         rdma_coalesce_threshold = atoi(value);
         if(rdma_coalesce_threshold < 1) {
-            MPIU_Usage_printf("MV2_COALESCE_THRESHOLD must be >= 1\n");
+            MPL_usage_printf("MV2_COALESCE_THRESHOLD must be >= 1\n");
             rdma_coalesce_threshold = 1;
         }
     }
@@ -390,7 +390,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
         use_iboeth = !!atoi(value);
         if (1 == process_info.has_ring_startup) {
             if (0 == my_rank) {
-                MPIU_Usage_printf("Ring start up cannot be used in IBoEth mode."
+                MPL_usage_printf("Ring start up cannot be used in IBoEth mode."
                                 "Falling back to PMI exchange.\r\n"
                                 "You can also set MV2_USE_RING_STARTUP=0.\r\n");
             }
@@ -398,7 +398,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
         }
         if (!rdma_use_smp) {
             if (0 == my_rank) {
-                MPIU_Usage_printf("IBoEth mode cannot function without SHMEM."
+                MPL_usage_printf("IBoEth mode cannot function without SHMEM."
                                 "Falling back to use SHMEM.\r\n"
                                 "Please do NOT set MV2_USE_SHARED_MEM=0.\r\n");
             }
@@ -442,7 +442,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
 #endif
                 ) {
 #if defined(CKPT)
-            MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
+            MPL_usage_printf("MV2_RNDV_PROTOCOL "
                     "must be either \"RPUT\" or \"R3\" when checkpoint is enabled\n");
             rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
 #else /* defined(CKPT) */
@@ -454,7 +454,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
 #ifdef _ENABLE_XRC_
             if(!USE_XRC)
 #endif
-            MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
+            MPL_usage_printf("MV2_RNDV_PROTOCOL "
                     "must be either \"RPUT\", \"RGET\", or \"R3\"\n");
             rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
         }
@@ -499,7 +499,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_set_default_params
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /**
  *  Look at rdma_set_default_parameters() in
  * "mvapich2/trunk/src/mpid/ch3/channels/mrail/src/gen2/ibv_param.c"
@@ -918,7 +918,7 @@ int MPID_nem_ib_set_default_params()
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_get_user_params
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 /**
  *  Look at rdma_get_user_parameters() & rdma_get_control_parameters() in
@@ -962,7 +962,7 @@ int MPID_nem_ib_get_user_params()
 
         if (rdma_num_qp_per_port > MAX_NUM_QP_PER_PORT) {
             rdma_num_qp_per_port = MAX_NUM_QP_PER_PORT;
-            MPIU_Usage_printf("Warning, max qps per port is %d, change %s in "
+            MPL_usage_printf("Warning, max qps per port is %d, change %s in "
 		    "ibv_param.h to overide the option\n", MAX_NUM_QP_PER_PORT,
 		    "MAX_NUM_QP_PER_PORT");
         }
@@ -1038,7 +1038,7 @@ int MPID_nem_ib_get_user_params()
         mv2_srq_limit = (uint32_t) atoi(value);
 
         if(mv2_srq_limit > mv2_srq_fill_size) {
-	    MPIU_Usage_printf("SRQ limit shouldn't be greater than SRQ size\n");
+	    MPL_usage_printf("SRQ limit shouldn't be greater than SRQ size\n");
         }
     }
 
@@ -1157,7 +1157,7 @@ int MPID_nem_ib_get_user_params()
     }
     if (rdma_vbuf_pool_size <= 10) {
         rdma_vbuf_pool_size = 10;
-        MPIU_Usage_printf("Warning! Too small vbuf pool size (%d).  "
+        MPL_usage_printf("Warning! Too small vbuf pool size (%d).  "
 		"Reset to %d\n", rdma_vbuf_pool_size, 10);
     }
     if ((value = getenv("MV2_VBUF_SECONDARY_POOL_SIZE")) != NULL) {
@@ -1165,7 +1165,7 @@ int MPID_nem_ib_get_user_params()
     }
     if (rdma_vbuf_secondary_pool_size <= 0) {
         rdma_vbuf_secondary_pool_size = 1;
-        MPIU_Usage_printf("Warning! Too small secondary vbuf pool size (%d).  "
+        MPL_usage_printf("Warning! Too small secondary vbuf pool size (%d).  "
                 "Reset to %d\n", rdma_vbuf_secondary_pool_size, 1);
     }
     if (rdma_initial_prepost_depth <= rdma_prepost_noop_extra) {
@@ -1185,7 +1185,7 @@ int MPID_nem_ib_get_user_params()
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_get_control_params
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 /**
  *  Look at rdma_get_control_parameters() in
@@ -1266,7 +1266,7 @@ int MPID_nem_ib_get_control_params()
         } else if (!strcmp(value, "PROCESS_BINDING")) {
             sm_scheduling = PROCESS_BINDING;
         } else {
-            MPIU_Usage_printf("Invalid small message scheduling\n");
+            MPL_usage_printf("Invalid small message scheduling\n");
         }
     }
 
@@ -1350,7 +1350,7 @@ void mv2_print_env_info()
 #undef FUNCNAME
 #define FUNCNAME MV2_get_arch_hca_type
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 mv2_arch_hca_type MV2_get_arch_hca_type()
 {
     return process_info.arch_hca_type;

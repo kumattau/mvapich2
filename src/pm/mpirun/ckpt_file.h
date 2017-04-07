@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -109,8 +109,8 @@ int add_chunk_to_ckpt_file(ckpt_file_t * cfile, struct ib_packet *rrpkt);
 void dump_ckpt_file(ckpt_file_t * cfile);
 void dump_chunk(ckpt_chunk_t * ck);
 
-inline ckpt_chunk_t *get_chunk_from_ckpt_file(ckpt_file_t * cfile, int offset);
+ckpt_chunk_t *get_chunk_from_ckpt_file(ckpt_file_t * cfile, int offset);
 
-inline void ckpt_free_chunk(ckpt_chunk_t * chunk);
+void ckpt_free_chunk(ckpt_chunk_t * chunk);
 
 #endif                          //CKPT_FILE_H

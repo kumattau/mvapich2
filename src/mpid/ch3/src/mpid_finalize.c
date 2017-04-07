@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -33,7 +33,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPID_Finalize
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_Finalize(void)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -122,20 +122,20 @@ int MPID_Finalize(void)
     xrc_rdmafp_init = 0;
     if (USE_XRC) {
         mpi_errno = UPMI_BARRIER ();
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
 #endif 
 
 #ifdef MPID_NEEDS_ICOMM_WORLD
-    mpi_errno = MPIR_Comm_release_always(MPIR_Process.icomm_world, 0);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    mpi_errno = MPIR_Comm_release_always(MPIR_Process.icomm_world);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 #endif
 
-    mpi_errno = MPIR_Comm_release_always(MPIR_Process.comm_self, 0);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    mpi_errno = MPIR_Comm_release_always(MPIR_Process.comm_self);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
-    mpi_errno = MPIR_Comm_release_always(MPIR_Process.comm_world, 0);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    mpi_errno = MPIR_Comm_release_always(MPIR_Process.comm_world);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
 #if defined(CHANNEL_MRAIL)
     mv2_is_in_finalize = 1;
@@ -149,25 +149,25 @@ int MPID_Finalize(void)
        connection close code */
 #if !defined (CHANNEL_PSM) && !defined(CHANNEL_MRAIL)
     mpi_errno = MPIDI_PG_Close_VCs();
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     /*
      * Wait for all VCs to finish the close protocol
      */
     mpi_errno = MPIDI_CH3U_VC_WaitForClose();
-    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+    if (mpi_errno) { MPIR_ERR_POP(mpi_errno); }
 #endif
 
     /* Note that the CH3I_Progress_finalize call has been removed; the
        CH3_Finalize routine should call it */
     mpi_errno = MPIDI_CH3_Finalize();
-    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+    if (mpi_errno) { MPIR_ERR_POP(mpi_errno); }
 
     /* Tell the process group code that we're done with the process groups.
        This will notify PMI (with UPMI_FINALIZE) if necessary.  It
        also frees all PG structures, including the PG for COMM_WORLD, whose 
        pointer is also saved in MPIDI_Process.my_pg */
     mpi_errno = MPIDI_PG_Finalize();
-    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+    if (mpi_errno) { MPIR_ERR_POP(mpi_errno); }
 
 #ifndef MPIDI_CH3_HAS_NO_DYNAMIC_PROCESS
     MPIDI_CH3_FreeParentPort();
@@ -184,6 +184,8 @@ int MPID_Finalize(void)
 	}
     }
 
+    MPIDI_RMA_finalize();
+    
     MPIU_Free(MPIDI_failed_procs_string);
 
 #if defined(_ENABLE_CUDA_)

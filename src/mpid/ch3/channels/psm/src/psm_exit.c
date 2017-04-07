@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -14,41 +14,47 @@
 #include "psmpriv.h"
 #include "coll_shmem.h"
 #include "psm_vbuf.h"
+#include "upmi.h"
 
 extern int finalize_coll_comm;
 
 #undef FUNCNAME
 #define FUNCNAME psm_dofinalize
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int psm_dofinalize()
 {
     MPIDI_VC_t *vc = NULL;
     int mpi_errno = MPI_ERR_INTERN;
     PSM_ERROR_T psmerr;
 
+    if(mv2_use_pmi_ibarrier) {
+        UPMI_WAIT();
+    }
+
     if((psmerr = PSM_MQ_FINALIZE(psmdev_cw.mq)) != PSM_OK) {
         PSM_ERR_ABORT("psm_mq_finalize failed: %s\n",
                 PSM_ERROR_GET_STRING(psmerr));
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if((psmerr = PSM_EP_CLOSE(psmdev_cw.ep, PSM_EP_CLOSE_GRACEFUL,
                      5 * SEC_IN_NS)) != PSM_OK) {
         PSM_ERR_ABORT("psm_ep_close failed: %s\n",
                 PSM_ERROR_GET_STRING(psmerr));
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     if((psmerr = PSM_FINALIZE() != PSM_OK)) {
         PSM_ERR_ABORT("psm_finalize failed: %s\n",
                 PSM_ERROR_GET_STRING(psmerr));
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     MPIU_Free(psmdev_cw.epaddrs);
 
     psm_release_prepost_1sc();
     psm_deallocate_vbuf();
+    mv2_free_pmi_keyval();
 
     MV2_collectives_arch_finalize();
 

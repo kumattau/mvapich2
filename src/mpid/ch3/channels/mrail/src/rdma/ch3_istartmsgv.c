@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -36,8 +36,8 @@ do {                                                          \
 #undef FUNCNAME
 #define FUNCNAME create_request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-static inline MPID_Request * create_request(MPID_IOV * iov, int iov_count, 
+#define FCNAME MPL_QUOTE(FUNCNAME)
+static inline MPID_Request * create_request(MPL_IOV * iov, int iov_count, 
 					    int iov_offset, MPIU_Size_t nb)
 {
     MPID_Request * sreq;
@@ -61,21 +61,21 @@ static inline MPID_Request * create_request(MPID_IOV * iov, int iov_count,
     if (iov_offset == 0)
     {
 	/*
-        MPIU_Assert(iov[0].MPID_IOV_LEN == sizeof(MPIDI_CH3_Pkt_t));
+        MPIU_Assert(iov[0].MPL_IOV_LEN == sizeof(MPIDI_CH3_Pkt_t));
 	*/
 #ifdef _ENABLE_CUDA_
-        sreq->dev.pending_pkt = MPIU_Malloc(iov[0].MPID_IOV_LEN);
-        MPIU_Memcpy(sreq->dev.pending_pkt, iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
-        sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)sreq->dev.pending_pkt;
+        sreq->dev.pending_pkt = MPIU_Malloc(iov[0].MPL_IOV_LEN);
+        MPIU_Memcpy(sreq->dev.pending_pkt, iov[0].MPL_IOV_BUF, iov[0].MPL_IOV_LEN);
+        sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)sreq->dev.pending_pkt;
 #else
-        sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPID_IOV_BUF;
-        sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) &sreq->dev.pending_pkt;
+        sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPL_IOV_BUF;
+        sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) &sreq->dev.pending_pkt;
 #endif
     }
     sreq->ch.reqtype = REQUEST_NORMAL;
-    sreq->dev.iov[iov_offset].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char *)
-			sreq->dev.iov[iov_offset].MPID_IOV_BUF + nb);
-    sreq->dev.iov[iov_offset].MPID_IOV_LEN -= nb;
+    sreq->dev.iov[iov_offset].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)((char *)
+			sreq->dev.iov[iov_offset].MPL_IOV_BUF + nb);
+    sreq->dev.iov[iov_offset].MPL_IOV_LEN -= nb;
     sreq->dev.iov_offset = iov_offset;
     sreq->dev.iov_count = iov_count;
     sreq->dev.OnDataAvail = 0;
@@ -84,7 +84,7 @@ static inline MPID_Request * create_request(MPID_IOV * iov, int iov_count,
     return sreq;
 }
 
-static void MPIDI_CH3_SMP_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov,
+static void MPIDI_CH3_SMP_iStartMsgv(MPIDI_VC_t * vc, MPL_IOV * iov,
                                            int n_iov,
                                            MPID_Request ** sreq_ptr);
 /*
@@ -105,12 +105,12 @@ static void MPIDI_CH3_SMP_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov,
 /* NOTE - The completion action associated with a request created by
    CH3_iStartMsgv() is alway MPIDI_CH3_CA_COMPLETE.  This implies that
    CH3_iStartMsgv() can only be used when the entire message can be described
-   by a single iovec of size MPID_IOV_LIMIT. */
+   by a single iovec of size MPL_IOV_LIMIT. */
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_iStartMsgv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPL_IOV * iov, int n_iov,
                          MPID_Request ** sreq_ptr)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_ISTARTMSGV);
@@ -118,17 +118,17 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *sreq = NULL;
     vbuf *buf;
-    DEBUG_PRINT("ch3_istartmsgv, header %d\n", ((MPIDI_CH3_Pkt_t *)iov[0].MPID_IOV_BUF)->type);
+    DEBUG_PRINT("ch3_istartmsgv, header %d\n", ((MPIDI_CH3_Pkt_t *)iov[0].MPL_IOV_BUF)->type);
     MPIDI_DBG_PRINTF((50, FCNAME, "entering"));
 #ifdef MPICH_DBG_OUTPUT
-    if (n_iov > MPID_IOV_LIMIT
-        || iov[0].MPID_IOV_LEN > sizeof(MPIDI_CH3_Pkt_t))
+    if (n_iov > MPL_IOV_LIMIT
+        || iov[0].MPL_IOV_LEN > sizeof(MPIDI_CH3_Pkt_t))
     {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**arg");
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**arg");
     }
 #endif
 
-    MPIDI_DBG_Print_packet((MPIDI_CH3_Pkt_t *) iov[0].MPID_IOV_BUF);
+    MPIDI_DBG_Print_packet((MPIDI_CH3_Pkt_t *) iov[0].MPL_IOV_BUF);
 
     DEBUG_PRINT("remote local nodes %d, myid %d\n", 
                 vc->smp.local_nodes, g_smpi.my_local_id);
@@ -163,7 +163,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
         if (vc->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED)  {
             mpi_errno = MPIDI_CH3I_CM_Connect(vc);
             if (mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
         }
         goto fn_exit;
@@ -210,7 +210,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
         } else {
             sreq = MPID_Request_create();
             if (sreq == NULL) {
-                MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+                MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
             }
             sreq->kind = MPID_REQUEST_SEND;
             MPID_cc_set(&sreq->cc, 0);
@@ -239,9 +239,9 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_SMP_iStartMsgv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static void MPIDI_CH3_SMP_iStartMsgv(MPIDI_VC_t * vc,
-                                    MPID_IOV * iov, int n_iov,
+                                    MPL_IOV * iov, int n_iov,
                                     MPID_Request ** sreq_ptr)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_SMP_ISTARTMSGV);
@@ -262,8 +262,8 @@ static void MPIDI_CH3_SMP_iStartMsgv(MPIDI_VC_t * vc,
         DEBUG_PRINT("ch3_smp_istartmsgv: writev returned %d bytes\n", nb);
 
         while (offset < n_iov) {
-            if (nb >= (int) iov[offset].MPID_IOV_LEN) {
-                nb -= iov[offset].MPID_IOV_LEN;
+            if (nb >= (int) iov[offset].MPL_IOV_LEN) {
+                nb -= iov[offset].MPL_IOV_LEN;
                 ++offset;
             } else {
                 DEBUG_PRINT("ch3_istartmsgv: shm_writev did not complete the send, allocating request\n");

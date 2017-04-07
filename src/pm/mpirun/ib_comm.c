@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -159,12 +159,12 @@ void dump_ib_packet(struct ib_packet *pkt)
     }
 }
 
-inline int get_next_qp(struct ib_connection *conn)
+static inline int get_next_qp(struct ib_connection *conn)
 {
     return (conn->next_use_qp++) % conn->num_qp;
 }
 
-inline int find_qp(int qpn, struct ib_connection *conn)
+static inline int find_qp(int qpn, struct ib_connection *conn)
 {
     int i;
     for (i = 0; i < conn->num_qp; i++) {
@@ -174,7 +174,7 @@ inline int find_qp(int qpn, struct ib_connection *conn)
     return -1;
 }
 
-inline int find_qp_from_conn_array(int qpn, struct ib_connection *conn, int num_con, int *conidx, int *qpidx)
+static inline int find_qp_from_conn_array(int qpn, struct ib_connection *conn, int num_con, int *conidx, int *qpidx)
 {
     //printf(" num-conn %d, qpn 0x%x\n", num_con, qpn );
     *conidx = -1;
@@ -723,7 +723,7 @@ int ib_connection_exchange_client(struct ib_connection *conn, int sock)
 /*
 post a send-req to qp[idx], the buf to send is at send_buf[slot], with size="size"
 */
-int inline ib_connection_post_send(struct ib_connection *conn, int qp_index, int sbuf_slot, int size)
+int ib_connection_post_send(struct ib_connection *conn, int qp_index, int sbuf_slot, int size)
 {
     struct ib_HCA *hca = conn->hca;
 
@@ -800,7 +800,7 @@ int ib_connection_post_RR(struct ib_connection *conn, int qpidx, ib_packet_t * r
 /*
 Send the data(in buf) of size(size), via QP(qpidx)
 */
-int inline ib_connection_send(struct ib_connection *conn, int qpidx, void *buf, int size)
+int ib_connection_send(struct ib_connection *conn, int qpidx, void *buf, int size)
 {
     struct ib_HCA *hca = conn->hca;
     void *addr;
@@ -815,7 +815,7 @@ int inline ib_connection_send(struct ib_connection *conn, int qpidx, void *buf, 
 Post a RECV WQE to SRQ
 Note: the qp_index is not really needed. It's a dummy
 */
-int inline ib_connection_post_recv(struct ib_connection *conn, int qpidx, int rbuf_slot, int size)
+int ib_connection_post_recv(struct ib_connection *conn, int qpidx, int rbuf_slot, int size)
 {
     struct ib_HCA *hca = conn->hca;
 
@@ -845,7 +845,7 @@ int inline ib_connection_post_recv(struct ib_connection *conn, int qpidx, int rb
 /*
 
 */
-int inline ib_connection_post_srq_recv(struct ib_HCA *hca, int qpidx, int rbuf_slot, int size)
+int ib_connection_post_srq_recv(struct ib_HCA *hca, int qpidx, int rbuf_slot, int size)
 {
     struct ibv_sge list = {
         .addr = (uint64_t) (hca->recv_buf->addr + rbuf_slot * hca->recv_buf->slot_size),
@@ -871,7 +871,7 @@ int inline ib_connection_post_srq_recv(struct ib_HCA *hca, int qpidx, int rbuf_s
 /*
 Only the ib-loop thread should be able to call this func
 */
-int inline ib_connection_fillup_srq(struct ib_HCA *hca) //struct ib_connection* conn)
+int ib_connection_fillup_srq(struct ib_HCA *hca) //struct ib_connection* conn)
 {
     int i = 0;
     //if( atomic_read(&conn->rq_wqe) <= 20 ){ 
@@ -895,7 +895,7 @@ int inline ib_connection_fillup_srq(struct ib_HCA *hca) //struct ib_connection* 
 
 /// client sends a rqst to server: RR
 /// rbufid:  the RDMA-buf-id on client
-int inline ib_connection_send_RR_rqst(struct ib_connection *conn, int qpidx, int rbufid, int rprocid, int rckptid, int size, int offset, int is_last_chunk)
+int ib_connection_send_RR_rqst(struct ib_connection *conn, int qpidx, int rbufid, int rprocid, int rckptid, int size, int offset, int is_last_chunk)
 {
     struct ib_HCA *hca = conn->hca;
     struct ib_packet *pkt;
@@ -1146,7 +1146,7 @@ int exam_cqe(struct ib_connection *conn, int qpidx, struct ibv_wc *wc, int serve
     return ret;
 }
 
-int inline all_connection_finished(struct ib_connection *connarray, int num_conn)
+int all_connection_finished(struct ib_connection *connarray, int num_conn)
 {
     int i;
     for (i = 0; i < num_conn; i++) {
@@ -1437,7 +1437,7 @@ int ib_client_loop(struct ib_connection *connarray)
 Send "terminate" rqst to other end.
 Called before all ib_connections to be closed.
 */
-void inline ib_connection_send_terminate_rqst(struct ib_connection *connarray)
+void ib_connection_send_terminate_rqst(struct ib_connection *connarray)
 {
     struct ib_HCA *hca = connarray[0].hca;
     int numconn = atomic_read(&hca->ref);

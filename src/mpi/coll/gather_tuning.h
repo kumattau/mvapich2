@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -30,7 +30,7 @@ typedef struct {
     int (*MV2_pt_Gather_function)(const void *sendbuf, int sendcnt,
                                   MPI_Datatype sendtype, void *recvbuf, int recvcnt,
                                   MPI_Datatype recvtype, int root, MPID_Comm * comm_ptr,
-                                  int *errflag);
+                                  MPIR_Errflag_t *errflag);
 } mv2_gather_tuning_element;
 
 #if defined(_SMP_LIMIC_)
@@ -83,7 +83,7 @@ typedef struct {
     int (*MV2_pt_Gather_function)(const void *sendbuf, int sendcnt,
                                   MPI_Datatype sendtype, void *recvbuf, int recvcnt,
                                   MPI_Datatype recvtype, int root, MPID_Comm * comm_ptr,
-                                  int *errflag);
+                                  MPIR_Errflag_t *errflag);
 } mv2_gather_indexed_tuning_element;
 
 typedef struct {
@@ -104,21 +104,21 @@ extern mv2_gather_indexed_tuning_table **mv2_gather_indexed_thresholds_table;
 extern int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf, int sendcnt,
                                       MPI_Datatype sendtype, void *recvbuf, int recvcnt,
                                       MPI_Datatype recvtype, int root, MPID_Comm * comm_ptr,
-                                      int *errflag);
+                                      MPIR_Errflag_t *errflag);
 
 extern int MPIR_Gather_MV2_Direct(const void *sendbuf, int sendcnt,
                                       MPI_Datatype sendtype, void *recvbuf, int recvcnt,
                                       MPI_Datatype recvtype, int root, MPID_Comm * comm_ptr,
-                                      int *errflag);
+                                      MPIR_Errflag_t *errflag);
 extern int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf, int sendcnt,
             MPI_Datatype sendtype, void *recvbuf, int recvcnt,
             MPI_Datatype recvtype, int root, MPID_Comm * comm_ptr,
-            int *errflag);
+            MPIR_Errflag_t *errflag);
 
 #if defined(_SMP_LIMIC_)
 extern int MPIR_Intra_node_LIMIC_Gather_MV2(const void *sendbuf,int sendcnt, MPI_Datatype sendtype,
                                      void *recvbuf, int recvcnt,MPI_Datatype recvtype,
-                                     int root, MPID_Comm * comm_ptr, int *errflag);
+                                     int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 #endif /*#if defined(_SMP_LIMIC_)*/
 
 /* Architecture detection tuning */

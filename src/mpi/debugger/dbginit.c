@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -369,7 +369,7 @@ void MPIR_Sendq_remember( MPID_Request *req,
         return;
     }
 #endif
-    MPIU_THREAD_CS_ENTER(HANDLE,req);
+    MPID_THREAD_CS_ENTER(POBJ, req->pobj_mutex);
     if (pool) {
 	p = pool;
 	pool = p->next;
@@ -392,7 +392,7 @@ void MPIR_Sendq_remember( MPID_Request *req,
     if (p->next) p->next->prev = p;
     req->dbg_next = p;
 fn_exit:
-    MPIU_THREAD_CS_EXIT(HANDLE,req);
+    MPID_THREAD_CS_EXIT(POBJ, req->pobj_mutex);
 }
 
 void MPIR_Sendq_forget( MPID_Request *req )
@@ -404,11 +404,11 @@ void MPIR_Sendq_forget( MPID_Request *req )
         return;
     }
 #endif
-    MPIU_THREAD_CS_ENTER(HANDLE,req);
+    MPID_THREAD_CS_ENTER(POBJ, req->pobj_mutex);
     p    = req->dbg_next;
     if (!p) {
         /* Just ignore it */
-        MPIU_THREAD_CS_EXIT(HANDLE,req);
+        MPID_THREAD_CS_EXIT(POBJ, req->pobj_mutex);
         return;
     }
     prev = p->prev;
@@ -418,7 +418,7 @@ void MPIR_Sendq_forget( MPID_Request *req )
     /* Return this element to the pool */
     p->next = pool;
     pool    = p;
-    MPIU_THREAD_CS_EXIT(HANDLE,req);
+    MPID_THREAD_CS_EXIT(POBJ, req->pobj_mutex);
 }
 
 static int SendqFreePool( void *d )
@@ -477,9 +477,9 @@ void MPIR_CommL_remember( MPID_Comm *comm_ptr )
 		   "Adding communicator %p to remember list",comm_ptr);
     MPIU_DBG_MSG_P(COMM,VERBOSE,
 		   "Remember list structure address is %p",&MPIR_All_communicators);
-    MPIU_THREAD_CS_ENTER(HANDLE,comm_ptr);
+    MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_POBJ_COMM_MUTEX(comm_ptr));
     if (comm_ptr == MPIR_All_communicators.head) {
-	MPIU_Internal_error_printf( "Internal error: communicator is already on free list\n" );
+	MPL_internal_error_printf( "Internal error: communicator is already on free list\n" );
 	return;
     }
     comm_ptr->comm_next = MPIR_All_communicators.head;
@@ -488,7 +488,7 @@ void MPIR_CommL_remember( MPID_Comm *comm_ptr )
     MPIU_DBG_MSG_P(COMM,VERBOSE,
 		   "master head is %p", MPIR_All_communicators.head );
 
-    MPIU_THREAD_CS_EXIT(HANDLE,comm_ptr);
+    MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_COMM_MUTEX(comm_ptr));
 }
 
 void MPIR_CommL_forget( MPID_Comm *comm_ptr )
@@ -497,7 +497,7 @@ void MPIR_CommL_forget( MPID_Comm *comm_ptr )
 
     MPIU_DBG_MSG_P(COMM,VERBOSE,
 		   "Forgetting communicator %p from remember list",comm_ptr);
-    MPIU_THREAD_CS_ENTER(HANDLE,comm_ptr);
+    MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_POBJ_COMM_MUTEX(comm_ptr));
     p = MPIR_All_communicators.head;
     prev = 0;
     while (p) {
@@ -507,7 +507,7 @@ void MPIR_CommL_forget( MPID_Comm *comm_ptr )
 	    break;
 	}
 	if (p == p->comm_next) {
-	    MPIU_Internal_error_printf( "Mangled pointers to communicators - next is itself for %p\n", p );
+	    MPL_internal_error_printf( "Mangled pointers to communicators - next is itself for %p\n", p );
 	    break;
 	}
 	prev = p;
@@ -515,7 +515,7 @@ void MPIR_CommL_forget( MPID_Comm *comm_ptr )
     }
     /* Record a change to the list */
     MPIR_All_communicators.sequence_number++;
-    MPIU_THREAD_CS_EXIT(HANDLE,comm_ptr);
+    MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_COMM_MUTEX(comm_ptr));
 }
 
 #ifdef MPIU_PROCTABLE_NEEDED

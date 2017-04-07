@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -32,6 +32,9 @@
 /* This variable is used in the definitions of the MPID_Progress_xxx macros,
    and must be available to the routines in src/mpi */
 extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
+
+/* PSM channel should also call UPMI_ABORT */
+#define MPIDI_CH3_IMPLEMENTS_ABORT
 
 #ifdef _OSU_MVAPICH_
 typedef struct {
@@ -113,12 +116,15 @@ typedef struct MPIDI_CH3I_Process_group_s
     struct MPID_Request *psmcompprev;   \
     struct MPID_Request *savedreq;      \
     struct MPID_Request *pending_req;   \
-    int pktlen;                         \
+    uint64_t pktlen;                    \
     void *pkbuf;                        \
-    uint32_t pksz;                      \
+    uint64_t pksz;                      \
     uint32_t psm_flags;                 \
     int resp_rndv_tag;                  \
-    void *vbufptr;                      
+    void *vbufptr;                      \
+    int from_rank;                      \
+    int last_stream_unit;               \
+    int is_piggyback;                   \
 
 typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
 
@@ -128,45 +134,54 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
 
 /* bit-flags set in psm_flags */
 
-#define PSM_NON_BLOCKING_SEND   0x00000001  /* send req nonblocking */
-#define PSM_NON_CONTIG_REQ      0x00000002  /* is req non-config    */
-#define PSM_SYNC_SEND           0x00000004  /* this is a sync send  */
-#define PSM_SEND_CANCEL         0x00000008  /* send cancel req      */
-#define PSM_RECV_CANCEL         0x00000010  /* recv cancel req      */
-#define PSM_COMPQ_PENDING       0x00000020  /* req is in compQ      */
-#define PSM_PACK_BUF_FREE       0x00000040  /* pack-buf not freed   */
-#define PSM_NON_BLOCKING_RECV   0x00000080  /* recv req nonblocking */
-#define PSM_1SIDED_PREPOST      0x00000100  /* preposted recv req   */
-#define PSM_1SIDED_PUTREQ       0x00000200  /* 1-sided PUT req      */
-#define PSM_RNDVRECV_PUT_REQ    0x00000400  /* rndv_recv req        */
-#define PSM_CONTROL_PKTREQ      0x00000800  /* req is for ctrl-pkt  */
-#define PSM_RNDVPUT_COMPLETED   0x00001000  /* completed rdnv req   */
-#define PSM_RNDVSEND_REQ        0x00002000  /* rendezvous send req  */
-#define PSM_RNDV_ACCUM_REQ      0x00004000  /* req is rndv accum    */
-#define PSM_RNDVRECV_ACCUM_REQ  0x00008000  /* rndv_recv req        */
-#define PSM_GETRESP_REQ         0x00010000  
-#define PSM_GETPKT_REQ          0x00020000
-#define PSM_RNDVRECV_GET_REQ    0x00040000
-#define PSM_RNDVRECV_NC_REQ     0x00080000
-#define PSM_NEED_DTYPE_RELEASE  0x00100000
-#define PSM_RNDVRECV_GET_PACKED 0x00200000
-#define PSM_GETACCUMRESP_REQ    0x00400000  
+#define PSM_NON_BLOCKING_SEND       0x00000001  /* send req nonblocking */
+#define PSM_NON_CONTIG_REQ          0x00000002  /* is req non-config    */
+#define PSM_SYNC_SEND               0x00000004  /* this is a sync send  */
+#define PSM_SEND_CANCEL             0x00000008  /* send cancel req      */
+#define PSM_RECV_CANCEL             0x00000010  /* recv cancel req      */
+#define PSM_COMPQ_PENDING           0x00000020  /* req is in compQ      */
+#define PSM_PACK_BUF_FREE           0x00000040  /* pack-buf not freed   */
+#define PSM_NON_BLOCKING_RECV       0x00000080  /* recv req nonblocking */
+#define PSM_1SIDED_PREPOST          0x00000100  /* preposted recv req   */
+#define PSM_1SIDED_PUTREQ           0x00000200  /* 1-sided PUT req      */
+#define PSM_RNDVRECV_PUT_REQ        0x00000400  /* rndv_recv req        */
+#define PSM_CONTROL_PKTREQ          0x00000800  /* req is for ctrl-pkt  */
+#define PSM_RNDVPUT_COMPLETED       0x00001000  /* completed rdnv req   */
+#define PSM_RNDVSEND_REQ            0x00002000  /* rendezvous send req  */
+#define PSM_RNDV_ACCUM_REQ          0x00004000  /* req is rndv accum    */
+#define PSM_RNDVRECV_ACCUM_REQ      0x00008000  /* rndv_recv req        */
+#define PSM_GETRESP_REQ             0x00010000  
+#define PSM_GETPKT_REQ              0x00020000
+#define PSM_RNDVRECV_GET_REQ        0x00040000
+#define PSM_RNDVRECV_NC_REQ         0x00080000
+#define PSM_NEED_DTYPE_RELEASE      0x00100000
+#define PSM_RNDVRECV_GET_PACKED     0x00200000
+#define PSM_GETACCUMRESP_REQ        0x00400000  
+#define PSM_GETACCUM_RNDV_REQ       0x01000000  
+#define PSM_GETACCUM_GET_RNDV_REQ   0x02000000  
 
 #define MPIDI_CH3_REQUEST_INIT(__p)  \
         __p->psm_flags = 0;          \
         __p->pkbuf = 0;              \
-        __p->pksz = 0                \
+        __p->pksz = 0;               \
+        __p->last_stream_unit = 0;   \
+        __p->is_piggyback = 0                
 
-#define MPIDI_CH3_WIN_DECL                                                       \
-    int *rank_mapping;                                                           \
-    int16_t outstanding_rma;                                                     \
-    int use_direct_shm;                                                          \
-    void *shm_base_addr;        /* base address of shared memory region */              \
-    int shm_coll_comm_ref;                                                              \
-    MPI_Aint shm_segment_len;   /* size of shared memory region */                      \
-    MPIU_SHMW_Hnd_t shm_segment_handle; /* handle to shared memory region */            \
-    MPIDI_CH3I_SHM_MUTEX *shm_mutex;    /* shared memory windows -- lock for            \
-                                           accumulate/atomic operations */              \
-    MPIU_SHMW_Hnd_t shm_mutex_segment_handle; /* handle to interprocess mutex memory    \
-                                                 region */                              
+#define MPIDI_CH3_WIN_DECL                                                                        \
+    int *rank_mapping;                                                                            \
+    int16_t outstanding_rma;                                                                      \
+    int node_comm_size;                                                                           \
+    MPID_Comm *node_comm_ptr;                                                                     \
+    int use_direct_shm;                                                                           \
+    void *shm_base_addr;        /* base address of shared memory region */                        \
+    int shm_coll_comm_ref;                                                                        \
+    MPI_Aint shm_segment_len;   /* size of shared memory region */                                \
+    MPIU_SHMW_Hnd_t shm_segment_handle; /* handle to shared memory region */                      \
+    MPIDI_CH3I_SHM_MUTEX *shm_mutex;    /* shared memory windows -- lock for                      \
+                                           accumulate/atomic operations */                        \
+    MPIU_SHMW_Hnd_t shm_mutex_segment_handle; /* handle to interprocess mutex memory              \
+                                                 region */                                        \
+    void *info_shm_base_addr; /* base address of shared memory region for window info */          \
+    MPI_Aint info_shm_segment_len; /* size of shared memory region for window info */             \
+    MPIU_SHMW_Hnd_t info_shm_segment_handle; /* handle to shared memory region for window info */ 
 #endif

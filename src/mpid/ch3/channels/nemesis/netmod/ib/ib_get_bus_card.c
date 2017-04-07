@@ -2,7 +2,7 @@
  *  (C) 2006 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,7 +25,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_get_business_card
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 int MPID_nem_ib_get_business_card (int my_rank, char **bc_val_p, 
         int *val_max_sz_p)
@@ -39,9 +39,9 @@ int MPID_nem_ib_get_business_card (int my_rank, char **bc_val_p,
     if(mpi_errno != MPIU_STR_SUCCESS) {
 
         if(mpi_errno == MPIU_STR_NOMEM) {
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
         } else {  
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard");
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard");
         }
         return mpi_errno;
     }
@@ -53,9 +53,9 @@ int MPID_nem_ib_get_business_card (int my_rank, char **bc_val_p,
     if(mpi_errno != MPIU_STR_SUCCESS) {
 
         if(mpi_errno == MPIU_STR_NOMEM) {
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
         } else {  
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard");
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard");
         }
         return mpi_errno;
     }
@@ -68,9 +68,9 @@ int MPID_nem_ib_get_business_card (int my_rank, char **bc_val_p,
     if(mpi_errno != MPIU_STR_SUCCESS) {
 
         if(mpi_errno == MPIU_STR_NOMEM) {
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
         } else {  
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard");
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard");
         }
         return mpi_errno;
     }

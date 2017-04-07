@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -45,7 +45,7 @@ typedef struct {
                                     const int *recvcnts,
                                     MPI_Datatype datatype,
                                     MPI_Op op,
-                                    MPID_Comm * comm_ptr, int *errflag);
+                                    MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 } mv2_red_scat_tuning_element;
 
 typedef struct {
@@ -62,21 +62,21 @@ extern int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
                                          const int *recvcnts,
                                          MPI_Datatype datatype,
                                          MPI_Op op,
-                                         MPID_Comm * comm_ptr, int *errflag);
+                                         MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
                                          void *recvbuf,
                                          const int *recvcnts,
                                          MPI_Datatype datatype,
                                          MPI_Op op,
-                                         MPID_Comm * comm_ptr, int *errflag);
+                                         MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
                                          void *recvbuf,
                                          const int *recvcnts,
                                          MPI_Datatype datatype,
                                          MPI_Op op,
-                                         MPID_Comm * comm_ptr, int *errflag);
+                                         MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 /* Architecture detection tuning */
 int MV2_set_red_scat_tuning_table();

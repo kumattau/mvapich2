@@ -522,7 +522,7 @@ MPIX_Get_last_algorithm_name(MPI_Comm comm, char *protocol, int length)
 #undef FUNCNAME
 #define FUNCNAME MPIX_IO_node_id
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIX_IO_node_id ()
 {
   static unsigned long IO_node_id = ULONG_MAX;
@@ -552,7 +552,7 @@ int MPIX_IO_node_id ()
 #undef FUNCNAME
 #define FUNCNAME MPIX_IO_link_id
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIX_IO_link_id ()
 {
   int nB,  nC,  nD,  nE;                /* Size of each torus dimension  */
@@ -584,7 +584,7 @@ int MPIX_IO_link_id ()
 #undef FUNCNAME
 #define FUNCNAME MPIX_IO_distance
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIX_IO_distance ()
 {
   int iA,  iB,  iC,  iD,  iE;                /* The local node's coordinates  */
@@ -665,7 +665,7 @@ int MPIX_IO_distance ()
 #undef FUNCNAME
 #define FUNCNAME MPIX_Pset_io_node
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void
 MPIX_Pset_io_node (int *io_node_route_id, int *distance_to_io_node)
 {
@@ -713,7 +713,7 @@ int _MPIX_Pset_same_comm_create (MPID_Comm *parent_comm_ptr, MPID_Comm **pset_co
 #undef FUNCNAME
 #define FUNCNAME MPIX_Pset_same_comm_create_from_parent
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int
 MPIX_Pset_same_comm_create_from_parent (MPI_Comm parent_comm, MPI_Comm *pset_comm)
 {
@@ -747,7 +747,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIX_Pset_same_comm_create
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int
 MPIX_Pset_same_comm_create (MPI_Comm *pset_comm)
 {
@@ -758,7 +758,7 @@ MPIX_Pset_same_comm_create (MPI_Comm *pset_comm)
 #undef FUNCNAME
 #define FUNCNAME MPIX_Pset_diff_comm_create_from_parent
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int
 MPIX_Pset_diff_comm_create_from_parent (MPI_Comm parent_comm, MPI_Comm *pset_comm)
 {
@@ -814,7 +814,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIX_Pset_diff_comm_create
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int
 MPIX_Pset_diff_comm_create (MPI_Comm *pset_comm)
 {
@@ -843,7 +843,7 @@ MPIX_Pset_diff_comm_create (MPI_Comm *pset_comm)
 #undef FUNCNAME
 #define FUNCNAME MPIX_Cart_comm_create
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int
 MPIX_Cart_comm_create (MPI_Comm *cart_comm)
 {

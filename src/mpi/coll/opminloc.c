@@ -6,7 +6,7 @@
  */
 
 /*
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -107,7 +107,7 @@ typedef struct MPIR_longdoubleint_loctype {
 #undef FUNCNAME
 #define FUNCNAME MPIR_MINLOC
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIR_MINLOC( 
 	void *invec, 
 	void *inoutvec, 
@@ -144,10 +144,10 @@ void MPIR_MINLOC(
 #endif
 	/* --BEGIN ERROR HANDLING-- */
     default: {
-	MPIU_THREADPRIV_DECL;
-	MPIU_THREADPRIV_GET;
-        MPIU_ERR_SET1(mpi_errno, MPI_ERR_OP, "**opundefined","**opundefined %s", "MPI_MINLOC" );
-        MPIU_THREADPRIV_FIELD(op_errno) = mpi_errno;
+	MPID_THREADPRIV_DECL;
+	MPID_THREADPRIV_GET;
+        MPIR_ERR_SET1(mpi_errno, MPI_ERR_OP, "**opundefined","**opundefined %s", "MPI_MINLOC" );
+        MPID_THREADPRIV_FIELD(op_errno) = mpi_errno;
         break;
     }
 	/* --END ERROR HANDLING-- */
@@ -161,7 +161,7 @@ void MPIR_MINLOC(
 #undef FUNCNAME
 #define FUNCNAME MPIR_MINLOC_check_dtype
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_MINLOC_check_dtype( MPI_Datatype type )
 {
     int mpi_errno = MPI_SUCCESS;
@@ -186,7 +186,7 @@ int MPIR_MINLOC_check_dtype( MPI_Datatype type )
 #endif
         break;
 
-    default: MPIU_ERR_SET1(mpi_errno, MPI_ERR_OP, "**opundefined", "**opundefined %s", "MPI_MINLOC");
+    default: MPIR_ERR_SET1(mpi_errno, MPI_ERR_OP, "**opundefined", "**opundefined %s", "MPI_MINLOC");
     }
     
     return mpi_errno;

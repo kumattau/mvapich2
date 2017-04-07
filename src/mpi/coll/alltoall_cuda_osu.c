@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,7 +29,7 @@ int send_events_count = 0;
 #undef FUNCNAME
 #define FUNCNAME MPIR_Alltoall_CUDA_cleanup
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Alltoall_CUDA_cleanup () 
 {
     int mpi_errno = MPI_SUCCESS; 
@@ -53,7 +53,7 @@ int MPIR_Alltoall_CUDA_cleanup ()
 #undef FUNCNAME
 #define FUNCNAME MPIR_Alltoall_CUDA_intra_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Alltoall_CUDA_intra_MV2( 
     const void *sendbuf, 
     int sendcount, 
@@ -62,7 +62,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     int recvcount, 
     MPI_Datatype recvtype, 
     MPID_Comm *comm_ptr, 
-    int *errflag )
+    MPIR_Errflag_t *errflag )
 {
     cudaError_t cudaerr = cudaSuccess;
     int mpi_errno=MPI_SUCCESS;
@@ -72,14 +72,13 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     int recvreq_complete = 0,  num_sbufs = 0, num_rbufs = 0;
     int sbufs_filled = 0, rbufs_filled = 0, bufs_send_initiated = 0, bufs_recvd = 0;
     send_stat *send_complete = NULL;
-    MPI_Comm comm;
     MPI_Aint sendtype_extent, recvtype_extent;
-    MPI_Request *sendreq = NULL, *recvreq = NULL;
+    MPID_Request **sendreq = NULL, **recvreq = NULL;
+    MPI_Request *request_ptrs = NULL;
     MPI_Status *sendstat = NULL, *recvstat = NULL;
     MPIDI_CH3U_COLL_SRBuf_element_t **send_buf = NULL, **recv_buf = NULL;
 
     /*get comm size and rank*/
-    comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
 
@@ -145,23 +144,25 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     }
 
     /*allocate send and receive requests, statuses and counters*/
-    sendreq = (MPI_Request *) MPIU_Malloc(comm_size * sizeof(MPI_Request));
+    sendreq = (MPID_Request **) MPIU_Malloc(comm_size * sizeof(MPID_Request*));
     if (!sendreq) {
         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
         return mpi_errno;
     }
 
-    recvreq = (MPI_Request *) MPIU_Malloc(comm_size * sizeof(MPI_Request));
-    if (!recvreq) {
+    request_ptrs = (MPI_Request *) MPIU_Malloc(comm_size * sizeof(MPI_Request));
+    if (!request_ptrs) {
         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
         return mpi_errno;
     }
 
-    for (i=0; i<comm_size; i++) { 
-        sendreq[i] = MPI_REQUEST_NULL;
-        recvreq[i] = MPI_REQUEST_NULL;
+    recvreq = (MPID_Request **) MPIU_Malloc(comm_size * sizeof(MPID_Request*));
+    if (!recvreq) {
+        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+                            FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
+        return mpi_errno;
     }
 
     sendstat = (MPI_Status *) MPIU_Malloc(comm_size * sizeof(MPI_Status));
@@ -246,10 +247,10 @@ int MPIR_Alltoall_CUDA_intra_MV2(
             mpi_errno = MPIC_Irecv((char *) recv_buf[bufs_recvd]->buf +
                     disp,
                     recvcount, recvtype, dst,
-                    MPIR_ALLTOALL_TAG, comm,
+                    MPIR_ALLTOALL_TAG, comm_ptr,
                     &recvreq[i+j]);
             if (mpi_errno) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
         }
         bufs_recvd++;
@@ -279,10 +280,10 @@ int MPIR_Alltoall_CUDA_intra_MV2(
                     mpi_errno = MPIC_Isend((char *) send_buf[i]->buf +
                         disp,
                         sendcount, sendtype, dst,
-                        MPIR_ALLTOALL_TAG, comm,
+                        MPIR_ALLTOALL_TAG, comm_ptr,
                         &sendreq[i*sblock + j], errflag);
                     if (mpi_errno) {
-                        MPIU_ERR_POP(mpi_errno);
+                        MPIR_ERR_POP(mpi_errno);
                     }
                 }
                 bufs_send_initiated++;
@@ -291,9 +292,10 @@ int MPIR_Alltoall_CUDA_intra_MV2(
 
         if (rbufs_filled < num_rbufs) { 
             flag = 0;
-            mpi_errno = MPIR_Test_impl(recvreq + recvreq_complete, &flag, MPI_STATUS_IGNORE);
+            request_ptrs[recvreq_complete] = recvreq[recvreq_complete]->handle;
+            mpi_errno = MPIR_Test_impl(&request_ptrs[recvreq_complete], &flag, MPI_STATUS_IGNORE);
             if (mpi_errno && mpi_errno != MPI_ERR_IN_STATUS) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
 
             if (flag) { 
@@ -344,7 +346,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     /* wait for ss sends and recvs to finish: */
     mpi_errno = MPIC_Waitall(comm_size, sendreq, sendstat, errflag);
     if (mpi_errno && mpi_errno != MPI_ERR_IN_STATUS) {
-          MPIU_ERR_POP(mpi_errno);
+          MPIR_ERR_POP(mpi_errno);
     }
 
     /* wait for the receive copies into the device to complete */
@@ -357,6 +359,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     cudaEventSynchronize(*recv_event);
 
     MPIU_Free(send_complete);             
+    MPIU_Free(request_ptrs);
     MPIU_Free(recvreq);
     MPIU_Free(sendreq);
     MPIU_Free(sendstat);

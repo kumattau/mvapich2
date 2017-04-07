@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -17,6 +17,7 @@
 #include "coll_shmem.h"
 #include "debug_utils.h"
 #include <mv2_arch_hca_detect.h>
+#include <upmi.h>
 
 volatile unsigned int MPIDI_CH3I_progress_completion_count = 0; //ODOT: what is this ?
 volatile int MPIDI_CH3I_progress_blocked = FALSE;
@@ -32,6 +33,9 @@ uint8_t                 ipath_enable_func_lock;
 uint32_t                ipath_progress_yield_count;
 size_t                  ipath_max_transfer_size = DEFAULT_IPATH_MAX_TRANSFER_SIZE;
 int g_mv2_show_env_info = 0;
+int mv2_use_pmi_ibarrier = 0;
+int mv2_use_on_demand_cm = 0;
+int mv2_on_demand_threshold = MPIDI_PSM_DEFAULT_ON_DEMAND_THRESHOLD;
 mv2_arch_hca_type g_mv2_arch_hca_type = 0;
 
 /* Number of retry attempts if psm_ep_open fails */
@@ -39,16 +43,23 @@ static int mv2_psm_ep_open_retry_count = 10;
 /* Number of seconds to sleep between psm_ep_open retries */
 static int mv2_psm_ep_open_retry_secs  = 10;
 
+int mv2_pmi_max_keylen;
+int mv2_pmi_max_vallen;
+char *mv2_pmi_key;
+char *mv2_pmi_val;
+
 static char    scratch[WRBUFSZ];
 static char             *kvsid;
 static PSM_UUID_T       psm_uuid;
 
+static void psm_read_user_params(void);
 static int  psm_bcast_uuid(int pg_size, int pg_rank);
-static int  psm_allgather_epid(PSM_EPID_T *list, int pg_size, int pg_rank);
+static int  psm_start_epid_exchange(PSM_EPID_T myid, int pg_size, int pg_rank);
 static void psm_other_init(MPIDI_PG_t *pg);
 static void psm_preinit(int pg_size);
 static int  decode(unsigned s_len, char *src, unsigned d_len, char *dst);
 static int  encode(unsigned s_len, char *src, unsigned d_len, char *dst);
+static int psm_connect_alltoall(PSM_EPADDR_T *addrs, int pg_size, int pg_rank);
 
 extern void MPIDI_CH3I_SHMEM_COLL_Cleanup();
 
@@ -124,20 +135,20 @@ static int psm_mq_init_barrier(PSM_MQ_T mq, int rank, int ranks, PSM_EPADDR_T* a
 
 #define FUNCNAME split_type
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int split_type(MPID_Comm * comm_ptr, int stype, int key,
         MPID_Info *info_ptr, MPID_Comm ** newcomm_ptr)
 {
     MPID_Node_id_t id;
-    MPIR_Rank_t nid;
+    MPIDI_Rank_t nid;
     int mpi_errno = MPI_SUCCESS;
 
     mpi_errno = MPID_Get_node_id(comm_ptr, comm_ptr->rank, &id);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     nid = (stype == MPI_COMM_TYPE_SHARED) ? id : MPI_UNDEFINED;
     mpi_errno = MPIR_Comm_split_impl(comm_ptr, nid, key, newcomm_ptr);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
 fn_exit:
     return mpi_errno;
@@ -178,7 +189,7 @@ void mv2_print_env_info(void)
 #undef FUNCNAME
 #define FUNCNAME MV2_get_arch_hca_type
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 mv2_arch_hca_type MV2_get_arch_hca_type(void)
 {
     if(g_mv2_arch_hca_type)
@@ -221,15 +232,15 @@ static PSM_ERROR_T mv2_psm_err_handler(PSM_EP_T ep, const PSM_ERROR_T error,
 #undef FUNCNAME
 #define FUNCNAME psm_doinit
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
 {
     char *flag = NULL;
     int verno_major, verno_minor;
     int pg_size, mpi_errno;
-    int heterogeneity = 0; 
-    PSM_EPID_T myid, *epidlist = NULL;
-    PSM_ERROR_T *errs = NULL, err;
+    int heterogeneity = 0, i; 
+    PSM_EPID_T myid;
+    PSM_ERROR_T err;
     struct PSM_EP_OPEN_OPTS psm_opts;
 
     /* Override split_type */
@@ -241,8 +252,14 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     verno_major = PSM_VERNO_MAJOR;
     verno_minor = PSM_VERNO_MINOR;
 
+    mv2_allocate_pmi_keyval();
+    psm_read_user_params();
+    if(pg_size > mv2_on_demand_threshold) {
+        mv2_use_on_demand_cm = 1;
+    }
+
     mpi_errno = MPIDI_CH3U_Comm_register_create_hook(MPIDI_CH3I_comm_create, NULL);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     /* detect architecture and hca type */
     g_mv2_arch_hca_type = MV2_get_arch_hca_type();
@@ -294,7 +311,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
             fprintf(stderr, "psm_init failed with error: %s\n", PSM_ERROR_GET_STRING(err));
         #endif
 
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psminit");
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psminit");
     }
 
     /* By default, PSM sets cpu affinity on a process if it's not
@@ -351,43 +368,35 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     if (err != PSM_OK) {
         fprintf(stderr, "psm_ep_open failed with error %s\n",
                 PSM_ERROR_GET_STRING(err));
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psmepopen");
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psmepopen");
     }
-    epidlist = (PSM_EPID_T *)MPIU_Malloc(pg_size * sizeof(PSM_EPID_T));
-    if(epidlist == NULL) {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_NO_MEM, "**psmnomem");
-    }
-    epidlist[pg_rank] = myid;
 
-    mpi_errno = psm_allgather_epid(epidlist, pg_size, pg_rank);
+    mpi_errno = psm_start_epid_exchange(myid, pg_size, pg_rank);
     if(mpi_errno != MPI_SUCCESS) {
         goto fn_fail;
     }
 
     psmdev_cw.epaddrs = (PSM_EPADDR_T *) MPIU_Malloc(pg_size * sizeof(PSM_EPADDR_T));
-    errs = (PSM_ERROR_T *) MPIU_Malloc(pg_size * sizeof(PSM_ERROR_T));
-    if(psmdev_cw.epaddrs == NULL || errs == NULL) {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_NO_MEM, "**psmnomem");
+    if(psmdev_cw.epaddrs == NULL) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_NO_MEM, "**psmnomem");
     }
-
-    if((err = PSM_EP_CONNECT(psmdev_cw.ep, pg_size, epidlist, NULL, errs,
-                psmdev_cw.epaddrs, TIMEOUT * SEC_IN_NS)) != PSM_OK) {
-        fprintf(stderr, "psm_ep_connect failed with error %s\n", PSM_ERROR_GET_STRING(err));
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**psmconnectfailed");
-    }
-    DBG("psm_ep_connect done\n");
+    memset(psmdev_cw.epaddrs, 0, pg_size * sizeof(PSM_EPADDR_T));
 
     if((err = PSM_MQ_INIT(psmdev_cw.ep, PSM_MQ_ORDERMASK_ALL, NULL, 0,
                 &psmdev_cw.mq)) != PSM_OK) {
         PRINT_ERROR("psm_mq_init failed\n");
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**psm_mqinitfailed");
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**psm_mqinitfailed");
     }
 
-    /* execute barrier to ensure all tasks have returned from psm_ep_connect */
-    if((err = psm_mq_init_barrier(psmdev_cw.mq, pg_rank, pg_size, psmdev_cw.epaddrs)) != PSM_OK) {
-        PRINT_ERROR("psm_mq_init_barrier failed\n");
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**fail");
-    } 
+    if (!mv2_use_on_demand_cm) {
+        psm_connect_alltoall(psmdev_cw.epaddrs, pg_size, pg_rank);
+
+        /* execute barrier to ensure all tasks have returned from psm_ep_connect */
+        if((err = psm_mq_init_barrier(psmdev_cw.mq, pg_rank, pg_size, psmdev_cw.epaddrs)) != PSM_OK) {
+            PRINT_ERROR("psm_mq_init_barrier failed\n");
+            MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**fail");
+        }
+    }
 
     /* initialize VC state, eager size value, queues etc */
     psm_other_init(pg);
@@ -397,21 +406,19 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     }
 
     mpi_errno = MPIDI_CH3U_Comm_register_destroy_hook(MPIDI_CH3I_comm_destroy, NULL);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
+    /* Initialize progress hook slots */
+    for (i = 0; i < MAX_PROGRESS_HOOKS; i++) {
+        progress_hooks[i].func_ptr = NULL;
+        progress_hooks[i].active = FALSE;
+    }
 
-
-    MPIU_Free(errs);
-    MPIU_Free(epidlist);
     return MPI_SUCCESS;
 
 cleanup_files:
     MPIDI_CH3I_SHMEM_COLL_Cleanup();
 fn_fail:
-    if(errs)
-        MPIU_Free(errs);
-    if(epidlist)
-        MPIU_Free(epidlist);
     return MPI_ERR_INTERN;
 }
 
@@ -463,7 +470,7 @@ static void psm_preinit(int pg_size)
         MPIU_Memalign_Free(fls);
 
         UPMI_BARRIER();
-        DBG("localid %d localranks %d\n", id, n);
+        PRINT_DEBUG(DEBUG_CM_verbose>0, "localid %d localranks %d\n", id, n);
         snprintf(scratch, sizeof(scratch), "%d", n);
 	setenv("MPI_LOCALNRANKS", scratch, 1);
         snprintf(scratch, sizeof(scratch), "%d", id);
@@ -531,59 +538,134 @@ skip:
          * has set. Refer to TRAC Ticket #457
          * putenv("PSM_DEVICES=self,shm,ipath"); */
         #if PSM_VERNO >= PSM_2_1_VERSION
-             DBG("Memory-mapped file creation failed or unknown PSM version. \
+             PRINT_DEBUG(DEBUG_CM_verbose>0, "Memory-mapped file creation failed or unknown PSM version. \
                   Leaving PSM2_DEVICES to default or user's settings. \n");
         #else
-             DBG("Memory-mapped file creation failed or unknown PSM version. \
+             PRINT_DEBUG(DEBUG_CM_verbose>0, "Memory-mapped file creation failed or unknown PSM version. \
                   Leaving PSM_DEVICES to default or user's settings. \n");
         #endif
     }
 }
 
 /* all ranks provide their epid via PMI put/get */
-static int psm_allgather_epid(PSM_EPID_T *list, int pg_size, int pg_rank)
+static int psm_start_epid_exchange(PSM_EPID_T myid, int pg_size, int pg_rank)
 {
-    char *kvs_name;
-    int kvslen;
-    char *kvskey;
     int i, mpi_errno = MPI_SUCCESS;
 
-    if(pg_size == 1)
-        return MPI_SUCCESS;
-
-    UPMI_KVS_GET_KEY_LENGTH_MAX(&kvslen);
-    kvskey = (char *) MPIU_Malloc (kvslen);
-
-    DBG("[%d] my epid = %d\n", pg_rank, list[pg_rank]);
-    MPIDI_PG_GetConnKVSname(&kvs_name);
-    MPIU_Snprintf(kvskey, kvslen, "pmi_epidkey_%d", pg_rank);
-    MPIU_Snprintf(scratch, WRBUFSZ, "%lu", list[pg_rank]);
-    if(UPMI_KVS_PUT(kvs_name, kvskey, scratch) != UPMI_SUCCESS) {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_putfailed");
+    PRINT_DEBUG(DEBUG_CM_verbose>1, "[%d] my epid = %lu\n", pg_rank, myid);
+    MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey_%d", pg_rank);
+    MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen, "%lu", myid);
+    if(UPMI_KVS_PUT(kvsid, mv2_pmi_key, mv2_pmi_val) != UPMI_SUCCESS) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_putfailed");
     }
-    if(UPMI_KVS_COMMIT(kvs_name) != UPMI_SUCCESS) {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_putcommit");
+    if(UPMI_KVS_COMMIT(kvsid) != UPMI_SUCCESS) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_putcommit");
     }
-    UPMI_BARRIER();
-
-    for(i = 0; i < pg_size; i++) {
-        if(i == pg_rank)
-            continue;
-
-        MPIU_Snprintf(kvskey, kvslen, "pmi_epidkey_%d", i);
-        if(UPMI_KVS_GET(kvs_name, kvskey, scratch, WRBUFSZ) != UPMI_SUCCESS) {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_getfailed");
-        }
-        sscanf(scratch, "%lu", &(list[i]));
-        DBG("[%d] got epid %llu\n", pg_rank, list[i]);
+    if (mv2_use_pmi_ibarrier) {
+        mpi_errno = UPMI_IBARRIER();
+    } else {
+        mpi_errno = UPMI_BARRIER();
     }
-    UPMI_BARRIER();
-    MPIU_Free(kvskey);
-    DBG("epid collected from all\n");
+    if(mpi_errno != UPMI_SUCCESS) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_putcommit");
+    }
+
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    PRINT_ERROR("epid put/commit/get failed\n");
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME psm_connect_peer
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int psm_connect_peer(int peer)
+{
+    int err, mpi_errno = MPI_SUCCESS;
+    PSM_EPID_T epidlist[1];
+    PSM_ERROR_T errs[1];
+
+    /* Should it fail if connection is already established? */
+    assert(!PSM_ADDR_RESOLVED(peer));
+    if (mv2_use_pmi_ibarrier) {
+        UPMI_WAIT();
+    }
+
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "Connecting to peer %d\n", peer);
+
+    MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey_%d", peer);
+    if(UPMI_KVS_GET(kvsid, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen) != UPMI_SUCCESS) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_getfailed");
+    }
+    PRINT_DEBUG(DEBUG_CM_verbose>1, "peer: %d, got epid: %s\n", peer, mv2_pmi_val);
+    sscanf(mv2_pmi_val, "%lu", &epidlist[0]);
+
+    if((err = PSM_EP_CONNECT(psmdev_cw.ep, 1, epidlist, NULL, errs,
+                &psmdev_cw.epaddrs[peer], TIMEOUT * SEC_IN_NS)) != PSM_OK) {
+        fprintf(stderr, "psm_ep_connect failed with error %s\n", PSM_ERROR_GET_STRING(err));
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**psmconnectfailed");
+    }
+
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "Connection established with peer %d\n", peer);
+fn_exit:
     return MPI_SUCCESS;
 
 fn_fail:
-    DBG("epid put/commit/get failed\n");
+    PRINT_ERROR("psm_connect_peer failed\n");
+    return MPI_ERR_INTERN;
+}
+
+#undef FUNCNAME
+#define FUNCNAME psm_connect_alltoall
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+static int psm_connect_alltoall(PSM_EPADDR_T *addrs, int pg_size, int pg_rank)
+{
+    int i;
+    int err, mpi_errno = MPI_SUCCESS;
+    PSM_EPID_T *epidlist;
+    PSM_ERROR_T *errlist;
+
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "Establishing alltoall connectivity\n");
+    epidlist = (PSM_EPID_T*) MPIU_Malloc (pg_size * sizeof(PSM_EPID_T));
+    errlist = (PSM_ERROR_T*) MPIU_Malloc (pg_size * sizeof(PSM_ERROR_T));
+
+    if (epidlist == NULL || errlist == NULL) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_NO_MEM, "**psmnomem");
+    }
+
+    if (mv2_use_pmi_ibarrier) {
+        UPMI_WAIT();
+    }
+
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "Looking up epids\n");
+    for (i=0; i<pg_size; i++) {
+        MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey_%d", i);
+        if(UPMI_KVS_GET(kvsid, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen) != UPMI_SUCCESS) {
+            MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_getfailed");
+        }
+        PRINT_DEBUG(DEBUG_CM_verbose>1, "peer: %d, got epid: %s\n", i, mv2_pmi_val);
+        sscanf(mv2_pmi_val, "%lu", &epidlist[i]);
+    }
+
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "Connecting to peers\n");
+    if((err = PSM_EP_CONNECT(psmdev_cw.ep, pg_size, epidlist, NULL, errlist,
+                    addrs, TIMEOUT * SEC_IN_NS)) != PSM_OK) {
+        fprintf(stderr, "psm_ep_connect failed with error %s\n", PSM_ERROR_GET_STRING(err));
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**psmconnectfailed");
+    }
+
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "Successfully established alltoall connectivity\n");
+fn_exit:
+    MPIU_Free(epidlist);
+    MPIU_Free(errlist);
+    return MPI_SUCCESS;
+
+fn_fail:
+    PRINT_ERROR("psm_connect_alltoall failed\n");
     return MPI_ERR_INTERN;
 }
 
@@ -607,7 +689,7 @@ static int psm_bcast_uuid(int pg_size, int pg_rank)
     MPIDI_PG_GetConnKVSname(&kvs_name);
     snprintf(kvskey, kvslen, MPID_PSM_UUID"_%d_%s", pg_rank, kvs_name);
 
-    DBG("key name = %s\n", kvskey);
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "key name = %s\n", kvskey);
     if(pg_rank == ROOT) {
         encode(srclen, (char *)&psm_uuid, dst, scratch);
     } else {
@@ -615,17 +697,17 @@ static int psm_bcast_uuid(int pg_size, int pg_rank)
     }
     
     if(UPMI_KVS_PUT(kvs_name, kvskey, scratch) != UPMI_SUCCESS) {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmiputuuid");
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmiputuuid");
     }
     if(UPMI_KVS_COMMIT(kvs_name) != UPMI_SUCCESS) {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmicommituuid");
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmicommituuid");
     }
 
     UPMI_BARRIER();
     if(pg_rank != ROOT) {
         snprintf(kvskey, kvslen, MPID_PSM_UUID"_0_%s", kvs_name);
         if(UPMI_KVS_GET(kvs_name, kvskey, scratch, WRBUFSZ) != UPMI_SUCCESS) {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmigetuuid");
+            MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmigetuuid");
         }
         strcat(scratch, "==");
         srclen = strlen(scratch);
@@ -634,12 +716,12 @@ static int psm_bcast_uuid(int pg_size, int pg_rank)
             goto fn_fail;
         }
     }
-    UPMI_BARRIER();
+
     MPIU_Free(kvskey);
     return MPI_SUCCESS;
 
 fn_fail:
-    DBG("uuid bcast failed\n");
+    PRINT_ERROR("uuid bcast failed\n");
     return MPI_ERR_INTERN;
 }
 
@@ -662,10 +744,20 @@ static void psm_read_user_params(void)
     if((flag = getenv("MV2_PSM_YIELD_COUNT")) != NULL) {
         ipath_progress_yield_count = atoi(flag);
     }
-
     if ((flag = getenv("MV2_SHOW_ENV_INFO")) != NULL) {
         g_mv2_show_env_info = atoi(flag);
     }
+    if ((flag = getenv("MV2_ON_DEMAND_THRESHOLD")) != NULL) {
+        mv2_on_demand_threshold = atoi(flag);
+    }
+#if (defined(HAVE_PMI2_KVS_IFENCE) && defined(HAVE_PMI2_KVS_WAIT)) \
+    || (defined(HAVE_PMI_IBARRIER) && defined(HAVE_PMI_WAIT))
+    mv2_use_pmi_ibarrier = 1; /* enable by default if available */
+
+    if ((flag = getenv("MV2_USE_PMI_IBARRIER")) != NULL) {
+        mv2_use_pmi_ibarrier = !!atoi(flag);
+    }
+#endif
 }
 
 /* Ch3 expects channel to initialize VC fields.
@@ -693,9 +785,8 @@ static void psm_other_init(MPIDI_PG_t *pg)
                 &i);
     if(i < ipath_rndv_thresh)
         ipath_rndv_thresh = i;
-    DBG("blocking threshold %d\n", ipath_rndv_thresh);
+    PRINT_DEBUG(DEBUG_CM_verbose>0, "blocking threshold %d\n", ipath_rndv_thresh);
 
-    psm_read_user_params();
     psm_queue_init();
     psm_init_vbuf_lock();
     psm_allocate_vbufs(PSM_INITIAL_POOL_SZ);
@@ -832,3 +923,36 @@ static int decode(unsigned s_len, char *src, unsigned d_len, char *dst)
     }
     return 0;
 }
+
+int mv2_allocate_pmi_keyval(void)
+{
+    if (!mv2_pmi_max_keylen) {
+        UPMI_KVS_GET_KEY_LENGTH_MAX(&mv2_pmi_max_keylen);
+    }
+    if (!mv2_pmi_max_vallen) {
+        UPMI_KVS_GET_VALUE_LENGTH_MAX(&mv2_pmi_max_vallen);
+    }
+
+    mv2_pmi_key = MPIU_Malloc(mv2_pmi_max_keylen+1);
+    mv2_pmi_val = MPIU_Malloc(mv2_pmi_max_vallen+1);
+
+    if (mv2_pmi_key==NULL || mv2_pmi_val==NULL) {
+        mv2_free_pmi_keyval();
+        return -1; 
+    }
+    return 0;
+}
+
+void mv2_free_pmi_keyval(void)
+{
+    if (mv2_pmi_key!=NULL) {
+        MPIU_Free(mv2_pmi_key);
+        mv2_pmi_key = NULL;
+    }
+
+    if (mv2_pmi_val!=NULL) {
+        MPIU_Free(mv2_pmi_val);
+        mv2_pmi_val = NULL;
+    }
+}
+

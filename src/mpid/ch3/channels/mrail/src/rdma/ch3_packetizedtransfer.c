@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -62,19 +62,9 @@ do {                                                          \
             _seqnum = ((MPIDI_CH3_Pkt_accum_rndv_t *) (_pkt))->seqnum;    \
             break; \
         }   \
-    case MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV:  \
+    case MPIDI_CH3_PKT_GET_ACCUM_RNDV:  \
         {   \
             _seqnum = ((MPIDI_CH3_Pkt_accum_rndv_t *) (_pkt))->seqnum;    \
-            break; \
-        }   \
-    case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:  \
-        {   \
-            _seqnum = ((MPIDI_CH3_Pkt_lock_put_unlock_t *) (_pkt))->seqnum;    \
-            break; \
-        }   \
-    case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:  \
-        {   \
-            _seqnum = ((MPIDI_CH3_Pkt_lock_accum_unlock_t *) (_pkt))->seqnum;    \
             break; \
         }   \
      case MPIDI_CH3_PKT_GET_RESP:  \
@@ -87,12 +77,12 @@ do {                                                          \
     }   \
 }
 
-static MPID_IOV iov[MPID_IOV_LIMIT + 1];
+static MPL_IOV iov[MPL_IOV_LIMIT + 1];
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Packetized_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 {
     MPIDI_CH3_Pkt_packetized_send_start_t send_start;
@@ -113,19 +103,19 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
     MPIDI_DBG_PRINTF((50, FCNAME, "entering"));
 
     MPIDI_Pkt_init(&send_start, MPIDI_CH3_PKT_PACKETIZED_SEND_START);
-    iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_packetized_send_start_t);
-    iov[0].MPID_IOV_BUF = (void*) &send_start;
-    MPIU_Memcpy(&iov[1], sreq->dev.iov, sreq->dev.iov_count * sizeof(MPID_IOV));
+    iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_packetized_send_start_t);
+    iov[0].MPL_IOV_BUF = (void*) &send_start;
+    MPIU_Memcpy(&iov[1], sreq->dev.iov, sreq->dev.iov_count * sizeof(MPL_IOV));
     n_iov = 1 + sreq->dev.iov_count;
 
-    GET_SEQ_NUM(sreq->dev.iov[0].MPID_IOV_BUF, seqnum);
+    GET_SEQ_NUM(sreq->dev.iov[0].MPL_IOV_BUF, seqnum);
     
     if (-1 == seqnum) {
         MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     }
     MPIDI_Pkt_set_seqnum(&send_start, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
-    send_start.origin_head_size = sreq->dev.iov[0].MPID_IOV_LEN;
+    send_start.origin_head_size = sreq->dev.iov[0].MPL_IOV_LEN;
 
     Calculate_IOV_len(iov, n_iov, pkt_len);
 
@@ -136,7 +126,7 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
     if (MPI_SUCCESS != mpi_errno && MPI_MRAIL_MSG_QUEUED != mpi_errno) {
         vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
         sreq->status.MPI_ERROR = MPI_ERR_INTERN;
-        MPIDI_CH3U_Request_complete(sreq);
+        MPID_Request_complete(sreq);
         goto fn_exit;
     } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
         msg_buffered = 1;
@@ -144,8 +134,8 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
     nb -= sizeof(MPIDI_CH3_Pkt_packetized_send_start_t);
 
     MPIDI_Pkt_init(&pkt_head, MPIDI_CH3_PKT_PACKETIZED_SEND_DATA);
-    iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_packetized_send_data_t);
-    iov[0].MPID_IOV_BUF = (void*) &pkt_head;
+    iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_packetized_send_data_t);
+    iov[0].MPL_IOV_BUF = (void*) &pkt_head;
 
     do {
         while (!MPIDI_CH3I_Request_adjust_iov(sreq, nb)) {
@@ -156,7 +146,7 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
             MPIU_Memcpy((void *) &iov[1],
                    &sreq->dev.iov[sreq->dev.iov_offset],
                    (sreq->dev.iov_count -
-                    sreq->dev.iov_offset) * sizeof(MPID_IOV));
+                    sreq->dev.iov_offset) * sizeof(MPL_IOV));
             n_iov = sreq->dev.iov_count - sreq->dev.iov_offset + 1;
 
             Calculate_IOV_len(iov, n_iov, pkt_len);
@@ -172,7 +162,7 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
                 && MPI_MRAIL_MSG_QUEUED != mpi_errno) {
                 vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
                 sreq->status.MPI_ERROR = MPI_ERR_INTERN;
-                MPIDI_CH3U_Request_complete(sreq);
+                MPID_Request_complete(sreq);
                 goto fn_exit;
             } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
                 msg_buffered = 1;
@@ -206,7 +196,7 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Packetized_recv_req
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Packetized_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -229,7 +219,7 @@ int MPIDI_CH3_Packetized_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Packetized_recv_data
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Packetized_recv_data(MPIDI_VC_t * vc, vbuf *v)
 {
     int mpi_errno = MPI_SUCCESS;

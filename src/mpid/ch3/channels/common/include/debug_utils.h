@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -104,6 +104,8 @@ do {                                      \
 #endif
 
 
+// Verbosity level for sharp operations in collectives
+extern int DEBUG_Sharp_verbose;
 
 
 // Verbosity level for fork/kill/waitpid operations in mpirun_rsh and mpispawn
@@ -153,6 +155,9 @@ extern int DEBUG_INIT_verbose;
 
 // Verbosity level for RDMA_CM
 extern int DEBUG_RDMACM_verbose;
+
+// Verbosity level for One-sided
+extern int DEBUG_1SC_verbose;
 
 // Initialize the verbosity level of the above variables
 extern int initialize_debug_variables();

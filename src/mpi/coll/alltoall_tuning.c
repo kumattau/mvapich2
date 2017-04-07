@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1103,9 +1103,10 @@ int MV2_set_alltoall_tuning_table(int heterogeneity)
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 			     MV2_ARCH_INTEL_XEON_PHI_7250, MV2_HCA_INTEL_HFI1) && !heterogeneity) {
       /* TACC-KNL Table */
-      MV2_COLL_TUNING_START_TABLE  (alltoall, 3)
+      MV2_COLL_TUNING_START_TABLE  (alltoall, 4)
       MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  5, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__1PPN)
       MV2_COLL_TUNING_ADD_CONF     (alltoall, 4,  5, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 8,  5, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__8PPN)
       MV2_COLL_TUNING_ADD_CONF     (alltoall, 16, 4, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__16PPN)
       MV2_COLL_TUNING_FINISH_TABLE (alltoall)
     }

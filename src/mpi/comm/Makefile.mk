@@ -39,6 +39,7 @@ mpi_sources +=                       \
 endif
 
 mpi_core_sources += \
-    src/mpi/comm/commutil.c
+    src/mpi/comm/commutil.c \
+    src/mpi/comm/contextid.c
 
 noinst_HEADERS += src/mpi/comm/mpicomm.h

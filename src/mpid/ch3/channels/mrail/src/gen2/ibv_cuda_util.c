@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -34,21 +34,21 @@ static int cudaipc_init_global = 0;
 static CUcontext mv2_cuda_context = NULL;
 static CUcontext mv2_save_cuda_context = NULL;
 
-void MPIU_IOV_pack_cuda(void *buf, MPID_IOV *iov, int n_iov, 
+void MPIU_IOV_pack_cuda(void *buf, MPL_IOV *iov, int n_iov, 
                 int position, cudaStream_t stream) 
 {
     int i;
     void *ptr;
     ptr = (char *) buf + position;
     for (i = 0; i < n_iov; i++) {
-        MPIU_Memcpy_CUDA_Async(ptr, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN,
+        MPIU_Memcpy_CUDA_Async(ptr, iov[i].MPL_IOV_BUF, iov[i].MPL_IOV_LEN,
                                     cudaMemcpyDefault, stream);
-        ptr = (char *)ptr + iov[i].MPID_IOV_LEN;
+        ptr = (char *)ptr + iov[i].MPL_IOV_LEN;
     }
     PRINT_DEBUG(CUDA_DEBUG, "CUDA pack: buf:%p n_iov: %d\n", buf, n_iov);
 }
 
-void MPIU_IOV_unpack_cuda(void *buf, MPID_IOV *iov, int n_iov, 
+void MPIU_IOV_unpack_cuda(void *buf, MPL_IOV *iov, int n_iov, 
                 int position, int *bytes_unpacked, cudaStream_t stream)
 {
     int i = 0;
@@ -56,25 +56,25 @@ void MPIU_IOV_unpack_cuda(void *buf, MPID_IOV *iov, int n_iov,
     int total_len = 0;
 
     for (i = 0; i < n_iov; i++) {
-        MPIU_Memcpy_CUDA_Async(iov[i].MPID_IOV_BUF, ptr, iov[i].MPID_IOV_LEN,
+        MPIU_Memcpy_CUDA_Async(iov[i].MPL_IOV_BUF, ptr, iov[i].MPL_IOV_LEN,
                                 cudaMemcpyDefault, stream);
-        ptr = (char *)ptr + iov[i].MPID_IOV_LEN;
-        total_len += iov[i].MPID_IOV_LEN;
+        ptr = (char *)ptr + iov[i].MPL_IOV_LEN;
+        total_len += iov[i].MPL_IOV_LEN;
     }
     PRINT_DEBUG(CUDA_DEBUG, "CUDA unpack: buf:%p n_iov: %d total_len:%d \n", 
                         buf, n_iov, total_len);
     *bytes_unpacked = total_len;
 }
 
-void vector_pack_cudabuf(void *buf, MPID_IOV *iov, int size, cudaStream_t stream)
+void vector_pack_cudabuf(void *buf, MPL_IOV *iov, int size, cudaStream_t stream)
 {
     cudaError_t cerr = cudaSuccess;
     cerr = cudaMemcpy2DAsync(buf,
-                iov[0].MPID_IOV_LEN,
-                iov[0].MPID_IOV_BUF,
-                (size_t)(iov[1].MPID_IOV_BUF) - (size_t)(iov[0].MPID_IOV_BUF),
-                iov[0].MPID_IOV_LEN,
-                size / iov[0].MPID_IOV_LEN,
+                iov[0].MPL_IOV_LEN,
+                iov[0].MPL_IOV_BUF,
+                (size_t)(iov[1].MPL_IOV_BUF) - (size_t)(iov[0].MPL_IOV_BUF),
+                iov[0].MPL_IOV_LEN,
+                size / iov[0].MPL_IOV_LEN,
                 cudaMemcpyDeviceToDevice, stream);
     if (cerr != cudaSuccess) {
         PRINT_INFO(1,"Error in cudaMemcpy2D\n");
@@ -82,15 +82,15 @@ void vector_pack_cudabuf(void *buf, MPID_IOV *iov, int size, cudaStream_t stream
     PRINT_DEBUG(CUDA_DEBUG, "cuda vector pack with cudaMemcpy2D\n");
 }
 
-void vector_unpack_cudabuf(void *buf, MPID_IOV *iov, int size, cudaStream_t stream)
+void vector_unpack_cudabuf(void *buf, MPL_IOV *iov, int size, cudaStream_t stream)
 {
     cudaError_t cerr = cudaSuccess;
-    cerr = cudaMemcpy2DAsync(iov[0].MPID_IOV_BUF,
-                (size_t)(iov[1].MPID_IOV_BUF) - (size_t)(iov[0].MPID_IOV_BUF),
+    cerr = cudaMemcpy2DAsync(iov[0].MPL_IOV_BUF,
+                (size_t)(iov[1].MPL_IOV_BUF) - (size_t)(iov[0].MPL_IOV_BUF),
                 buf,
-                iov[0].MPID_IOV_LEN,
-                iov[0].MPID_IOV_LEN,
-                size / iov[0].MPID_IOV_LEN,
+                iov[0].MPL_IOV_LEN,
+                iov[0].MPL_IOV_LEN,
+                size / iov[0].MPL_IOV_LEN,
                 cudaMemcpyDeviceToDevice, stream);
     if (cerr != cudaSuccess) {
         PRINT_INFO(1,"Error in cudaMemcpy2D\n");
@@ -100,9 +100,9 @@ void vector_unpack_cudabuf(void *buf, MPID_IOV *iov, int size, cudaStream_t stre
 
 
 #if defined(USE_GPU_KERNEL)
-int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size, cudaStream_t stream) 
+int hindexed_pack_cudabuf(void *dst, MPL_IOV *iov, MPID_Datatype *dtp, int size, cudaStream_t stream) 
 {
-    int i, element_size;
+    int i, builtin_element_size;
     int struct_sz = sizeof(MPID_Datatype_contents);
     int types_sz  = dtp->contents->nr_types * sizeof(MPI_Datatype);
     int ints_sz   = dtp->contents->nr_ints  * sizeof(int);
@@ -119,7 +119,7 @@ int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size
     MPI_Aint *array_of_aints;
     MPI_Aint base_displs, array_displs[array_numb];
 
-    MPI_Address(iov[0].MPID_IOV_BUF, &base_displs);
+    MPI_Address(iov[0].MPL_IOV_BUF, &base_displs);
 
     if ((epsilon = struct_sz % align_sz)) {
         struct_sz += align_sz - epsilon;
@@ -165,7 +165,7 @@ int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size
             }
 
             sub_array_of_types = (MPI_Datatype *) ((char *)old_dtp->contents + subarray_struct_sz);
-            element_size = old_dtp->element_size;
+            builtin_element_size = old_dtp->builtin_element_size;
             if (HANDLE_GET_KIND(sub_array_of_types[0]) != HANDLE_KIND_BUILTIN) {
                 int cont_types_sz;
                 MPI_Datatype *cont_array_of_types;
@@ -181,7 +181,7 @@ int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size
                     cont_array_of_types = (MPI_Datatype *) ((char *)sub_dtp->contents + subarray_struct_sz);
                  
                     if (HANDLE_GET_KIND(cont_array_of_types[0]) == HANDLE_KIND_BUILTIN) {
-                        element_size = sub_dtp->n_elements * MPID_Datatype_get_basic_size(cont_array_of_types[0]);
+                        builtin_element_size = sub_dtp->n_builtin_elements * MPID_Datatype_get_basic_size(cont_array_of_types[0]);
                     } else { return FAILURE_PACKUNPACK_OPT; }
                 } else { return FAILURE_PACKUNPACK_OPT; }
             }
@@ -207,19 +207,19 @@ int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size
                 array_of_starts[2] = subarray_array_of_ints[9];
 
                 base_displs -= (array_of_starts[0] + array_of_sizes[0] * array_of_starts[1] + array_of_sizes[0] * array_of_sizes[1] * array_of_starts[2]) 
-					* element_size;
+					* builtin_element_size;
 
                 for (i = 0; i < array_numb; i++) {
                     
                     array_displs[i] = base_displs + array_of_aints[i];
                     src = (void *)array_displs[i];
       
-                    if (element_size == 1 || element_size == 4 || element_size == 8) {
+                    if (builtin_element_size == 1 || builtin_element_size == 4 || builtin_element_size == 8) {
                         pack_subarray(dst, src, ndims, array_of_sizes[0], array_of_sizes[1], array_of_sizes[2], 
     			    			array_of_subsizes[0], array_of_subsizes[1], array_of_subsizes[2], 
-    			    			array_of_starts[0], array_of_starts[1], array_of_starts[2], order, element_size, 
+    			    			array_of_starts[0], array_of_starts[1], array_of_starts[2], order, builtin_element_size, 
                                 stream);
-                        dst += array_of_subsizes[0] * array_of_subsizes[1] * array_of_subsizes[2] * element_size;
+                        dst += array_of_subsizes[0] * array_of_subsizes[1] * array_of_subsizes[2] * builtin_element_size;
                     } else {
                         return FAILURE_PACKUNPACK_OPT;
                     }
@@ -234,9 +234,9 @@ int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size
 
 }
 
-int hindexed_unpack_cudabuf(void *src, MPID_IOV *iov, MPID_Datatype *dtp, int size, cudaStream_t stream) 
+int hindexed_unpack_cudabuf(void *src, MPL_IOV *iov, MPID_Datatype *dtp, int size, cudaStream_t stream) 
 {
-    int i, element_size;
+    int i, builtin_element_size;
     int struct_sz = sizeof(MPID_Datatype_contents);
     int types_sz  = dtp->contents->nr_types * sizeof(MPI_Datatype);
     int ints_sz   = dtp->contents->nr_ints  * sizeof(int);
@@ -253,7 +253,7 @@ int hindexed_unpack_cudabuf(void *src, MPID_IOV *iov, MPID_Datatype *dtp, int si
     MPI_Aint *array_of_aints;
     MPI_Aint base_displs, array_displs[array_numb];
 
-    MPI_Address(iov[0].MPID_IOV_BUF, &base_displs);
+    MPI_Address(iov[0].MPL_IOV_BUF, &base_displs);
 
     if ((epsilon = struct_sz % align_sz)) {
         struct_sz += align_sz - epsilon;
@@ -300,7 +300,7 @@ int hindexed_unpack_cudabuf(void *src, MPID_IOV *iov, MPID_Datatype *dtp, int si
             }
 
             sub_array_of_types = (MPI_Datatype *) ((char *)old_dtp->contents + subarray_struct_sz);
-            element_size = old_dtp->element_size;
+            builtin_element_size = old_dtp->builtin_element_size;
             if (HANDLE_GET_KIND(sub_array_of_types[0]) != HANDLE_KIND_BUILTIN) {
                 int cont_types_sz;
                 MPI_Datatype *cont_array_of_types;
@@ -316,7 +316,7 @@ int hindexed_unpack_cudabuf(void *src, MPID_IOV *iov, MPID_Datatype *dtp, int si
                     cont_array_of_types = (MPI_Datatype *) ((char *)sub_dtp->contents + subarray_struct_sz);
 
                     if (HANDLE_GET_KIND(cont_array_of_types[0]) == HANDLE_KIND_BUILTIN) {
-                        element_size = sub_dtp->n_elements * MPID_Datatype_get_basic_size(cont_array_of_types[0]);
+                        builtin_element_size = sub_dtp->n_builtin_elements * MPID_Datatype_get_basic_size(cont_array_of_types[0]);
                     } else { return FAILURE_PACKUNPACK_OPT; }
                 } else { return FAILURE_PACKUNPACK_OPT; }
             }
@@ -342,19 +342,19 @@ int hindexed_unpack_cudabuf(void *src, MPID_IOV *iov, MPID_Datatype *dtp, int si
                 array_of_starts[2] = subarray_array_of_ints[9];
 
                 base_displs -= (array_of_starts[0] + array_of_sizes[0] * array_of_starts[1] + array_of_sizes[0] * array_of_sizes[1] * array_of_starts[2]) 
-					* element_size;
+					* builtin_element_size;
 
                 for (i = 0; i < array_numb; i++) {
 
                     array_displs[i] = base_displs + array_of_aints[i];
                     dst = (void *)array_displs[i];
                     
-                    if (element_size == 1 || element_size == 4 || element_size == 8) {
+                    if (builtin_element_size == 1 || builtin_element_size == 4 || builtin_element_size == 8) {
                         unpack_subarray(dst, src, ndims, array_of_sizes[0], array_of_sizes[1], array_of_sizes[2], 
     	            				array_of_subsizes[0], array_of_subsizes[1], array_of_subsizes[2], 
-    	            				array_of_starts[0], array_of_starts[1], array_of_starts[2], order, element_size, 
+    	            				array_of_starts[0], array_of_starts[1], array_of_starts[2], order, builtin_element_size, 
                                     stream);
-                        src += array_of_subsizes[0] * array_of_subsizes[1] * array_of_subsizes[2] * element_size;
+                        src += array_of_subsizes[0] * array_of_subsizes[1] * array_of_subsizes[2] * builtin_element_size;
                     } else {
                         return FAILURE_PACKUNPACK_OPT;
                     }
@@ -375,7 +375,7 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
 {
     MPI_Aint last;
     int iov_n;
-    MPID_IOV iov[MPID_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT];
     int kernel_pack = 0;
     cudaStream_t stream_passed = 0;
 
@@ -386,10 +386,10 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
     req->dev.segment_first = 0;
     do {
         last = req->dev.segment_size;
-        iov_n = MPID_IOV_LIMIT;
+        iov_n = MPL_IOV_LIMIT;
         MPIU_Assert(req->dev.segment_first < last);
         MPIU_Assert(last > 0);
-        MPIU_Assert(iov_n > 0 && iov_n <= MPID_IOV_LIMIT);
+        MPIU_Assert(iov_n > 0 && iov_n <= MPL_IOV_LIMIT);
 
         MPID_Segment_pack_vector(req->dev.segment_ptr, req->dev.segment_first, &last, iov, &iov_n);
         if (req->dev.datatype_ptr->contents->combiner == MPI_COMBINER_VECTOR
@@ -398,11 +398,11 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
 #if defined(USE_GPU_KERNEL)
             if (rdma_cuda_kernel_dt_opt) {
                 pack_unpack_vector_kernel(req->dev.tmpbuf,
-                                          iov[0].MPID_IOV_LEN,
-                                          iov[0].MPID_IOV_BUF,
-                                          iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
-                                          iov[0].MPID_IOV_LEN,
-                                          req->dev.segment_size / iov[0].MPID_IOV_LEN, 
+                                          iov[0].MPL_IOV_LEN,
+                                          iov[0].MPL_IOV_BUF,
+                                          iov[1].MPL_IOV_BUF - iov[0].MPL_IOV_BUF,
+                                          iov[0].MPL_IOV_LEN,
+                                          req->dev.segment_size / iov[0].MPL_IOV_LEN, 
                                           stream_passed);
                 kernel_pack = 1;
             } else
@@ -429,8 +429,8 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
 			  int arr_of_subsizes[3] = {1, 1, 1};
 			  int arr_of_offsets[3]  = {0, 0, 0};
 			  int idx;
-              int elem_sz = dtptr->element_size;
-			  MPI_Address(iov[0].MPID_IOV_BUF, &base_addr);
+              int elem_sz = dtptr->builtin_element_size;
+			  MPI_Address(iov[0].MPL_IOV_BUF, &base_addr);
 
 			  for ( idx = 0; idx < subarr_dims; idx++){
                   arr_of_bigsizes[idx] = arr_ints[2+idx];
@@ -493,7 +493,7 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
 {
     MPI_Aint last;
     int iov_n, bytes_copied;
-    MPID_IOV iov[MPID_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT];
     int kernel_unpack = 0;
     cudaStream_t stream_passed = 0;
 
@@ -504,10 +504,10 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
     req->dev.segment_first = 0;
     do {
         last = req->dev.segment_size;
-        iov_n = MPID_IOV_LIMIT;
+        iov_n = MPL_IOV_LIMIT;
         MPIU_Assert(req->dev.segment_first < last);
         MPIU_Assert(last > 0);
-        MPIU_Assert(iov_n > 0 && iov_n <= MPID_IOV_LIMIT);
+        MPIU_Assert(iov_n > 0 && iov_n <= MPL_IOV_LIMIT);
 
         MPID_Segment_unpack_vector(req->dev.segment_ptr, 
                 req->dev.segment_first, &last, iov, &iov_n);
@@ -517,12 +517,12 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
             && (rdma_cuda_vector_dt_opt || rdma_cuda_kernel_dt_opt))  {
 #if defined(USE_GPU_KERNEL)
             if (rdma_cuda_kernel_dt_opt) {
-                pack_unpack_vector_kernel(iov[0].MPID_IOV_BUF,
-                                          iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
+                pack_unpack_vector_kernel(iov[0].MPL_IOV_BUF,
+                                          iov[1].MPL_IOV_BUF - iov[0].MPL_IOV_BUF,
                                           req->dev.tmpbuf,
-                                          iov[0].MPID_IOV_LEN,
-                                          iov[0].MPID_IOV_LEN,
-                                          req->dev.segment_size / iov[0].MPID_IOV_LEN,
+                                          iov[0].MPL_IOV_LEN,
+                                          iov[0].MPL_IOV_LEN,
+                                          req->dev.segment_size / iov[0].MPL_IOV_LEN,
                                           stream_passed);
                 kernel_unpack = 1;
             } else
@@ -549,8 +549,8 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
 			  int arr_of_subsizes[3] = {1, 1, 1};
 			  int arr_of_offsets[3]  = {0, 0, 0};
 			  int idx;
-              int elem_sz = dtptr->element_size;
-			  MPI_Address(iov[0].MPID_IOV_BUF, &base_addr);
+              int elem_sz = dtptr->builtin_element_size;
+			  MPI_Address(iov[0].MPL_IOV_BUF, &base_addr);
 
 			  for ( idx = 0; idx < subarr_dims; idx++){
                   arr_of_bigsizes[idx] = arr_ints[2+idx];
@@ -609,7 +609,7 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
     /* Synchronize on the stream to make sure unpack is complete*/
     cudaStreamSynchronize (stream_passed); 
 
-    MPIDI_CH3U_Request_complete(req);
+    MPID_Request_complete(req);
     *complete = TRUE;
 
     return MPI_SUCCESS;
@@ -622,7 +622,7 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     int device_pack_buf = 1;
     int buff_off = 0;
     void *tmpbuf = NULL;
-    MPID_IOV iov[MPID_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT];
     DLOOP_Offset segment_first, segment_last;
     int segment_size;
     int sbuf_isdev = 0;
@@ -641,16 +641,16 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     segment_size = *lastp - segment_first;
     do {
         segment_last = *lastp;
-        iov_n = MPID_IOV_LIMIT;
+        iov_n = MPL_IOV_LIMIT;
         MPIU_Assert(segment_first < segment_last);
         MPIU_Assert(segment_last > 0);
-        MPIU_Assert(iov_n > 0 && iov_n <= MPID_IOV_LIMIT);
+        MPIU_Assert(iov_n > 0 && iov_n <= MPL_IOV_LIMIT);
 
         MPID_Segment_pack_vector(segp, segment_first, &segment_last,
                 iov, &iov_n);
 
         if (!sbuf_isdev_check)  {
-            if (is_device_buffer(iov[0].MPID_IOV_BUF)) {
+            if (is_device_buffer(iov[0].MPL_IOV_BUF)) {
                 sbuf_isdev = 1;
             }
             sbuf_isdev_check = 1;
@@ -662,11 +662,11 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
 #if defined(USE_GPU_KERNEL)
             if (rdma_cuda_kernel_dt_opt) {
                 pack_unpack_vector_kernel(tmpbuf,
-                                          iov[0].MPID_IOV_LEN,
-                                          iov[0].MPID_IOV_BUF,
-                                          iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
-                                          iov[0].MPID_IOV_LEN,
-                                          segment_size / iov[0].MPID_IOV_LEN,
+                                          iov[0].MPL_IOV_LEN,
+                                          iov[0].MPL_IOV_BUF,
+                                          iov[1].MPL_IOV_BUF - iov[0].MPL_IOV_BUF,
+                                          iov[0].MPL_IOV_LEN,
+                                          segment_size / iov[0].MPL_IOV_LEN,
                                           stream_kernel);
                 kernel_pack = 1;
             } else
@@ -723,7 +723,7 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     int device_unpack_buf = 1;
     int buff_off = 0;
     void *tmpbuf;
-    MPID_IOV iov[MPID_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT];
     DLOOP_Offset segment_first, segment_last;
     int segment_size;
     int rbuf_isdev = 0;
@@ -744,16 +744,16 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
 
     do {
         segment_last = *lastp;
-        iov_n = MPID_IOV_LIMIT;
+        iov_n = MPL_IOV_LIMIT;
         MPIU_Assert(segment_first < segment_last);
         MPIU_Assert(segment_last > 0);
-        MPIU_Assert(iov_n > 0 && iov_n <= MPID_IOV_LIMIT);
+        MPIU_Assert(iov_n > 0 && iov_n <= MPL_IOV_LIMIT);
 
         MPID_Segment_unpack_vector(segp, segment_first, &segment_last,
                                      iov, &iov_n);
 
         if (!rbuf_isdev_check)  {
-            if (is_device_buffer(iov[0].MPID_IOV_BUF)) {
+            if (is_device_buffer(iov[0].MPL_IOV_BUF)) {
                 rbuf_isdev = 1;
             }
             rbuf_isdev_check = 1;
@@ -764,12 +764,12 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
             && (rdma_cuda_vector_dt_opt || rdma_cuda_kernel_dt_opt))  {
 #if defined(USE_GPU_KERNEL)
             if (rdma_cuda_kernel_dt_opt) {
-                pack_unpack_vector_kernel(iov[0].MPID_IOV_BUF,
-                                          iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
+                pack_unpack_vector_kernel(iov[0].MPL_IOV_BUF,
+                                          iov[1].MPL_IOV_BUF - iov[0].MPL_IOV_BUF,
                                           tmpbuf,
-                                          iov[0].MPID_IOV_LEN,
-                                          iov[0].MPID_IOV_LEN,
-                                          segment_size / iov[0].MPID_IOV_LEN,
+                                          iov[0].MPL_IOV_LEN,
+                                          iov[0].MPL_IOV_LEN,
+                                          segment_size / iov[0].MPL_IOV_LEN,
                                           stream_kernel);
                 kernel_unpack = 1;
             } else
@@ -1074,7 +1074,8 @@ void cuda_get_user_parameters() {
 void cuda_init (MPIDI_PG_t * pg)
 {
 #if defined(HAVE_CUDA_IPC)
-    int mpi_errno = MPI_SUCCESS, errflag = 0;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
+    int mpi_errno = MPI_SUCCESS;
     int i, num_processes, my_rank, has_cudaipc_peer = 0;
     int my_local_rank, dev_count, my_dev_id; 
     int *device = NULL;
@@ -1208,7 +1209,8 @@ void cuda_preinit (MPIDI_PG_t * pg)
     int dev_count; 
     cudaError_t cuda_err = CUDA_SUCCESS; 
 #if defined(HAVE_CUDA_IPC)
-    int mpi_errno = MPI_SUCCESS, errflag = 0;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
+    int mpi_errno = MPI_SUCCESS;
     int i, num_processes, my_rank;
     MPID_Comm *comm_world = NULL;
     MPIDI_VC_t* vc = NULL;
@@ -1309,7 +1311,8 @@ void cuda_init_dynamic (MPIDI_PG_t * pg)
 void cuda_cleanup()
 {
     CUcontext active_context = NULL; 
-    int mpi_errno = MPI_SUCCESS, errflag;
+    int mpi_errno = MPI_SUCCESS;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
     /*check if three is an active context, or else skip cleaup, 
      *the application might have called destroyed the context before finalize */

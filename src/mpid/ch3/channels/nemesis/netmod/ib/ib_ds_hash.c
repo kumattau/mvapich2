@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,7 +38,7 @@ static uint32_t hash(uint64_t key, uint32_t size)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_init_hash_table
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 int MPID_nem_ib_init_hash_table(
         MPID_nem_ib_hash_table_ptr_t table,
@@ -71,7 +71,7 @@ int MPID_nem_ib_init_hash_table(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_insert_hash_elem
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 int MPID_nem_ib_insert_hash_elem(
         MPID_nem_ib_hash_table_ptr_t table,
@@ -136,7 +136,7 @@ int MPID_nem_ib_insert_hash_elem(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_lookup_hash_table
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 void* MPID_nem_ib_lookup_hash_table(
         MPID_nem_ib_hash_table_ptr_t table,
@@ -178,7 +178,7 @@ void* MPID_nem_ib_lookup_hash_table(
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_finalize_hash_table
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 void MPID_nem_ib_finalize_hash_table(
         MPID_nem_ib_hash_table_ptr_t table)

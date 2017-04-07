@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -652,7 +652,7 @@ void vma_db_init (void)
 #undef FUNCNAME
 #define FUNCNAME dreg_init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int dreg_init()
 {
     int i = 0;
@@ -665,7 +665,7 @@ int dreg_init()
     dreg_free_list =  MPIU_Malloc((unsigned)(sizeof(dreg_entry) * rdma_ndreg_entries));
 
     if (dreg_free_list == NULL) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+        MPIR_ERR_SETFATALANDJUMP2(mpi_errno,
                 MPI_ERR_INTERN,
                 "**fail",
                 "**fail %s %d",
@@ -694,7 +694,7 @@ int dreg_init()
     delayed_buf_region = MPIU_Malloc((unsigned)(sizeof(struct iovec) * rdma_ndreg_entries));
     
     if (delayed_buf_region == NULL) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+        MPIR_ERR_SETFATALANDJUMP2(mpi_errno,
                 MPI_ERR_INTERN,
                 "**fail",
                 "**fail %s %d",
@@ -710,7 +710,7 @@ int dreg_init()
         MPIU_Malloc(sizeof(dreg_entry *) * rdma_ndreg_entries);
 
     if (NULL == deregister_mr_array) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+        MPIR_ERR_SETFATALANDJUMP2(mpi_errno,
                 MPI_ERR_INTERN,
                 "**fail",
                 "**fail %s %d",
@@ -737,7 +737,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME clean_dreg_list_entries
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static void clean_dreg_list_entries()
 {
     vma_t *vma = NULL;
@@ -760,7 +760,7 @@ static void clean_dreg_list_entries()
 #undef FUNCNAME
 #define FUNCNAME dreg_finalize
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int dreg_finalize()
 {
    MPIDI_STATE_DECL(MPID_GEN2_DREG_FINALIZE);
@@ -883,7 +883,7 @@ void unlock_dreg()
 #undef FUNCNAME
 #define FUNCNAME flush_dereg_mrs_external
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void flush_dereg_mrs_external()
 {
     unsigned long j, k;
@@ -941,7 +941,7 @@ void flush_dereg_mrs_external()
 #undef FUNCNAME
 #define FUNCNAME dreg_register
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /*
  * will return a NULL pointer if registration fails
  */

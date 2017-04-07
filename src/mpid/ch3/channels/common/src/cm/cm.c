@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -515,7 +515,7 @@ static int cm_compare_peer(MPIDI_PG_t * r_pg, MPIDI_PG_t * my_pg,
 #undef FUNCNAME
 #define FUNCNAME cm_post_ud_recv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static inline int cm_post_ud_recv(void *buf, int size)
 {
     struct ibv_sge list;
@@ -595,7 +595,7 @@ static int __cm_post_ud_packet(cm_msg * msg, struct ibv_ah *ah, uint32_t qpn)
 #undef FUNCNAME
 #define FUNCNAME cm_resolve_conn_info
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int cm_resolve_conn_info(MPIDI_PG_t * pg, int peer)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -608,7 +608,7 @@ static int cm_resolve_conn_info(MPIDI_PG_t * pg, int peer)
     char string[128];
 
     if (!pg->connData) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                   "**fail", "**fail %s",
                                   "No connection info available");
     }
@@ -620,14 +620,14 @@ static int cm_resolve_conn_info(MPIDI_PG_t * pg, int peer)
                           pg->ch.mrail->cm_shmem.ud_cm[peer].cm_gid,
                           rdma_default_port);
         if (!ah) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                       "**fail", "**fail %s",
                                       "Cannot create address handle");
         }
     } else {
         mpi_errno = MPIDI_PG_GetConnString(pg, peer, string, 128);
         if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
 
         PRINT_DEBUG(DEBUG_CM_verbose > 0, "Peer %d, connString %s\n", peer,
@@ -653,7 +653,7 @@ static int cm_resolve_conn_info(MPIDI_PG_t * pg, int peer)
 #endif
         ah = cm_create_ah(mv2_MPIDI_CH3I_RDMA_Process.ptag[0], lid, gid, port);
         if (!ah) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                       "**fail", "**fail %s",
                                       "Cannot create address handle");
         }
@@ -892,7 +892,7 @@ int cm_rcv_qp_create(MPIDI_VC_t * vc, uint32_t * qpn)
 #undef FUNCNAME
 #define FUNCNAME cm_accept
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int cm_accept(MPIDI_PG_t * pg, cm_msg * msg)
 {
     cm_msg msg_send;
@@ -1013,7 +1013,7 @@ static int cm_accept(MPIDI_PG_t * pg, cm_msg * msg)
 #undef FUNCNAME
 #define FUNCNAME cm_accept_and_cancel
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int cm_accept_and_cancel(MPIDI_PG_t * pg, cm_msg * msg)
 {
     cm_msg msg_send;
@@ -1105,7 +1105,7 @@ static int cm_accept_and_cancel(MPIDI_PG_t * pg, cm_msg * msg)
 #undef FUNCNAME
 #define FUNCNAME cm_accept_nopg
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int cm_accept_nopg(MPIDI_VC_t * vc, cm_msg * msg)
 {
     cm_msg msg_send;
@@ -1221,7 +1221,7 @@ void cm_xrc_send_enable(MPIDI_VC_t * vc)
 #undef FUNCNAME
 #define FUNCNAME cm_enable
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int cm_enable(MPIDI_PG_t * pg, cm_msg * msg)
 {
     MPIDI_VC_t *vc;
@@ -1367,7 +1367,7 @@ static int cm_enable_nopg(MPIDI_VC_t * vc, cm_msg * msg)
 #undef FUNCNAME
 #define FUNCNAME cm_handle_msg
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int cm_handle_msg(cm_msg * msg)
 {
     MPIDI_PG_t *pg;
@@ -1824,7 +1824,7 @@ static int cm_handle_msg(cm_msg * msg)
 #undef FUNCNAME
 #define FUNCNAME cm_timeout_handler
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void *cm_timeout_handler(void *arg)
 {
     struct timeval now;
@@ -2003,7 +2003,7 @@ void *cm_completion_handler(void *arg)
 #undef FUNCNAME
 #define FUNCNAME MPICM_Init_UD_CM
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPICM_Init_UD_CM(uint32_t * ud_qpn)
 {
     int i = 0;
@@ -2018,7 +2018,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
     errno = 0;
     page_size = sysconf(_SC_PAGESIZE);
     if (errno != 0) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
+        MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
                                   "sysconf", strerror(errno));
     }
 
@@ -2071,7 +2071,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
                             (sizeof(cm_msg) + 40) * (cm_recv_buffer_size + 1));
 #endif
     if (result != 0 || cm_ud_buf == NULL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                   "**nomem %s", "cm_ud_buf");
     }
 
@@ -2084,7 +2084,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
     cm_ud_comp_ch =
         ibv_create_comp_channel(mv2_MPIDI_CH3I_RDMA_Process.nic_context[0]);
     if (!cm_ud_comp_ch) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s",
                                   "Couldn't create completion channel");
     }
@@ -2094,7 +2094,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
                            40) * (cm_recv_buffer_size + 1),
                           IBV_ACCESS_LOCAL_WRITE);
     if (!cm_ud_mr) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s", "Couldn't allocate MR");
     }
 
@@ -2102,7 +2102,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
         ibv_create_cq(mv2_MPIDI_CH3I_RDMA_Process.nic_context[0],
                       cm_recv_buffer_size, NULL, cm_ud_comp_ch, 0);
     if (!cm_ud_recv_cq) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s", "Couldn't create CQ");
     }
 
@@ -2110,7 +2110,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
         ibv_create_cq(mv2_MPIDI_CH3I_RDMA_Process.nic_context[0], cm_send_depth,
                       NULL, NULL, 0);
     if (!cm_ud_send_cq) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s", "Couldn't create CQ");
     }
 
@@ -2127,7 +2127,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
 
         cm_ud_qp = ibv_create_qp(mv2_MPIDI_CH3I_RDMA_Process.ptag[0], &attr);
         if (!cm_ud_qp) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s", "Couldn't create UD QP");
         }
     }
@@ -2145,7 +2145,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
         if (ibv_modify_qp(cm_ud_qp, &attr,
                           IBV_QP_STATE |
                           IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_QKEY)) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s",
                                       "Failed to modify QP to INIT");
         }
@@ -2156,7 +2156,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
 
         attr.qp_state = IBV_QPS_RTR;
         if (ibv_modify_qp(cm_ud_qp, &attr, IBV_QP_STATE)) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s",
                                       "Failed to modify QP to RTR");
         }
@@ -2169,7 +2169,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
         attr.qp_state = IBV_QPS_RTS;
         attr.sq_psn = cm_ud_psn;
         if (ibv_modify_qp(cm_ud_qp, &attr, IBV_QP_STATE | IBV_QP_SQ_PSN)) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s",
                                       "Failed to modify QP to RTS");
         }
@@ -2178,14 +2178,14 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
     for (i = 0; i < cm_recv_buffer_size; ++i) {
         if (cm_post_ud_recv((char *) cm_ud_recv_buf + (sizeof(cm_msg) + 40) * i,
                             sizeof(cm_msg))) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s", "cm_post_ud_recv failed");
         }
     }
     cm_ud_recv_buf_index = 0;
 
     if (ibv_req_notify_cq(cm_ud_recv_cq, 1)) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s",
                                   "Couldn't request CQ notification");
     }
@@ -2203,7 +2203,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
 #undef FUNCNAME
 #define FUNCNAME MPICM_Init_Local_UD_struct
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPICM_Init_Local_UD_struct(MPIDI_PG_t * pg)
 {
     int rank        = -1;
@@ -2220,7 +2220,7 @@ int MPICM_Init_Local_UD_struct(MPIDI_PG_t * pg)
                                             pg->ch.mrail->cm_shmem.ud_cm[rank].cm_gid,
                                             rdma_default_port);
     if (!pg->ch.mrail->cm_ah[rank]) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s", "Failed to create AH");
     }
 
@@ -2232,7 +2232,7 @@ int MPICM_Init_Local_UD_struct(MPIDI_PG_t * pg)
 #undef FUNCNAME
 #define FUNCNAME MPICM_Init_UD_struct
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPICM_Init_UD_struct(MPIDI_PG_t * pg)
 {
     int i           = 0;
@@ -2250,7 +2250,7 @@ int MPICM_Init_UD_struct(MPIDI_PG_t * pg)
                          rdma_default_port);
 
         if (!pg->ch.mrail->cm_ah[i]) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s", "Failed to create AH");
         }
     }
@@ -2278,7 +2278,7 @@ void *cm_finalize_handler(void *arg)
 #undef FUNCNAME
 #define FUNCNAME MPICM_Create_finalize_thread
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPICM_Create_finalize_thread()
 {
     int ret;
@@ -2286,12 +2286,12 @@ int MPICM_Create_finalize_thread()
 
     pthread_attr_t attr;
     if (pthread_attr_init(&attr)) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s", "pthread_attr_init failed");
     }
     ret = pthread_attr_setstacksize(&attr, cm_thread_stacksize);
     if (ret && ret != EINVAL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s",
                                   "pthread_attr_setstacksize failed");
     }
@@ -2307,7 +2307,7 @@ int MPICM_Create_finalize_thread()
 #undef FUNCNAME
 #define FUNCNAME MPICM_Create_UD_threads
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPICM_Create_UD_threads()
 {
     int ret;
@@ -2320,12 +2320,12 @@ int MPICM_Create_UD_threads()
     {
         pthread_attr_t attr;
         if (pthread_attr_init(&attr)) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s", "pthread_attr_init failed");
         }
         ret = pthread_attr_setstacksize(&attr, cm_thread_stacksize);
         if (ret && ret != EINVAL) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s",
                                       "pthread_attr_setstacksize failed");
         }
@@ -2343,7 +2343,7 @@ int MPICM_Create_UD_threads()
 #undef FUNCNAME
 #define FUNCNAME MPICM_Finalize_UD
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPICM_Finalize_UD()
 {
     cm_msg msg;
@@ -2457,7 +2457,7 @@ int MPICM_Finalize_UD()
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_CM_Connect_self
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_CM_Connect_self(MPIDI_VC_t * vc)
 {
     int i;
@@ -2475,8 +2475,7 @@ int MPIDI_CH3I_CM_Connect_self(MPIDI_VC_t * vc)
             for (j = 0; j < rdma_num_qp_per_port; ++j) {
                 rail_index = i * rdma_num_qp_per_port + j;
                 rdma_cm_connect_to_server(vc,
-                                          rdma_cm_host_list[vc->pg_rank *
-                                                            max_num_ips + i],
+                                          (vc->pg_rank * max_num_ips + i),
                                           rail_index);
             }
         }
@@ -2514,7 +2513,7 @@ int MPIDI_CH3I_CM_Connect_self(MPIDI_VC_t * vc)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_CM_Connect
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
 {
     cm_msg msg;
@@ -2550,8 +2549,7 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
             for (j = 0; j < rdma_num_qp_per_port; ++j) {
                 rail_index = i * rdma_num_qp_per_port + j;
                 rdma_cm_connect_to_server(vc,
-                                          rdma_cm_host_list[vc->pg_rank *
-                                                            max_num_ips + i],
+                                          (vc->pg_rank * max_num_ips + i),
                                           rail_index);
             }
         }
@@ -2617,14 +2615,14 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
     }
     msg.vc_addr = (uintptr_t) vc;
     if (strlen(MPIDI_Process.my_pg->id) > MAX_PG_ID_SIZE) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                   "**fail", "**fail %s", "pg id too long");
     }
     MPIU_Strncpy(msg.pg_id, MPIDI_Process.my_pg->id, MAX_PG_ID_SIZE);
 
     mpi_errno = cm_send_ud_msg(vc->pg, &msg);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_CLI;
@@ -2641,7 +2639,7 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_CM_Connect_raw_vc
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_CM_Connect_raw_vc(MPIDI_VC_t * vc, char *ifname)
 {
     struct ibv_ah *ah;
@@ -2687,7 +2685,7 @@ int MPIDI_CH3I_CM_Connect_raw_vc(MPIDI_VC_t * vc, char *ifname)
 
     ah = cm_create_ah(mv2_MPIDI_CH3I_RDMA_Process.ptag[0], lid, gid, port);
     if (!ah) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s", "Fail to create address handle");
     }
     PRINT_DEBUG(DEBUG_CM_verbose > 0, "Sending Req to rank %d\n", vc->pg_rank);
@@ -2707,11 +2705,11 @@ int MPIDI_CH3I_CM_Connect_raw_vc(MPIDI_VC_t * vc, char *ifname)
                 vc);
     mpi_errno = MPIDI_CH3I_CM_Get_port_info(msg.ifname, 128);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
     vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_CLI;
     if (cm_send_ud_msg_nopg(&msg, ah, qpn, vc)) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s", "Fail to post ud msg");
         CM_ERR_ABORT("Fail to post UD RAW Request message\n");
     }
@@ -2724,7 +2722,7 @@ int MPIDI_CH3I_CM_Connect_raw_vc(MPIDI_VC_t * vc, char *ifname)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_CM_Establish
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /* This function should be called when VC received the first message in on-demand case. */
 int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc)
 {
@@ -2798,7 +2796,7 @@ int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_CM_Get_port_info
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -2807,13 +2805,13 @@ int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len)
     UPMI_GET_RANK(&rank);
 
     if (max_len < 128) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s",
                                   "Array too short to hold port info");
     }
 #ifdef _ENABLE_XRC_
     if (use_iboeth) {
-        MPIU_Snprintf(ifname, 128,
+        MPL_snprintf(ifname, 128,
                       "#RANK:%08d(%08x:%016" SCNx64 ":%016" SCNx64 ":%08x:"
                       "%08x:%08x)#", rank,
                       mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
@@ -2823,14 +2821,14 @@ int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len)
                       interface_id, cm_ud_qp->qp_num, rdma_default_port,
                       MPIDI_Process.my_pg->ch.mrail->cm_shmem.ud_cm[rank].xrc_hostid);
     } else {
-        MPIU_Snprintf(ifname, 128, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
+        MPL_snprintf(ifname, 128, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
                       rank, mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
                       cm_ud_qp->qp_num, rdma_default_port,
                       MPIDI_Process.my_pg->ch.mrail->cm_shmem.ud_cm[rank].xrc_hostid);
     }
 #else
     if (use_iboeth) {
-        MPIU_Snprintf(ifname, 128,
+        MPL_snprintf(ifname, 128,
                       "#RANK:%08d(%08x:%016" SCNx64 ":%016" SCNx64 ":"
                       "%08x:%08x)#", rank,
                       mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
@@ -2839,7 +2837,7 @@ int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len)
                       mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.
                       interface_id, cm_ud_qp->qp_num, rdma_default_port);
     } else {
-        MPIU_Snprintf(ifname, 128, "#RANK:%08d(%08x:%08x:%08x)#",
+        MPL_snprintf(ifname, 128, "#RANK:%08d(%08x:%08x:%08x)#",
                       rank, mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
                       cm_ud_qp->qp_num, rdma_default_port);
     }
@@ -2853,7 +2851,7 @@ int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len)
 #undef FUNCNAME
 #define FUNCNAME cm_send_xrc_cm_msg
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int cm_send_xrc_cm_msg(MPIDI_VC_t * vc, MPIDI_VC_t * orig_vc)
 {
     cm_msg msg;
@@ -2878,7 +2876,7 @@ int cm_send_xrc_cm_msg(MPIDI_VC_t * vc, MPIDI_VC_t * orig_vc)
 
     mpi_errno = cm_send_ud_msg(vc->pg, &msg);
     if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
   fn_exit:
     return mpi_errno;
@@ -3038,7 +3036,7 @@ int cm_send_reactivate_msg(MPIDI_VC_t * vc)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_CM_Disconnect
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_CM_Disconnect(MPIDI_VC_t * vc)
 {
     /*To be implemented */

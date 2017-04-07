@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -28,7 +28,7 @@ static void psm_dump_debug();
 #undef FUNCNAME
 #define FUNCNAME psm_queue_init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void psm_queue_init()
 {
     pthread_spin_init(&reqlock, 0);
@@ -47,10 +47,11 @@ void psm_queue_init()
 #undef FUNCNAME
 #define FUNCNAME psm_complete_req
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void psm_complete_req(MPID_Request *req, PSM_MQ_STATUS_T psmstat)
 {
     int count = 0;
+    int mpi_errno = MPI_SUCCESS;
 
     if(MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) {
         pthread_spin_lock(&reqlock);
@@ -71,13 +72,23 @@ void psm_complete_req(MPID_Request *req, PSM_MQ_STATUS_T psmstat)
         psm_update_mpistatus(&(req->status), psmstat, 1);
     }
     MPID_cc_decr(req->cc_ptr, &count);
-//    MPIU_Object_release_ref(req, &inuse);
+    if (!count) {
+        if (req->request_completed_cb != NULL) {
+            mpi_errno = req->request_completed_cb(req);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
+    }
+
+fn_fail:
+    PRINT_DEBUG(DEBUG_1SC_verbose>1, "request error\n");
 }
 
 #undef FUNCNAME
 #define FUNCNAME psm_do_cancel
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int psm_do_cancel(MPID_Request *req)
 {
     PSM_ERROR_T psmerr;
@@ -87,24 +98,24 @@ int psm_do_cancel(MPID_Request *req)
     if(req->psm_flags & PSM_SEND_CANCEL) {
         printf("send cancel unsupported\n");
         req->psm_flags &= ~PSM_SEND_CANCEL;
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psmsendcancel");
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psmsendcancel");
     }
 
     if(req->psm_flags & PSM_RECV_CANCEL) {
-        DBG("recv cancel\n");
+        PRINT_DEBUG(DEBUG_CHM_verbose>1, "recv cancel\n");
         req->psm_flags &= ~PSM_RECV_CANCEL;
         _psm_enter_;
         psmerr = PSM_MQ_CANCEL(&(req->mqreq));
         _psm_exit_;
         if(unlikely(psmerr != PSM_OK)) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         } else {
             psmerr = PSM_TEST(&(req->mqreq), &status);
             if (psmerr == PSM_OK) {
                 MPIR_STATUS_SET_CANCEL_BIT(req->status, TRUE);
                 MPIR_STATUS_SET_COUNT(req->status, 0);
             } else {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
         }
     }
@@ -116,7 +127,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME psm_process_completion
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int psm_process_completion(MPID_Request *req, PSM_MQ_STATUS_T gblstatus)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -125,14 +136,14 @@ int psm_process_completion(MPID_Request *req, PSM_MQ_STATUS_T gblstatus)
     if(req->psm_flags & PSM_1SIDED_PREPOST) {
         --psm_tot_pposted_recvs;
         mpi_errno = psm_1sided_input(req, gblstatus.nbytes);
-        if(mpi_errno)   MPIU_ERR_POP(mpi_errno);
-        DBG("1-sided pre-posted completed\n");
+        if(mpi_errno)   MPIR_ERR_POP(mpi_errno);
+        PRINT_DEBUG(DEBUG_1SC_verbose>1, "1-sided pre-posted completed\n");
         goto fn_exit;
     }
 
     /* request is a RNDV receive for a GET */
-    if(req->psm_flags & PSM_RNDVRECV_GET_REQ) {
-        //MPIDI_CH3U_Request_complete(req->savedreq);
+    if(req->psm_flags & (PSM_RNDVRECV_GET_REQ | PSM_GETACCUM_GET_RNDV_REQ)) {
+        //MPID_Request_complete(req->savedreq);
         mpi_errno = psm_getresp_rndv_complete(req, gblstatus.nbytes);
         goto fn_exit;
     }
@@ -140,14 +151,14 @@ int psm_process_completion(MPID_Request *req, PSM_MQ_STATUS_T gblstatus)
     /* request is a GET-Response */
     if(req->psm_flags & PSM_GETRESP_REQ) {
         mpi_errno = psm_getresp_complete(req);
-        if(mpi_errno)   MPIU_ERR_POP(mpi_errno);
+        if(mpi_errno)   MPIR_ERR_POP(mpi_errno);
         goto fn_exit;
     }
 
     /* request is a GET-Accum-response */
     if(req->psm_flags & PSM_GETACCUMRESP_REQ) {
         mpi_errno = psm_getaccumresp_complete(req);
-        if(mpi_errno)   MPIU_ERR_POP(mpi_errno);
+        if(mpi_errno)   MPIR_ERR_POP(mpi_errno);
         goto fn_exit;
     }
 
@@ -166,10 +177,11 @@ int psm_process_completion(MPID_Request *req, PSM_MQ_STATUS_T gblstatus)
     }
 
     /* request was a PUT/ACCUM RNDV receive */
-    if(req->psm_flags & (PSM_RNDVRECV_ACCUM_REQ | PSM_RNDVRECV_PUT_REQ)) {
-        DBG("1-sided PUT comp on %x\n", req);
+    if(req->psm_flags & (PSM_RNDVRECV_ACCUM_REQ | PSM_RNDVRECV_PUT_REQ
+        | PSM_GETACCUM_RNDV_REQ)) {
+        PRINT_DEBUG(DEBUG_1SC_verbose>1, "1-sided PUT comp on %x\n", req);
         mpi_errno = psm_complete_rndvrecv(req, gblstatus.nbytes);
-        if(mpi_errno)   MPIU_ERR_POP(mpi_errno);
+        if(mpi_errno)   MPIR_ERR_POP(mpi_errno);
         goto fn_exit;
     }
 
@@ -185,7 +197,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME psm_try_complete
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int psm_try_complete(MPID_Request *req)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -207,12 +219,13 @@ int psm_try_complete(MPID_Request *req)
 #undef FUNCNAME
 #define FUNCNAME psm_progress_wait
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int psm_progress_wait(int blocking)
 {
     PSM_ERROR_T psmerr;
     PSM_MQ_STATUS_T gblstatus;
     PSM_MQ_REQ_T gblpsmreq;
+    int i;
     register MPID_Request *req;
     int mpi_errno = MPI_SUCCESS;
     int yield_count = ipath_progress_yield_count;
@@ -223,10 +236,22 @@ int psm_progress_wait(int blocking)
         int made_progress = FALSE;
         /* is MPIDU_Sched_progress psm critical section */
         mpi_errno = MPIDU_Sched_progress(&made_progress);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         if (made_progress) {
             _psm_progress_exit_;
             goto out_2; 
+        }
+
+        for (i = 0; i < MAX_PROGRESS_HOOKS; i++) {
+            if (progress_hooks[i].active == TRUE) {
+                MPIU_Assert(progress_hooks[i].func_ptr != NULL);
+                mpi_errno = progress_hooks[i].func_ptr(&made_progress);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+                if (made_progress) {
+                    _psm_progress_exit_;
+                    goto out_2; 
+                }
+            }
         }
 
         psmerr = PSM_IPEEK(psmdev_cw.mq, &gblpsmreq, NULL);
@@ -235,10 +260,15 @@ int psm_progress_wait(int blocking)
             psmerr = PSM_TEST(&gblpsmreq, &gblstatus);
             _psm_progress_exit_;
             req = (MPID_Request *) gblstatus.context;
-            DBG("got bytes from %d\n", (gblstatus.msg_tag & SRC_RANK_MASK));
+#if PSM_VERNO >= PSM_2_1_VERSION
+            PRINT_DEBUG(DEBUG_CHM_verbose>1, "got bytes from %d\n", gblstatus.msg_tag.tag1);
+#else
+            PRINT_DEBUG(DEBUG_CHM_verbose>1, "got bytes from %d\n", (gblstatus.msg_tag & SRC_RANK_MASK));
+#endif
+
             mpi_errno = psm_process_completion(req, gblstatus);
             if(mpi_errno != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
             goto out_2;
         }
@@ -270,10 +300,10 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME psm_dequeue_compreq
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void psm_dequeue_compreq(MPID_Request *req)
 {
-    DBG("Request release\n");
+    PRINT_DEBUG(DEBUG_CHM_verbose>1, "Request release\n");
     if(MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) {
         pthread_spin_lock(&reqlock);
     }
@@ -292,7 +322,7 @@ void psm_dequeue_compreq(MPID_Request *req)
 #undef FUNCNAME
 #define FUNCNAME psm_probe
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 PSM_ERROR_T psm_probe(int src, int tag, int context, MPI_Status *stat)
 {
     #if PSM_VERNO >= PSM_2_1_VERSION
@@ -314,10 +344,10 @@ PSM_ERROR_T psm_probe(int src, int tag, int context, MPI_Status *stat)
     #else
         rtag = 0;
         rtagsel = MQ_TAGSEL_ALL;
-        if(unlikely(tag == MPI_ANY_TAG))
-            rtagsel = rtagsel & MQ_TAGSEL_ANY_TAG;
         if(unlikely(src == MPI_ANY_SOURCE))
             rtagsel = MQ_TAGSEL_ANY_SOURCE;
+        if(unlikely(tag == MPI_ANY_TAG))
+            rtagsel = rtagsel & MQ_TAGSEL_ANY_TAG;
     #endif
 
     MAKE_PSM_SELECTOR(rtag, context, tag, src);
@@ -326,7 +356,7 @@ PSM_ERROR_T psm_probe(int src, int tag, int context, MPI_Status *stat)
     psmerr = PSM_IPROBE(psmdev_cw.mq, rtag, rtagsel, &gblstatus);
     _psm_exit_;
     if(psmerr == PSM_OK) {
-        DBG("one psm probe completed\n");
+        PRINT_DEBUG(DEBUG_CHM_verbose>1, "one psm probe completed\n");
         if(stat != MPI_STATUS_IGNORE) {
             psm_update_mpistatus(stat, gblstatus, 0);
         }
@@ -346,7 +376,7 @@ int psm_no_lock(pthread_spinlock_t *lock)
 #undef FUNCNAME
 #define FUNCNAME psm_pe_yield
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void psm_pe_yield()
 {
     pthread_mutex_unlock(&(MPIR_ThreadInfo.global_mutex));
@@ -357,7 +387,7 @@ void psm_pe_yield()
 #undef FUNCNAME
 #define FUNCNAME psm_update_mpistatus
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void psm_update_mpistatus(MPI_Status *stat, PSM_MQ_STATUS_T psmst, int append)
 {
     MPIDI_msg_sz_t old_nbytes = 0;

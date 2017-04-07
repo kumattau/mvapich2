@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -60,6 +60,12 @@ typedef struct {
     int     is_mcast_ok;
     void    *bcast_info;
 #endif
+
+#if defined(_SHARP_SUPPORT_)
+    int     is_sharp_ok;
+    void    *sharp_coll_info;
+#endif
+
 } MPIDI_CH3I_CH_comm_t;
 #else
 typedef struct {
@@ -124,7 +130,7 @@ typedef struct MPIDI_CH3I_Buffer_t
     unsigned int num_bytes;
     void *buffer;
     unsigned int bufflen;
-    MPID_IOV *iov;
+    MPL_IOV *iov;
     int iovlen;
     int index;
     int total;
@@ -344,6 +350,7 @@ struct MPIDI_CH3I_Request						\
     (_rreq)->mrail.d_entry = NULL;       \
     (_rreq)->mrail.remote_addr = NULL;   \
     (_rreq)->mrail.nearly_complete = 0;  \
+    (_rreq)->mrail.is_rma_last_stream_unit = 1;  \
     MPIDI_CH3_REQUEST_INIT_CUDA(_rreq)   \
     MPIDI_CH3_REQUEST_INIT_CUDA_IPC(_rreq) 
 
@@ -365,7 +372,6 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
                                                                                  
 #define MPIDI_CH3_WIN_DECL                                                       \
     int  fall_back;                                                              \
-    int  shm_win_pt2pt;                                                          \
     int  enable_fast_path;                                                       \
     int  use_rdma_path;                                                          \
     int  is_active;                                                              \
@@ -402,6 +408,9 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
     int my_id;                                                                   \
     int comm_size;                                                               \
     int16_t outstanding_rma;                                                     \
+    int *shm_l2g_rank;                                                           \
+    int node_comm_size;                                                          \
+    MPID_Comm *node_comm_ptr;                                                    \
     volatile int poll_flag; /* flag to indicate if polling for one sided completions is needed */ \
     void *shm_base_addr;        /* base address of shared memory region */              \
     int shm_coll_comm_ref;                                                              \
@@ -411,7 +420,9 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
                                            accumulate/atomic operations */              \
     MPIU_SHMW_Hnd_t shm_mutex_segment_handle; /* handle to interprocess mutex memory    \
                                                  region */                              \
-    int *shm_l2g_rank;                                                                  
+    void *info_shm_base_addr; /* base address of shared memory region for window info */          \
+    MPI_Aint info_shm_segment_len; /* size of shared memory region for window info */             \
+    MPIU_SHMW_Hnd_t info_shm_segment_handle; /* handle to shared memory region for window info */ \
 
 extern int mv2_create_dummy_request();
 extern int mv2_free_dummy_request();

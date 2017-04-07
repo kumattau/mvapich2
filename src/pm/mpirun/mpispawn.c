@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -407,7 +407,10 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
                 0 != strcmp(var, "MPISPAWN_CHECKIN_PORT") &&
                 0 != strcmp(var, "MPISPAWN_MPIRUN_PORT")) {
 
-            if (strchr(val, ' ') != NULL) {
+            if (strchr(val, '(') != NULL || strchr(val, ')') != NULL) {
+                /* Ignore variables with ( or ), see Trac #841 */
+            } else if (strchr(val, ' ') != NULL) {
+                /* Add Quotes to variables with space */
                 mpispawn_env = mkstr("%s %s='%s'", mpispawn_env, var, val);
 
             } else {
@@ -1244,10 +1247,7 @@ int main(int argc, char *argv[])
 
     mpispawn_checkin(l_port);
 
-#ifdef CKPT
     if (USE_LINEAR_SSH) {
-        mt_degree = MT_MAX_DEGREE;
-
         mpispawn_fds = mpispawn_tree_init(mt_id, mt_degree, mt_nnodes, l_socket);
         if (mpispawn_fds == NULL) {
             PRINT_ERROR("Internal error: mpispawn_fds is null\n");
@@ -1255,6 +1255,7 @@ int main(int argc, char *argv[])
         }
     }
 
+#ifdef CKPT
     mtpmi_init();
     cr_spawn_degree = mt_degree;
     dbg("mt_degree=%d\n", mt_degree);
@@ -1351,13 +1352,6 @@ int main(int argc, char *argv[])
 #endif
 #else
     // Begin of !CKPT  ///////////////////////////////////////////////////////////////////////////////
-
-    if (USE_LINEAR_SSH) {
-        mpispawn_fds = mpispawn_tree_init(mt_id, mt_degree, mt_nnodes, l_socket);
-        if (mpispawn_fds == NULL) {
-            exit(EXIT_FAILURE);
-        }
-    }
 
     mtpmi_init();
     mtpmi_processops();

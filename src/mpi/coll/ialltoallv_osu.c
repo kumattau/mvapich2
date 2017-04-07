@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,7 +32,7 @@ int (*MV2_Ialltoallv_intra_node_function) (const void *sendbuf, const int sendco
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ialltoallv_tune_helper_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int MPIR_Ialltoallv_tune_helper_MV2(const void *sendbuf, const int sendcounts[], const int sdispls[],
                                            MPI_Datatype sendtype, void *recvbuf, const int recvcounts[],
                                            const int rdispls[], MPI_Datatype recvtype, MPID_Comm *comm_ptr,
@@ -52,7 +52,7 @@ static int MPIR_Ialltoallv_tune_helper_MV2(const void *sendbuf, const int sendco
 
     mpi_errno = MV2_Ialltoallv_function(sendbuf, sendcounts, sdispls, sendtype, recvbuf,
                                         recvcounts, rdispls, recvtype, comm_ptr, s);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     
   fn_exit:
     return mpi_errno;
@@ -63,7 +63,7 @@ static int MPIR_Ialltoallv_tune_helper_MV2(const void *sendbuf, const int sendco
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ialltoallv_intra_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ialltoallv_intra_MV2(const void *sendbuf, const int sendcounts[], const int sdispls[],
                               MPI_Datatype sendtype, void *recvbuf, const int recvcounts[],
                               const int rdispls[], MPI_Datatype recvtype, MPID_Comm *comm_ptr,
@@ -148,17 +148,14 @@ int MPIR_Ialltoallv_intra_MV2(const void *sendbuf, const int sendcounts[], const
         /* Code path should not enter this with the current algorithms*/
     }
 
-fn_exit:
     return mpi_errno;
-fn_fail:
-    goto fn_exit;
 }
 #endif                          /*#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ialltoallv_MV2
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ialltoallv_MV2(const void *sendbuf, const int sendcounts[], const int sdispls[],
                         MPI_Datatype sendtype, void *recvbuf, const int recvcounts[],
                         const int rdispls[], MPI_Datatype recvtype, MPID_Comm *comm_ptr,
@@ -183,8 +180,5 @@ int MPIR_Ialltoallv_MV2(const void *sendbuf, const int sendcounts[], const int s
 					comm_ptr, s);
     }
 
-fn_exit:
     return mpi_errno;
-fn_fail:
-    goto fn_exit;
 }

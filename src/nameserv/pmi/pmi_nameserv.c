@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  *
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -31,7 +31,7 @@ struct MPID_NS_Handle { int dummy; };    /* unused for now */
 #undef FUNCNAME
 #define FUNCNAME MPID_NS_Create
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_NS_Create( const MPID_Info *info_ptr, MPID_NS_Handle *handle_ptr )
 {
     static struct MPID_NS_Handle nsHandleWithNoData;
@@ -45,25 +45,24 @@ int MPID_NS_Create( const MPID_Info *info_ptr, MPID_NS_Handle *handle_ptr )
 #undef FUNCNAME
 #define FUNCNAME MPID_NS_Publish
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_NS_Publish( MPID_NS_Handle handle, const MPID_Info *info_ptr, 
                      const char service_name[], const char port[] )
 {
     int mpi_errno = MPI_SUCCESS;
     int rc;
-    MPIU_THREADPRIV_DECL;
     MPIU_UNREFERENCED_ARG(info_ptr);
     MPIU_UNREFERENCED_ARG(handle);
 
 #ifdef USE_PMI2_API
     /* release the global CS for PMI calls */
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     rc = PMI2_Nameserv_publish(service_name, info_ptr, port);
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 #else
     rc = UPMI_PUBLISH_NAME( service_name, port, NULL );
 #endif
-    MPIU_ERR_CHKANDJUMP1(rc, mpi_errno, MPI_ERR_NAME, "**namepubnotpub", "**namepubnotpub %s", service_name);
+    MPIR_ERR_CHKANDJUMP1(rc, mpi_errno, MPI_ERR_NAME, "**namepubnotpub", "**namepubnotpub %s", service_name);
 
 fn_fail:
     return mpi_errno;
@@ -72,25 +71,24 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_NS_Lookup
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_NS_Lookup( MPID_NS_Handle handle, const MPID_Info *info_ptr,
                     const char service_name[], char port[] )
 {
     int mpi_errno = MPI_SUCCESS;
     int rc;
-    MPIU_THREADPRIV_DECL;
     MPIU_UNREFERENCED_ARG(info_ptr);
     MPIU_UNREFERENCED_ARG(handle);
 
 #ifdef USE_PMI2_API
     /* release the global CS for PMI calls */
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     rc = PMI2_Nameserv_lookup(service_name, info_ptr, port, MPI_MAX_PORT_NAME);
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 #else
     rc = UPMI_LOOKUP_NAME( service_name, port, NULL );
 #endif
-    MPIU_ERR_CHKANDJUMP1(rc, mpi_errno, MPI_ERR_NAME, "**namepubnotfound", "**namepubnotfound %s", service_name);
+    MPIR_ERR_CHKANDJUMP1(rc, mpi_errno, MPI_ERR_NAME, "**namepubnotfound", "**namepubnotfound %s", service_name);
 
 fn_fail:
     return mpi_errno;
@@ -99,25 +97,24 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_NS_Unpublish
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_NS_Unpublish( MPID_NS_Handle handle, const MPID_Info *info_ptr, 
                        const char service_name[] )
 {
     int mpi_errno = MPI_SUCCESS;
     int rc;
-    MPIU_THREADPRIV_DECL;
     MPIU_UNREFERENCED_ARG(info_ptr);
     MPIU_UNREFERENCED_ARG(handle);
 
 #ifdef USE_PMI2_API
     /* release the global CS for PMI calls */
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     rc = PMI2_Nameserv_unpublish(service_name, info_ptr);
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 #else
     rc = UPMI_UNPUBLISH_NAME( service_name, NULL );
 #endif
-    MPIU_ERR_CHKANDJUMP1(rc, mpi_errno, MPI_ERR_SERVICE, "**namepubnotunpub", "**namepubnotunpub %s", service_name);
+    MPIR_ERR_CHKANDJUMP1(rc, mpi_errno, MPI_ERR_SERVICE, "**namepubnotunpub", "**namepubnotunpub %s", service_name);
 
 fn_fail:
     return mpi_errno;

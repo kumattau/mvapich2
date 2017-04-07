@@ -38,7 +38,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPID_Rput
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int
 MPID_Rput(const void  *origin_addr,
          int           origin_count,
@@ -90,7 +90,7 @@ MPID_Rput(const void  *origin_addr,
 #undef FUNCNAME
 #define FUNCNAME MPID_Rget
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int
 MPID_Rget(void         *origin_addr,
          int           origin_count,
@@ -148,7 +148,7 @@ MPID_Rget(void         *origin_addr,
 #undef FUNCNAME
 #define FUNCNAME MPID_Raccumulate
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int
 MPID_Raccumulate(const void  *origin_addr,
                 int           origin_count,
@@ -209,7 +209,7 @@ MPID_Raccumulate(const void  *origin_addr,
 #undef FUNCNAME
 #define FUNCNAME MPID_Rget_accumulate
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int
 MPID_Rget_accumulate(const void         *origin_addr,
                 int           origin_count,

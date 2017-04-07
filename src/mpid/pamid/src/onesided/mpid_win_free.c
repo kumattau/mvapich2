@@ -46,7 +46,7 @@ int MPIDI_SHM_Win_free(MPID_Win **win_ptr)
     mpi_errno = shmdt((*win_ptr)->mpid.shm->base_addr);
     if ((*win_ptr)->comm_ptr->rank == 0) {
 	rc=shmctl((*win_ptr)->mpid.shm->shm_id,IPC_RMID,NULL);
-	MPIU_ERR_CHKANDJUMP((rc == -1), errno,MPI_ERR_RMA_SHARED, "**shmctl");
+	MPIR_ERR_CHKANDJUMP((rc == -1), errno,MPI_ERR_RMA_SHARED, "**shmctl");
     }
 #elif USE_MMAP_SHM
     munmap ((*win_ptr)->mpid.shm->base_addr, (*win_ptr)->mpid.shm->segment_len);
@@ -75,7 +75,7 @@ int MPIDI_SHM_Win_free(MPID_Win **win_ptr)
 #undef FUNCNAME
 #define FUNCNAME MPID_Win_free
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int
 MPID_Win_free(MPID_Win **win_ptr)
 {
@@ -83,7 +83,7 @@ MPID_Win_free(MPID_Win **win_ptr)
 
   MPID_Win *win = *win_ptr;
   size_t rank = win->comm_ptr->rank;
-  int errflag = FALSE;
+  MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
   if(win->mpid.sync.origin_epoch_type != win->mpid.sync.target_epoch_type ||
      (win->mpid.sync.origin_epoch_type != MPID_EPOTYPE_NONE &&
@@ -92,7 +92,7 @@ MPID_Win_free(MPID_Win **win_ptr)
   }
 
   mpi_errno = MPIR_Barrier_impl(win->comm_ptr, &errflag);
-  MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**mpi_bcast");
+  MPIR_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**mpi_bcast");
 
   if (win->create_flavor == MPI_WIN_FLAVOR_SHARED)
        mpi_errno=MPIDI_SHM_Win_free(win_ptr);

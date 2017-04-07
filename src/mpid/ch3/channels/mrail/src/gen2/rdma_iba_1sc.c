@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,7 +29,7 @@
 #undef FUNCNAME
 #define FUNCNAME 1SC_PUT_datav
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 
 //#define DEBUG
 #undef DEBUG_PRINT
@@ -141,21 +141,26 @@ extern int limic_fd;
 
 extern int number_of_op;
 static int Decrease_CC(MPID_Win *, int);
+#if 0
 static int Post_Get_Put_Get_List(MPID_Win *, 
         MPIDI_msg_sz_t , dreg_entry * ,
         MPIDI_VC_t *, vbuf **, void *local_buf[], 
         void *remote_buf[], void *user_buf[], MPIDI_msg_sz_t length,
         uint32_t lkeys[], uint32_t rkeys[], 
         rail_select_t rail_select, int target);
+#endif
 
 static int Post_Put_Put_Get_List(MPID_Win *, MPIDI_msg_sz_t,  dreg_entry *, 
         MPIDI_VC_t *, vbuf **, void *local_buf[], void *remote_buf[], MPIDI_msg_sz_t length,
         uint32_t lkeys[], uint32_t rkeys[], rail_select_t rail_select, int target);
 
+#if 0
 static int iba_put(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
 static int iba_get(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
 static int iba_fetch_and_add(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
 static int iba_compare_and_swap(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
+#endif
+
 int     iba_lock(MPID_Win *, MPIDI_RMA_Op_t *, int);
 int     iba_unlock(MPID_Win *, MPIDI_RMA_Op_t *, int);
 int MRAILI_Handle_one_sided_completions(vbuf * v);                            
@@ -207,7 +212,7 @@ uint64_t htonll(const uint64_t value)
 #undef FUNCNAME
 #define FUNCNAME mv2_allocate_shm_local
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
+#define FCNAME MPL_QUOTE(FCNAME)
 int mv2_allocate_shm_local(int size, void **rnt_buf)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -219,7 +224,7 @@ int mv2_allocate_shm_local(int size, void **rnt_buf)
 
     shm_file = (char *) MPIU_Malloc(SHM_FILENAME_LEN);
     if(shm_file == NULL) {
-        MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
+        MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
                    "**fail", "**fail %s","malloc failed");
     }
 
@@ -229,13 +234,13 @@ int mv2_allocate_shm_local(int size, void **rnt_buf)
 
     fd = shm_open(shm_file, O_CREAT | O_RDWR | O_EXCL, S_IRWXU);
     if(fd == -1) {
-        MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit, 
+        MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit, 
                    "**fail", "**fail %s", strerror(errno));
     }
 
     if (ftruncate(fd, size) == -1)
     {
-        MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto close_file, 
+        MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto close_file, 
                    "**fail", "**fail %s", "ftruncate failed");
     }
 
@@ -244,7 +249,7 @@ int mv2_allocate_shm_local(int size, void **rnt_buf)
     {
         if (fstat(fd, &file_status) != 0)
         {
-            MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto close_file,
+            MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto close_file,
                    "**fail", "**fail %s", "fstat failed");
         }
     } while (file_status.st_size != size);
@@ -253,7 +258,7 @@ int mv2_allocate_shm_local(int size, void **rnt_buf)
                          fd, 0);
     if (mem_ptr == MAP_FAILED)
     {
-        MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto close_file,
+        MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto close_file,
                   "**fail", "**fail %s", "mmap failed");
     }
 
@@ -306,7 +311,7 @@ close_file:
 #undef FUNCNAME
 #define FUNCNAME mv2_deallocate_shm_local
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
+#define FCNAME MPL_QUOTE(FCNAME)
 int mv2_deallocate_shm_local (void *ptr)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -324,7 +329,7 @@ int mv2_deallocate_shm_local (void *ptr)
 
     /*return if buffer not found in shm buffer list*/
     if (curr_ptr == NULL) {
-        MPIU_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
+        MPIR_ERR_SETANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_exit,
                    "**fail", "**fail %s", "buffer not found in shm list");
     }
 
@@ -350,7 +355,7 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME mv2_find_and_deallocate_shm_local
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
+#define FCNAME MPL_QUOTE(FCNAME)
 int mv2_find_and_deallocate_shm (shm_buffer **list)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -391,13 +396,13 @@ int mv2_find_and_deallocate_shm (shm_buffer **list)
 #undef FUNCNAME
 #define FUNCNAME mv2_rma_allocate_shm
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
+#define FCNAME MPL_QUOTE(FCNAME)
 int mv2_rma_allocate_shm(int size, int g_rank, int *shmem_fd, 
                    void **rnt_buf, MPID_Comm * comm_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno1 = MPI_SUCCESS;
-    int errflag = FALSE;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     void* rma_shared_memory = NULL;
     const char *rma_shmem_dir="/";
     struct stat file_status;
@@ -480,7 +485,7 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME mv2_rma_deallocate_shm
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
+#define FCNAME MPL_QUOTE(FCNAME)
 void mv2_rma_deallocate_shm(void *addr, int size)
 {
     if(munmap(addr, size))
@@ -490,10 +495,11 @@ void mv2_rma_deallocate_shm(void *addr, int size)
     }
 }
 
+#ifdef MPIDI_CH3I_HAS_ALLOC_MEM
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Alloc_mem
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
+#define FCNAME MPL_QUOTE(FCNAME)
 void *MPIDI_CH3I_Alloc_mem (size_t size, MPID_Info *info)
 {
    char value[10] = "";
@@ -508,11 +514,13 @@ void *MPIDI_CH3I_Alloc_mem (size_t size, MPID_Info *info)
 
    return ptr;
 }
+#endif
 
+#ifdef MPIDI_CH3I_HAS_FREE_MEM
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Free_mem
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
+#define FCNAME MPL_QUOTE(FCNAME)
 void MPIDI_CH3I_Free_mem (void *ptr)
 {
    int mpi_errno = MPI_SUCCESS;
@@ -530,6 +538,7 @@ void MPIDI_CH3I_Free_mem (void *ptr)
       MPIU_Free(ptr);
    }
 }
+#endif
 
 /* For active synchronization, it is a blocking call*/
 void
@@ -597,7 +606,6 @@ MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr,
     int *nops_to_proc;
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr;
-    MPIDI_RMA_Op_t *curr_ptr;
     MPIDI_VC_t* vc = NULL;
 
     comm_ptr = win_ptr->comm_ptr;
@@ -627,11 +635,14 @@ MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr,
     {
         nops_to_proc[i] = 0;
     }
+#if 0
+    MPIDI_RMA_Op_t *curr_ptr;
     curr_ptr = MPIDI_CH3I_RMA_Ops_head(&win_ptr->at_rma_ops_list);
     while (curr_ptr != NULL) {
         ++nops_to_proc[curr_ptr->target_rank];
         curr_ptr = curr_ptr->next;
     }
+#endif
 
     /* If all the operations had been handled using direct RDMA (nops_to_proc[target] == 0) 
        we can set the complete flag to signal completion. If some operations are pending, the 
@@ -679,7 +690,7 @@ int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr)
             win_ptr->poll_flag = 1;
             while(win_ptr->poll_flag == 1){
                 mpi_errno = MPIDI_CH3I_Progress_test();
-                if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if(mpi_errno) MPIR_ERR_POP(mpi_errno);
 	    }	
     }
     else return 0;
@@ -693,7 +704,7 @@ int MPIDI_CH3I_RDMA_finish_rma_target(MPID_Win * win_ptr, int target_rank)
     int mpi_errno = MPI_SUCCESS;
     while (win_ptr->put_get_list_size_per_process[target_rank] != 0) {
         mpi_errno = MPIDI_CH3I_Progress_test();
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
 
 fn_fail:
@@ -706,14 +717,9 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
         int target_count, MPI_Datatype target_datatype, void *compare_addr,
         void *result_addr, MPID_Win *win_ptr)
 {
-    MPIDI_msg_sz_t complete = 0, size, target_type_size, origin_type_size;
+    MPIDI_msg_sz_t complete = 0;
     MPIDI_VC_t* vc = NULL;
     MPID_Comm *comm_ptr;
-    char *local_addr = NULL, *remote_addr = NULL;
-    uint32_t r_key, l_key;
-    vbuf *v;
-    int rail = 0;
-    dreg_entry *tmp_dreg = NULL;
 
     comm_ptr = win_ptr->comm_ptr;
 
@@ -724,6 +730,14 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
         goto fn_exit;
     }
 
+//FIXME2: 
+#if 0
+    MPIDI_msg_sz_t size, target_type_size, origin_type_size;
+    char *local_addr = NULL, *remote_addr = NULL;
+    uint32_t r_key, l_key;
+    vbuf *v;
+    int rail = 0;
+    dreg_entry *tmp_dreg = NULL;
     switch (type)
     {
         case MPIDI_RMA_PUT:
@@ -766,8 +780,10 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 size = target_count * target_type_size;
 
                 ++win_ptr->rma_issued;
+#if 0
                 remote_addr = (char *) win_ptr->base_addrs[target_rank] +
                     win_ptr->disp_units[target_rank] * target_disp;
+#endif
 
                 GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                 tmp_dreg = dreg_register(origin_addr, size);
@@ -804,8 +820,10 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 size = origin_type_size;
                 add_value = *((uint64_t *) origin_addr);
 
+#if 0
                 remote_addr = (char *) win_ptr->base_addrs[target_rank] +
                     win_ptr->disp_units[target_rank] * target_disp;
+#endif
                 aligned = !((intptr_t)remote_addr % 8);
 
                 if (g_atomics_support && aligned && origin_type_size == 8) {
@@ -848,8 +866,10 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 swap_value = *((uint64_t *) origin_addr);
                 compare_value = *((uint64_t *) compare_addr);
 
+#if 0
                 remote_addr = (char *) win_ptr->base_addrs[target_rank] +
                     win_ptr->disp_units[target_rank] * target_disp;
+#endif
                 aligned = !((intptr_t)remote_addr % 8);
 
                 if (g_atomics_support && aligned && origin_type_size == 8) {
@@ -888,6 +908,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
             break;
     }
 
+#endif
 fn_exit:
     return complete;
 }
@@ -897,7 +918,7 @@ void mv2_init_rank_for_barrier (MPID_Win ** win_ptr)
 {
     int             i, comm_size;
     MPIDI_VC_t*     vc=NULL;
-    MPID_Comm       *comm_ptr=NULL;
+    MPID_Comm       *comm_ptr = NULL;
 
     MPIU_Assert(win_ptr != NULL);
     MPID_Comm_get_ptr(MPI_COMM_WORLD, comm_ptr );
@@ -921,15 +942,15 @@ void mv2_init_rank_for_barrier (MPID_Win ** win_ptr)
 int MPIDI_CH3I_barrier_in_rma(MPID_Win **win_ptr, int rank, int node_size, int comm_size) 
 {
     int lsrc, ldst, src, dst, mask, mpi_errno=MPI_SUCCESS;
-    MPI_Comm comm;
-    int * errflag=NULL;
+    MPID_Comm *comm_ptr;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     int l_rank = g_smpi.my_local_id;
 
     MPIU_Assert(win_ptr != NULL);
     /* Trivial barriers return immediately */
     if (node_size == 1) goto fn_exit;
 
-    comm = MPI_COMM_WORLD;
+    MPID_Comm_get_ptr(MPI_COMM_WORLD, comm_ptr);
 
     mask = 0x1;
     while (mask < node_size) {
@@ -941,9 +962,9 @@ int MPIDI_CH3I_barrier_in_rma(MPID_Win **win_ptr, int rank, int node_size, int c
 
         mpi_errno = MPIC_Sendrecv(NULL, 0, MPI_BYTE, dst,
                 MPIR_BARRIER_TAG, NULL, 0, MPI_BYTE,
-                src, MPIR_BARRIER_TAG, comm,
-                MPI_STATUS_IGNORE, errflag);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                src, MPIR_BARRIER_TAG, comm_ptr,
+                MPI_STATUS_IGNORE, &errflag);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         mask <<= 1;
     }
 
@@ -958,12 +979,8 @@ fn_fail:
 void
 MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
 {
-    intptr_t aligned;
-    int has_iwarp = 0;
     MPIDI_RMA_Op_t *curr_ptr = NULL;
     MPIDI_RMA_Op_t *head = NULL;
-    MPIDI_RMA_Ops_list_t *ops_list;
-    MPIDI_msg_sz_t size, origin_type_size, target_type_size;
 #ifdef _SCHEDULE
     int curr_put = 1;
     int fall_back = 0;
@@ -972,16 +989,17 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
 #endif
     MPIDI_VC_t* vc = NULL;
     MPID_Comm* comm_ptr = NULL;
-#if defined(RDMA_CM)
-    has_iwarp = mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode;
-#endif
 
     if (SMP_INIT)
     {
         comm_ptr = win_ptr->comm_ptr;
     }
+#if 0
+    intptr_t aligned;
+    MPIDI_RMA_Ops_list_t *ops_list;
     ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
     head = MPIDI_CH3I_RMA_Ops_head(ops_list);
+#endif
     curr_ptr = head;
 
 #ifdef _SCHEDULE
@@ -1007,15 +1025,20 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
         MPIDI_Comm_get_vc(comm_ptr, curr_ptr->target_rank, &vc);
 
         if (vc->smp.local_nodes != -1 
+#if 0
             && (!mv2_MPIDI_CH3I_RDMA_Process.force_ib_atomic
              || curr_ptr->type != MPIDI_RMA_FETCH_AND_OP)
             && (!mv2_MPIDI_CH3I_RDMA_Process.force_ib_atomic
-             || curr_ptr->type != MPIDI_RMA_FETCH_AND_OP)) {
+             || curr_ptr->type != MPIDI_RMA_FETCH_AND_OP)
+#endif
+            ) {
             curr_ptr = curr_ptr->next;
             continue;
         }
      }
 
+#if 0
+    MPIDI_msg_sz_t size, origin_type_size, target_type_size;
      if ((win_ptr->is_active && win_ptr->post_flag[curr_ptr->target_rank] == 1) || 
          (!win_ptr->is_active && win_ptr->using_lock == 0))
      {
@@ -1069,9 +1092,11 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
                 break;
             case MPIDI_RMA_FETCH_AND_OP:
                 {
+#if 0
                     aligned = !(((intptr_t)(win_ptr->base_addrs[target_rank]
                         + win_ptr->disp_units[target_rank]
                         * curr_ptr->target_disp)) % 8);
+#endif
                     MPID_Datatype_get_size_macro(curr_ptr->origin_datatype, origin_type_size);
                     /* IB supports fetch_and_add operation for 8 bytes message
                      * size, so check the data size here 
@@ -1090,9 +1115,11 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
                 }
             case MPIDI_RMA_COMPARE_AND_SWAP:
                 {
+#if 0
                     aligned = !(((intptr_t)(win_ptr->base_addrs[target_rank]
                         + win_ptr->disp_units[target_rank]
                         * curr_ptr->target_disp)) % 8);
+#endif
                     MPID_Datatype_get_size_macro(curr_ptr->origin_datatype, origin_type_size);
                     /* IB supports compare_and_swap operation for 8 bytes
                      * message size, so check the data size here 
@@ -1165,6 +1192,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
         {
             curr_ptr = curr_ptr->next;
         }
+#endif
     }
 
 }
@@ -1173,7 +1201,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_RDMA_post
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FCNAME)
+#define FCNAME MPL_QUOTE(FCNAME)
 int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RDMA_POST);
@@ -1215,7 +1243,7 @@ int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank)
     {
         if ((mpi_errno = MPIDI_CH3I_Progress_test()) != MPI_SUCCESS)
         {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
     }
 
@@ -1233,7 +1261,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
 {
  
     int             ret, i,j,arrIndex;
-    int             errflag = FALSE;
+    MPIR_Errflag_t  errflag = MPIR_ERR_NONE;
     win_info        *win_info_exchange;
     uintptr_t       *cc_ptrs_exchange;
     uintptr_t       *post_flag_ptr_send, *post_flag_ptr_recv;
@@ -1687,7 +1715,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
            for (i = 0; i < rdma_num_rails; ++i) {
               GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET); 
               if (NULL == v) {
-                  MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+                  MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
               }
 
               v->list = (void *)(&(winptr->put_get_list[index]));
@@ -1727,7 +1755,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
            rail = MRAILI_Send_select_rail(vc_ptr);
            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
            if (NULL == v) {
-               MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+               MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
            }
  
            ++winptr->put_get_list[index].completion;
@@ -1756,7 +1784,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
            for (i = 0; i < rdma_num_rails; ++i) {
               GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET); 
               if (NULL == v) {
-                  MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+                  MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
               }
 
               v->list = (void *)(&(winptr->put_get_list[index]));
@@ -1800,7 +1828,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
             v = *allocated_v;
         }
         if (NULL == v) {
-            MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+            MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
         }
 
         v->list = (void *)(&(winptr->put_get_list[index]));
@@ -1826,7 +1854,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
 	    if (*allocated_v == NULL) {
                GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET); 
                if (NULL == v) {
-                  MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+                  MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
                }
             } else {
                v = allocated_v[i];
@@ -1857,7 +1885,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
     {
         if ((mpi_errno = MPIDI_CH3I_Progress_test()) != MPI_SUCCESS)
         {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
     }
     
@@ -1866,6 +1894,7 @@ fn_fail:
 }
 
 
+#if 0
 static int Post_Get_Put_Get_List(  MPID_Win * winptr, 
                             MPIDI_msg_sz_t size, 
                             dreg_entry * dreg_tmp,
@@ -1909,7 +1938,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
            for (i = 0; i < rdma_num_rails; ++i) {
               GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET); 
               if (NULL == v) {
-                  MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+                  MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
               }
 
               v->list = (void *)(&(winptr->put_get_list[index]));
@@ -1950,7 +1979,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
            rail = MRAILI_Send_select_rail(vc_ptr);
            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
            if (NULL == v) {
-               MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+               MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
            }
  
            ++winptr->put_get_list[index].completion;
@@ -1979,7 +2008,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
            for (i = 0; i < rdma_num_rails; ++i) {
               GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET); 
               if (NULL == v) {
-                  MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+                  MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
               }
 
               v->list = (void *)(&(winptr->put_get_list[index]));
@@ -2024,7 +2053,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
             v = *allocated_v;
         }
         if (NULL == v) {
-            MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+            MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
         }
 
         v->list = (void *)(&(winptr->put_get_list[index]));
@@ -2046,13 +2075,14 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
     {
         if ((mpi_errno = MPIDI_CH3I_Progress_test()) != MPI_SUCCESS)
         {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
     }
 
 fn_fail:
     return mpi_errno;
 }
+#endif
 
 int MRAILI_Handle_one_sided_completions(vbuf * v)                            
 {
@@ -2144,7 +2174,7 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
                 }
 
             default:
-                MPIU_ERR_SETSIMPLE(mpi_errno, MPI_ERR_OTHER, "**onesidedcomps");
+                MPIR_ERR_SETSIMPLE(mpi_errno, MPI_ERR_OTHER, "**onesidedcomps");
                 break;
         }
         if (list_win_ptr->put_get_list_size == 0) 
@@ -2201,7 +2231,7 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
                     break;
                 }
             default:
-                MPIU_ERR_SETSIMPLE(mpi_errno, MPI_ERR_OTHER, "**onesidedcomps");
+                MPIR_ERR_SETSIMPLE(mpi_errno, MPI_ERR_OTHER, "**onesidedcomps");
                 break;
 
         }
@@ -2215,6 +2245,7 @@ fn_fail:
     return mpi_errno;
 }
 
+#if 0
 static int iba_put(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
 {
     char                *remote_address;
@@ -2232,9 +2263,11 @@ static int iba_put(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t s
     vbuf                *v = NULL; 
 
     /*part 1 prepare origin side buffer target buffer and keys */
+#if 0
     remote_address = (char *) win_ptr->base_addrs[rma_op->target_rank]
         + win_ptr->disp_units[rma_op->target_rank]
         * rma_op->target_disp;
+#endif
 
     if (likely(size <= rdma_eagersize_1sc)) {
         MV2_GET_RC_VBUF(v, size);
@@ -2293,10 +2326,12 @@ int iba_get(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
     MPID_Comm           *comm_ptr;
     vbuf                *v = NULL;
 
-    MPIU_Assert(rma_op->type == MPIDI_RMA_GET);
+    //MPIU_Assert(rma_op->type == MPIDI_RMA_GET);
     /*part 1 prepare origin side buffer target address and keys  */
+#if 0
     remote_addr = (char *) win_ptr->base_addrs[rma_op->target_rank] +
         win_ptr->disp_units[rma_op->target_rank] * rma_op->target_disp;
+#endif
 
     if (size <= rdma_eagersize_1sc) {
         MV2_GET_RC_VBUF(v, size);
@@ -2342,7 +2377,7 @@ int iba_get(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
 
 int iba_compare_and_swap(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
 {
-    char                *remote_addr, *local_addr;
+    char                *remote_addr = NULL, *local_addr;
     uint64_t            compare_value, swap_value;
     int                 mpi_errno = MPI_SUCCESS;
     int                 hca_index, rail, index;
@@ -2352,9 +2387,11 @@ int iba_compare_and_swap(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_
     MPID_Comm           *comm_ptr;
     vbuf                *v = NULL;
     /*prepare target buffer and key*/
+#if 0
     remote_addr = (char *) win_ptr->base_addrs[rma_op->target_rank]
             +win_ptr->disp_units[rma_op->target_rank]
             * rma_op->target_disp;
+#endif
     comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc(comm_ptr, rma_op->target_rank, &vc_ptr);
     rail = 0;
@@ -2362,7 +2399,7 @@ int iba_compare_and_swap(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_
     r_key = win_ptr->win_rkeys[rma_op->target_rank * rdma_num_hcas + hca_index];
     GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
     if (NULL == v)
-        MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+        MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
     index = win_ptr->put_get_list_tail;
     win_ptr->put_get_list[index].op_type        = SIGNAL_FOR_COMPARE_AND_SWAP;
     win_ptr->put_get_list[index].win_ptr        = win_ptr;
@@ -2395,7 +2432,7 @@ fn_fail:
 
 int iba_fetch_and_add(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr, MPIDI_msg_sz_t size)
 {
-    char                *remote_addr;
+    char                *remote_addr = NULL;
     uint64_t            *fetch_addr;
     uint64_t            add_value;
     int                 mpi_errno = MPI_SUCCESS;
@@ -2409,9 +2446,11 @@ int iba_fetch_and_add(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr, MPIDI_msg_sz_t 
     hca_index = 0; rail = 0;
 
     /*prepaer target buffer and key, using HCA 0*/
+#if 0
     remote_addr = (char *) win_ptr->base_addrs[rma_op->target_rank]
         + win_ptr->disp_units[rma_op->target_rank]
         * rma_op->target_disp;
+#endif
     r_key = win_ptr->win_rkeys[rma_op->target_rank*rdma_num_hcas + hca_index];
 
     comm_ptr = win_ptr->comm_ptr;
@@ -2419,7 +2458,7 @@ int iba_fetch_and_add(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr, MPIDI_msg_sz_t 
 
     GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
     if(NULL == v){
-        MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+        MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
     }
 
     index = win_ptr->put_get_list_tail;
@@ -2451,5 +2490,6 @@ int iba_fetch_and_add(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr, MPIDI_msg_sz_t 
 fn_fail:
     return mpi_errno;
 }
+#endif
 
 

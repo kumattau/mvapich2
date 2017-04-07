@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -336,19 +336,6 @@ int mqs_image_has_queues (mqs_image *image, char **message)
 		    loff = dbgr_field_offset( dreq_type, (char *)"datatype" );
 		    i_info->req_datatype_offs = dev_offs + loff;
 		    match_offs = dbgr_field_offset( dreq_type, (char *)"match" );
-		    /*
-		      Current definition from the mpidpre.h file for ch3.
-
-		      typedef struct MPIDI_Message_match_parts {
-		      int32_t tag;
-		      MPIR_Rank_t rank;
-		      MPIR_Context_id_t context_id;
-		      } MPIDI_Message_match_parts_t;
-		      typedef union {
-		      MPIDI_Message_match_parts_t parts;
-		      MPIR_Upint whole;
-		      } MPIDI_Message_match;
-		    */
 		    if (match_offs >= 0) {
 			mqs_type *match_type = dbgr_find_type( image, (char *)"MPIDI_Message_match", mqs_lang_c );
 			if (match_type) {

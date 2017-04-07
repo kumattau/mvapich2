@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,8 +25,8 @@
 #undef FUNCNAME
 #define FUNCNAME MPID_Ssend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int tag, MPID_Comm * comm, int context_offset,
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPID_Ssend(const void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int tag, MPID_Comm * comm, int context_offset,
 	       MPID_Request ** request)
 {
     MPIDI_msg_sz_t data_sz;
@@ -49,9 +49,9 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 
     /* Check to make sure the communicator hasn't already been revoked */
     if (comm->revoked &&
-            MPIR_AGREE_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask) &&
-            MPIR_SHRINK_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask)) {
-        MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
+            MPIR_AGREE_TAG != MPIR_TAG_MASK_ERROR_BITS(tag & ~MPIR_Process.tagged_coll_mask) &&
+            MPIR_SHRINK_TAG != MPIR_TAG_MASK_ERROR_BITS(tag & ~MPIR_Process.tagged_coll_mask)) {
+        MPIR_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
     }
 
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
@@ -68,7 +68,7 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 #       ifndef MPICH_IS_THREADED
 	{
 	    /* --BEGIN ERROR HANDLING-- */
-	    if (sreq != NULL && sreq->cc != 0)
+	    if (sreq != NULL && MPID_cc_get(sreq->cc) != 0)
 	    {
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
 						 "**dev|selfsenddeadlock", 0);

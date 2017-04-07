@@ -3,7 +3,7 @@
  *  (C) 2006 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  *
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,7 +23,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_finalize
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_finalize(void)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -55,11 +55,11 @@ int MPID_nem_finalize(void)
 #endif /* MEM_REGION_IN_HEAP */
 
     mpi_errno = MPID_nem_netmod_func->finalize();
-    if (mpi_errno) MPIU_ERR_POP (mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP (mpi_errno);
 
     /* free the shared memory segment */
     mpi_errno = MPIDI_CH3I_Seg_destroy();
-    if (mpi_errno) MPIU_ERR_POP (mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP (mpi_errno);
 
 #ifdef PAPI_MONITOR
     my_papi_close();

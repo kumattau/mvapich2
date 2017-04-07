@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,7 +21,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_RndvSend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /* MPID_MRAIL_RndvSend - Send a request to perform a rendezvous send */
 int MPID_MRAIL_RndvSend (
     MPID_Request** sreq_p,
@@ -77,17 +77,17 @@ int MPID_MRAIL_RndvSend (
 		
 	sreq->dev.OnDataAvail = 0;
 	
-	sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char*)sreq->dev.user_buf + dt_true_lb);
-	sreq->dev.iov[0].MPID_IOV_LEN = data_sz;
+	sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) ((char*)sreq->dev.user_buf + dt_true_lb);
+	sreq->dev.iov[0].MPL_IOV_LEN = data_sz;
 	sreq->dev.iov_count = 1;
     }
     else
     {
 	sreq->dev.segment_ptr = MPID_Segment_alloc( );
-	/* if (!sreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
+	/* if (!sreq->dev.segment_ptr) { MPIR_ERR_POP(); } */
 	MPID_Segment_init(sreq->dev.user_buf, sreq->dev.user_count,
 			  sreq->dev.datatype, sreq->dev.segment_ptr, 0);
-	sreq->dev.iov_count = MPID_IOV_LIMIT;
+	sreq->dev.iov_count = MPL_IOV_LIMIT;
 	sreq->dev.segment_first = 0;
 	sreq->dev.segment_size = data_sz;
 	/* One the initial load of a send iov req, set the OnFinal action (null
@@ -100,8 +100,8 @@ int MPID_MRAIL_RndvSend (
                         MPIDI_CH3_ReqHandler_pack_cudabuf) {
         int complete ATTRIBUTE((unused));
         MPIDI_CH3_ReqHandler_pack_cudabuf(vc, sreq, &complete, (void *) stream_d2h);
-        sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)sreq->dev.tmpbuf;
-        sreq->dev.iov[0].MPID_IOV_LEN = sreq->dev.segment_size;
+        sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)sreq->dev.tmpbuf;
+        sreq->dev.iov[0].MPL_IOV_LEN = sreq->dev.segment_size;
         sreq->dev.iov_count = 1;
         sreq->dev.OnDataAvail = 0;
     }
@@ -143,7 +143,7 @@ int MPID_MRAIL_RndvSend (
 #undef FUNCNAME
 #define FUNCNAME MPID_MRAIL_RndvRecv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_MRAIL_RndvRecv (MPIDI_VC_t* vc, MPID_Request* rreq)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -153,12 +153,12 @@ int MPID_MRAIL_RndvRecv (MPIDI_VC_t* vc, MPID_Request* rreq)
        to send a CTS message to the remote process. */
     
     if (rreq->dev.recv_data_sz == 0) {
-	MPIDI_CH3U_Request_complete(rreq);
+	MPID_Request_complete(rreq);
     }
     else {
 	mpi_errno = MPIDI_CH3U_Post_data_receive_found(rreq);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,
+	    MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,
 				 "**ch3|postrecv",
 				 "**ch3|postrecv %s",
 				 "MPIDI_CH3_PKT_RNDV_REQ_TO_SEND");
@@ -168,7 +168,7 @@ int MPID_MRAIL_RndvRecv (MPIDI_VC_t* vc, MPID_Request* rreq)
     mpi_errno = MPIDI_CH3_iStartRndvTransfer (vc, rreq);
 
     if (mpi_errno != MPI_SUCCESS) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
+	MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
 				"**ch3|ctspkt");
     }
 

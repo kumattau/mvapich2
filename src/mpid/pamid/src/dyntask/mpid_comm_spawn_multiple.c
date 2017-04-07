@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  *
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -110,7 +110,7 @@ static void MPIDI_free_pmi_keyvals(PMI_keyval_t **kv, int size, int *counts)
 #undef FUNCNAME
 #define FUNCNAME MPID_Comm_spawn_multiple
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_Comm_spawn_multiple(int count, char *array_of_commands[],
 			     char ** array_of_argv[], const int array_of_maxprocs[],
 			     MPID_Info * array_of_info_ptrs[], int root,
@@ -303,7 +303,7 @@ int MPIDI_Comm_spawn_multiple(int count, char **commands,
     }
 
     if (errcodes != MPI_ERRCODES_IGNORE) {
-        int errflag = FALSE;
+        MPIR_Errflag_t errflag = MPIR_ERR_NONE;
         mpi_errno = MPIR_Bcast_impl(&should_accept, 1, MPI_INT, root, comm_ptr, &errflag);
         if (mpi_errno) TRACE_ERR("MPIR_Bcast_impl returned with mpi_errno=%d\n", mpi_errno);
 
@@ -366,7 +366,7 @@ static char *parent_port_name = 0;    /* Name of parent port if this
 #undef FUNCNAME
 #define FUNCNAME MPIDI_GetParentPort
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_GetParentPort(char ** parent_port)
 {
     int mpi_errno = MPI_SUCCESS;

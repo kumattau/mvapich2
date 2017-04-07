@@ -55,6 +55,7 @@ MPID_Win_allocate(MPI_Aint     size,
 {
   int mpi_errno  = MPI_SUCCESS;
   int rc = MPI_SUCCESS;
+  MPIR_Errflag_t errflag = MPIR_ERR_NONE;
   void *baseP; 
   static char FCNAME[] = "MPID_Win_allocate";
   MPIDI_Win_info  *winfo;
@@ -69,7 +70,7 @@ MPID_Win_allocate(MPI_Aint     size,
   #ifndef MPIDI_NO_ASSERT
       MPID_assert(baseP != NULL);
   #else
-      MPIU_ERR_CHKANDJUMP((baseP == NULL), mpi_errno, MPI_ERR_BUFFER, "**bufnull");
+      MPIR_ERR_CHKANDJUMP((baseP == NULL), mpi_errno, MPI_ERR_BUFFER, "**bufnull");
   #endif
 
   } else if (size == 0) {
@@ -90,7 +91,7 @@ MPID_Win_allocate(MPI_Aint     size,
   if (rc != MPI_SUCCESS)
       return rc;
   *(void**) base_ptr = (void *) win->base;
-  mpi_errno = MPIR_Barrier_impl(comm_ptr, &mpi_errno);
+  mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
 
   fn_fail:
   return mpi_errno;

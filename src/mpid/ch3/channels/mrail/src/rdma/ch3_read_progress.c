@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,7 +38,7 @@ MPIDI_VC_t *mv2_read_progress_pending_vc = NULL;
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_RDMA_read_progress
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_found, int is_blocking)
 {
     int 	type;
@@ -141,7 +141,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_RDMA_post_read
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_post_read(MPIDI_VC_t * vc, void *buf, int len)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RDMA_POST_READ);
@@ -165,15 +165,15 @@ int MPIDI_CH3I_post_read(MPIDI_VC_t * vc, void *buf, int len)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_RDMA_post_readv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_post_readv(MPIDI_VC_t * vc, MPID_IOV * iov, int n)
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIDI_CH3I_post_readv(MPIDI_VC_t * vc, MPL_IOV * iov, int n)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RDMA_POST_READV);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_POST_READV);
     MPIDI_DBG_PRINTF((60, FCNAME, "entering"));
     /* strip any trailing empty buffers */
-    while (n && iov[n - 1].MPID_IOV_LEN == 0)
+    while (n && iov[n - 1].MPL_IOV_LEN == 0)
         n--;
     vc->ch.read.total = 0;
     vc->ch.read.iov = iov;
@@ -188,7 +188,7 @@ int MPIDI_CH3I_post_readv(MPIDI_VC_t * vc, MPID_IOV * iov, int n)
 #ifdef MPICH_DBG_OUTPUT
     while (n) {
         MPIU_DBG_PRINTF(("post_readv: iov[%d].len = %d\n", n - 1,
-                         iov[n - 1].MPID_IOV_LEN));
+                         iov[n - 1].MPL_IOV_LEN));
         n--;
     }
 #endif

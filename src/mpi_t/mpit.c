@@ -133,9 +133,6 @@ int MPIR_T_cat_add_pvar(const char *cat_name, int pvar_index)
 
 fn_exit:
     return mpi_errno;
-
-fn_fail:
-    goto fn_exit;
 }
 
 /* Add a cvar to an existing or new category
@@ -171,9 +168,6 @@ int MPIR_T_cat_add_cvar(const char *cat_name, int cvar_index)
 
 fn_exit:
     return mpi_errno;
-
-fn_fail:
-    goto fn_exit;
 }
 
 /* Add a sub-category to an existing or new category
@@ -225,9 +219,6 @@ int MPIR_T_cat_add_subcat(const char *parent_name, const char *child_name)
 
 fn_exit:
     return mpi_errno;
-
-fn_fail:
-    goto fn_exit;
 }
 
 /* Add description to an existing or new category
@@ -262,11 +253,7 @@ int MPIR_T_cat_add_desc(const char *cat_name, const char *cat_desc)
         cat_stamp++;
     }
 
-fn_exit:
     return mpi_errno;
-
-fn_fail:
-    goto fn_exit;
 }
 
 /* A low level, generic and internally used interface to register

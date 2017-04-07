@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -88,5 +88,6 @@
 #include "gather/psm_INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100_36ppn.h"
 #include "gather/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_1ppn.h"
 #include "gather/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_4ppn.h"
+#include "gather/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_8ppn.h"
 #include "gather/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_16ppn.h"
 #include "gather/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_64ppn.h"

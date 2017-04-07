@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -80,7 +80,11 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me);
  * ==============================================================
  */
 
-
+#if defined(_SHARP_SUPPORT_)
+int mv2_enable_sharp_coll = 0;
+int mv2_sharp_port = -1;
+char * mv2_sharp_hca_name = 0;
+#endif
 int mv2_is_in_finalize = 0;
 int mv2_cm_wait_time = DEF_MV2_CM_WAIT_TIME;
 int rdma_num_cqes_per_poll = RDMA_MAX_CQE_ENTRIES_PER_POLL;
@@ -146,6 +150,9 @@ int rdma_num_sa_query_retries = RDMA_DEFAULT_NUM_SA_QUERY_RETRIES;
 MPID_Node_id_t rdma_num_nodes_in_job = 0;
 int rdma_qos_num_sls = RDMA_QOS_DEFAULT_NUM_SLS;
 int max_rdma_connect_attempts = DEFAULT_RDMA_CONNECT_ATTEMPTS;
+#ifdef _MULTI_SUBNET_SUPPORT_
+int mv2_rdma_cm_multi_subnet_support = 0;
+#endif /* _MULTI_SUBNET_SUPPORT_ */
 int rdma_cm_connect_retry_interval = RDMA_DEFAULT_CONNECT_INTERVAL;
 int rdma_default_async_thread_stack_size = RDMA_DEFAULT_ASYNC_THREAD_STACK_SIZE;
 int rdma_num_rails_per_hca = 1;
@@ -400,7 +407,7 @@ static inline int log_2(int np)
 #undef FUNCNAME
 #define FUNCNAME MV2_get_arch_hca_type
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 mv2_arch_hca_type MV2_get_arch_hca_type()
 {
     struct mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
@@ -433,7 +440,7 @@ mv2_arch_hca_type MV2_get_arch_hca_type()
 #undef FUNCNAME
 #define FUNCNAME rdma_cm_get_hca_type
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_cm_get_hca_type(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int i = 0;
@@ -452,7 +459,7 @@ int rdma_cm_get_hca_type(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         dev_name = (char *) ibv_get_device_name(ctx[i]->device);
 
         if (!dev_name) {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER,
+            MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER,
                                 "**ibv_get_device_name");
         }
 
@@ -463,7 +470,7 @@ int rdma_cm_get_hca_type(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         }
 
         if ((ret = ibv_query_device(ctx[i], &dev_attr))) {
-            MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**ibv_query_device",
+            MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**ibv_query_device",
                                  "**ibv_query_device %s", dev_name);
         }
 
@@ -508,7 +515,7 @@ int rdma_cm_get_hca_type(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #undef FUNCNAME
 #define FUNCNAME rdma_get_process_to_rail_mapping
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type)
 {
     char *p2r_only_numbers =
@@ -615,7 +622,7 @@ int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type)
 #undef FUNCNAME
 #define FUNCNAME rdma_get_rail_sharing_policy
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_get_rail_sharing_policy(char *value)
 {
     int policy = FIXED_MAPPING;
@@ -627,7 +634,7 @@ int rdma_get_rail_sharing_policy(char *value)
     } else if (!strcmp(value, "FIXED_MAPPING")) {
         policy = FIXED_MAPPING;
     } else {
-        MPIU_Usage_printf("Invalid small message scheduling\n");
+        MPL_usage_printf("Invalid small message scheduling\n");
     }
     return policy;
 }
@@ -658,7 +665,7 @@ static void set_limic_thresholds(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #undef FUNCNAME
 #define FUNCNAME rdma_set_smp_parameters
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     char *value = NULL;
@@ -1256,10 +1263,6 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #endif
 #endif
 
-    proc->shm_win_pt2pt = (value =
-            getenv("MV2_USE_SHM_WIN_PT2PT")) !=
-        NULL ? !!atoi(value) : 0;
-
     /* Set Limic Thresholds */
     set_limic_thresholds(proc);
 
@@ -1316,62 +1319,10 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     return 0;
 }
 
-int mv2_check_hca_type(mv2_hca_type type, int rank)
-{
-    if (type <= MV2_HCA_LIST_START        || type >= MV2_HCA_LIST_END        ||
-        type == MV2_HCA_IB_TYPE_START     || type == MV2_HCA_IB_TYPE_END     ||
-        type == MV2_HCA_MLX_START         || type == MV2_HCA_MLX_END         ||
-        type == MV2_HCA_IWARP_TYPE_START  || type == MV2_HCA_IWARP_TYPE_END  ||
-        type == MV2_HCA_CHLSIO_START      || type == MV2_HCA_CHLSIO_END      ||
-        type == MV2_HCA_INTEL_IWARP_START || type == MV2_HCA_INTEL_IWARP_END ||
-        type == MV2_HCA_QLGIC_START       || type == MV2_HCA_QLGIC_END       ||
-        type == MV2_HCA_INTEL_START       || type == MV2_HCA_INTEL_END) {
-
-        PRINT_INFO((rank==0), "Wrong value specified for MV2_FORCE_HCA_TYPE\n");
-        PRINT_INFO((rank==0), "Value must be greater than %d and less than %d \n",
-                    MV2_HCA_LIST_START, MV2_HCA_LIST_END);
-        PRINT_INFO((rank==0), "For IB Cards: Please enter value greater than %d and less than %d\n",
-                    MV2_HCA_MLX_START, MV2_HCA_MLX_END);
-        PRINT_INFO((rank==0), "For IBM Cards: Please enter value greater than %d and less than %d\n",
-                    MV2_HCA_IBM_START, MV2_HCA_IBM_END);
-        PRINT_INFO((rank==0), "For Intel IWARP Cards: Please enter value greater than %d and less than %d\n",
-                    MV2_HCA_INTEL_IWARP_START, MV2_HCA_INTEL_IWARP_END);
-        PRINT_INFO((rank==0), "For Chelsio IWARP Cards: Please enter value greater than %d and less than %d\n",
-                    MV2_HCA_CHLSIO_START, MV2_HCA_CHLSIO_END);
-        PRINT_INFO((rank==0), "For QLogic Cards: Please enter value greater than %d and less than %d\n",
-                    MV2_HCA_QLGIC_START, MV2_HCA_QLGIC_END);
-        PRINT_INFO((rank==0), "For Intel Cards: Please enter value greater than %d and less than %d\n",
-                    MV2_HCA_INTEL_START, MV2_HCA_INTEL_END);
-        return 1;
-    }
-    return 0;
-}
-
-int mv2_check_proc_arch(mv2_arch_type type, int rank)
-{
-    if (type <= MV2_ARCH_LIST_START  || type >= MV2_ARCH_LIST_END  ||
-        type == MV2_ARCH_INTEL_START || type == MV2_ARCH_INTEL_END ||
-        type == MV2_ARCH_AMD_START   || type == MV2_ARCH_AMD_END   ||
-        type == MV2_ARCH_IBM_START   || type == MV2_ARCH_IBM_END) {
-
-        PRINT_INFO((rank==0), "Wrong value specified for MV2_FORCE_ARCH_TYPE\n");
-        PRINT_INFO((rank==0), "Value must be greater than %d and less than %d \n",
-                    MV2_ARCH_LIST_START, MV2_ARCH_LIST_END);
-        PRINT_INFO((rank==0), "For Intel Architectures: Please enter value greater than %d and less than %d\n",
-                    MV2_ARCH_INTEL_START, MV2_ARCH_INTEL_END);
-        PRINT_INFO((rank==0), "For AMD Architectures: Please enter value greater than %d and less than %d\n",
-                    MV2_ARCH_AMD_START, MV2_ARCH_AMD_END);
-        PRINT_INFO((rank==0), "For IBM Architectures: Please enter value greater than %d and less than %d\n",
-                    MV2_ARCH_IBM_START, MV2_ARCH_IBM_END);
-        return 1;
-    }
-    return 0;
-}
-
 #undef FUNCNAME
 #define FUNCNAME rdma_get_control_parameters
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int size = -1;
@@ -1531,6 +1482,15 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         }
     }
 
+#ifdef _MULTI_SUBNET_SUPPORT_
+    if ((value = getenv("MV2_RDMA_CM_MULTI_SUBNET_SUPPORT")) != NULL) {
+        mv2_rdma_cm_multi_subnet_support = !!atoi(value);
+        if (proc->use_rdma_cm == 0) {
+            proc->use_rdma_cm = mv2_rdma_cm_multi_subnet_support;
+        }
+    }
+#endif /* _MULTI_SUBNET_SUPPORT_ */
+
     if ((value = getenv("MV2_SUPPORT_DPM")) && !!atoi(value)) {
         proc->use_rdma_cm = 0;
         proc->use_iwarp_mode = 0;
@@ -1562,7 +1522,7 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         value = getenv("MV2_USE_XRC");
         if (value && (my_rank == 0)) {
             if (atoi(value)) {
-                MPIU_Error_printf("Error: XRC does not work with RDMA CM. "
+                MPL_error_printf("Error: XRC does not work with RDMA CM. "
                                   "Proceeding without XRC support.\n");
             }
         }
@@ -1571,7 +1531,7 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #endif
 
     if ((mpi_errno = rdma_open_hca(proc)) != MPI_SUCCESS) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     /* Heterogeniety detection for HCAs */
@@ -1588,20 +1548,7 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     }
     proc->node_guid = node_guid[0];
 
-    proc->hca_type = MV2_HCA_UNKWN;
-    if ((value = getenv("MV2_FORCE_HCA_TYPE")) != NULL) {
-        int val = atoi(value);
-        int retval = 0;
-        retval = mv2_check_hca_type(val, my_rank);
-        if (retval) {
-            PRINT_INFO((my_rank==0), "Falling back to Automatic HCA detection\n");
-        } else {
-            proc->hca_type = val;
-        }
-    }
-
     if (proc->hca_type == MV2_HCA_UNKWN) {
-        /* Get Arch and HCA type */
         if (heterogeneous) {
             proc->hca_type = MV2_HCA_UNKWN;
         } else {
@@ -1611,17 +1558,6 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
     proc->arch_hca_type = mv2_new_get_arch_hca_type(proc->hca_type);
     proc->arch_type = MV2_GET_ARCH(proc->arch_hca_type);
-
-    if ((value = getenv("MV2_FORCE_ARCH_TYPE")) != NULL) {
-        uint64_t val = atoi(value);
-        int retval = mv2_check_proc_arch(val, my_rank);
-        if (retval) {
-            PRINT_INFO((my_rank==0), "Falling back to Automatic architecture detection\n");
-        } else {
-            proc->arch_type = val;
-            proc->arch_hca_type = (uint64_t) proc->arch_type << 32 | proc->hca_type;
-        }
-    }
 
     if (rdma_num_nodes_in_job == 0) {
         UPMI_GET_SIZE(&size);
@@ -1709,10 +1645,6 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     }
 #endif
 
-    proc->shm_win_pt2pt = (value =
-            getenv("MV2_USE_SHM_WIN_PT2PT")) !=
-        NULL ? !!atoi(value) : 0;
-
 #if !defined(DISABLE_PTMALLOC)
     proc->has_lazy_mem_unregister = (value =
                                      getenv("MV2_USE_LAZY_MEM_UNREGISTER")) !=
@@ -1755,7 +1687,7 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = getenv("MV2_RNDV_EXT_SENDQ_SIZE")) != NULL) {
         rdma_rndv_ext_sendq_size = atoi(value);
         if (rdma_rndv_ext_sendq_size <= 1) {
-            MPIU_Usage_printf("Setting MV2_RNDV_EXT_SENDQ_SIZE smaller than 1 "
+            MPL_usage_printf("Setting MV2_RNDV_EXT_SENDQ_SIZE smaller than 1 "
                               "will severely limit the MPI bandwidth.\n");
         }
     }
@@ -1770,7 +1702,7 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = getenv("MV2_COALESCE_THRESHOLD")) != NULL) {
         rdma_coalesce_threshold = atoi(value);
         if (rdma_coalesce_threshold < 1) {
-            MPIU_Usage_printf("MV2_COALESCE_THRESHOLD must be >= 1\n");
+            MPL_usage_printf("MV2_COALESCE_THRESHOLD must be >= 1\n");
             rdma_coalesce_threshold = 1;
         }
     }
@@ -1802,7 +1734,7 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #endif
     ) {
 #if defined(CKPT)
-            MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
+            MPL_usage_printf("MV2_RNDV_PROTOCOL "
                               "must be either \"RPUT\" or \"R3\" when checkpoint is enabled\n");
             rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
 #else /* defined(CKPT) */
@@ -1814,7 +1746,7 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #ifdef _ENABLE_XRC_
             if (!USE_XRC)
 #endif
-                MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
+                MPL_usage_printf("MV2_RNDV_PROTOCOL "
                                   "must be either \"RPUT\", \"RGET\", or \"R3\"\n");
             rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
         }
@@ -4746,7 +4678,7 @@ void rdma_get_user_parameters(int num_proc, int me)
         rdma_num_ports = atoi(value);
         if (rdma_num_ports > MAX_NUM_PORTS) {
             rdma_num_ports = MAX_NUM_PORTS;
-            MPIU_Usage_printf("Warning, max ports per hca is %d, change %s in "
+            MPL_usage_printf("Warning, max ports per hca is %d, change %s in "
                               "ibv_param.h to overide the option\n",
                               MAX_NUM_PORTS, "MAX_NUM_PORTS");
         }
@@ -4759,7 +4691,7 @@ void rdma_get_user_parameters(int num_proc, int me)
 
         if (rdma_num_qp_per_port > MAX_NUM_QP_PER_PORT) {
             rdma_num_qp_per_port = MAX_NUM_QP_PER_PORT;
-            MPIU_Usage_printf("Warning, max qps per port is %d, change %s in "
+            MPL_usage_printf("Warning, max qps per port is %d, change %s in "
                               "ibv_param.h to overide the option\n",
                               MAX_NUM_QP_PER_PORT, "MAX_NUM_QP_PER_PORT");
         }
@@ -4900,7 +4832,7 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_UD_MTU")) != NULL) {
         rdma_default_ud_mtu = atol(value);
         if (rdma_default_ud_mtu < 256 || rdma_default_ud_mtu > 4096) {
-            MPIU_Usage_printf("Invalid value used for UD MTU (Min: 256; Max: 4K). Resetting to default value (2K)\n");
+            MPL_usage_printf("Invalid value used for UD MTU (Min: 256; Max: 4K). Resetting to default value (2K)\n");
             rdma_default_ud_mtu = 2048;
         }
     }
@@ -5069,7 +5001,7 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_ASYNC_THREAD_STACK_SIZE")) != NULL) {
         rdma_default_async_thread_stack_size = atoi(value);
         if (rdma_default_async_thread_stack_size < 1 << 10) {
-            MPIU_Usage_printf
+            MPL_usage_printf
                 ("Warning! Too small stack size for async thread (%d).  "
                  "Reset to %d\n", rdma_vbuf_secondary_pool_size,
                  RDMA_DEFAULT_ASYNC_THREAD_STACK_SIZE);
@@ -5126,7 +5058,7 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
         mv2_srq_limit = (uint32_t) atoi(value);
  
         if (mv2_srq_limit > mv2_srq_fill_size) {
-            MPIU_Usage_printf("SRQ limit shouldn't be greater than SRQ size\n");
+            MPL_usage_printf("SRQ limit shouldn't be greater than SRQ size\n");
         }
     }
  
@@ -5143,7 +5075,7 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
                     EAGER_THRESHOLD_ADJUST;
             } else {
                 /* We do not accept vbuf size < RDMA_MIN_VBUF_POOL_SIZE */
-                MPIU_Usage_printf("Warning, it is inefficient to use a value for"
+                MPL_usage_printf("Warning, it is inefficient to use a value for"
                                   "VBUF which is less than %d. Retaining the"
                                   " system default value of %d\n",
                                   RDMA_OPT_MIN_VBUF_POOL_SIZE,
@@ -5158,7 +5090,7 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
                     EAGER_THRESHOLD_ADJUST;
             } else {
                 /* We do not accept vbuf size < RDMA_MIN_VBUF_POOL_SIZE */
-                MPIU_Usage_printf("Warning, it is inefficient to use a value for"
+                MPL_usage_printf("Warning, it is inefficient to use a value for"
                                   "VBUF which is less than %d. Retaining the"
                                   " system default value of %d\n",
                                   RDMA_MIN_VBUF_POOL_SIZE,
@@ -5186,12 +5118,12 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
     {
         if (rdma_memory_optimization) {
             rdma_vbuf_pool_size = RDMA_OPT_VBUF_POOL_SIZE;
-            MPIU_Usage_printf("Warning! Too small vbuf pool size (%d).  "
+            MPL_usage_printf("Warning! Too small vbuf pool size (%d).  "
                               "Reset to %d\n", rdma_vbuf_pool_size,
                               RDMA_OPT_VBUF_POOL_SIZE);
         } else {
             rdma_vbuf_pool_size = RDMA_VBUF_POOL_SIZE;
-            MPIU_Usage_printf("Warning! Too small vbuf pool size (%d).  "
+            MPL_usage_printf("Warning! Too small vbuf pool size (%d).  "
                               "Reset to %d\n", rdma_vbuf_pool_size,
                               RDMA_VBUF_POOL_SIZE);
         }
@@ -5202,12 +5134,12 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
     if (rdma_vbuf_secondary_pool_size <= 0) {
         if (rdma_memory_optimization) {
             rdma_vbuf_secondary_pool_size = RDMA_OPT_VBUF_SECONDARY_POOL_SIZE;
-            MPIU_Usage_printf("Warning! Too small secondary vbuf pool size (%d)"
+            MPL_usage_printf("Warning! Too small secondary vbuf pool size (%d)"
                               ". Reset to %d\n", rdma_vbuf_secondary_pool_size,
                               RDMA_OPT_VBUF_SECONDARY_POOL_SIZE);
         } else {
             rdma_vbuf_secondary_pool_size = RDMA_VBUF_SECONDARY_POOL_SIZE;
-            MPIU_Usage_printf("Warning! Too small secondary vbuf pool size (%d)"
+            MPL_usage_printf("Warning! Too small secondary vbuf pool size (%d)"
                               ". Reset to %d\n", rdma_vbuf_secondary_pool_size,
                               RDMA_VBUF_SECONDARY_POOL_SIZE);
         }
@@ -5349,7 +5281,7 @@ void rdma_get_pm_parameters(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
             value = getenv("MV2_USE_XRC");
             if (value && (my_rank == 0)) {
                 if (atoi(value)) {
-                    MPIU_Error_printf("Error: XRC does not work with RDMA CM. "
+                    MPL_error_printf("Error: XRC does not work with RDMA CM. "
                                       "Proceeding without XRC support.\n");
                 }
             }
@@ -5445,7 +5377,7 @@ void rdma_get_pm_parameters(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
         if (rdma_num_req_hcas > MAX_NUM_HCAS) {
             rdma_num_req_hcas = MAX_NUM_HCAS;
 
-            MPIU_Msg_printf("Warning, max hca is %d, change %s in ibv_param.h "
+            MPL_msg_printf("Warning, max hca is %d, change %s in ibv_param.h "
                             "to overide the option\n", MAX_NUM_HCAS,
                             "MAX_NUM_HCAS");
         }

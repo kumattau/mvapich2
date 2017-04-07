@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -112,25 +112,30 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_rndv_send_t),
     sizeof(MPIDI_CH3_Pkt_cancel_send_req_t),
     sizeof(MPIDI_CH3_Pkt_cancel_send_resp_t),
+    sizeof(MPIDI_CH3_Pkt_t),
     sizeof(MPIDI_CH3_Pkt_put_t),
     sizeof(MPIDI_CH3_Pkt_get_t),
-    sizeof(MPIDI_CH3_Pkt_get_resp_t),
+    sizeof(MPIDI_CH3_Pkt_t),
     sizeof(MPIDI_CH3_Pkt_accum_t),
-    sizeof(MPIDI_CH3_Pkt_lock_t),
-    sizeof(MPIDI_CH3_Pkt_lock_granted_t),
-    sizeof(MPIDI_CH3_Pkt_lock_t),
-    sizeof(MPIDI_CH3_Pkt_lock_t),
-    sizeof(MPIDI_CH3_Pkt_pt_rma_done_t),
-    sizeof(MPIDI_CH3_Pkt_lock_put_unlock_t),
-    sizeof(MPIDI_CH3_Pkt_lock_get_unlock_t),
-    sizeof(MPIDI_CH3_Pkt_lock_accum_unlock_t),
-    sizeof(MPIDI_CH3_Pkt_accum_immed_t),
-    sizeof(MPIDI_CH3_Pkt_cas_t),
-    sizeof(MPIDI_CH3_Pkt_cas_resp_t),
+    sizeof(MPIDI_CH3_Pkt_t),
+    sizeof(MPIDI_CH3_Pkt_get_accum_t),
     sizeof(MPIDI_CH3_Pkt_fop_t),
-    sizeof(MPIDI_CH3_Pkt_fop_resp_t),
-    sizeof(MPIDI_CH3_Pkt_accum_t),
+    sizeof(MPIDI_CH3_Pkt_fop_t),
+    sizeof(MPIDI_CH3_Pkt_cas_t),
+    sizeof(MPIDI_CH3_Pkt_get_resp_t),
+    sizeof(MPIDI_CH3_Pkt_get_resp_t),
     sizeof(MPIDI_CH3_Pkt_get_accum_resp_t),
+    sizeof(MPIDI_CH3_Pkt_get_accum_resp_t),
+    sizeof(MPIDI_CH3_Pkt_fop_resp_t),
+    sizeof(MPIDI_CH3_Pkt_fop_resp_t),
+    sizeof(MPIDI_CH3_Pkt_cas_resp_t),
+    sizeof(MPIDI_CH3_Pkt_lock_t),
+    sizeof(MPIDI_CH3_Pkt_lock_ack_t),
+    sizeof(MPIDI_CH3_Pkt_lock_op_ack_t),
+    sizeof(MPIDI_CH3_Pkt_unlock_t),
+    sizeof(MPIDI_CH3_Pkt_flush_t),
+    sizeof(MPIDI_CH3_Pkt_ack_t),
+    sizeof(MPIDI_CH3_Pkt_decr_at_counter_t),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_flow_cntl),
     sizeof(MPIDI_CH3_Pkt_close_t),
     -1
@@ -141,7 +146,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Handle_recv_rndv_pkt
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Handle_recv_rndv_pkt(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt, 
 				    MPID_Request ** rreqp, int *foundp)
 {
@@ -151,7 +156,7 @@ int MPIDI_CH3U_Handle_recv_rndv_pkt(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&rts_pkt->match, foundp);
     if (rreq == NULL) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomemreq");
+	MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomemreq");
     }
 
     set_request_info(rreq, rts_pkt, MPIDI_REQUEST_RNDV_MSG);
@@ -198,7 +203,7 @@ int MPIDI_CH3U_Handle_recv_rndv_pkt(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Handle_ordered_recv_pkt
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt, 
 				       MPIDI_msg_sz_t *buflen, MPID_Request ** rreqp)
 {
@@ -248,7 +253,7 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Receive_data_found
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t *buflen, int *complete)
 {
     int dt_contig;
@@ -317,7 +322,7 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
             }
             else
 #endif
-            {
+            if (rreq->dev.drop_data == FALSE) {
                 MPIU_Memcpy((char*)(rreq->dev.user_buf) + dt_true_lb, buf, data_sz);
             }
             *buflen = data_sz;
@@ -327,25 +332,23 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
         {
             MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"IOV loaded for contiguous read");
             
-            rreq->dev.iov[0].MPID_IOV_BUF = 
-                (MPID_IOV_BUF_CAST)((char*)(rreq->dev.user_buf) + dt_true_lb);
-            rreq->dev.iov[0].MPID_IOV_LEN = data_sz;
+            rreq->dev.iov[0].MPL_IOV_BUF = 
+                (MPL_IOV_BUF_CAST)((char*)(rreq->dev.user_buf) + dt_true_lb);
+            rreq->dev.iov[0].MPL_IOV_LEN = data_sz;
             rreq->dev.iov_count = 1;
             *buflen = 0;
             *complete = FALSE;
         }
         
-	/* FIXME: We want to set the OnDataAvail to the appropriate 
-	   function, which depends on whether this is an RMA 
-	   request or a pt-to-pt request. */
-	rreq->dev.OnDataAvail = 0;
+        /* Trigger OnFinal when receiving the last segment */
+        rreq->dev.OnDataAvail = rreq->dev.OnFinal;
     }
     else {
 	/* user buffer is not contiguous or is too small to hold
 	   the entire message */
         
 	rreq->dev.segment_ptr = MPID_Segment_alloc( );
-        MPIU_ERR_CHKANDJUMP1((rreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
+        MPIR_ERR_CHKANDJUMP1((rreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
 
  	MPID_Segment_init(rreq->dev.user_buf, rreq->dev.user_count, 
 			  rreq->dev.datatype, rreq->dev.segment_ptr, 0);
@@ -362,10 +365,10 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
                     rreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE) {
                 mpi_errno = MPIDI_CH3U_Request_load_recv_iov(rreq);
                 if (mpi_errno != MPI_SUCCESS) {
-                    MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,
+                    MPIR_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,
                             "**ch3|loadrecviov");
                 }
-                MPIU_Memcpy_CUDA((char*)(rreq->dev.iov[0].MPID_IOV_BUF),
+                MPIU_Memcpy_CUDA((char*)(rreq->dev.iov[0].MPL_IOV_BUF),
                         buf, data_sz, cudaMemcpyDefault);
 
                 *buflen = data_sz;
@@ -385,7 +388,7 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
                 /* If the data can't be unpacked, the we have a
                    mismatch between the datatype and the amount of
                    data received.  Throw away received data. */
-                MPIU_ERR_SET(rreq->status.MPI_ERROR, MPI_ERR_TYPE, "**dtypemismatch");
+                MPIR_ERR_SET(rreq->status.MPI_ERROR, MPI_ERR_TYPE, "**dtypemismatch");
                 MPIR_STATUS_SET_COUNT(rreq->status, rreq->dev.segment_first);
                 *buflen = data_sz;
                 *complete = TRUE;
@@ -394,7 +397,8 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
             }
             /* --END ERROR HANDLING-- */
             *buflen = data_sz;
-            rreq->dev.OnDataAvail = 0;
+            /* Trigger OnFinal when receiving the last segment */
+            rreq->dev.OnDataAvail = rreq->dev.OnFinal;
             *complete = TRUE;
         }
         else
@@ -403,7 +407,7 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
 
             mpi_errno = MPIDI_CH3U_Request_load_recv_iov(rreq);
             if (mpi_errno != MPI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,
+                MPIR_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,
                                          "**ch3|loadrecviov");
             }
             *buflen = 0;
@@ -421,7 +425,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Receive_data_unexpected
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, char *buf, MPIDI_msg_sz_t *buflen, int *complete)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -438,7 +442,7 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, char *buf, MPIDI_msg
     if (buf_isdev && rdma_cuda_smp_ipc) {
         cuda_error = cudaMalloc((void **) &(rreq->dev.tmpbuf), rreq->dev.recv_data_sz);       
         if (cuda_error != cudaSuccess) {
-            MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
+            MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
                     rreq->dev.recv_data_sz);
         }
         rreq->dev.tmpbuf_sz = rreq->dev.recv_data_sz;
@@ -467,7 +471,7 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, char *buf, MPIDI_msg
     
     rreq->dev.tmpbuf = MPIU_Malloc(rreq->dev.recv_data_sz);
     if (!rreq->dev.tmpbuf) {
-	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
+	MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
 			     rreq->dev.recv_data_sz);
     }
     rreq->dev.tmpbuf_sz = rreq->dev.recv_data_sz;
@@ -483,8 +487,8 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, char *buf, MPIDI_msg
     }
     else
     {
-        rreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char *)rreq->dev.tmpbuf);
-        rreq->dev.iov[0].MPID_IOV_LEN = rreq->dev.recv_data_sz;
+        rreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)((char *)rreq->dev.tmpbuf);
+        rreq->dev.iov[0].MPL_IOV_LEN = rreq->dev.recv_data_sz;
         rreq->dev.iov_count = 1;
         rreq->dev.recv_pending_count = 2;
         *buflen = 0;
@@ -509,7 +513,7 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, char *buf, MPIDI_msg
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Post_data_receive_found
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Post_data_receive_found(MPID_Request * rreq)
 {
     int mpi_errno = MPI_SUCCESS;	
@@ -550,9 +554,9 @@ int MPIDI_CH3U_Post_data_receive_found(MPID_Request * rreq)
 	   entire message.  However, we haven't yet *read* the data 
 	   (this code describes how to read the data into the destination) */
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"IOV loaded for contiguous read");
-	rreq->dev.iov[0].MPID_IOV_BUF = 
-	    (MPID_IOV_BUF_CAST)((char*)(rreq->dev.user_buf) + dt_true_lb);
-	rreq->dev.iov[0].MPID_IOV_LEN = data_sz;
+	rreq->dev.iov[0].MPL_IOV_BUF = 
+	    (MPL_IOV_BUF_CAST)((char*)(rreq->dev.user_buf) + dt_true_lb);
+	rreq->dev.iov[0].MPL_IOV_LEN = data_sz;
 	rreq->dev.iov_count = 1;
 	/* FIXME: We want to set the OnDataAvail to the appropriate 
 	   function, which depends on whether this is an RMA 
@@ -564,14 +568,14 @@ int MPIDI_CH3U_Post_data_receive_found(MPID_Request * rreq)
 	   the entire message */
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"IOV loaded for non-contiguous read");
 	rreq->dev.segment_ptr = MPID_Segment_alloc( );
-        MPIU_ERR_CHKANDJUMP1((rreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
+        MPIR_ERR_CHKANDJUMP1((rreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
 	MPID_Segment_init(rreq->dev.user_buf, rreq->dev.user_count, 
 			  rreq->dev.datatype, rreq->dev.segment_ptr, 0);
 	rreq->dev.segment_first = 0;
 	rreq->dev.segment_size = data_sz;
 	mpi_errno = MPIDI_CH3U_Request_load_recv_iov(rreq);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,
+	    MPIR_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,
 				     "**ch3|loadrecviov");
 	}
     }
@@ -586,7 +590,7 @@ int MPIDI_CH3U_Post_data_receive_found(MPID_Request * rreq)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Post_data_receive_unexpected
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Post_data_receive_unexpected(MPID_Request * rreq)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -602,13 +606,13 @@ int MPIDI_CH3U_Post_data_receive_unexpected(MPID_Request * rreq)
     
     rreq->dev.tmpbuf = MPIU_Malloc(rreq->dev.recv_data_sz);
     if (!rreq->dev.tmpbuf) {
-	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
+	MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
 			     rreq->dev.recv_data_sz);
     }
     rreq->dev.tmpbuf_sz = rreq->dev.recv_data_sz;
     
-    rreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)rreq->dev.tmpbuf;
-    rreq->dev.iov[0].MPID_IOV_LEN = rreq->dev.recv_data_sz;
+    rreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)rreq->dev.tmpbuf;
+    rreq->dev.iov[0].MPL_IOV_LEN = rreq->dev.recv_data_sz;
     rreq->dev.iov_count = 1;
     rreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_UnpackUEBufComplete;
     rreq->dev.recv_pending_count = 2;
@@ -629,7 +633,7 @@ int MPIDI_CH3U_Post_data_receive_unexpected(MPID_Request * rreq)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Try_acquire_win_lock
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_Try_acquire_win_lock(MPID_Win *win_ptr, int requested_lock)
 {
     int existing_lock;
@@ -711,7 +715,7 @@ int MPIDI_CH3_PktHandler_FlowCntlUpdate( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_PktHandler_EndCH3
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_PktHandler_EndCH3( MPIDI_VC_t *vc ATTRIBUTE((unused)), 
 				 MPIDI_CH3_Pkt_t *pkt ATTRIBUTE((unused)),
 				 MPIDI_msg_sz_t *buflen ATTRIBUTE((unused)), 
@@ -739,7 +743,7 @@ int MPIDI_CH3_PktHandler_EndCH3( MPIDI_VC_t *vc ATTRIBUTE((unused)),
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_PktHandler_Init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[], 
 			       int arraySize  )
 {
@@ -750,7 +754,7 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
 
     /* Check that the array is large enough */
     if (arraySize < MPIDI_CH3_PKT_END_CH3) {
-	MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_INTERN,
+	MPIR_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_INTERN,
 				 "**ch3|pktarraytoosmall");
     }
     pktArray[MPIDI_CH3_PKT_EAGER_SEND] = 
@@ -804,13 +808,17 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
     pktArray[MPIDI_CH3_PKT_PUT_RNDV] = 
 	MPIDI_CH3_PktHandler_Put;
 #endif /* defined(CHANNEL_MRAIL) */
+    pktArray[MPIDI_CH3_PKT_PUT_IMMED] =
+	MPIDI_CH3_PktHandler_Put;
     pktArray[MPIDI_CH3_PKT_ACCUMULATE] = 
+	MPIDI_CH3_PktHandler_Accumulate;
+    pktArray[MPIDI_CH3_PKT_ACCUMULATE_IMMED] =
 	MPIDI_CH3_PktHandler_Accumulate;
 #if defined(CHANNEL_MRAIL)
     pktArray[MPIDI_CH3_PKT_ACCUMULATE_RNDV] = 
 	MPIDI_CH3_PktHandler_Accumulate;
-    pktArray[MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV] = 
-    MPIDI_CH3_PktHandler_Accumulate;
+    pktArray[MPIDI_CH3_PKT_GET_ACCUM_RNDV] = 
+        MPIDI_CH3_PktHandler_GetAccumulate;
 #endif /* defined(CHANNEL_MRAIL) */
     pktArray[MPIDI_CH3_PKT_GET] = 
 	MPIDI_CH3_PktHandler_Get;
@@ -820,35 +828,41 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
 #endif /* defined(CHANNEL_MRAIL) */
     pktArray[MPIDI_CH3_PKT_GET_RESP] = 
 	MPIDI_CH3_PktHandler_GetResp;
+    pktArray[MPIDI_CH3_PKT_GET_RESP_IMMED] =
+	MPIDI_CH3_PktHandler_GetResp;
     pktArray[MPIDI_CH3_PKT_LOCK] =
 	MPIDI_CH3_PktHandler_Lock;
-    pktArray[MPIDI_CH3_PKT_LOCK_GRANTED] =
-	MPIDI_CH3_PktHandler_LockGranted;
+    pktArray[MPIDI_CH3_PKT_LOCK_ACK] =
+	MPIDI_CH3_PktHandler_LockAck;
+    pktArray[MPIDI_CH3_PKT_LOCK_OP_ACK] =
+	MPIDI_CH3_PktHandler_LockOpAck;
     pktArray[MPIDI_CH3_PKT_UNLOCK] =
         MPIDI_CH3_PktHandler_Unlock;
     pktArray[MPIDI_CH3_PKT_FLUSH] =
         MPIDI_CH3_PktHandler_Flush;
-    pktArray[MPIDI_CH3_PKT_PT_RMA_DONE] = 
-	MPIDI_CH3_PktHandler_PtRMADone;
-    pktArray[MPIDI_CH3_PKT_LOCK_PUT_UNLOCK] = 
-	MPIDI_CH3_PktHandler_LockPutUnlock;
-    pktArray[MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK] =
-	MPIDI_CH3_PktHandler_LockAccumUnlock;
-    pktArray[MPIDI_CH3_PKT_LOCK_GET_UNLOCK] = 
-	MPIDI_CH3_PktHandler_LockGetUnlock;
-    pktArray[MPIDI_CH3_PKT_ACCUM_IMMED] = 
-	MPIDI_CH3_PktHandler_Accumulate_Immed;
-    pktArray[MPIDI_CH3_PKT_CAS] =
+    pktArray[MPIDI_CH3_PKT_ACK] =
+	MPIDI_CH3_PktHandler_Ack;
+    pktArray[MPIDI_CH3_PKT_DECR_AT_COUNTER] =
+        MPIDI_CH3_PktHandler_DecrAtCnt;
+    pktArray[MPIDI_CH3_PKT_CAS_IMMED] =
         MPIDI_CH3_PktHandler_CAS;
-    pktArray[MPIDI_CH3_PKT_CAS_RESP] =
+    pktArray[MPIDI_CH3_PKT_CAS_RESP_IMMED] =
         MPIDI_CH3_PktHandler_CASResp;
     pktArray[MPIDI_CH3_PKT_FOP] =
         MPIDI_CH3_PktHandler_FOP;
+    pktArray[MPIDI_CH3_PKT_FOP_IMMED] =
+        MPIDI_CH3_PktHandler_FOP;
     pktArray[MPIDI_CH3_PKT_FOP_RESP] =
         MPIDI_CH3_PktHandler_FOPResp;
+    pktArray[MPIDI_CH3_PKT_FOP_RESP_IMMED] =
+        MPIDI_CH3_PktHandler_FOPResp;
     pktArray[MPIDI_CH3_PKT_GET_ACCUM] =
-        MPIDI_CH3_PktHandler_Accumulate;
+        MPIDI_CH3_PktHandler_GetAccumulate;
+    pktArray[MPIDI_CH3_PKT_GET_ACCUM_IMMED] =
+        MPIDI_CH3_PktHandler_GetAccumulate;
     pktArray[MPIDI_CH3_PKT_GET_ACCUM_RESP] =
+        MPIDI_CH3_PktHandler_Get_AccumResp;
+    pktArray[MPIDI_CH3_PKT_GET_ACCUM_RESP_IMMED] =
         MPIDI_CH3_PktHandler_Get_AccumResp;
     /* End of default RMA operations */
 

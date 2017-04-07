@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -48,7 +48,7 @@ do {                                                          \
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAIL_Parse_header
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
                                   vbuf * v, void **pkt, int *header_size)
 {
@@ -74,7 +74,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
                      v->content_size - sizeof *header);
     if (crc != header->crc) {
 	int rank; UPMI_GET_RANK(&rank);
-	MPIU_Error_printf(stderr, "CRC mismatch, get %lx, should be %lx "
+	MPL_error_printf(stderr, "CRC mismatch, get %lx, should be %lx "
 		"type %d, ocntent size %d\n", 
 		crc, header->crc, header->type, v->content_size);
         exit(EXIT_FAILURE);
@@ -214,9 +214,16 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             *pkt = vstart;
             break;
         }
-    case MPIDI_CH3_PKT_PUT:
+    case MPIDI_CH3_PKT_PUT_IMMED:
         {
             *header_size = sizeof(MPIDI_CH3_Pkt_put_t);
+            *pkt = vstart;
+            break;
+        }
+    case MPIDI_CH3_PKT_PUT:
+        {
+            /*Put uses MPIDI_CH3_Pkt_t type*/
+            *header_size = sizeof(MPIDI_CH3_Pkt_t);
             *pkt = vstart;
             break;
         }
@@ -238,15 +245,22 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             *pkt = vstart;
             break;
         }
-    case MPIDI_CH3_PKT_GET_RESP:       /*15 */
+    case MPIDI_CH3_PKT_GET_RESP:
+    case MPIDI_CH3_PKT_GET_RESP_IMMED:
         {
             *header_size = sizeof(MPIDI_CH3_Pkt_get_resp_t);
             *pkt = vstart;
             break;
         }
-    case MPIDI_CH3_PKT_ACCUMULATE:
+    case MPIDI_CH3_PKT_ACCUMULATE_IMMED:
         {
             *header_size = sizeof(MPIDI_CH3_Pkt_accum_t);
+            *pkt = vstart;
+            break;
+        }
+    case MPIDI_CH3_PKT_ACCUMULATE:
+        {
+            *header_size = sizeof(MPIDI_CH3_Pkt_t);
             *pkt = vstart;
             break;
         }
@@ -256,7 +270,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             *pkt = vstart;
             break;
         }
-    case MPIDI_CH3_PKT_GET_ACCUMULATE_RNDV:
+    case MPIDI_CH3_PKT_GET_ACCUM_RNDV:
         {
             *header_size = sizeof(MPIDI_CH3_Pkt_get_accum_rndv_t);
             *pkt = vstart;
@@ -268,9 +282,15 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             *pkt = vstart;
             break;
         }
-    case MPIDI_CH3_PKT_LOCK_GRANTED:
+    case MPIDI_CH3_PKT_LOCK_ACK: 
         {
-            *header_size = sizeof(MPIDI_CH3_Pkt_lock_granted_t);
+            *header_size = sizeof(MPIDI_CH3_Pkt_lock_ack_t);
+            *pkt = vstart;
+            break;
+        }
+    case MPIDI_CH3_PKT_LOCK_OP_ACK: 
+        {
+            *header_size = sizeof(MPIDI_CH3_Pkt_lock_op_ack_t);
             *pkt = vstart;
             break;
         }
@@ -286,67 +306,68 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             *pkt = vstart;
             break;
         }
-    case MPIDI_CH3_PKT_PT_RMA_DONE:
+    case MPIDI_CH3_PKT_ACK:
         {
-            *header_size = sizeof(MPIDI_CH3_Pkt_pt_rma_done_t);
+            *header_size = sizeof(MPIDI_CH3_Pkt_ack_t);
             *pkt = vstart;
             break;
         }
-    case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:
+    case MPIDI_CH3_PKT_DECR_AT_COUNTER: 
         {
-            *header_size = sizeof(MPIDI_CH3_Pkt_lock_put_unlock_t);
+            *header_size = sizeof(MPIDI_CH3_Pkt_decr_at_counter_t);
             *pkt = vstart;
             break;
         }
-    case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:
-        {
-            *header_size = sizeof(MPIDI_CH3_Pkt_lock_get_unlock_t);
-            *pkt = vstart;
-            break;
-        }
-    case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
-        {
-            *header_size = sizeof(MPIDI_CH3_Pkt_lock_accum_unlock_t);
-            *pkt = vstart;
-            break;
-        }
-    case MPIDI_CH3_PKT_ACCUM_IMMED:
-        {
-            *header_size = sizeof(MPIDI_CH3_Pkt_accum_immed_t);
-            *pkt = vstart;
-            break;
-        }
-    case MPIDI_CH3_PKT_CAS:
-        {
-            *header_size = sizeof(MPIDI_CH3_Pkt_cas_t);
-            *pkt = vstart;
-            break;
-        }
-    case MPIDI_CH3_PKT_CAS_RESP:
-        {
-            *header_size = sizeof(MPIDI_CH3_Pkt_cas_resp_t);
-            *pkt = vstart;
-            break;
-        }
-    case MPIDI_CH3_PKT_FOP:
+    case MPIDI_CH3_PKT_FOP_IMMED:
         {
             *header_size = sizeof(MPIDI_CH3_Pkt_fop_t);
             *pkt = vstart;
             break;
         }
+    case MPIDI_CH3_PKT_FOP:
+        {
+            *header_size = sizeof(MPIDI_CH3_Pkt_t);
+            *pkt = vstart;
+            break;
+        }
     case MPIDI_CH3_PKT_FOP_RESP:
+    case MPIDI_CH3_PKT_FOP_RESP_IMMED:
         {
             *header_size = sizeof(MPIDI_CH3_Pkt_fop_resp_t);
             *pkt = vstart;
             break;
         }
+    case MPIDI_CH3_PKT_CAS_IMMED:
+        {
+            *header_size = sizeof(MPIDI_CH3_Pkt_cas_t);
+            *pkt = vstart;
+            break;
+        }
+    case MPIDI_CH3_PKT_CAS_RESP_IMMED: 
+        {
+            *header_size = sizeof(MPIDI_CH3_Pkt_cas_resp_t);
+            *pkt = vstart;
+            break;
+        }
+    case MPIDI_CH3_PKT_GET_ACCUM_IMMED:
+        {
+            *header_size = sizeof(MPIDI_CH3_Pkt_get_accum_t);
+            *pkt = vstart;
+            break;
+        }
     case MPIDI_CH3_PKT_GET_ACCUM:
         {
-            *header_size = sizeof(MPIDI_CH3_Pkt_accum_t);
+            *header_size = sizeof(MPIDI_CH3_Pkt_t);
             *pkt = vstart;
             break;
         }
     case MPIDI_CH3_PKT_GET_ACCUM_RESP:
+        {
+            *header_size = sizeof(MPIDI_CH3_Pkt_get_accum_resp_t);
+            *pkt = vstart;
+            break;
+        }
+    case MPIDI_CH3_PKT_GET_ACCUM_RESP_IMMED: 
         {
             *header_size = sizeof(MPIDI_CH3_Pkt_get_accum_resp_t);
             *pkt = vstart;
@@ -374,7 +395,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
         {
             /* Header is corrupted if control has reached here in prototype */
             /* */
-            MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+            MPIR_ERR_SETFATALANDJUMP2(mpi_errno,
                     MPI_ERR_OTHER,
                     "**fail",
                     "**fail %s %d", 
@@ -465,11 +486,11 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAIL_Fill_Request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
                                   int header_size, int *nb)
 {
-    MPID_IOV    *iov;
+    MPL_IOV    *iov;
     int         n_iov;
     size_t      len_avail;
     void        *data_buf;
@@ -489,29 +510,29 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
 
 
 #ifdef _ENABLE_CUDA_
-    if ( rdma_enable_cuda && is_device_buffer(iov[0].MPID_IOV_BUF)) {
+    if ( rdma_enable_cuda && is_device_buffer(iov[0].MPL_IOV_BUF)) {
 
         *nb = 0;
         MPIU_Assert(req->dev.iov_offset == 0 && n_iov == 1);
-        MPIU_Memcpy_CUDA(iov[0].MPID_IOV_BUF, 
+        MPIU_Memcpy_CUDA(iov[0].MPL_IOV_BUF, 
                 data_buf, 
-                iov[0].MPID_IOV_LEN,
+                iov[0].MPL_IOV_LEN,
                 cudaMemcpyHostToDevice);
-        *nb += iov[0].MPID_IOV_LEN;
-        len_avail -= iov[0].MPID_IOV_LEN;
+        *nb += iov[0].MPL_IOV_LEN;
+        len_avail -= iov[0].MPL_IOV_LEN;
     } else {
 #endif
 
     *nb = 0;
     for (i = req->dev.iov_offset; i < n_iov; i++) {
-        if (len_avail >= (MPIDI_msg_sz_t) iov[i].MPID_IOV_LEN
-            && iov[i].MPID_IOV_LEN != 0) {
-            MPIU_Memcpy(iov[i].MPID_IOV_BUF, data_buf, iov[i].MPID_IOV_LEN);
-            data_buf = (void *) ((uintptr_t) data_buf + iov[i].MPID_IOV_LEN);
-            len_avail -= iov[i].MPID_IOV_LEN;
-            *nb += iov[i].MPID_IOV_LEN;
+        if (len_avail >= (MPIDI_msg_sz_t) iov[i].MPL_IOV_LEN
+            && iov[i].MPL_IOV_LEN != 0) {
+            MPIU_Memcpy(iov[i].MPL_IOV_BUF, data_buf, iov[i].MPL_IOV_LEN);
+            data_buf = (void *) ((uintptr_t) data_buf + iov[i].MPL_IOV_LEN);
+            len_avail -= iov[i].MPL_IOV_LEN;
+            *nb += iov[i].MPL_IOV_LEN;
         } else if (len_avail > 0) {
-            MPIU_Memcpy(iov[i].MPID_IOV_BUF, data_buf, len_avail);
+            MPIU_Memcpy(iov[i].MPL_IOV_BUF, data_buf, len_avail);
             *nb += len_avail;
             break;
         }
@@ -598,7 +619,7 @@ int MPIDI_CH3I_MRAILI_Recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
 	        if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
 		        ret = deregister_memory(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
                 if (ret) {
-		            MPIU_Error_printf("Failed to deregister mr (%d)\n", ret);
+		            MPL_error_printf("Failed to deregister mr (%d)\n", ret);
                 } else {
                     vc->mrail.rfp.RDMA_recv_buf_mr[hca_index] = NULL;
                 }

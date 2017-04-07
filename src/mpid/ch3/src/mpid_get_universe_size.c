@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  *
- * Copyright (c) 2001-2016, The Ohio State University. All rights
+ * Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -28,7 +28,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPID_Get_universe_size
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_Get_universe_size(int  * universe_size)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -36,7 +36,7 @@ int MPID_Get_universe_size(int  * universe_size)
 
     pmi_errno = UPMI_GET_UNIVERSE_SIZE(universe_size);
     if (pmi_errno != UPMI_SUCCESS) {
-	MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, 
+	MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, 
 			     "**pmi_get_universe_size",
 			     "**pmi_get_universe_size %d", pmi_errno);
     }

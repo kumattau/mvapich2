@@ -146,9 +146,8 @@ int MPIR_Datatype_init_names(void)
     int mpi_errno = MPI_SUCCESS;
     int i;
     MPID_Datatype *datatype_ptr = NULL;
-    MPIU_THREADSAFE_INIT_DECL(needsInit);
 
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     if (!mv2_datatype_names_initialized)
     {
 	/* Make sure that the basics have datatype structures allocated
@@ -157,7 +156,7 @@ int MPIR_Datatype_init_names(void)
 	 */
 	mpi_errno = MPIR_Datatype_builtin_fillin();
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_POPFATAL(mpi_errno);
+	    MPIR_ERR_POPFATAL(mpi_errno);
 	}
 	
 	/* For each predefined type, ensure that there is a corresponding
@@ -173,11 +172,11 @@ int MPIR_Datatype_init_names(void)
 	    if (datatype_ptr < MPID_Datatype_builtin ||
 		datatype_ptr > MPID_Datatype_builtin + MPID_DATATYPE_N_BUILTIN)
 		{
-		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_INTERN,
+		    MPIR_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_INTERN,
 			      "**typeinitbadmem","**typeinitbadmem %d", i);
 		}
 	    if (!datatype_ptr) {
-		MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_INTERN,
+		MPIR_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_INTERN,
 			      "**typeinitfail", "**typeinitfail %d", i - 1);
 	    }
 
@@ -197,7 +196,7 @@ int MPIR_Datatype_init_names(void)
 	    MPID_Datatype_get_ptr(mpi_maxloc_names[i].dtype,
 				  datatype_ptr);
 	    if (!datatype_ptr) {
-		MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_INTERN, "**typeinitminmaxloc");
+		MPIR_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_INTERN, "**typeinitminmaxloc");
 	    }
 	    MPIU_Strncpy(datatype_ptr->name, mpi_maxloc_names[i].name,
 			 MPI_MAX_OBJECT_NAME);
@@ -206,7 +205,7 @@ int MPIR_Datatype_init_names(void)
     }
 
 fn_exit:
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     return mpi_errno;
 fn_fail:
     mv2_datatype_names_initialized = 0;

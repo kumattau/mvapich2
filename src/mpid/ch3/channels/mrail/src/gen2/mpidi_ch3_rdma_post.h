@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,6 +21,7 @@
 
 #include "mpichconf.h"
 #include "vbuf.h"
+#include "dreg.h"
 
 /* Use this header to add implementation specific structures
    that cannot be defined until after the mpich2 header files
@@ -58,7 +59,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
 #define Calculate_IOV_len(_iov, _n_iov, _len)                   \
 {   int _i; (_len) = 0;                                         \
     for (_i = 0; _i < (_n_iov); _i ++) {                        \
-        (_len) += (_iov)[_i].MPID_IOV_LEN;                      \
+        (_len) += (_iov)[_i].MPL_IOV_LEN;                      \
     }                                                           \
 }
 
@@ -263,7 +264,7 @@ int MPIDI_CH3I_RDMA_cq_poll(void);
 void MRAILI_Init_vc(struct MPIDI_VC* vc);
 
 int MPIDI_CH3I_MRAILI_Eager_send(   struct MPIDI_VC* vc,
-                                    MPID_IOV * iov,
+                                    MPL_IOV * iov,
                                     int n_iov,
                                     size_t len,
                                     int * num_bytes_ptr,

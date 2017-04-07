@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -42,10 +42,6 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_accum_t),
     sizeof(MPIDI_CH3_Pkt_lock_t),
     sizeof(MPIDI_CH3_Pkt_lock_granted_t),
-    sizeof(MPIDI_CH3_Pkt_pt_rma_done_t),
-    sizeof(MPIDI_CH3_Pkt_lock_put_unlock_t),
-    sizeof(MPIDI_CH3_Pkt_lock_get_unlock_t),
-    sizeof(MPIDI_CH3_Pkt_lock_accum_unlock_t),
     -1,                                 /* FLOW CONTROL UPDATE unused */
     sizeof(MPIDI_CH3_Pkt_close_t),
     -1,                                 /* MPIDI_CH3_PKT_END_CH3 */  
@@ -81,12 +77,12 @@ int MPIDI_CH3_Pkt_size_index[] = {
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_parse_header
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /**
  *  FIXME: Ideally the header size should be determined by high level macros,
  * instead of hacking the message header at the device layer
  */
-int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
+int MPIDI_nem_ib_parse_header(MPIDI_VC_t * vc,
                                   vbuf * v, void **pkt, int *header_size)
 {
     void *vstart;
@@ -108,7 +104,7 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
                      v->content_size - sizeof *header);
     if (crc != header->mrail.crc) {
         int rank; UPMI_GET_RANK(&rank);
-        MPIU_Error_printf(stderr, "CRC mismatch, get %lx, should be %lx "
+        MPL_error_printf(stderr, "CRC mismatch, get %lx, should be %lx "
                 "type %d, ocntent size %d\n",
                 crc, header->mrail.crc, header->type, v->content_size);
         exit( EXIT_FAILURE );
@@ -274,6 +270,11 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
             *pkt = vstart;
             break;
         }
+    case MPIDI_CH3_PKT_PUT_IMMED:
+        {
+            *pkt = vstart;
+            break;
+        }
     case MPIDI_CH3_PKT_GET:
         {
             *pkt = vstart;
@@ -290,38 +291,17 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
             break;
         }
     case MPIDI_CH3_PKT_LOCK:
-        {
-            *pkt = vstart;
-            break;
-        }
-    case MPIDI_CH3_PKT_LOCK_GRANTED:
-        {
-            *pkt = vstart;
-            break;
-        }
-    case MPIDI_CH3_PKT_PT_RMA_DONE:
-        {
-            *pkt = vstart;
-            break;
-        }
-    case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:
-        {
-            *pkt = vstart;
-            break;
-        }
-    case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:
+    case MPIDI_CH3_PKT_LOCK_ACK:
+    case MPIDI_CH3_PKT_LOCK_OP_ACK:
         {
             *pkt = vstart;
             break;
         }
     case MPIDI_CH3_PKT_FLUSH:
+    case MPIDI_CH3_PKT_ACK:
     case MPIDI_CH3_PKT_UNLOCK:
     case MPIDI_CH3_PKT_GET_ACCUM:
     case MPIDI_CH3_PKT_GET_ACCUM_RESP:
-    case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
-    case MPIDI_CH3_PKT_ACCUM_IMMED:
-    case MPIDI_CH3_PKT_CAS:
-    case MPIDI_CH3_PKT_CAS_RESP:
     case MPIDI_CH3_PKT_FOP:
     case MPIDI_CH3_PKT_FOP_RESP:
         {
@@ -349,7 +329,7 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
         {
             /* Header is corrupted if control has reached here in prototype */
             /* */
-            MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+            MPIR_ERR_SETFATALANDJUMP2(mpi_errno,
                     MPI_ERR_OTHER,
                     "**fail",
                     "**fail %s %d",
@@ -416,12 +396,12 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_fill_request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_fill_request(MPID_Request * req, vbuf * v,
                                   int header_size, int *nb)
 {
 
-    MPID_IOV    *iov;
+    MPL_IOV    *iov;
     int         n_iov;
     int         len_avail;
     void        *data_buf;
@@ -439,14 +419,14 @@ int MPIDI_nem_ib_fill_request(MPID_Request * req, vbuf * v,
 
     *nb = 0;
     for (i = req->dev.iov_offset; i < n_iov; i++) {
-        if (len_avail >= (int) iov[i].MPID_IOV_LEN
-            && iov[i].MPID_IOV_LEN != 0) {
-            MPIU_Memcpy(iov[i].MPID_IOV_BUF, data_buf, iov[i].MPID_IOV_LEN);
-            data_buf = (void *) ((uintptr_t) data_buf + iov[i].MPID_IOV_LEN);
-            len_avail -= iov[i].MPID_IOV_LEN;
-            *nb += iov[i].MPID_IOV_LEN;
+        if (len_avail >= (int) iov[i].MPL_IOV_LEN
+            && iov[i].MPL_IOV_LEN != 0) {
+            MPIU_Memcpy(iov[i].MPL_IOV_BUF, data_buf, iov[i].MPL_IOV_LEN);
+            data_buf = (void *) ((uintptr_t) data_buf + iov[i].MPL_IOV_LEN);
+            len_avail -= iov[i].MPL_IOV_LEN;
+            *nb += iov[i].MPL_IOV_LEN;
         } else if (len_avail > 0) {
-          MPIU_Memcpy(iov[i].MPID_IOV_BUF, data_buf, len_avail);
+          MPIU_Memcpy(iov[i].MPL_IOV_BUF, data_buf, len_avail);
             *nb += len_avail;
             break;
         }
@@ -524,7 +504,7 @@ int MPIDI_nem_ib_recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
             if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[hca_index]) {
                 ret = deregister_memory(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[hca_index]);
             if (ret) {
-                MPIU_Error_printf("Failed to deregister mr (%d)\n", ret);
+                MPL_error_printf("Failed to deregister mr (%d)\n", ret);
             } else {
                 VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[hca_index] = NULL;
             }
@@ -578,7 +558,7 @@ int MPIDI_nem_ib_recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_NEM_IB_PACKETIZED_RECV_REQ
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_packetized_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -598,7 +578,7 @@ int MPIDI_nem_ib_packetized_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_NEM_IB_PACKETIZED_RECV_DATA
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_packetized_recv_data(MPIDI_VC_t * vc, vbuf *v)
 {
     int mpi_errno = MPI_SUCCESS;

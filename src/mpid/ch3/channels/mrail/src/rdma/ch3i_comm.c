@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,7 +23,7 @@
 #undef FUNCNAME
 #define FUNCNAME init_MV2_collops
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int init_MV2_collops (MPID_Comm *comm)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -63,16 +63,12 @@ int init_MV2_collops (MPID_Comm *comm)
     
 fn_exit:
     return mpi_errno;
-    /* --BEGIN ERROR HANDLING-- */
-fn_fail:
-    goto fn_exit;
-    /* --END ERROR HANDLING-- */
 }
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_comm_create
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_comm_create (MPID_Comm *comm)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -117,7 +113,7 @@ int MPIDI_CH3I_comm_create (MPID_Comm *comm)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_comm_destroy
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_comm_destroy (MPID_Comm *comm)
 {
     int mpi_errno = MPI_SUCCESS;

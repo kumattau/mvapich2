@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -36,7 +36,7 @@ do {                                                              \
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_ckpt_pause_send_vc
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_ckpt_pause_send_vc(MPIDI_VC_t *vc)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -58,7 +58,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_pkt_unpause_handler
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_pkt_unpause_handler(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, MPIDI_msg_sz_t *buflen, MPID_Request **rreqp)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -93,7 +93,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_ckpt_continue_vc
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_ckpt_continue_vc(MPIDI_VC_t *vc)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -109,10 +109,10 @@ int MPID_nem_ib_ckpt_continue_vc(MPIDI_VC_t *vc)
 
     fprintf(stderr,"Calling MPID_nem_ib_iStartContigMsg_paused\n");
     mpi_errno = MPID_nem_ib_iStartContigMsg_paused(vc, &upkt, sizeof(MPIDI_nem_ib_pkt_unpause_t), NULL, 0, &unpause_req);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     if (unpause_req)
     {
-        if (unpause_req->status.MPI_ERROR) MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        if (unpause_req->status.MPI_ERROR) MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
         MPID_Request_release(unpause_req);
         if (mpi_errno) goto fn_fail;
     }
@@ -132,7 +132,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_ckpt_restart_vc
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_ckpt_restart_vc(MPIDI_VC_t *vc)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -147,13 +147,13 @@ int MPID_nem_ib_ckpt_restart_vc(MPIDI_VC_t *vc)
     pkt->subtype = MPIDI_NEM_IB_PKT_UNPAUSE;
 
     mpi_errno = MPID_nem_ib_iStartContigMsg_paused(vc, pkt, sizeof(pkt), NULL, 0, &sreq);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     if (sreq != NULL) {
         if (sreq->status.MPI_ERROR != MPI_SUCCESS) {
             mpi_errno = sreq->status.MPI_ERROR;
             MPID_Request_release(sreq);
-            MPIU_ERR_INTERNALANDJUMP(mpi_errno, "Failed to send checkpoint unpause pkt.");
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
         }
         MPID_Request_release(sreq);
     }

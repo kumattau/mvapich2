@@ -1,6 +1,6 @@
 /*
  * Copyright © 2015 Intel, Inc.  All rights reserved.
- * Copyright © 2015 Inria.  All rights reserved.
+ * Copyright © 2015-2016 Inria.  All rights reserved.
  * See COPYING in top-level directory.
  */
 
@@ -15,7 +15,7 @@
 #include <errno.h>
 #include <assert.h>
 
-#define DEFAULT_DUMP_DIR "/var/run/hwloc"
+#define DEFAULT_DUMP_DIR RUNSTATEDIR "/hwloc"
 
 extern int hwloc_dump_hwdata_knl_smbios(const char *input_fsroot, const char *filename);
 
@@ -23,7 +23,7 @@ static void usage(const char *name, FILE *where)
 {
     fprintf (where, "Usage: %s [ options ] ...\n", name);
     fprintf (where, "Options:\n");
-    fprintf (where, "  -o <dir>      Output files to directory <dir> instead of /var/run/hwloc/\n");
+    fprintf (where, "  -o <dir>      Output files to directory <dir> instead of " DEFAULT_DUMP_DIR "\n");
 }
 
 int main(int argc, char *argv[])
@@ -74,9 +74,9 @@ int main(int argc, char *argv[])
 
     err = asprintf(&filename, "%s/knl_memoryside_cache", dirname);
     assert(err >= 0);
-    hwloc_dump_hwdata_knl_smbios(input_fsroot, filename);
+    err = hwloc_dump_hwdata_knl_smbios(input_fsroot, filename);
     free(filename);
     printf("\n");
 
-    return EXIT_SUCCESS;
+    return err ? EXIT_FAILURE : EXIT_SUCCESS;
 }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,11 @@
 #include "debug_utils.h"
 #include "mv2_arch_hca_detect.h"
 
+#if defined(_SHARP_SUPPORT_)
+extern int mv2_enable_sharp_coll;
+extern int mv2_sharp_port;
+extern char * mv2_sharp_hca_name;
+#endif
 extern int mv2_is_in_finalize;
 /* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
 extern int rdma_num_hcas;
@@ -142,6 +147,9 @@ extern int using_mpirun_rsh;
 
 extern int use_hwloc_cpu_binding;
 extern int max_rdma_connect_attempts;
+#ifdef _MULTI_SUBNET_SUPPORT_
+extern int mv2_rdma_cm_multi_subnet_support;
+#endif /* _MULTI_SUBNET_SUPPORT_ */
 extern int rdma_cm_connect_retry_interval;
 extern int rdma_num_rails_per_hca;
 extern int rdma_process_binding_rail_offset;
@@ -756,7 +764,7 @@ typedef struct mv2_env_param_list {
     mv2_env_param_group_t group;        /* param category */
     char *name;                 /* param name */
     void *value;                /* param value store addr */
-    int extrenal_visible;       /* 1 or 0 */
+    int external_visible;       /* 1 or 0 */
     char *descrption;           /* param descrption */
 } mv2_env_param_list_t;
 

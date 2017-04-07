@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -254,7 +254,8 @@ void cudaipc_allocate_shared_region (MPIDI_PG_t *pg, int num_processes, int my_r
 {
     char *shmem_dir;
     char s_hostname[HOSTNAME_LEN];
-    int i, j, errflag, local_index, shared_index;
+    int i, j, local_index, shared_index;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     struct stat file_status;
     MPIDI_VC_t *vc;
     
@@ -398,7 +399,8 @@ void cudaipc_allocate_ipc_region (MPIDI_PG_t *pg, int num_processes, int my_rank
 
 void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
 {
-    int i, j, errflag, local_index, shared_index;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
+    int i, j, local_index, shared_index;
     MPIDI_VC_t *vc;
   
     /*allocate shared memory region to exchange info*/ 
@@ -442,7 +444,7 @@ void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
 
 void cudaipc_init_dynamic (MPIDI_VC_t *vc)
 {
-    int i, j, errflag, local_index, shared_index;
+    int i, local_index, shared_index;
     int my_device_id, peer_device_id;
   
     /*check if peer device is setup for the IPC buffered channel*/
@@ -495,7 +497,8 @@ void cudaipc_finalize()
 {
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;
-    int i, j, pg_size, my_rank, local_index, errflag;
+    int i, j, pg_size, my_rank, local_index;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
  
     if (!cudaipc_stage_buffered) {
         goto cleanup_shmem_file;

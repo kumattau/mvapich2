@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -43,7 +43,7 @@
 #define Calculate_IOV_len(_iov, _n_iov, _len)                   \
 {   int _i; (_len) = 0;                                         \
     for (_i = 0; _i < (_n_iov); _i ++) {                        \
-        (_len) += (_iov)[_i].MPID_IOV_LEN;                      \
+        (_len) += (_iov)[_i].MPL_IOV_LEN;                      \
     }                                                           \
 }
 
@@ -76,8 +76,8 @@
 #undef FUNCNAME
 #define FUNCNAME create_request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-static inline MPID_Request * create_request(MPID_IOV * iov, int iov_count,
+#define FCNAME MPL_QUOTE(FUNCNAME)
+static inline MPID_Request * create_request(MPL_IOV * iov, int iov_count,
                         int iov_offset, MPIU_Size_t nb)
 {
     MPID_Request * sreq;
@@ -101,15 +101,15 @@ static inline MPID_Request * create_request(MPID_IOV * iov, int iov_count,
     if (iov_offset == 0)
     {
     /*
-        MPIU_Assert(iov[0].MPID_IOV_LEN == sizeof(MPIDI_CH3_Pkt_t));
+        MPIU_Assert(iov[0].MPL_IOV_LEN == sizeof(MPIDI_CH3_Pkt_t));
     */
     
-        sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPID_IOV_BUF;
-        sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) &sreq->dev.pending_pkt;
+        sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPL_IOV_BUF;
+        sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) &sreq->dev.pending_pkt;
     }
-    sreq->dev.iov[iov_offset].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char *)
-            sreq->dev.iov[iov_offset].MPID_IOV_BUF + nb);
-    sreq->dev.iov[iov_offset].MPID_IOV_LEN -= nb;
+    sreq->dev.iov[iov_offset].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)((char *)
+            sreq->dev.iov[iov_offset].MPL_IOV_BUF + nb);
+    sreq->dev.iov[iov_offset].MPL_IOV_LEN -= nb;
     sreq->dev.iov_offset = iov_offset;
     sreq->dev.iov_count = iov_count;
     sreq->dev.OnDataAvail = 0;
@@ -157,7 +157,7 @@ static inline void MPIDI_nem_ib_POST_SR(vbuf *_v, MPID_nem_ib_connection_t *_c, 
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Ext_sendq_enqueue
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c,
                                             int rail,
                                             vbuf * v)
@@ -192,7 +192,7 @@ void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c,
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Ext_sendq_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
 {
     MPIDI_STATE_DECL(MPID_STATE_MRAILI_EXT_SENDQ_SEND);
@@ -237,10 +237,10 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_NEM_IB_PACKETIZED_SEND
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 {
-    MPID_IOV iov[MPID_IOV_LIMIT + 1];
+    MPL_IOV iov[MPL_IOV_LIMIT + 1];
 
     MPIDI_CH3_Pkt_packetized_send_start_t send_start;
     MPIDI_CH3_Pkt_packetized_send_data_t pkt_head;
@@ -258,9 +258,9 @@ int MPIDI_nem_ib_packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
     MPIDI_FUNC_ENTER(MPIDI_NEM_IB_PACKETIZED_SEND);
 
     MPIDI_Pkt_init(&send_start, MPIDI_CH3_PKT_PACKETIZED_SEND_START);
-    iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_packetized_send_start_t);
-    iov[0].MPID_IOV_BUF = (void*) &send_start;
-    MPIU_Memcpy(&iov[1], sreq->dev.iov, sreq->dev.iov_count * sizeof(MPID_IOV));
+    iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_packetized_send_start_t);
+    iov[0].MPL_IOV_BUF = (void*) &send_start;
+    MPIU_Memcpy(&iov[1], sreq->dev.iov, sreq->dev.iov_count * sizeof(MPL_IOV));
     n_iov = 1 + sreq->dev.iov_count;
 
     /* origin head size contains size of the header in PACKETIZED_SEND_START pkt
@@ -276,7 +276,7 @@ int MPIDI_nem_ib_packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 
     if (MPI_SUCCESS != mpi_errno && MPI_MRAIL_MSG_QUEUED != mpi_errno) {
         sreq->status.MPI_ERROR = MPI_ERR_INTERN;
-        MPIDI_CH3U_Request_complete(sreq);
+        MPID_Request_complete(sreq);
         goto fn_exit;
     } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
         msg_buffered = 1;
@@ -284,8 +284,8 @@ int MPIDI_nem_ib_packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
     nb -= sizeof(MPIDI_CH3_Pkt_packetized_send_start_t) + IB_PKT_HEADER_LENGTH;
 
     MPIDI_Pkt_init(&pkt_head, MPIDI_CH3_PKT_PACKETIZED_SEND_DATA);
-    iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_packetized_send_data_t);
-    iov[0].MPID_IOV_BUF = (void*) &pkt_head;
+    iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_packetized_send_data_t);
+    iov[0].MPL_IOV_BUF = (void*) &pkt_head;
 
     do{
         while (!MPIDI_nem_ib_request_adjust_iov(sreq, nb)) {
@@ -296,7 +296,7 @@ int MPIDI_nem_ib_packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
             MPIU_Memcpy((void *) &iov[1],
                    &sreq->dev.iov[sreq->dev.iov_offset],
                    (sreq->dev.iov_count -
-                    sreq->dev.iov_offset) * sizeof(MPID_IOV));
+                    sreq->dev.iov_offset) * sizeof(MPL_IOV));
             n_iov = sreq->dev.iov_count - sreq->dev.iov_offset + 1;
 
             Calculate_IOV_len(iov, n_iov, pkt_len);
@@ -311,7 +311,7 @@ int MPIDI_nem_ib_packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
             if (MPI_SUCCESS != mpi_errno
                 && MPI_MRAIL_MSG_QUEUED != mpi_errno) {
                 sreq->status.MPI_ERROR = MPI_ERR_INTERN;
-                MPIDI_CH3U_Request_complete(sreq);
+                MPID_Request_complete(sreq);
                 goto fn_exit;
             } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
                 msg_buffered = 1;
@@ -345,9 +345,9 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_fill_start_buffer
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_fill_start_buffer(vbuf * v,
-                             MPID_IOV * iov,
+                             MPL_IOV * iov,
                              int n_iov)
 {
     MPIDI_STATE_DECL(MPID_STATE_FILL_START_BUFFER);
@@ -362,16 +362,16 @@ int MPIDI_nem_ib_fill_start_buffer(vbuf * v,
 
     for (i = 0; i < n_iov; i++) {
         DEBUG_PRINT("[fill buf]avail %d, len %d\n", avail,
-                    iov[i].MPID_IOV_LEN);
-        if (avail >= iov[i].MPID_IOV_LEN) {
+                    iov[i].MPL_IOV_LEN);
+        if (avail >= iov[i].MPL_IOV_LEN) {
             DEBUG_PRINT("[fill buf] cpy ptr %p\n", ptr);
-            MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF,
-                   (iov[i].MPID_IOV_LEN));
-            len += (iov[i].MPID_IOV_LEN);
-            avail -= (iov[i].MPID_IOV_LEN);
-            ptr = (void *) ((unsigned long) ptr + iov[i].MPID_IOV_LEN);
+            MPIU_Memcpy(ptr, iov[i].MPL_IOV_BUF,
+                   (iov[i].MPL_IOV_LEN));
+            len += (iov[i].MPL_IOV_LEN);
+            avail -= (iov[i].MPL_IOV_LEN);
+            ptr = (void *) ((unsigned long) ptr + iov[i].MPL_IOV_LEN);
         } else {
-          MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF, avail);
+          MPIU_Memcpy(ptr, iov[i].MPL_IOV_BUF, avail);
             len += avail;
             avail = 0;
             break;
@@ -402,7 +402,7 @@ int MPIDI_nem_ib_send_select_rail(MPIDI_VC_t *vc) {
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_get_vbuf
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 vbuf* MPIDI_nem_ib_get_vbuf(MPIDI_VC_t * vc, int pkt_len)
 {
     MPIDI_STATE_DECL(MPID_STATE_NEM_IB_GET_VBUF);
@@ -442,7 +442,7 @@ vbuf* MPIDI_nem_ib_get_vbuf(MPIDI_VC_t * vc, int pkt_len)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_post_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
 {
     MPIDI_STATE_DECL(MPID_STATE_IB_POST_SEND);
@@ -513,9 +513,9 @@ int MPIDI_nem_ib_post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_eager_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_eager_send(MPIDI_VC_t * vc,
-                        MPID_IOV * iov,
+                        MPL_IOV * iov,
                         int n_iov,
                         int pkt_len,
                         int *num_bytes_ptr,
@@ -562,14 +562,14 @@ int MPIDI_nem_ib_eager_send(MPIDI_VC_t * vc,
 #undef FUNCNAME
 #define FUNCNAME isend_update_request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static void isend_update_request(MPID_Request* sreq, void* pkt, int pkt_sz, int nb)
 {
     MPIDI_STATE_DECL(MPID_STATE_ISEND_UPDATE_REQUEST);
     MPIDI_FUNC_ENTER(MPID_STATE_ISEND_UPDATE_REQUEST);
     sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) pkt;
-    sreq->dev.iov[0].MPID_IOV_BUF = (char *) &sreq->dev.pending_pkt + nb;
-    sreq->dev.iov[0].MPID_IOV_LEN = pkt_sz - nb;
+    sreq->dev.iov[0].MPL_IOV_BUF = (char *) &sreq->dev.pending_pkt + nb;
+    sreq->dev.iov[0].MPL_IOV_LEN = pkt_sz - nb;
     sreq->dev.iov_count = 1;
     sreq->dev.iov_offset = 0;
     MPIDI_FUNC_EXIT(MPID_STATE_ISEND_UPDATE_REQUEST);
@@ -580,7 +580,7 @@ static void isend_update_request(MPID_Request* sreq, void* pkt, int pkt_sz, int 
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_iSendContig
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_iSendContig(MPIDI_VC_t *vc, MPID_Request *sreq, void *hdr, MPIDI_msg_sz_t hdr_sz,
                                 void *data, MPIDI_msg_sz_t data_sz)
 {
@@ -588,7 +588,7 @@ int MPID_nem_ib_iSendContig(MPIDI_VC_t *vc, MPID_Request *sreq, void *hdr, MPIDI
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_IB_ISENDCONTIGMSG);
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_IB_ISENDCONTIGMSG);
 
-    MPID_IOV iov[2];
+    MPL_IOV iov[2];
     int complete;
     int n_iov=2;
     void *databuf = NULL;
@@ -611,18 +611,18 @@ int MPID_nem_ib_iSendContig(MPIDI_VC_t *vc, MPID_Request *sreq, void *hdr, MPIDI
         hdr_sz = sizeof(MPIDI_CH3_Pkt_t);
         /* MT: need some signalling to lock down our right to use the channel, thus insuring that the progress engine does
            also try to write */
-        iov[0].MPID_IOV_BUF = hdr;
-        iov[0].MPID_IOV_LEN = hdr_sz;
+        iov[0].MPL_IOV_BUF = hdr;
+        iov[0].MPL_IOV_LEN = hdr_sz;
         if (data_sz == 0) {
             n_iov = 1;
         } else {
-        iov[1].MPID_IOV_BUF = data;
-        iov[1].MPID_IOV_LEN = data_sz;
+        iov[1].MPL_IOV_BUF = data;
+        iov[1].MPL_IOV_LEN = data_sz;
         }
         Calculate_IOV_len(iov, n_iov, pkt_len);
 
         if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
-          MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
+          MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPL_IOV));
             sreq->dev.iov_count = n_iov;
             mpi_errno = MPIDI_nem_ib_packetized_send(vc, sreq);
             if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
@@ -641,40 +641,40 @@ int MPID_nem_ib_iSendContig(MPIDI_VC_t *vc, MPID_Request *sreq, void *hdr, MPIDI
             pkt_len = 0;
             /* First copy whatever has already been in iov set */
             for (iter_iov = 0; iter_iov < n_iov; iter_iov++) {
-              MPIU_Memcpy(tmpbuf, iov[iter_iov].MPID_IOV_BUF,
-                       iov[iter_iov].MPID_IOV_LEN);
+              MPIU_Memcpy(tmpbuf, iov[iter_iov].MPL_IOV_BUF,
+                       iov[iter_iov].MPL_IOV_LEN);
                 tmpbuf = (void *) ((unsigned long) tmpbuf +
-                                   iov[iter_iov].MPID_IOV_LEN);
-                pkt_len += iov[iter_iov].MPID_IOV_LEN;
+                                   iov[iter_iov].MPL_IOV_LEN);
+                pkt_len += iov[iter_iov].MPL_IOV_LEN;
             }
             DEBUG_PRINT("Pkt len after first stage %d\n", pkt_len);
             /* Second reload iov and copy */
             do {
-                sreq->dev.iov_count = MPID_IOV_LIMIT;
+                sreq->dev.iov_count = MPL_IOV_LIMIT;
                 mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq,
                                                              sreq->dev.iov,
                                                              &sreq->dev.
                                                              iov_count);
                 /* --BEGIN ERROR HANDLING-- */
                 if (mpi_errno != MPI_SUCCESS) {
-                    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|loadsendiov");
+                    MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|loadsendiov");
                 }
                 for (iter_iov = 0; iter_iov < sreq->dev.iov_count;
                      iter_iov++) {
-                  MPIU_Memcpy(tmpbuf, sreq->dev.iov[iter_iov].MPID_IOV_BUF,
-                           sreq->dev.iov[iter_iov].MPID_IOV_LEN);
+                  MPIU_Memcpy(tmpbuf, sreq->dev.iov[iter_iov].MPL_IOV_BUF,
+                           sreq->dev.iov[iter_iov].MPL_IOV_LEN);
                     tmpbuf =
                         (void *) ((unsigned long) tmpbuf +
-                                  sreq->dev.iov[iter_iov].MPID_IOV_LEN);
-                    pkt_len += sreq->dev.iov[iter_iov].MPID_IOV_LEN;
+                                  sreq->dev.iov[iter_iov].MPL_IOV_LEN);
+                    pkt_len += sreq->dev.iov[iter_iov].MPL_IOV_LEN;
                 }
             } while (sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV);
-            iov[0].MPID_IOV_BUF = databuf;
-            iov[0].MPID_IOV_LEN = pkt_len;
+            iov[0].MPL_IOV_BUF = databuf;
+            iov[0].MPL_IOV_LEN = pkt_len;
             n_iov = 1;
         }
         if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
-          MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
+          MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPL_IOV));
             sreq->dev.iov_count = n_iov;
             mpi_errno = MPIDI_nem_ib_packetized_send(vc, sreq);
             if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
@@ -722,7 +722,7 @@ int MPID_nem_ib_iSendContig(MPIDI_VC_t *vc, MPID_Request *sreq, void *hdr, MPIDI
              * */
             sreq->status.MPI_ERROR = MPI_ERR_INTERN;
             /* MT - CH3U_Request_complete performs write barrier */
-            MPIDI_CH3U_Request_complete(sreq);
+            MPID_Request_complete(sreq);
 
         }
 
@@ -757,13 +757,13 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_iStartContigMsg
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_iStartContigMsg(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_sz, void *data, MPIDI_msg_sz_t data_sz, 
                                     MPID_Request **sreq_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *sreq = NULL;
-    MPID_IOV iov[2];
+    MPL_IOV iov[2];
     int n_iov=2;
     int nb;
     int pkt_len;
@@ -778,14 +778,14 @@ int MPID_nem_ib_iStartContigMsg(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_sz
 
     /* the channel use fixed header size*/
     hdr_sz = sizeof(MPIDI_CH3_Pkt_t);
-    iov[0].MPID_IOV_BUF = hdr;
-    iov[0].MPID_IOV_LEN = hdr_sz;
+    iov[0].MPL_IOV_BUF = hdr;
+    iov[0].MPL_IOV_LEN = hdr_sz;
     if(data_sz == 0) {
         n_iov = 1;
         pkt_len = hdr_sz;
     } else {
-        iov[1].MPID_IOV_BUF = data;
-        iov[1].MPID_IOV_LEN = data_sz;
+        iov[1].MPL_IOV_BUF = data;
+        iov[1].MPL_IOV_LEN = data_sz;
         Calculate_IOV_len(iov, n_iov, pkt_len);
     }
 
@@ -867,13 +867,13 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_iStartContigMsg_paused
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_iStartContigMsg_paused(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_sz, void *data, MPIDI_msg_sz_t data_sz,
                                     MPID_Request **sreq_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *sreq = NULL;
-    MPID_IOV iov[2];
+    MPL_IOV iov[2];
     int n_iov=2;
 
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_IB_ISTARTCONTIGMSG_PAUSED);
@@ -889,14 +889,14 @@ int MPID_nem_ib_iStartContigMsg_paused(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t
 
     /* the channel use fixed header size*/
     hdr_sz = sizeof(MPIDI_CH3_Pkt_t);
-    iov[0].MPID_IOV_BUF = hdr;
-    iov[0].MPID_IOV_LEN = hdr_sz;
+    iov[0].MPL_IOV_BUF = hdr;
+    iov[0].MPL_IOV_LEN = hdr_sz;
     if(data_sz == 0) {
         n_iov = 1;
         pkt_len = hdr_sz;
     } else {
-        iov[1].MPID_IOV_BUF = data;
-        iov[1].MPID_IOV_LEN = data_sz;
+        iov[1].MPL_IOV_BUF = data;
+        iov[1].MPL_IOV_LEN = data_sz;
         Calculate_IOV_len(iov, n_iov, pkt_len);
     }
 
@@ -966,21 +966,21 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_iSendNoncontig
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_iSendNoncontig (MPIDI_VC_t *vc, MPID_Request *sreq, void *header, MPIDI_msg_sz_t hdr_sz)
 {
     int mpi_errno = MPI_SUCCESS;
     int i, n_iov, pkt_len, complete = 0, nb = 0;
-    MPID_IOV iov[MPID_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT];
     void *tmpbuf = NULL, *databuf = NULL;
     vbuf *vbuf;
 
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_IB_ISENDNONCONTIG);
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_IB_ISENDNONCONTIG);
 
-    iov[0].MPID_IOV_BUF = header;
+    iov[0].MPL_IOV_BUF = header;
     /* the channel use fixed header size*/
-    iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
+    iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
 
 #ifdef ENABLE_CHECKPOINTING
     MPID_nem_ib_vc_area *vc_ib = VC_IB(vc);
@@ -989,13 +989,13 @@ int MPID_nem_ib_iSendNoncontig (MPIDI_VC_t *vc, MPID_Request *sreq, void *header
 
     if (SENDQ_EMPTY(VC_FIELD(vc, send_queue))) {
 
-        n_iov = MPID_IOV_LIMIT - 1;
+        n_iov = MPL_IOV_LIMIT - 1;
         mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq, &iov[1], &n_iov);
         if (MPI_SUCCESS != mpi_errno) {
            /* --BEGIN ERROR HANDLING-- */
            MPIU_Object_set_ref(sreq, 0);
            MPIDI_CH3_Request_destroy(sreq);
-           MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|loadsendiov");
+           MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|loadsendiov");
            /* --END ERROR HANDLING-- */
         }
         n_iov++;
@@ -1008,44 +1008,44 @@ int MPID_nem_ib_iSendNoncontig (MPIDI_VC_t *vc, MPID_Request *sreq, void *header
             pkt_len = 0;
             /* First copy whatever has already been in iov set */
             for (i = 0; i < n_iov; i++) {
-                MPIU_Memcpy(tmpbuf, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
-                tmpbuf = (void *)((unsigned long) tmpbuf + iov[i].MPID_IOV_LEN);
-                pkt_len += iov[i].MPID_IOV_LEN;
+                MPIU_Memcpy(tmpbuf, iov[i].MPL_IOV_BUF, iov[i].MPL_IOV_LEN);
+                tmpbuf = (void *)((unsigned long) tmpbuf + iov[i].MPL_IOV_LEN);
+                pkt_len += iov[i].MPL_IOV_LEN;
             }
   
             /* Second reload iov and copy */
             do {
-                n_iov = MPID_IOV_LIMIT;
+                n_iov = MPL_IOV_LIMIT;
                 mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq,
                                                              sreq->dev.iov,
                                                              &n_iov);
                 /* --BEGIN ERROR HANDLING-- */
                 if (mpi_errno != MPI_SUCCESS) {
-                    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|loadsendiov");
+                    MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|loadsendiov");
                 }
                 /* --END ERROR HANDLING-- */
 
                 for (i = 0; i < n_iov; i++) {
-                    MPIU_Memcpy(tmpbuf, sreq->dev.iov[i].MPID_IOV_BUF,
-                                     sreq->dev.iov[i].MPID_IOV_LEN);
+                    MPIU_Memcpy(tmpbuf, sreq->dev.iov[i].MPL_IOV_BUF,
+                                     sreq->dev.iov[i].MPL_IOV_LEN);
                     tmpbuf = (void *) ((unsigned long) tmpbuf +
-                                     sreq->dev.iov[i].MPID_IOV_LEN);
-                    pkt_len += sreq->dev.iov[i].MPID_IOV_LEN;
+                                     sreq->dev.iov[i].MPL_IOV_LEN);
+                    pkt_len += sreq->dev.iov[i].MPL_IOV_LEN;
                 }
             } while (sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV);
 
             /*check if all the data has been packed*/
             MPIU_Assert(pkt_len == (sreq->dev.segment_size + sizeof(MPIDI_CH3_Pkt_t)));
 
-            iov[0].MPID_IOV_BUF = databuf;
-            iov[0].MPID_IOV_LEN = pkt_len;
+            iov[0].MPL_IOV_BUF = databuf;
+            iov[0].MPL_IOV_LEN = pkt_len;
             n_iov = 1;
         } else {
             Calculate_IOV_len(iov, n_iov, pkt_len);
         }
 
         if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
-            MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
+            MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPL_IOV));
             sreq->dev.iov_count = n_iov;
             mpi_errno = MPIDI_nem_ib_packetized_send(vc, sreq);
             if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
@@ -1053,7 +1053,7 @@ int MPID_nem_ib_iSendNoncontig (MPIDI_VC_t *vc, MPID_Request *sreq, void *header
             } else if (MPI_SUCCESS != mpi_errno) {
                 MPIU_Object_set_ref(sreq, 0);
                 MPIDI_CH3_Request_destroy(sreq);
-                MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nem|packetizedsend");
+                MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nem|packetizedsend");
             }
             goto fn_exit;
         }
@@ -1077,7 +1077,7 @@ int MPID_nem_ib_iSendNoncontig (MPIDI_VC_t *vc, MPID_Request *sreq, void *header
         } else {
             MPIU_Object_set_ref(sreq, 0);
             MPIDI_CH3_Request_destroy(sreq);
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nem|ibeagersend");
+            MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nem|ibeagersend");
         }
     } else {
        /* Send queue not empty, enqueuing */
@@ -1108,7 +1108,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Backlog_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
 {
     MPIDI_STATE_DECL(MPID_STATE_MRAILI_BACKLOG_SEND);
@@ -1163,7 +1163,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Process_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MRAILI_Process_send(void *vbuf_addr)
 {
     MPIDI_STATE_DECL(MPID_STATE_MRAILI_PROCESS_SEND);
@@ -1253,10 +1253,8 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_RNDV_R3_DATA:
     case MPIDI_CH3_PKT_READY_SEND:
     case MPIDI_CH3_PKT_PUT:
+    case MPIDI_CH3_PKT_PUT_IMMED:
     case MPIDI_CH3_PKT_ACCUMULATE:
-    case MPIDI_CH3_PKT_ACCUM_IMMED:
-    case MPIDI_CH3_PKT_CAS:
-    case MPIDI_CH3_PKT_CAS_RESP:
     case MPIDI_CH3_PKT_FOP:
     case MPIDI_CH3_PKT_FOP_RESP:
     case MPIDI_CH3_PKT_FLUSH:
@@ -1347,9 +1345,14 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_CANCEL_SEND_RESP:
     case MPIDI_CH3_PKT_GET:
     case MPIDI_CH3_PKT_LOCK:
-    case MPIDI_CH3_PKT_LOCK_GRANTED:
-    case MPIDI_CH3_PKT_PT_RMA_DONE:
-    case MPIDI_CH3_PKT_LOCK_GET_UNLOCK: /* optimization for single gets */
+    case MPIDI_CH3_PKT_LOCK_ACK:
+    case MPIDI_CH3_PKT_LOCK_OP_ACK:
+    case MPIDI_CH3_PKT_ACK:
+    case MPIDI_CH3_PKT_FOP_RESP_IMMED:
+    case MPIDI_CH3_PKT_FOP_IMMED:
+    case MPIDI_CH3_PKT_CAS_IMMED:
+    case MPIDI_CH3_PKT_CAS_RESP_IMMED:
+    case MPIDI_CH3_PKT_GET_ACCUM_IMMED:
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
     case MPIDI_CH3_PKT_CLOSE:  /*24*/
     case MPIDI_NEM_PKT_LMT_RTS:
@@ -1362,17 +1365,6 @@ int MRAILI_Process_send(void *vbuf_addr)
 #endif
         DEBUG_PRINT("[process send] get %d\n", p->type);
 
-        if (v->padding == NORMAL_VBUF_FLAG) {
-            MRAILI_Release_vbuf(v);
-        }
-        else v->padding = FREE_FLAG;
-        break;
-   case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK: /* optimization for single puts */
-   case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK: /* optimization for single accumulates */
-        req = (MPID_Request *) v->sreq;
-        if (NULL != req) {
-          MPID_Request_set_completed(req);
-        }
         if (v->padding == NORMAL_VBUF_FLAG) {
             MRAILI_Release_vbuf(v);
         }
@@ -1394,7 +1386,7 @@ MPIDI_FUNC_EXIT(MPID_STATE_MRAILI_PROCESS_SEND);
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Send_noop
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MRAILI_Send_noop(MPIDI_VC_t * c, int rail)
 {
     MPIDI_STATE_DECL(MPID_STATE_MRAILI_SEND_NOOP);
@@ -1418,7 +1410,7 @@ void MRAILI_Send_noop(MPIDI_VC_t * c, int rail)
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Send_noop_if_needed
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MRAILI_Send_noop_if_needed(MPIDI_VC_t * vc, int rail)
 {
     MPIDI_STATE_DECL(MPID_STATE_MRAILI_SEND_NOOP_IF_NEEDED);
@@ -1447,10 +1439,10 @@ int MRAILI_Send_noop_if_needed(MPIDI_VC_t * vc, int rail)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_fast_rdma_fill_start_buf
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /* INOUT: num_bytes_ptr holds the pkt_len as input parameter */
 int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
-                                    MPID_IOV * iov, int n_iov,
+                                    MPL_IOV * iov, int n_iov,
                                     int *num_bytes_ptr)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_NEM_IB_FAST_RDMA_FILL_START_BUF);
@@ -1468,7 +1460,7 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
 
     int len = *num_bytes_ptr, avail = 0;
     int i;
-    header = iov[0].MPID_IOV_BUF;
+    header = iov[0].MPL_IOV_BUF;
     avail   = len;
     /*PACKET_SET_RDMA_CREDIT delayed. need to get iheader position first*/
     /* it's also need to be added in !MV2_DISABLE_HEADER_CACHING situation*/
@@ -1508,12 +1500,12 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
             data_buf = (void *) ((unsigned long) vstart +
                                  sizeof(MPIDI_nem_ib_pkt_fast_eager));
 
-        if (iov[0].MPID_IOV_LEN - sizeof(MPIDI_CH3_Pkt_t))
-          MPIU_Memcpy(data_buf, (void *)((uintptr_t)iov[0].MPID_IOV_BUF +
+        if (iov[0].MPL_IOV_LEN - sizeof(MPIDI_CH3_Pkt_t))
+          MPIU_Memcpy(data_buf, (void *)((uintptr_t)iov[0].MPL_IOV_BUF +
                sizeof(MPIDI_CH3_Pkt_t)),
-               iov[0].MPID_IOV_LEN - sizeof(MPIDI_CH3_Pkt_t));
+               iov[0].MPL_IOV_LEN - sizeof(MPIDI_CH3_Pkt_t));
 
-        data_buf = (void *)((uintptr_t)data_buf + iov[0].MPID_IOV_LEN -
+        data_buf = (void *)((uintptr_t)data_buf + iov[0].MPL_IOV_LEN -
             sizeof(MPIDI_CH3_Pkt_t));
 
             *num_bytes_ptr += sizeof(MPIDI_nem_ib_pkt_fast_eager);
@@ -1537,12 +1529,12 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
             data_buf =
                 (void *) ((unsigned long) vstart +
                           sizeof(MPIDI_nem_ib_pkt_fast_eager_with_req));
-        if (iov[0].MPID_IOV_LEN - sizeof(MPIDI_CH3_Pkt_t))
-          MPIU_Memcpy(data_buf, (void *)((uintptr_t)iov[0].MPID_IOV_BUF +
+        if (iov[0].MPL_IOV_LEN - sizeof(MPIDI_CH3_Pkt_t))
+          MPIU_Memcpy(data_buf, (void *)((uintptr_t)iov[0].MPL_IOV_BUF +
                sizeof(MPIDI_CH3_Pkt_t)),
-               iov[0].MPID_IOV_LEN - sizeof(MPIDI_CH3_Pkt_t));
+               iov[0].MPL_IOV_LEN - sizeof(MPIDI_CH3_Pkt_t));
 
-        data_buf = (void *)((uintptr_t)data_buf + iov[0].MPID_IOV_LEN -
+        data_buf = (void *)((uintptr_t)data_buf + iov[0].MPL_IOV_LEN -
             sizeof(MPIDI_CH3_Pkt_t));
 
             *num_bytes_ptr += sizeof(MPIDI_nem_ib_pkt_fast_eager_with_req);
@@ -1558,7 +1550,7 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
 
         vstart = (void *) ((unsigned long) vstart + IB_PKT_HEADER_LENGTH);
         p->type = header->type;
-        MPIU_Memcpy(vstart, header, iov[0].MPID_IOV_LEN);
+        MPIU_Memcpy(vstart, header, iov[0].MPL_IOV_LEN);
 #ifndef MV2_DISABLE_HEADER_CACHING
         if (header->type == MPIDI_CH3_PKT_EAGER_SEND && 
             (len - sizeof(MPIDI_CH3_Pkt_t) <= MAX_SIZE_WITH_HEADER_CACHING) ) {
@@ -1567,21 +1559,21 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
         }
         ++VC_FIELD(vc, connection)->rfp.cached_miss;
 #endif
-        data_buf = (void *) ((unsigned long) vstart + iov[0].MPID_IOV_LEN);
-        *num_bytes_ptr += iov[0].MPID_IOV_LEN + IB_PKT_HEADER_LENGTH;
-        avail -= iov[0].MPID_IOV_LEN;
+        data_buf = (void *) ((unsigned long) vstart + iov[0].MPL_IOV_LEN);
+        *num_bytes_ptr += iov[0].MPL_IOV_LEN + IB_PKT_HEADER_LENGTH;
+        avail -= iov[0].MPL_IOV_LEN;
         v->pheader = vstart;
     }
 
     /* We have filled the header, it is time to fit in the actual data */
     for (i = 1; i < n_iov; i++) {
-        if (avail >= iov[i].MPID_IOV_LEN) {
-          MPIU_Memcpy(data_buf, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
-            data_buf = (void *) ((unsigned long) data_buf + iov[i].MPID_IOV_LEN);
-            *num_bytes_ptr += iov[i].MPID_IOV_LEN;
-            avail -= iov[i].MPID_IOV_LEN;
+        if (avail >= iov[i].MPL_IOV_LEN) {
+          MPIU_Memcpy(data_buf, iov[i].MPL_IOV_BUF, iov[i].MPL_IOV_LEN);
+            data_buf = (void *) ((unsigned long) data_buf + iov[i].MPL_IOV_LEN);
+            *num_bytes_ptr += iov[i].MPL_IOV_LEN;
+            avail -= iov[i].MPL_IOV_LEN;
         } else if (avail > 0) {
-          MPIU_Memcpy(data_buf, iov[i].MPID_IOV_BUF, avail);
+          MPIU_Memcpy(data_buf, iov[i].MPL_IOV_BUF, avail);
             data_buf = (void *) ((unsigned long) data_buf + avail);
             *num_bytes_ptr += avail;
             avail = 0;
@@ -1597,10 +1589,10 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_fast_rdma_send_complete
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /* INOUT: num_bytes_ptr holds the pkt_len as input parameter */
 int MPIDI_nem_ib_fast_rdma_send_complete(MPIDI_VC_t * vc,
-                                              MPID_IOV * iov,
+                                              MPL_IOV * iov,
                                               int n_iov,
                                               int *num_bytes_ptr,
                                               vbuf ** vbuf_handle)
@@ -1696,7 +1688,7 @@ int MPIDI_nem_ib_fast_rdma_send_complete(MPIDI_VC_t * vc,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_fast_rdma_ok
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_fast_rdma_ok(MPIDI_VC_t * vc, int len)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_NEM_IB_FAST_RDMA_OK);
@@ -1733,7 +1725,7 @@ int MPIDI_nem_ib_fast_rdma_ok(MPIDI_VC_t * vc, int len)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_post_srq_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 {
     MPIDI_STATE_DECL(MPID_STATE_IB_POST_SRQ_SEND);
@@ -1820,7 +1812,7 @@ void vbuf_address_reply_send(MPIDI_VC_t *vc, uint8_t data)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_nem_ib_lmt_r3_ack_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_nem_ib_lmt_r3_ack_send(MPIDI_VC_t *vc)
 {
     vbuf *v;
@@ -1853,13 +1845,13 @@ int MPIDI_nem_ib_lmt_r3_ack_send(MPIDI_VC_t *vc)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_send_queued
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_nem_ib_send_queued(MPIDI_VC_t *vc, MPIDI_nem_ib_request_queue_t *send_queue)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *sreq;
     MPIDI_msg_sz_t offset;
-    MPID_IOV *iov;
+    MPL_IOV *iov;
     int complete;
 
     vbuf *buf;
@@ -1924,17 +1916,17 @@ int MPID_nem_ib_send_queued(MPIDI_VC_t *vc, MPIDI_nem_ib_request_queue_t *send_q
         complete = 1;
         for (iov = &sreq->dev.iov[sreq->dev.iov_offset]; iov < &sreq->dev.iov[sreq->dev.iov_offset + sreq->dev.iov_count]; ++iov)
         {
-            if (offset < iov->MPID_IOV_LEN)
+            if (offset < iov->MPL_IOV_LEN)
             {
-                iov->MPID_IOV_BUF = (char *)iov->MPID_IOV_BUF + offset;
-                iov->MPID_IOV_LEN -= offset;
+                iov->MPL_IOV_BUF = (char *)iov->MPL_IOV_BUF + offset;
+                iov->MPL_IOV_LEN -= offset;
                 /* iov_count should be equal to the number of iov's remaining */
                 sreq->dev.iov_count -= ((iov - sreq->dev.iov) - sreq->dev.iov_offset);
                 sreq->dev.iov_offset = iov - sreq->dev.iov;
                 complete = 0;
                 break;
             }
-            offset -= iov->MPID_IOV_LEN;
+            offset -= iov->MPL_IOV_LEN;
         }
         if (!complete)
         {
@@ -1950,7 +1942,7 @@ int MPID_nem_ib_send_queued(MPIDI_VC_t *vc, MPIDI_nem_ib_request_queue_t *send_q
             if (!reqFn)
             {
                 MPIU_Assert(MPIDI_Request_get_type(sreq) != MPIDI_REQUEST_TYPE_GET_RESP);
-                MPIDI_CH3U_Request_complete(sreq);
+                MPID_Request_complete(sreq);
                 MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, ".... complete");
                 MPIDI_CH3I_Sendq_dequeue(send_queue, &sreq);
                 continue;
@@ -1958,7 +1950,7 @@ int MPID_nem_ib_send_queued(MPIDI_VC_t *vc, MPIDI_nem_ib_request_queue_t *send_q
 
             complete = 0;
             mpi_errno = reqFn(vc, sreq, &complete);
-            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+            if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
             if (complete)
             {

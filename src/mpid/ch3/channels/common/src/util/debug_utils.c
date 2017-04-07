@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,6 +29,8 @@ const char *get_output_prefix() {
 }
 
 
+// Verbosity level for sharp  operations in collectives
+int DEBUG_Sharp_verbose = 0;
 
 // Verbosity level for fork/kill/waitpid operations in mpirun_rsh and mpispawn
 int DEBUG_Fork_verbose = 0;
@@ -78,6 +80,9 @@ int DEBUG_INIT_verbose;
 // Verbosity level for RDMA_CM
 int DEBUG_RDMACM_verbose;
 
+// Verbosity level for One-sided
+int DEBUG_1SC_verbose;
+
 static inline int env2int (char *name)
 {
     char* env_str = getenv( name );
@@ -91,6 +96,7 @@ static inline int env2int (char *name)
 
 // Initialize the verbosity level of the above variables
 int initialize_debug_variables() {
+    DEBUG_Sharp_verbose = env2int( "MV2_DEBUG_SHARP_VERBOSE" );
     DEBUG_Fork_verbose = env2int( "MV2_DEBUG_FORK_VERBOSE" );
     DEBUG_FT_verbose = env2int( "MV2_DEBUG_FT_VERBOSE" );
     DEBUG_CR_verbose = env2int( "MV2_DEBUG_CR_VERBOSE" );
@@ -107,6 +113,7 @@ int initialize_debug_variables() {
     DEBUG_CHM_verbose = env2int( "MV2_DEBUG_CHM_VERBOSE" );
     DEBUG_INIT_verbose = env2int( "MV2_DEBUG_INIT_VERBOSE" );
     DEBUG_RDMACM_verbose = env2int( "MV2_DEBUG_RDMACM_VERBOSE" );
+    DEBUG_1SC_verbose = env2int( "MV2_DEBUG_1SC_VERBOSE" );
     return 0;
 }
 

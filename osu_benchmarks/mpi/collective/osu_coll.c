@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2002-2016 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2017 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -24,7 +24,6 @@
 static CUcontext cuContext;
 #endif
 
-static int is_alloc = 0;
 static char const * benchmark_header = NULL;
 static char const * benchmark_name = NULL;
 static int accel_enabled = 0;
@@ -41,6 +40,7 @@ struct options_t options;
 static float **a, *x, *y;
 
 #ifdef _ENABLE_CUDA_KERNEL_
+static int is_alloc = 0;
 /* Using new stream for kernels on gpu */
 static cudaStream_t stream;
 
@@ -792,7 +792,7 @@ set_buffer (void * buffer, enum accel_type type, int data, size_t size)
 }
 
 int
-allocate_buffer (void ** buffer, size_t size, enum accel_type type)
+osu_allocate_buffer (void ** buffer, size_t size, enum accel_type type)
 {
     if (options.target == cpu || options.target == both) {
         allocate_host_arrays();

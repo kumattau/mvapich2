@@ -33,7 +33,7 @@
  *
  * Author: Michael S. Tsirkin <mst@mellanox.co.il>
  */
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -80,6 +80,17 @@ static inline cycles_t get_cycles()
 
     asm volatile ("mov %0=ar.itc" : "=r" (ret));
     return ret;
+}
+#elif defined(__aarch64__)
+typedef unsigned long cycles_t;
+static inline cycles_t get_cycles()
+{
+       cycles_t ret;
+
+       asm volatile ("isb" : : : "memory");
+       asm volatile ("mrs %0, cntvct_el0" : "=r" (ret));
+
+       return ret;
 }
 
 #else

@@ -8,7 +8,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Get_business_card
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_Get_business_card(int rank, char *value, int length)
 {
     return MPI_SUCCESS;

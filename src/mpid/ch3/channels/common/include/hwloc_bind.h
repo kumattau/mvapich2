@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,6 +32,7 @@ typedef enum {
 
 typedef enum {
     LEVEL_CORE,
+    LEVEL_MULTIPLE_CORES,
     LEVEL_SOCKET,
     LEVEL_NUMANODE,
 } level_type_t;
@@ -48,9 +49,10 @@ typedef struct {
     float load;
 } obj_attribute_type;
 
+struct MPIDI_PG;
+
 extern policy_type_t mv2_binding_policy;
 extern level_type_t mv2_binding_level;
-extern hwloc_topology_t topology;
 extern int mv2_user_defined_mapping;
 extern unsigned int mv2_enable_affinity;
 extern unsigned int mv2_enable_leastload;
@@ -71,6 +73,28 @@ int get_cpu_mapping(long N_CPUs_online);
 int get_ib_socket(struct ibv_device * ibdev);
 #endif /* defined(CHANNEL_MRAIL) */
 int smpi_setaffinity(int my_local_id);
-int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank);
+int MPIDI_CH3I_set_affinity(struct MPIDI_PG * pg, int pg_rank);
+
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+extern hwloc_topology_t topology;
+int smpi_load_hwloc_topology(void);
+int smpi_destroy_hwloc_topology(void);
+#else
+static hwloc_topology_t topology = NULL;
+static inline int smpi_load_hwloc_topology(void)
+{
+    if (!topology) {
+        hwloc_topology_init(&topology);
+        hwloc_topology_set_flags(topology, HWLOC_TOPOLOGY_FLAG_IO_DEVICES);
+        hwloc_topology_load(topology);
+    }
+}
+static inline int smpi_destroy_hwloc_topology(void)
+{
+    if (topology) {
+        hwloc_topology_destroy(topology);
+    }
+}
+#endif
 
 #endif /* CH3_HWLOC_BIND_H_ */

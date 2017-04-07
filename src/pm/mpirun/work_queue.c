@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -89,7 +89,7 @@ void dump_queue(struct work_queue *wq)
 /*
 enqueue an elem to "tail" of the wq, giving 3 args
 */
-inline int workqueue_enqueue3(struct work_queue *wq, void *elem, int elem_size, unsigned long arg1, unsigned long arg2, unsigned long arg3)
+int workqueue_enqueue3(struct work_queue *wq, void *elem, int elem_size, unsigned long arg1, unsigned long arg2, unsigned long arg3)
 {
     struct work_elem *ep;
 
@@ -121,7 +121,7 @@ inline int workqueue_enqueue3(struct work_queue *wq, void *elem, int elem_size, 
 /*
 enqueue an elem to "tail" of the wq
 */
-inline int workqueue_enqueue(struct work_queue *wq, void *elem, int elem_size, unsigned long arg1, unsigned long arg2)
+int workqueue_enqueue(struct work_queue *wq, void *elem, int elem_size, unsigned long arg1, unsigned long arg2)
 {
     return workqueue_enqueue3(wq, elem, elem_size, arg1, arg2, 0);
 

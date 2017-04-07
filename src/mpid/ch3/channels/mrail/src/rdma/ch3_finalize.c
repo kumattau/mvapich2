@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,7 +29,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Flush
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Flush() 
 {
   MPIDI_STATE_DECL(MPIDI_CH3_FLUSH);
@@ -44,7 +44,7 @@ int MPIDI_CH3_Flush()
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Finalize
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Finalize()
 {
     int mpi_errno = MPI_SUCCESS;
@@ -75,12 +75,12 @@ int MPIDI_CH3_Finalize()
             mpi_errno = MPIDI_CH3I_RDMA_finalize();
         }
 
-        if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if(mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
 
 #ifdef CKPT
     mpi_errno = MPIDI_CH3I_CR_Finalize();
-    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if(mpi_errno) MPIR_ERR_POP(mpi_errno);
 #endif
 
 #ifdef _ENABLE_CUDA_
@@ -89,18 +89,17 @@ int MPIDI_CH3_Finalize()
 
     /* Shutdown the progress engine */
     mpi_errno = MPIDI_CH3I_Progress_finalize();
-    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if(mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     MV2_collectives_arch_finalize();
 
     if (SMP_INIT) {
         mpi_errno = MPIDI_CH3I_SMP_finalize();
-        if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if(mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
 
-    if(mv2_enable_affinity == 1) { 
-       hwloc_topology_destroy(topology);
-    } 
+    /* Deallocate hwloc topology and remove corresponding files */
+    smpi_destroy_hwloc_topology();
 
     /* Deallocate PMI Key Value Pair */
     mv2_free_pmi_keyval();
@@ -114,7 +113,7 @@ fn_fail:
     /*
      * We need to add "**ch3_finalize" to the list of error messages
      */
-    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**mpi_finalize");
+    MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**mpi_finalize");
 
     goto fn_exit;
 }

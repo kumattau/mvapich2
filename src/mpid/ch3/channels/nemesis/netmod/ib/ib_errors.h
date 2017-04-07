@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,10 +25,10 @@
 
 #ifdef DEBUG_NEM_IB
 #define NEM_IB_DBG(message, args...) {                          \
-    MPIU_Msg_printf("[%s:%d] [%s:%d] ", me.hostname, me.rank,   \
+    MPL_msg_printf("[%s:%d] [%s:%d] ", me.hostname, me.rank,   \
             __FILE__, __LINE__);                                \
-    MPIU_Msg_printf(message, ##args);                           \
-    MPIU_Msg_printf("\n");                                      \
+    MPL_msg_printf(message, ##args);                           \
+    MPL_msg_printf("\n");                                      \
 }
 #else
 #define NEM_IB_DBG(message, args...)
@@ -42,8 +42,8 @@
 do {                                                          \
     int rank;                                                 \
     UPMI_GET_RANK(&rank);                                      \
-    MPIU_Error_printf("[%d][%s:%d] ", rank, __FILE__, __LINE__);\
-    MPIU_Error_printf(args);                                    \
+    MPL_error_printf("[%d][%s:%d] ", rank, __FILE__, __LINE__);\
+    MPL_error_printf(args);                                    \
 } while (0)
 #else
 #define DEBUG_PRINT(args...)

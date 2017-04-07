@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2016, The Ohio State University. All rights
+/* Copyright (c) 2001-2017, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -50,7 +50,7 @@ do {                                                            \
 #undef FUNCNAME 
 #define FUNCNAME MPIDI_CH3_Rendezvous_zcopy_resend_cts
 #undef FCNAME       
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static inline int MPIDI_CH3_Rendezvous_zcopy_resend_cts(MPIDI_VC_t * vc, 
                             MPID_Request *rreq, mv2_rndv_qp_t *rqp)
 {
@@ -66,13 +66,13 @@ static inline int MPIDI_CH3_Rendezvous_zcopy_resend_cts(MPIDI_VC_t * vc,
 
     if (rreq->dev.OnDataAvail == NULL)
     {
-        cts_pkt->recv_sz = rreq->dev.iov[0].MPID_IOV_LEN;
+        cts_pkt->recv_sz = rreq->dev.iov[0].MPL_IOV_LEN;
         if (rreq->dev.iov_count > 1)
         {
             int k = 1;
             for (; k < rreq->dev.iov_count; ++k)
             {
-                cts_pkt->recv_sz += rreq->dev.iov[k].MPID_IOV_LEN;
+                cts_pkt->recv_sz += rreq->dev.iov[k].MPL_IOV_LEN;
             }
         }
     }
@@ -89,7 +89,7 @@ static inline int MPIDI_CH3_Rendezvous_zcopy_resend_cts(MPIDI_VC_t * vc,
 
     mpi_errno = MPIDI_CH3_iStartMsg(vc, cts_pkt, sizeof(*cts_pkt), &cts_req);
     if (mpi_errno != MPI_SUCCESS) {
-        MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
+        MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
                 "**ch3|ctspkt");
     }
     if (cts_req != NULL) {
