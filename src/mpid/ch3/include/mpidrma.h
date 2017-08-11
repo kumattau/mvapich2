@@ -45,15 +45,15 @@ void MPIDI_CH3I_RDMA_win_create(void *base, MPI_Aint size, int comm_size,
                            int rank, MPID_Win ** win_ptr, MPID_Comm * comm_ptr);
 void MPIDI_CH3I_RDMA_win_free(MPID_Win ** win_ptr);
 void MPIDI_CH3I_RDMA_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
-void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank);
+void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, MPIDI_RMA_Target_t * target);
 int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int origin_count,
         MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
         int target_count, MPI_Datatype target_datatype, void *compare_addr,
         void *result_addr, MPID_Win *win_ptr);
 int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank);
-int MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
 int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr);
 int MPIDI_CH3I_RDMA_finish_rma_target(MPID_Win *win_ptr, int target_rank);
+int MPIDI_CH3I_RDMA_set_CC(MPID_Win *, int target_rank);
 int MPIDI_CH3I_barrier_in_rma(MPID_Win **win_ptr, int rank, int node_size, int comm_size);
 void mv2_init_rank_for_barrier (MPID_Win ** win_ptr);
 #endif /* defined(CHANNEL_MRAIL) */

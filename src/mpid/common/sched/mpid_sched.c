@@ -68,9 +68,7 @@ struct MPIDU_Sched_state all_schedules = {NULL};
 #if defined(CHANNEL_MRAIL)
 static int sched_in_continue = 0;
 #endif
-#if 0
-static int nbc_progress_hook_id = 0;
-#endif
+static int nbc_progress_hook_id = -1;
 
 /* returns TRUE if any schedules are currently pending completion by the
  * progress engine, FALSE otherwise */
@@ -427,15 +425,13 @@ int MPID_Sched_start(MPID_Sched_t *sp, MPID_Comm *comm, int tag, MPID_Request **
 
     /* finally, enqueue in the list of all pending schedules so that the
      * progress engine can make progress on it */
-#if 0
-    if (all_schedules.head == NULL) {
-        mpi_errno = MPID_Progress_register_hook(MPIDU_Sched_progress,
-                                                &nbc_progress_hook_id);
+    if (nbc_progress_hook_id < 0) {
+        mpi_errno = MPID_Progress_register_hook(
+                MPIDU_Sched_progress, &nbc_progress_hook_id);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
         MPID_Progress_activate_hook(nbc_progress_hook_id);
     }
-#endif
     MPL_DL_APPEND(all_schedules.head, s);
 
     MPIU_DBG_MSG_P(COMM, TYPICAL, "started schedule s=%p\n", s);
@@ -981,17 +977,8 @@ int MPIDU_Sched_progress(int *made_progress)
         return MPI_SUCCESS;
     }
 #endif
-    int mpi_errno;
 
-    mpi_errno = MPIDU_Sched_progress_state(&all_schedules, made_progress);
-#if 0
-    if (!mpi_errno && all_schedules.head == NULL) {
-        MPID_Progress_deactivate_hook(nbc_progress_hook_id);
-        MPID_Progress_deregister_hook(nbc_progress_hook_id);
-    }
-#endif
-
-    return mpi_errno;
+    return MPIDU_Sched_progress_state(&all_schedules, made_progress);
 }
 
 static const char *entry_to_str(enum MPIDU_Sched_entry_type type) ATTRIBUTE((unused,used));

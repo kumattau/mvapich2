@@ -533,7 +533,7 @@ struct smpi_var {
     short int only_one_device;  /* to see if all processes are on one physical node */
 
     unsigned int *l2g_rank;
-    int available_queue_length;
+    size_t available_queue_length;
     int fd;
     int fd_pool;
     /*

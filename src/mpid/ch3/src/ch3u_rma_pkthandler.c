@@ -268,9 +268,6 @@ int MPIDI_CH3_PktHandler_Put(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
     MPID_Win *win_ptr;
     int acquire_lock_fail = 0;
     int mpi_errno = MPI_SUCCESS;
-#if defined(CHANNEL_PSM)
-	MPIDI_msg_sz_t orig_len = *buflen;
-#endif
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PKTHANDLER_PUT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PKTHANDLER_PUT);
@@ -343,17 +340,6 @@ int MPIDI_CH3_PktHandler_Put(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         req->dev.source_win_handle = put_pkt->source_win_handle;
         req->dev.flags = put_pkt->flags;
         req->dev.OnFinal = MPIDI_CH3_ReqHandler_PutRecvComplete;
-	
-        //FIXME2: enable this when truly one-sided is merged
-#if 0 
-        && defined(CHANNEL_MRAIL)
-        if (put_pkt->source_win_handle != MPI_WIN_NULL)
-        {
-            MPID_Win *win_ptr;
-            MPID_Win_get_ptr(put_pkt->target_win_handle, win_ptr);
-            win_ptr->outstanding_rma += put_pkt->rma_issued;
-        }
-#endif /* defined(CHANNEL_MRAIL) */
 
         if (MPIR_DATATYPE_IS_PREDEFINED(put_pkt->datatype)) {
             MPI_Aint type_size;
@@ -492,6 +478,24 @@ rndv_complete:
                 mpi_errno = MPIDI_CH3_ReqHandler_PutDerivedDTRecvComplete(vc, req, &complete);
                 MPIR_ERR_CHKANDJUMP1(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|postrecv",
                                      "**ch3|postrecv %s", "MPIDI_CH3_PKT_PUT");
+
+#if defined (CHANNEL_PSM)
+                if(put_pkt->rndv_mode) {
+                    if((*rreqp)->psm_flags & PSM_RNDVPUT_COMPLETED) {
+                        MPIDI_CH3_ReqHandler_PutRecvComplete(vc, req, &complete);
+                    }
+                } else {
+                    assert((req->dev.recv_data_sz) == (data_len -
+                                (req->dev.ext_hdr_sz +
+                                 put_pkt->info.dataloop_size)));
+                    data_buf += req->dev.ext_hdr_sz + put_pkt->info.dataloop_size;
+                    mpi_errno = psm_dt_1scop(req, data_buf, (data_len -
+                                (req->dev.ext_hdr_sz +
+                                 put_pkt->info.dataloop_size)));
+                    MPIDI_CH3_ReqHandler_PutRecvComplete(vc, req, &complete);
+                }
+#endif /* CHANNEL_PSM */
+
                 if (complete) {
                     *rreqp = NULL;
                     goto fn_exit;
@@ -577,36 +581,6 @@ int MPIDI_CH3_PktHandler_Get(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
     MPIU_Assert(get_pkt->target_win_handle != MPI_WIN_NULL);
     MPID_Win_get_ptr(get_pkt->target_win_handle, win_ptr);
 
-#if 0 
-    && defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
-    //FIXME2: is this design still valid? 
-    //Look at it when RDMA design is merged
-   
-   
-    
-    /*In the case of LOCK with MODE_NOCHECK, a lock request with mode_nocheck
-     * can arrive at target process before local completion of the last
-     * operation in the previous epoch arrives. */
-    if (win_ptr->outstanding_rma != 0 && 
-            get_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_LOCK &&
-            get_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_NOCHECK){
-        MPID_Progress_state progress_state;
-
-        MPID_Progress_start(&progress_state);
-
-        while (win_ptr->outstanding_rma != 0) {
-            mpi_errno = MPID_Progress_wait(&progress_state);
-            /* --BEGIN ERROR HANDLING-- */
-            if (mpi_errno != MPI_SUCCESS) {
-                MPID_Progress_end(&progress_state);
-                return mpi_errno;
-            }
-            /* --END ERROR HANDLING-- */
-        }
-        MPID_Progress_end(&progress_state);
-        }
-#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
-
     mpi_errno = check_piggyback_lock(win_ptr, vc, pkt, buflen, &acquire_lock_fail, &req);
     if (mpi_errno != MPI_SUCCESS)
         MPIR_ERR_POP(mpi_errno);
@@ -628,21 +602,6 @@ int MPIDI_CH3_PktHandler_Get(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
      * operation are completed when counter reaches zero. */
     win_ptr->at_completion_counter++;
 
-
-#if 0 
-&& defined(CHANNEL_MRAIL)
-    //FIXME2: look at it when RDMA design is merged
-    if (req->dev.source_win_handle != MPI_WIN_NULL) {
-        MPID_Win *win_ptr;
-        MPID_Win_get_ptr(req->dev.target_win_handle, win_ptr);
-        DEBUG_PRINT("get pkt, win handle %d, WINNULL %d, outstanding %d, get rma %d\n",
-                req->dev.source_win_handle, MPI_WIN_NULL, win_ptr->outstanding_rma,
-                get_pkt->rma_issued);
-
-        win_ptr->outstanding_rma += get_pkt->rma_issued;
-    }
-#endif /* defined(CHANNEL_MRAIL) */
-
     if (get_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_IMMED_RESP) {
         MPIU_Assert(MPIR_DATATYPE_IS_PREDEFINED(get_pkt->datatype));
     }
@@ -659,6 +618,7 @@ int MPIDI_CH3_PktHandler_Get(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GetSendComplete;
         req->dev.OnFinal = MPIDI_CH3_ReqHandler_GetSendComplete;
         req->kind = MPID_REQUEST_SEND;
+        MV2_INC_NUM_POSTED_SEND();
 #if defined(CHANNEL_MRAIL)
         /*for R3 protocol*/
         req->dev.resp_request_handle = get_pkt->request_handle;
@@ -907,7 +867,6 @@ int MPIDI_CH3_PktHandler_Accumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
     int mpi_errno = MPI_SUCCESS;
     MPI_Aint type_size;
 #if defined (CHANNEL_PSM)
-    MPIDI_msg_sz_t orig_len = *buflen;
     MPID_Request *savereq = (*rreqp);
 #endif /* CHANNEL_PSM */
 
@@ -938,15 +897,6 @@ int MPIDI_CH3_PktHandler_Accumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         (*rreqp) = req;
         goto fn_exit;
     }
-
-#if 0 && defined(CHANNEL_MRAIL)
-    //uncomment after RDMA design is merged
-    if (req->dev.source_win_handle != MPI_WIN_NULL) {
-        MPID_Win *win_ptr = NULL;
-        MPID_Win_get_ptr(req->dev.target_win_handle, win_ptr);
-        win_ptr->outstanding_rma += accum_pkt->rma_issued;
-    }
-#endif /* defined(CHANNEL_MRAIL) */
 
     if (pkt->type == MPIDI_CH3_PKT_ACCUMULATE_IMMED) {
         /* Immed packet type is used when target datatype is predefined datatype. */
@@ -1177,6 +1127,24 @@ do_accumulate:
                 mpi_errno = MPIDI_CH3_ReqHandler_AccumMetadataRecvComplete(vc, req, &complete);
                 MPIR_ERR_CHKANDJUMP1(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|postrecv",
                                      "**ch3|postrecv %s", "MPIDI_CH3_ACCUMULATE");
+
+#if defined (CHANNEL_PSM)
+                if(accum_pkt->rndv_mode) {
+                    if((*rreqp)->psm_flags & PSM_RNDVPUT_COMPLETED) {
+                        MPIDI_CH3_ReqHandler_AccumRecvComplete(vc, req,
+                                &complete);
+                    }
+                } else {
+                    assert((req->dev.recv_data_sz) == (data_len -
+                                (req->dev.ext_hdr_sz +
+                                 accum_pkt->info.dataloop_size)));
+                    data_buf += req->dev.ext_hdr_sz + accum_pkt->info.dataloop_size;
+                    MPIU_Memcpy(req->dev.user_buf, data_buf, (data_len -
+                                (req->dev.ext_hdr_sz + accum_pkt->info.dataloop_size)));
+                    MPIDI_CH3_ReqHandler_AccumRecvComplete(vc, req, &complete);
+                }
+#endif /* CHANNEL_PSM */
+
                 if (complete) {
                     *rreqp = NULL;
                     goto fn_exit;
@@ -1243,7 +1211,6 @@ int MPIDI_CH3_PktHandler_GetAccumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
     int mpi_errno = MPI_SUCCESS;
     MPI_Aint stream_elem_count, total_len;
 #if defined (CHANNEL_PSM)
-    MPIDI_msg_sz_t orig_len = *buflen;
     MPID_Request *savereq = (*rreqp);
 #endif /* CHANNEL_PSM */
 
@@ -1298,6 +1265,7 @@ int MPIDI_CH3_PktHandler_GetAccumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         resp_req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GaccumSendComplete;
         resp_req->dev.OnFinal = MPIDI_CH3_ReqHandler_GaccumSendComplete;
         resp_req->kind = MPID_REQUEST_SEND;
+        MV2_INC_NUM_POSTED_SEND();
 
         /* here we increment the Active Target counter to guarantee the GET-like
          * operation are completed when counter reaches zero. */
@@ -1869,7 +1837,9 @@ int MPIDI_CH3_PktHandler_FOP(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         goto fn_exit;
     }
 
+#if !defined(CHANNEL_PSM)
     (*buflen) = sizeof(MPIDI_CH3_Pkt_t);
+#endif
     (*rreqp) = NULL;
 
     MPID_Datatype_get_size_macro(fop_pkt->datatype, type_size);
@@ -1926,7 +1896,6 @@ int MPIDI_CH3_PktHandler_FOP(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 #if defined (CHANNEL_PSM)
             resp_req->dev.target_win_handle = fop_pkt->target_win_handle;
             resp_req->dev.flags = fop_pkt->flags;
-            resp_req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_FOPSendComplete;
             MPID_Request_release(resp_req);
 #else
             if (!MPID_Request_is_complete(resp_req)) {
@@ -2788,3 +2757,21 @@ int MPIDI_CH3_PktPrint_LockAck(FILE * fp, MPIDI_CH3_Pkt_t * pkt)
     return MPI_SUCCESS;
 }
 #endif
+
+#if defined (CHANNEL_PSM)
+int psm_dt_1scop(MPID_Request *req, char *buf, int len)
+{
+    int size;
+
+    if(MPIR_DATATYPE_IS_PREDEFINED(req->dev.datatype)) {
+        memcpy(req->dev.user_buf, buf, len);
+    } else {
+        MPID_Datatype_get_size_macro(req->dev.datatype, size);
+        size = size * req->dev.user_count;
+        psm_do_unpack(req->dev.user_count, req->dev.datatype, NULL, buf, size,
+                req->dev.user_buf, len);
+    }
+
+    return MPI_SUCCESS;
+}
+#endif /* CHANNEL_PSM */

@@ -140,26 +140,20 @@ extern int limic_fd;
 #endif /* _SMP_LIMIC_ */
 
 extern int number_of_op;
-static int Decrease_CC(MPID_Win *, int);
-#if 0
-static int Post_Get_Put_Get_List(MPID_Win *, 
-        MPIDI_msg_sz_t , dreg_entry * ,
-        MPIDI_VC_t *, vbuf **, void *local_buf[], 
-        void *remote_buf[], void *user_buf[], MPIDI_msg_sz_t length,
-        uint32_t lkeys[], uint32_t rkeys[], 
+static int Post_Get_Put_Get_List(MPID_Win *, MPIDI_msg_sz_t , dreg_entry * ,
+        MPIDI_VC_t *, vbuf **, void *local_buf[], void *remote_buf[], void *user_buf[], 
+        MPIDI_msg_sz_t length, uint32_t lkeys[], uint32_t rkeys[], 
         rail_select_t rail_select, int target);
-#endif
 
 static int Post_Put_Put_Get_List(MPID_Win *, MPIDI_msg_sz_t,  dreg_entry *, 
         MPIDI_VC_t *, vbuf **, void *local_buf[], void *remote_buf[], MPIDI_msg_sz_t length,
         uint32_t lkeys[], uint32_t rkeys[], rail_select_t rail_select, int target);
 
-#if 0
+
 static int iba_put(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
 static int iba_get(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
 static int iba_fetch_and_add(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
 static int iba_compare_and_swap(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
-#endif
 
 int     iba_lock(MPID_Win *, MPIDI_RMA_Op_t *, int);
 int     iba_unlock(MPID_Win *, MPIDI_RMA_Op_t *, int);
@@ -595,92 +589,6 @@ MPIDI_CH3I_RDMA_start (MPID_Win* win_ptr, int start_grp_size, int* ranks_in_win_
     }
 }
 
-/* For active synchronization, if all rma operation has completed, we issue a RDMA
-write operation with fence to update the remote flag in target processes*/
-int
-MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr,
-                         int start_grp_size, int *ranks_in_win_grp)
-{
-    int i, target, dst;
-    int my_rank, comm_size;
-    int *nops_to_proc;
-    int mpi_errno = MPI_SUCCESS;
-    MPID_Comm *comm_ptr;
-    MPIDI_VC_t* vc = NULL;
-
-    comm_ptr = win_ptr->comm_ptr;
-    my_rank = comm_ptr->rank;
-    comm_size = comm_ptr->local_size;
-
-    /* clean up all the post flag */
-    for (i = 0; i < start_grp_size; ++i) {
-        dst = ranks_in_win_grp[i];
-        win_ptr->post_flag[dst] = 0;
-    }
-    win_ptr->using_start = 0;
-
-    nops_to_proc = (int *) MPIU_Calloc(comm_size, sizeof(int));
-    /* --BEGIN ERROR HANDLING-- */
-    if (!nops_to_proc) {
-        mpi_errno =
-            MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME,
-                                 __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-        goto fn_exit;
-    }
-    /* --END ERROR HANDLING-- */
-
-    /* Check if there are more communication operations to be issued to 
-       each traget process */
-    for (i = 0; i < comm_size; ++i)
-    {
-        nops_to_proc[i] = 0;
-    }
-#if 0
-    MPIDI_RMA_Op_t *curr_ptr;
-    curr_ptr = MPIDI_CH3I_RMA_Ops_head(&win_ptr->at_rma_ops_list);
-    while (curr_ptr != NULL) {
-        ++nops_to_proc[curr_ptr->target_rank];
-        curr_ptr = curr_ptr->next;
-    }
-#endif
-
-    /* If all the operations had been handled using direct RDMA (nops_to_proc[target] == 0) 
-       we can set the complete flag to signal completion. If some operations are pending, the 
-       signalling is taken care of in the send/recv path */
-    for (i = 0; i < start_grp_size; ++i) {
-        target = ranks_in_win_grp[i];
-
-        if (target == my_rank) {
-            continue;
-        }
-
-        if(SMP_INIT) 
-        {
-            MPIDI_Comm_get_vc(comm_ptr, target, &vc);
-            if (nops_to_proc[target] == 0 && vc->smp.local_nodes == -1)
-            {
-            /* We ensure local completion of all the pending operations on 
-             * the current window and then set the complete flag on the remote
-             * side. We do not wait for the completion of this operation as this
-             * would unnecessarily wait on completion of all operations on this
-             * RC connection.
-             */ 
-               Decrease_CC(win_ptr, target);
-            }
-        } 
-        else if (nops_to_proc[target] == 0)  
-        {
-            Decrease_CC(win_ptr, target);
-        }
-    }
-
-    MPIU_Free(nops_to_proc);
-
-  fn_exit:
-    return mpi_errno;
-}
-
-
 /* Waiting for all the completion signals and unregister buffers*/
 int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr)
 {
@@ -730,8 +638,6 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
         goto fn_exit;
     }
 
-//FIXME2: 
-#if 0
     MPIDI_msg_sz_t size, target_type_size, origin_type_size;
     char *local_addr = NULL, *remote_addr = NULL;
     uint32_t r_key, l_key;
@@ -740,7 +646,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
     dreg_entry *tmp_dreg = NULL;
     switch (type)
     {
-        case MPIDI_RMA_PUT:
+        case MPIDI_CH3_PKT_PUT:
             {
                 MPID_Datatype_get_size_macro(origin_datatype, origin_type_size);
                 size = origin_count * origin_type_size;
@@ -753,8 +659,9 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
 
                 r_key = win_ptr->win_rkeys[target_rank *
                     rdma_num_hcas + rail];
-                remote_addr = (char *) win_ptr->base_addrs[target_rank] +
-                    win_ptr->disp_units[target_rank] * target_disp;
+
+                remote_addr = (char *) win_ptr->basic_info_table[target_rank].base_addr +
+                    win_ptr->basic_info_table[target_rank].disp_unit * target_disp;
 
                 v->vc = (void *) vc;
 
@@ -774,16 +681,15 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 complete = 1;
                 break;
             }
-        case MPIDI_RMA_GET:
+        case MPIDI_CH3_PKT_GET:
             {
                 MPID_Datatype_get_size_macro(target_datatype, target_type_size);
                 size = target_count * target_type_size;
 
                 ++win_ptr->rma_issued;
-#if 0
-                remote_addr = (char *) win_ptr->base_addrs[target_rank] +
-                    win_ptr->disp_units[target_rank] * target_disp;
-#endif
+
+                remote_addr = (char *) win_ptr->basic_info_table[target_rank].base_addr +
+                    win_ptr->basic_info_table[target_rank].disp_unit * target_disp;
 
                 GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
                 tmp_dreg = dreg_register(origin_addr, size);
@@ -810,7 +716,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 complete = 1;
                 break;
             }
-       case MPIDI_RMA_FETCH_AND_OP:
+       case MPIDI_CH3_PKT_FOP:
             {
                 MPID_Datatype_get_size_macro(origin_datatype, origin_type_size);
                 uint64_t *fetch_addr;
@@ -820,10 +726,9 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 size = origin_type_size;
                 add_value = *((uint64_t *) origin_addr);
 
-#if 0
-                remote_addr = (char *) win_ptr->base_addrs[target_rank] +
-                    win_ptr->disp_units[target_rank] * target_disp;
-#endif
+                remote_addr = (char *) win_ptr->basic_info_table[target_rank].base_addr +
+                    win_ptr->basic_info_table[target_rank].disp_unit * target_disp;
+
                 aligned = !((intptr_t)remote_addr % 8);
 
                 if (g_atomics_support && aligned && origin_type_size == 8) {
@@ -855,7 +760,7 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                     complete = 0;
                 break;
             }
-       case MPIDI_RMA_COMPARE_AND_SWAP:
+       case MPIDI_CH3_PKT_CAS_IMMED:
             {
                 MPID_Datatype_get_size_macro(origin_datatype, origin_type_size);
                 char *return_addr;
@@ -866,10 +771,9 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
                 swap_value = *((uint64_t *) origin_addr);
                 compare_value = *((uint64_t *) compare_addr);
 
-#if 0
-                remote_addr = (char *) win_ptr->base_addrs[target_rank] +
-                    win_ptr->disp_units[target_rank] * target_disp;
-#endif
+                remote_addr = (char *) win_ptr->basic_info_table[target_rank].base_addr +
+                    win_ptr->basic_info_table[target_rank].disp_unit * target_disp;
+
                 aligned = !((intptr_t)remote_addr % 8);
 
                 if (g_atomics_support && aligned && origin_type_size == 8) {
@@ -908,7 +812,6 @@ inline int MPIDI_CH3I_RDMA_try_rma_op_fast( int type, void *origin_addr, int ori
             break;
     }
 
-#endif
 fn_exit:
     return complete;
 }
@@ -977,224 +880,211 @@ fn_fail:
 
 /* Go through RMA op list once, and start as many RMA ops as possible */
 void
-MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int target_rank)
+MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, MPIDI_RMA_Target_t * target)
 {
     MPIDI_RMA_Op_t *curr_ptr = NULL;
-    MPIDI_RMA_Op_t *head = NULL;
-#ifdef _SCHEDULE
-    int curr_put = 1;
-    int fall_back = 0;
-    int force_to_progress = 0, issued = 0;
-    MPIDI_RMA_Op_t * skipped_op = NULL;
-#endif
+    MPIDI_RMA_Op_t *next_ptr = NULL;
+    int mpi_errno = MPI_SUCCESS;
+    int has_iwarp = 0;
+    intptr_t aligned;
     MPIDI_VC_t* vc = NULL;
     MPID_Comm* comm_ptr = NULL;
-
+#if defined(RDMA_CM)
+    has_iwarp = mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode;
+#endif
     if (SMP_INIT)
     {
         comm_ptr = win_ptr->comm_ptr;
     }
-#if 0
-    intptr_t aligned;
-    MPIDI_RMA_Ops_list_t *ops_list;
-    ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
-    head = MPIDI_CH3I_RMA_Ops_head(ops_list);
-#endif
-    curr_ptr = head;
 
-#ifdef _SCHEDULE
-    while (curr_ptr != NULL || skipped_op != NULL)
-    {
-        if (curr_ptr == NULL)
-        {
-            curr_ptr = skipped_op;
-            skipped_op = NULL;
-            ++fall_back;
-            if (issued == 0) {
-                force_to_progress = 1;
-            } else {
-                force_to_progress = 0;
-                issued = 0;
+    if (win_ptr->num_targets_with_pending_net_ops == 0 || target == NULL ||
+            target->pending_net_ops_list_head == NULL)
+        return;
+
+    curr_ptr = target->next_op_to_issue;
+
+    while (curr_ptr != NULL) {
+
+        if (SMP_INIT) {
+            MPIDI_Comm_get_vc(comm_ptr, curr_ptr->target_rank, &vc);
+
+            if (vc->smp.local_nodes != -1) {
+                curr_ptr = curr_ptr->next;
+                target->issue_2s_sync = 1;
+                continue;
             }
         }
-#else
-    while (curr_ptr != NULL) {
-#endif
 
-     if (SMP_INIT) {
-        MPIDI_Comm_get_vc(comm_ptr, curr_ptr->target_rank, &vc);
-
-        if (vc->smp.local_nodes != -1 
-#if 0
-            && (!mv2_MPIDI_CH3I_RDMA_Process.force_ib_atomic
-             || curr_ptr->type != MPIDI_RMA_FETCH_AND_OP)
-            && (!mv2_MPIDI_CH3I_RDMA_Process.force_ib_atomic
-             || curr_ptr->type != MPIDI_RMA_FETCH_AND_OP)
-#endif
-            ) {
-            curr_ptr = curr_ptr->next;
-            continue;
-        }
-     }
-
-#if 0
-    MPIDI_msg_sz_t size, origin_type_size, target_type_size;
-     if ((win_ptr->is_active && win_ptr->post_flag[curr_ptr->target_rank] == 1) || 
-         (!win_ptr->is_active && win_ptr->using_lock == 0))
-     {
-         switch (curr_ptr->type)
-         {
-            case MPIDI_RMA_PUT:
-            {
-                int origin_dt_derived;
-                int target_dt_derived;
-                origin_dt_derived = HANDLE_GET_KIND(curr_ptr->origin_datatype) != HANDLE_KIND_BUILTIN ? 1 : 0;
-                target_dt_derived = HANDLE_GET_KIND(curr_ptr->target_datatype) != HANDLE_KIND_BUILTIN ? 1 : 0;
-                MPID_Datatype_get_size_macro(curr_ptr->origin_datatype, origin_type_size);
-                size = curr_ptr->origin_count * origin_type_size;
- 
-                if (!origin_dt_derived
-                    && !target_dt_derived
-                    && size > rdma_put_fallback_threshold)
+        MPIDI_msg_sz_t size, origin_type_size, target_type_size;
+        switch (curr_ptr->pkt.type)
+        {
+            case MPIDI_CH3_PKT_PUT_IMMED:
+            case MPIDI_CH3_PKT_PUT:
                 {
-#ifdef _SCHEDULE
-                    if (curr_put != 1 || force_to_progress == 1)
-                    { 
-                      /* Nearest issued rma is not a put. */
-#endif
+                    int origin_dt_derived;
+                    int target_dt_derived;
+                    MPI_Datatype target_datatype;
+
+                    MPIDI_CH3_PKT_RMA_GET_TARGET_DATATYPE(curr_ptr->pkt, target_datatype, mpi_errno);
+                    target_dt_derived = HANDLE_GET_KIND(target_datatype) != HANDLE_KIND_BUILTIN ? 1 : 0; 
+                    origin_dt_derived = HANDLE_GET_KIND(curr_ptr->origin_datatype) != HANDLE_KIND_BUILTIN ? 1 : 0; 
+                    MPID_Datatype_get_size_macro(target_datatype, target_type_size);  
+
+                    MPID_Datatype_get_size_macro(curr_ptr->origin_datatype, origin_type_size);
+                    size = curr_ptr->origin_count * origin_type_size;
+
+                    if (!origin_dt_derived
+                        && !target_dt_derived
+                        && size > rdma_put_fallback_threshold
+                        && curr_ptr->ureq == NULL)
+                    {
+                        next_ptr = curr_ptr->next;
                         iba_put(curr_ptr, win_ptr, size);
-                         MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
-#ifdef _SCHEDULE
-                        curr_put = 1;
-                        ++issued;
-                    }
+                        MPIDI_CH3I_RMA_Ops_free_elem(win_ptr, &(target->pending_net_ops_list_head), curr_ptr);
+                        curr_ptr = next_ptr;
+                        if (!target->issue_2s_sync) {
+                            target->next_op_to_issue = next_ptr;
+                        }
+                    }                 
                     else
                     {
-                        /* Nearest issued rma is a put. */
-                        if (skipped_op == NULL)
-                        {
-                            skipped_op = curr_ptr;
-                            curr_ptr = curr_ptr->next;
-                        }
+                        curr_ptr = curr_ptr->next;
+                        target->issue_2s_sync = 1;
                     }
-#endif
-                 }                 
-                 else
-                 {
-                     curr_ptr = curr_ptr->next;
-                 }
 
-                 break;
-              }
-            case MPIDI_RMA_ACCUMULATE:
-            case MPIDI_RMA_GET_ACCUMULATE:
-                curr_ptr = curr_ptr->next;
-                break;
-            case MPIDI_RMA_FETCH_AND_OP:
+                    break;
+                }
+            case MPIDI_CH3_PKT_ACCUMULATE:
+            case MPIDI_CH3_PKT_ACCUMULATE_IMMED:
+            case MPIDI_CH3_PKT_GET_ACCUM:
+            case MPIDI_CH3_PKT_GET_ACCUM_IMMED:
                 {
-#if 0
-                    aligned = !(((intptr_t)(win_ptr->base_addrs[target_rank]
-                        + win_ptr->disp_units[target_rank]
-                        * curr_ptr->target_disp)) % 8);
-#endif
+                    curr_ptr = curr_ptr->next;
+                    target->issue_2s_sync = 1;
+                    break;
+                }
+            case MPIDI_CH3_PKT_FOP:
+            case MPIDI_CH3_PKT_FOP_IMMED:
+                {
+                    aligned = !(((intptr_t)(curr_ptr->pkt.fop.addr)) % 8);
                     MPID_Datatype_get_size_macro(curr_ptr->origin_datatype, origin_type_size);
                     /* IB supports fetch_and_add operation for 8 bytes message
                      * size, so check the data size here 
                      * IB atomic operations require aligned address*/
                     if (g_atomics_support && origin_type_size == 8 && curr_ptr->origin_datatype != MPI_DOUBLE
-                        && aligned && !has_iwarp && curr_ptr->op == MPI_SUM)
+                        && aligned && !has_iwarp && curr_ptr->pkt.fop.op == MPI_SUM && curr_ptr->ureq == NULL)
                     {
+                        next_ptr = curr_ptr->next;
                         iba_fetch_and_add(curr_ptr, win_ptr, origin_type_size);
-                        MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
+                        MPIDI_CH3I_RMA_Ops_free_elem(win_ptr, &(target->pending_net_ops_list_head), curr_ptr);
+                        curr_ptr = next_ptr;
+                        if (!target->issue_2s_sync) {
+                            target->next_op_to_issue = next_ptr;
+                        }
                     }
                     else 
                     {
                         curr_ptr = curr_ptr->next;
+                        target->issue_2s_sync = 1;
                     }
                     break;
                 }
-            case MPIDI_RMA_COMPARE_AND_SWAP:
+            case MPIDI_CH3_PKT_CAS_IMMED:
                 {
-#if 0
-                    aligned = !(((intptr_t)(win_ptr->base_addrs[target_rank]
-                        + win_ptr->disp_units[target_rank]
-                        * curr_ptr->target_disp)) % 8);
-#endif
+                    aligned = !(((intptr_t)(curr_ptr->pkt.cas.addr)) % 8);
                     MPID_Datatype_get_size_macro(curr_ptr->origin_datatype, origin_type_size);
                     /* IB supports compare_and_swap operation for 8 bytes
                      * message size, so check the data size here 
                      * IB atomic operations require aligned address*/
-                    if (g_atomics_support && origin_type_size == 8 && aligned && !has_iwarp)
+                    if (g_atomics_support && origin_type_size == 8 && aligned && !has_iwarp && curr_ptr->ureq == NULL)
                     {
+                        next_ptr = curr_ptr->next;
                         iba_compare_and_swap(curr_ptr, win_ptr, origin_type_size);
-                        MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
+                        MPIDI_CH3I_RMA_Ops_free_elem(win_ptr, &(target->pending_net_ops_list_head), curr_ptr);
+                        curr_ptr = next_ptr;
+                        if (!target->issue_2s_sync) {
+                            target->next_op_to_issue = next_ptr;
+                        }
                     } 
                     else
                     {
                         curr_ptr = curr_ptr->next;
+                        target->issue_2s_sync = 1;
                     }
                     break;
 
                 }
-
-            case MPIDI_RMA_ACC_CONTIG:
-                curr_ptr = curr_ptr->next;
-                break;
-            case MPIDI_RMA_GET:
-            {
-                int origin_dt_derived;
-                int target_dt_derived;
-
-                origin_dt_derived = HANDLE_GET_KIND(curr_ptr->origin_datatype) != HANDLE_KIND_BUILTIN ? 1 : 0;
-                target_dt_derived = HANDLE_GET_KIND(curr_ptr->target_datatype) != HANDLE_KIND_BUILTIN ? 1 : 0;
-                MPID_Datatype_get_size_macro(curr_ptr->target_datatype, target_type_size);
-                size = curr_ptr->target_count * target_type_size;
-
-                if (!origin_dt_derived
-                    && !target_dt_derived 
-                    && size > rdma_get_fallback_threshold)
+            case MPIDI_CH3_PKT_GET:
                 {
-#ifdef _SCHEDULE
-                    if (curr_put != 0 || force_to_progress == 1)
+                    int origin_dt_derived;
+                    int target_dt_derived;
+                    MPI_Datatype target_datatype;
+
+                    MPIDI_CH3_PKT_RMA_GET_TARGET_DATATYPE(curr_ptr->pkt, target_datatype, mpi_errno);
+                    target_dt_derived = HANDLE_GET_KIND(target_datatype) != HANDLE_KIND_BUILTIN ? 1 : 0;
+                    origin_dt_derived = HANDLE_GET_KIND(curr_ptr->origin_datatype) != HANDLE_KIND_BUILTIN ? 1 : 0;
+                    MPID_Datatype_get_size_macro(target_datatype, target_type_size); 
+
+                    int target_count;
+                    MPIDI_CH3_PKT_RMA_GET_TARGET_COUNT(curr_ptr->pkt, target_count, mpi_errno);
+                    size = target_count * target_type_size;
+
+                    if (!origin_dt_derived
+                        && !target_dt_derived 
+                        && size > rdma_get_fallback_threshold
+                        && curr_ptr->ureq == NULL)
                     {
-#endif
+                        next_ptr = curr_ptr->next;
                         iba_get(curr_ptr, win_ptr, size);
-                        MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
-#ifdef _SCHEDULE
-                        curr_put = 0;
-                        ++issued;
+                        MPIDI_CH3I_RMA_Ops_free_elem(win_ptr, &(target->pending_net_ops_list_head), curr_ptr);
+                        curr_ptr = next_ptr;
+                        if (!target->issue_2s_sync) {
+                            target->next_op_to_issue = next_ptr;
+                        }
                     }
                     else
                     {
-                        if (skipped_op == NULL)
-                        {
-                            skipped_op = curr_ptr;
-                        }
-
                         curr_ptr = curr_ptr->next;
+                        target->issue_2s_sync = 1;
                     }
-#endif
-                }
-                else
-                {
-                    curr_ptr = curr_ptr->next;
-                }
 
-                break;
-            }
+                    break;
+                }
             default:
                 DEBUG_PRINT("Unknown ONE SIDED OP\n");
                 ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
                 break;
-            }
         }
-        else
-        {
-            curr_ptr = curr_ptr->next;
-        }
-#endif
     }
 
+    if (target->next_op_to_issue == NULL && target->issue_2s_sync == 0) {
+        if (target->sync.sync_flag == MPIDI_RMA_SYNC_UNLOCK && 
+                target->pending_net_ops_list_head == NULL) {
+            MPIDI_CH3_Pkt_flags_t flag = MPIDI_CH3_PKT_FLAG_RMA_UNLOCK_NO_ACK;
+            mpi_errno = send_unlock_msg(target->target_rank, win_ptr, flag);
+            if (mpi_errno != MPI_SUCCESS)
+                MPIR_ERR_POP(mpi_errno);
+        }
+
+        if (target->sync.sync_flag == MPIDI_RMA_SYNC_FLUSH ||
+            target->sync.sync_flag == MPIDI_RMA_SYNC_UNLOCK || 
+            target->win_complete_flag) {
+            if (target->win_complete_flag && target->issue_2s_sync != 1) {
+                MPIDI_CH3I_RDMA_set_CC(win_ptr, target->target_rank);
+            }
+            target->sync.sync_flag = MPIDI_RMA_SYNC_NONE;
+        }
+
+    }
+
+    if (target->pending_net_ops_list_head == NULL && target->issue_2s_sync == 0) {
+        win_ptr->num_targets_with_pending_net_ops--;
+        MPIU_Assert(win_ptr->num_targets_with_pending_net_ops >= 0);
+        if (win_ptr->num_targets_with_pending_net_ops == 0) {
+            MPIDI_CH3I_Win_set_inactive(win_ptr);
+        }
+    }
+fn_fail:;
 }
 
 /* For active synchronization */
@@ -1646,7 +1536,7 @@ void MPIDI_CH3I_RDMA_win_free(MPID_Win** win_ptr)
     MPIU_Free((*win_ptr)->all_completion_counter);
 }
 
-static int Decrease_CC(MPID_Win * win_ptr, int target_rank)
+int MPIDI_CH3I_RDMA_set_CC(MPID_Win * win_ptr, int target_rank)
 {
     int                 i;
     int                 mpi_errno = MPI_SUCCESS;
@@ -1893,8 +1783,6 @@ fn_fail:
     return mpi_errno;
 }
 
-
-#if 0
 static int Post_Get_Put_Get_List(  MPID_Win * winptr, 
                             MPIDI_msg_sz_t size, 
                             dreg_entry * dreg_tmp,
@@ -2082,7 +1970,6 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
 fn_fail:
     return mpi_errno;
 }
-#endif
 
 int MRAILI_Handle_one_sided_completions(vbuf * v)                            
 {
@@ -2237,15 +2124,16 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
         }
     }
 
-    if (list_win_ptr->rma_issued == 0)
+    if (list_win_ptr->rma_issued == 0) {
         list_win_ptr->poll_flag = 0;
+        MPIDI_CH3_Progress_signal_completion();
+    }
 #ifndef CHANNEL_MRAIL
 fn_fail:
 #endif
     return mpi_errno;
 }
 
-#if 0
 static int iba_put(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
 {
     char                *remote_address;
@@ -2263,11 +2151,9 @@ static int iba_put(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t s
     vbuf                *v = NULL; 
 
     /*part 1 prepare origin side buffer target buffer and keys */
-#if 0
-    remote_address = (char *) win_ptr->base_addrs[rma_op->target_rank]
-        + win_ptr->disp_units[rma_op->target_rank]
-        * rma_op->target_disp;
-#endif
+    MPIU_Assert(rma_op->pkt.type == MPIDI_CH3_PKT_PUT_IMMED || 
+                rma_op->pkt.type == MPIDI_CH3_PKT_PUT);
+    remote_address = rma_op->pkt.put.addr;
 
     if (likely(size <= rdma_eagersize_1sc)) {
         MV2_GET_RC_VBUF(v, size);
@@ -2310,7 +2196,6 @@ static int iba_put(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t s
     return mpi_errno;
 }
 
-
 int iba_get(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
 {
     int                 mpi_errno = MPI_SUCCESS;
@@ -2326,12 +2211,9 @@ int iba_get(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
     MPID_Comm           *comm_ptr;
     vbuf                *v = NULL;
 
-    //MPIU_Assert(rma_op->type == MPIDI_RMA_GET);
     /*part 1 prepare origin side buffer target address and keys  */
-#if 0
-    remote_addr = (char *) win_ptr->base_addrs[rma_op->target_rank] +
-        win_ptr->disp_units[rma_op->target_rank] * rma_op->target_disp;
-#endif
+    MPIU_Assert(rma_op->pkt.type == MPIDI_CH3_PKT_GET);
+    remote_addr = rma_op->pkt.get.addr;
 
     if (size <= rdma_eagersize_1sc) {
         MV2_GET_RC_VBUF(v, size);
@@ -2386,12 +2268,11 @@ int iba_compare_and_swap(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_
     MPIDI_VC_t          *vc_ptr;
     MPID_Comm           *comm_ptr;
     vbuf                *v = NULL;
+
     /*prepare target buffer and key*/
-#if 0
-    remote_addr = (char *) win_ptr->base_addrs[rma_op->target_rank]
-            +win_ptr->disp_units[rma_op->target_rank]
-            * rma_op->target_disp;
-#endif
+    MPIU_Assert(rma_op->pkt.type == MPIDI_CH3_PKT_CAS_IMMED);
+    remote_addr = rma_op->pkt.cas.addr;
+
     comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc(comm_ptr, rma_op->target_rank, &vc_ptr);
     rail = 0;
@@ -2446,11 +2327,10 @@ int iba_fetch_and_add(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr, MPIDI_msg_sz_t 
     hca_index = 0; rail = 0;
 
     /*prepaer target buffer and key, using HCA 0*/
-#if 0
-    remote_addr = (char *) win_ptr->base_addrs[rma_op->target_rank]
-        + win_ptr->disp_units[rma_op->target_rank]
-        * rma_op->target_disp;
-#endif
+    MPIU_Assert(rma_op->pkt.type == MPIDI_CH3_PKT_FOP_IMMED ||
+                    rma_op->pkt.type == MPIDI_CH3_PKT_FOP);
+    remote_addr = rma_op->pkt.fop.addr;
+
     r_key = win_ptr->win_rkeys[rma_op->target_rank*rdma_num_hcas + hca_index];
 
     comm_ptr = win_ptr->comm_ptr;
@@ -2490,6 +2370,5 @@ int iba_fetch_and_add(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr, MPIDI_msg_sz_t 
 fn_fail:
     return mpi_errno;
 }
-#endif
 
 

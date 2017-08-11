@@ -189,7 +189,7 @@ extern int mv2_enable_ireduce_scatter;
 extern int mv2_enable_iallreduce;
 
 /* Use for collective tuning based on arch detection*/
-void MV2_collectives_arch_init(int heterogeneity);
+int MV2_collectives_arch_init(int heterogeneity);
 void MV2_collectives_arch_finalize();
 
 /* Use for allgather_osu.c */
@@ -502,4 +502,162 @@ extern int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **file
 #endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_shmem_coll_calls);
+
+int mv2_set_bcast_collective_algorithm();
+int mv2_set_scatter_collective_algorithm();
+int mv2_set_gather_collective_algorithm();
+int mv2_set_reduce_collective_algorithm();
+int mv2_set_allgather_collective_algorithm();
+int mv2_set_allreduce_collective_algorithm();
+int mv2_set_alltoall_collective_algorithm();
+
+/* Collective values for gather */
+#define MV2_GATHER_INTRA                    "0"
+#define MV2_GATHER_INTER                    "1"
+#define MV2_GATHER_MV2_DIRECT               "2"
+#define MV2_GATHER_MV2_TWO_LEVEL_DIRECT     "3"
+
+/* Collective values for reduce */
+#define MV2_REDUCE_BINOMIAL                 "1"
+#define MV2_REDUCE_INTER_KNOMIAL            "2"
+#define MV2_REDUCE_INTRA_KNOMIAL            "3"
+#define MV2_REDUCE_SHMEM                    "4"
+#define MV2_REDUCE_RDSC_GATHER              "5"
+#define MV2_REDUCE_ZCPY                     "6"
+
+/* Collective values for scatter */
+#define MV2_SCATTER_BINOMIAL_RHS            "1"
+#define MV2_SCATTER_DIRECT_RHS              "2"
+#define MV2_SCATTER_TWO_LEVEL_BINOMIAL      "3"
+#define MV2_SCATTER_TWO_LEVEL_DIRECT        "4"
+#define MV2_SCATTER_MCAST                   "5"
+
+/* Collective values for bcast  */
+#define MV2_SHMEM_BCAST_INTRA                       "0"
+#define MV2_KNOMIAL_BCAST_INTRA                     "1"
+#define MV2_BCAST_BIONOMIAL_INTRA                   "2"
+#define MV2_BCAST_SCATTER_DOUBLING_ALLGATHER_FLAT   "3"
+#define MV2_BCAST_SCATTER_DOUBLING_ALLGATHER        "4"
+#define MV2_BCAST_SCATTER_RING_ALLGATEHR_FLAT       "5"
+#define MV2_BCAST_SCATTER_RING_ALLGATHER            "6"
+#define MV2_BCAST_SCATTER_RING_ALLGATHER_SHM        "7"
+#define MV2_KNOMIAL_BCAST_INTER_NODE_WRAPPER        "8"
+#define MV2_PIPELINED_BCAST_MV2                     "9"
+#define MV2_PIPELINED_BCAST_ZCPY_MV2                "10"
+
+/* Collective values for allreduce  */
+#define MV2_ALLREDUCE_P2P_RD                "1"
+#define MV2_ALLREDUCE_P2P_RS                "2"
+#define MV2_ALLREDUCE_MCAST_2LEVEL          "3"
+#define MV2_ALLREDUCE_MCAST_RSA             "4"
+#define MV2_ALLREDUCE_SHMEM_REDUCE          "5"
+#define MV2_ALLREDUCE_P2P_REDUCE            "6"
+
+/* Collective values for allgather  */
+#define MV2_ALLGATHER_RD_ALLGATHER_COMM     "1"
+#define MV2_ALLGATHER_RD                    "2"
+#define MV2_ALLGATHER_BRUCK                 "3"
+#define MV2_ALLGATHER_RING                  "4"
+
+/* Collective values for alltoall  */
+#define MV2_ALLTOALL_BRUCK_MV2              "0"
+#define MV2_ALLTOALL_RD_MV2                 "1"
+#define MV2_ALLTOALL_SCATTER_DEST_MV2       "2"
+#define MV2_ALLTOALL_PAIRWISE_MV2           "3"
+#define MV2_ALLTOALL_INPLACE_MV2            "4"
+
+/* Function set for collective algorithm selection */
+enum mv2_gather_coll_funcs
+{
+    MV2_GATHER_BINOMIAL,
+    MV2_GATHER_DIRECT,
+    MV2_GATHER_TWO_LEVELT_DIRECT_AND_BINOMIAL_INTRA,
+    MV2_GATHER_TWO_LEVELT_DIRECT_AND_DIRECT_INTRA,
+    MV2_MAX_NUM_GATHER_FUNCS
+};
+
+enum mv2_scatter_coll_funcs
+{
+    MV2_SCATTER_BINOMIAL,
+    MV2_SCATTER_DIRECT,
+    MV2_SCATTER_BINOMIAL_AND_BINOMIAL_INTRA,
+    MV2_SCATTER_BINOMIAL_AND_DIRECT_INTRA,
+    MV2_SCATTER_DIRECT_AND_BINOMIAL_INTRA,
+    MV2_SCATTER_DIRECT_AND_DIRECT_INTRA,
+    MV2_MAX_NUM_SCATTER_FUNCS
+};
+
+enum mv2_bcast_coll_funcs
+{
+    MV2_FLAT_BINOMIAL,
+    MV2_SCATTER_DOUBLING_ALLGATHER_FLAT,
+    MV2_SCATTER_RING_ALLGATHER_FLAT,
+    MV2_ZERO_COPY_BCAST_KNOMIAL_INTRA_2,
+    MV2_ZERO_COPY_BCAST_KNOMIAL_INTRA_4,
+    MV2_ZERO_COPY_BCAST_KNOMIAL_INTRA_8,
+    MV2_PIPELINED_BCAST_KNOMIAL_INTRA,
+    MV2_BINOMIAL_KNOMIAL_INTRA,
+    MV2_SCATTER_DOUBLING_ALLGATHER_KNOMIAL_INTRA_1,
+    MV2_SCATTER_RING_ALLGATHER_KNOMIAL_INTRA_1,
+    MV2_SCATTER_DOUBLING_ALLGATHER_KNOMIAL_INTRA_2,
+    MV2_SCATTER_RING_ALLGATHER_KNOMIAL_INTRA_2,
+    MV2_PIPELINED_BCAST_SHMEM_INTRA,
+    MV2_BINOMIAL_SHMEM_INTRA,
+    MV2_SCATTER_DOUBLING_ALLGATHER_SHMEM_INTRA_1,
+    MV2_SCATTER_RING_ALLGATHER_SHMEM_INTRA_1,
+    MV2_SCATTER_DOUBLING_ALLGATHER_SHMEM_INTRA_2,
+    MV2_SCATTER_RING_ALLGATHER_SHMEM_INTRA_2,
+    MV2_MAX_NUM_BCAST_FUNCS
+};
+
+enum mv2_reduce_coll_funcs
+{
+    MV2_BINOMIAL_REDUCE,
+    MV2_KNOMIAL_REDUCE,
+    MV2_REDUCE_SCATTER_REDUCE,
+    MV2_ZCPY_REDUCE,    
+    MV2_BINOMIAL_AND_KNOMIAL_INTRA_REDUCE,
+    MV2_BINOMIAL_AND_SHMEM_INTRA_REDUCE,
+    MV2_BINOMIAL_AND_BINOMIAL_REDUCE,
+    MV2_REDUCE_SCATTER_REDUCE_AND_KNOMIAL_INTRA_REDUCE,
+    MV2_REDUCE_SCATTER_REDUCE_AND_SHMEM_INTRA_REDUCE,
+    MV2_REDUCE_SCATTER_REDUCE_AND_BINOMIAL_REDUCE,
+    MV2_KNOMIAL_AND_KNOMIAL_INTRA_REDUCE,
+    MV2_KNOMIAL_AND_SHMEM_INTRA_REDUCE,
+    MV2_KNOMIAL_AND_BINOMIAL_REDUCE,
+    MV2_MAX_NUM_REDUCE_FUNCS
+};
+
+enum mv2_allreduce_coll_funcs
+{
+    MV2_RD_ALLREDUCE,
+    MV2_REDUCE_SCATTER_ALLGATHER_ALLREDUCE,
+    MV2_RD_ALLREDUCE_AND_RD_ALLREDUCE,
+    MV2_RD_ALLREDUCE_AND_REDUCE_SCATTER_ALLGATHER,
+    MV2_RD_ALLREDUCE_AND_SHMEM_REDUCE,
+    MV2_RD_ALLREDUCE_AND_P2P_REDUCE,
+    MV2_REDUCE_SCATTER_ALLGATHER_AND_RD_ALLREDUCE,
+    MV2_REDUCE_SCATTER_ALLGATHER_AND_REDUCE_SCATTER_ALLGATHER,
+    MV2_REDUCE_SCATTER_ALLGATHER_AND_SHMEM_REDUCE,
+    MV2_REDUCE_SCATTER_ALLGATHER_AND_P2P_REDUCE,
+    MV2_MAX_NUM_ALLREDUCE_FUNCS
+};
+
+enum mv2_allgather_coll_funcs
+{
+    MV2_RD_ALLGATHER_COMM,
+    MV2_RD_ALLGATHER,
+    MV2_BRUCK_ALLGATHER,
+    MV2_RING_ALLGATHER,
+    MV2_MAX_NUM_ALLGATHER_FUNCS
+};
+
+enum mv2_alltoall_coll_funcs
+{
+    MV2_BRUCK_ALLTOALL,MV2_RD_ALLTOALL,
+    MV2_SCATTER_DESTINATION_ALLTOALL,
+    MV2_PAIRWISE_ALLTOALL,
+    MV2_INPLACE_ALLTOALL,
+    MV2_MAX_NUM_ALLTOALL_FUNCS
+};
 #endif  /* _COLL_SHMEM_ */

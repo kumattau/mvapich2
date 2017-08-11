@@ -302,12 +302,6 @@ int MPIDI_CH3_ReqHandler_AccumRecvComplete(MPIDI_VC_t * vc, MPID_Request * rreq,
 
     *complete = TRUE;
 
-#if 0 
-&& defined(CHANNEL_MRAIL)
-    FIXME2: uncomment after RDMA design is merged
-        win_ptr->outstanding_rma--;
-#endif /* defined(CHANNEL_MRAIL) */
-
 #if defined (CHANNEL_MRAIL) || defined (CHANNEL_PSM)
     /* Decrement counter to indicate that accumulate has been executed */
     win_ptr->at_completion_counter--;
@@ -526,7 +520,6 @@ int MPIDI_CH3_ReqHandler_GaccumRecvComplete(MPIDI_VC_t * vc, MPID_Request * rreq
     rreq->dev.resp_request_handle = MPI_REQUEST_NULL;
 
 #if defined (CHANNEL_MRAIL)
-    win_ptr->outstanding_rma--;
     MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
 #endif
     MPIU_Assert(MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_GET_ACCUM_RECV);
@@ -666,7 +659,7 @@ int MPIDI_CH3_ReqHandler_FOPRecvComplete(MPIDI_VC_t * vc, MPID_Request * rreq, i
 
 #if defined (CHANNEL_PSM)
     MPID_THREAD_CS_ENTER(POBJ, vc->pobj_mutex);
-    mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, iovcnt, resp_req);
+    mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, iovcnt, &resp_req);
     MPID_THREAD_CS_EXIT(POBJ, vc->pobj_mutex);
 #else
     MPID_THREAD_CS_ENTER(POBJ, vc->pobj_mutex);
@@ -1163,6 +1156,7 @@ int MPIDI_CH3_ReqHandler_GetDerivedDTRecvComplete(MPIDI_VC_t * vc,
     MPIR_ERR_CHKANDJUMP(sreq == NULL, mpi_errno, MPI_ERR_OTHER, "**nomemreq");
 
     sreq->kind = MPID_REQUEST_SEND;
+    MV2_INC_NUM_POSTED_SEND();
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_GET_RESP);
     sreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GetSendComplete;
     sreq->dev.OnFinal = MPIDI_CH3_ReqHandler_GetSendComplete;
@@ -1211,7 +1205,7 @@ int MPIDI_CH3_ReqHandler_GetDerivedDTRecvComplete(MPIDI_VC_t * vc,
         psm_do_pack function*/
         MPID_Request tmp;
         mpi_errno = psm_do_pack(sreq->dev.user_count, new_dtp->handle, NULL, &tmp, 
-                    get_pkt->addr, SEGMENT_IGNORE_LAST);
+                    get_pkt->addr, 0, SEGMENT_IGNORE_LAST, PACK_NON_STREAM);
         if(mpi_errno) MPIR_ERR_POP(mpi_errno);
 
         iov[1].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) tmp.pkbuf;
@@ -1561,6 +1555,7 @@ static inline int perform_get_in_lock_queue(MPID_Win * win_ptr,
 
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_GET_RESP);
     sreq->kind = MPID_REQUEST_SEND;
+    MV2_INC_NUM_POSTED_SEND();
     sreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GetSendComplete;
     sreq->dev.OnFinal = MPIDI_CH3_ReqHandler_GetSendComplete;
 
@@ -1737,6 +1732,7 @@ static inline int perform_get_acc_in_lock_queue(MPID_Win * win_ptr,
 
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_GET_ACCUM_RESP);
     sreq->kind = MPID_REQUEST_SEND;
+    MV2_INC_NUM_POSTED_SEND();
     sreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GaccumSendComplete;
     sreq->dev.OnFinal = MPIDI_CH3_ReqHandler_GaccumSendComplete;
 
@@ -2280,29 +2276,6 @@ int MPIDI_CH3I_Release_lock(MPID_Win * win_ptr)
         do {
             if (temp_entered_count != entered_count)
                 temp_entered_count++;
-
-#if 0
- && defined(CHANNEL_MRAIL)
-    //FIXME2: look at it when RDMA design is merged
-#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
-            if (win_ptr->outstanding_rma != 0) {
-                MPID_Progress_state progress_state;
-        
-                MPID_Progress_start(&progress_state);
-
-                while (win_ptr->outstanding_rma != 0) {
-                    mpi_errno = MPID_Progress_wait(&progress_state);
-                    /* --BEGIN ERROR HANDLING-- */
-                    if (mpi_errno != MPI_SUCCESS) {
-                        MPID_Progress_end(&progress_state);
-                        return mpi_errno;
-                    }
-                    /* --END ERROR HANDLING-- */
-                }
-                MPID_Progress_end(&progress_state);
-            }
-#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
-#endif
 
             /* FIXME: MT: The setting of the lock type must be done atomically */
 

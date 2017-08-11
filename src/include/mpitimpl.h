@@ -1443,6 +1443,27 @@ extern MPIU_Thread_mutex_t mpi_t_mutex;
 #define MPIR_T_THREAD_CS_EXIT()     do { /* nothing */ } while (0)
 #endif
 
+/* Hash tables to quick locate category, cvar, pvar indices by their names */
+extern name2index_hash_t *cvar_hash;
+
+static inline int LOOKUP_CVAR_INDEX_BY_NAME_impl(const char* cvar_name)
+{
+    int cvar_idx = -1;
+    name2index_hash_t *hash_entry = NULL;
+
+    /* Do hash lookup by the name */
+    HASH_FIND_STR(cvar_hash, cvar_name, hash_entry);
+    if (hash_entry != NULL) {
+        cvar_idx = hash_entry->idx;
+    }
+    return cvar_idx;
+}
+
+#define MPIR_CVAR_GET_INDEX_impl(name_, out_val_)           \
+    do {                                                    \
+        (out_val_) = LOOKUP_CVAR_INDEX_BY_NAME_impl(#name_);\
+    } while (0)
+
 /* Init and finalize routines */
 extern void MPIR_T_env_init(void);
 extern void MPIR_T_env_finalize(void);

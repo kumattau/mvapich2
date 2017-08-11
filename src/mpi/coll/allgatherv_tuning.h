@@ -86,7 +86,7 @@ extern int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
                                     MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 /* Architecture detection tuning */
-int MV2_set_allgatherv_tuning_table();
+int MV2_set_allgatherv_tuning_table(int heterogeneity);
 
 /* Function to clean free memory allocated by allgatherv tuning table*/
 void MV2_cleanup_allgatherv_tuning_table();

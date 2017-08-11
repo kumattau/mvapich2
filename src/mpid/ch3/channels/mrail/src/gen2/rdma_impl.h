@@ -76,7 +76,6 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     uint8_t                     has_ring_startup;
     uint8_t                     has_lazy_mem_unregister;
     uint8_t                     has_one_sided;
-    uint8_t                     has_flush;
     int                         maxtransfersize;
     int                         global_used_send_cq;
     int                         global_used_recv_cq;

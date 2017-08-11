@@ -157,7 +157,7 @@ extern int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
                               int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 /* Architecture detection tuning */
-int MV2_set_scatter_tuning_table();
+int MV2_set_scatter_tuning_table(int heterogeneity);
 
 /* Function to clean free memory allocated by scatter tuning table*/
 void MV2_cleanup_scatter_tuning_table();

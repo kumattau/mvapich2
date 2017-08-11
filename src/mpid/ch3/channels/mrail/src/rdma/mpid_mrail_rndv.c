@@ -26,7 +26,7 @@
 int MPID_MRAIL_RndvSend (
     MPID_Request** sreq_p,
     const void* buf,
-    int count,
+    MPI_Aint count,
     MPI_Datatype datatype,
     int dt_contig,
     MPIDI_msg_sz_t data_sz,

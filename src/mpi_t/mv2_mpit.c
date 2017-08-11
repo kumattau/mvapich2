@@ -101,6 +101,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mpit_alltoallv_mv2_pw);
 /*
  * Count MVAPICH Allreduce algorithms used
  */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_sharp);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_shm_rd);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_shm_rs);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_shm_intra);
@@ -108,6 +109,11 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_intra_p2p);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_2lvl);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_shmem);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_mcast);
+
+/*
+ * Count MVAPICH Iallreduce algorithms used
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_sharp);
 
 /*
  * Count number of UD retransmissions

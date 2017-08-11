@@ -1265,8 +1265,8 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
                             MPIDI_CH3_Pkt_t *resp_pkt,
                             MPID_Request * req)
 {
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RNDV_PUSH);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RNDV_PUSH);
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_GET_RNDV_PUSH);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_GET_RNDV_PUSH);
 
 #ifdef CKPT
     MPIDI_CH3I_CR_lock();
@@ -1344,7 +1344,7 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
     MPIDI_CH3I_CR_unlock();
 #endif
 
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RNDV_PUSH);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_GET_RNDV_PUSH);
     return MPI_SUCCESS;
 }
 

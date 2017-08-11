@@ -144,8 +144,12 @@ typedef enum {
         MV2_ARCH_INTEL_XEON_E5_2670_V3_2S_24,
         MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28,
         MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28,
-        MV2_ARCH_INTEL_XEON_PHI_7250,
         MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36,
+        MV2_ARCH_INTEL_KNL_GENERIC,
+        MV2_ARCH_INTEL_XEON_PHI_7210,
+        MV2_ARCH_INTEL_XEON_PHI_7230,
+        MV2_ARCH_INTEL_XEON_PHI_7250,
+        MV2_ARCH_INTEL_XEON_PHI_7290,
         MV2_ARCH_INTEL_END,
 /* AMD Architectures */
         MV2_ARCH_AMD_START,
@@ -162,6 +166,10 @@ typedef enum {
         MV2_ARCH_IBM_PPC,
         MV2_ARCH_IBM_POWER8,
         MV2_ARCH_IBM_END,
+/* ARM Architectures */
+        MV2_ARCH_ARM_START,
+        MV2_ARCH_ARM_CAVIUM_V8,
+        MV2_ARCH_ARM_END,
         MV2_ARCH_LIST_END, 
 } mv2_proc_arch_list;
 
@@ -181,6 +189,7 @@ typedef enum{
     MV2_CPU_FAMILY_INTEL,
     MV2_CPU_FAMILY_AMD,
     MV2_CPU_FAMILY_POWER,
+    MV2_CPU_FAMILY_ARM,
 }mv2_cpu_family_type;
 
 /* Multi-rail info */

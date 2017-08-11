@@ -15,6 +15,10 @@
 #include "mpiutil.h"
 #include "rdma_impl.h"
 
+#undef FUNCNAME
+#define FUNCNAME create_eagercontig_request_inline
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static inline MPID_Request * create_eagercontig_request_inline(MPIDI_VC_t * vc,
                          MPIDI_CH3_Pkt_type_t reqtype,
                          const void * buf, MPIDI_msg_sz_t data_sz, int rank,
@@ -46,6 +50,7 @@ static inline MPID_Request * create_eagercontig_request_inline(MPIDI_VC_t * vc,
     /* --END ERROR HANDLING-- */
     MPIU_Object_set_ref(sreq, 2);
     sreq->kind = MPID_REQUEST_SEND;
+    MV2_INC_NUM_POSTED_SEND();
 
     sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)eager_pkt;
     sreq->dev.iov[0].MPL_IOV_LEN = sizeof(*eager_pkt);

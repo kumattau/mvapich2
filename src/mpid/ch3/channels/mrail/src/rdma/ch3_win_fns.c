@@ -665,6 +665,12 @@ static int MPIDI_CH3I_Win_gather_info(void *base, MPI_Aint size, int disp_unit, 
         MPIR_ERR_POP(mpi_errno);
     MPIR_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
+
+#if defined(CHANNEL_MRAIL)
+    MPIDI_CH3I_RDMA_win_create(base, size, comm_size,
+            comm_rank, win_ptr, comm_ptr);
+#endif 
+
     if((*win_ptr)->comm_ptr->dev.ch.shmem_coll_ok == 1 && node_comm_ptr != NULL) {
         mpi_errno = free_2level_comm((*win_ptr)->comm_ptr);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno); 

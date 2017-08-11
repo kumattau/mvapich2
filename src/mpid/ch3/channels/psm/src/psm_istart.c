@@ -116,6 +116,7 @@ int psm_istartmsgv(MPIDI_VC_t *vc, MPL_IOV *iov, int iov_n, MPID_Request **rptr)
         case MPIDI_CH3_PKT_FOP_RESP: {
             MPIDI_CH3_Pkt_t * pkt = (MPIDI_CH3_Pkt_t *) genpkt;
             iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
+            (*rptr)->pkbuf = vc;
             mpi_errno = psm_1sided_atomicpkt(pkt, iov, iov_n,
                     pkt->fop_resp.mapped_trank, pkt->fop_resp.mapped_srank, rptr);
             if(unlikely(mpi_errno != MPI_SUCCESS)) {
@@ -181,8 +182,6 @@ int psm_istartmsg(MPIDI_VC_t *vc, void *upkt, MPIDI_msg_sz_t pkt_sz, MPID_Reques
                 MPIR_ERR_POP(mpi_errno);
             }
             if(((MPIDI_CH3_Pkt_get_t *) genpkt)->rndv_mode) {
-                PRINT_DEBUG(DEBUG_1SC_verbose>1, "rndv msg length %d\n", ((MPIDI_CH3_Pkt_get_t *)
-                                              genpkt)->rndv_len);
                 mpi_errno = psm_1sc_get_rndvrecv((*rptr), genpkt, trank);
             } else {
                 ++psm_tot_eager_gets;
@@ -223,7 +222,6 @@ int psm_istartmsg(MPIDI_VC_t *vc, void *upkt, MPIDI_msg_sz_t pkt_sz, MPID_Reques
             }
             break;
 
-        case MPIDI_CH3_PKT_FOP: 
         case MPIDI_CH3_PKT_FOP_IMMED:
             buflen = sizeof(MPIDI_CH3_Pkt_t);
             src = ((MPIDI_CH3_Pkt_fop_t *) genpkt)->mapped_srank;

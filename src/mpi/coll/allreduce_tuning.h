@@ -140,7 +140,7 @@ extern int MPIR_Allreduce_mcst_reduce_redscat_gather_MV2(const void *sendbuf,
                              MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 /* Architecture detection tuning */
-int MV2_set_allreduce_tuning_table();
+int MV2_set_allreduce_tuning_table(int heterogeneity);
 
 /* Function to clean free memory allocated by allreduce tuning table*/
 void MV2_cleanup_allreduce_tuning_table();

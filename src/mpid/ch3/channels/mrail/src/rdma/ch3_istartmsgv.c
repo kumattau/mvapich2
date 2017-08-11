@@ -53,6 +53,7 @@ static inline MPID_Request * create_request(MPL_IOV * iov, int iov_count,
     /* --END ERROR HANDLING-- */
     MPIU_Object_set_ref(sreq, 2);
     sreq->kind = MPID_REQUEST_SEND;
+    MV2_INC_NUM_POSTED_SEND();
 
     for (i = 0; i < iov_count; i++)
     {
@@ -213,6 +214,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPL_IOV * iov, int n_iov,
                 MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
             }
             sreq->kind = MPID_REQUEST_SEND;
+            MV2_INC_NUM_POSTED_SEND();
             MPID_cc_set(&sreq->cc, 0);
             /* TODO: Create an appropriate error message based on the value of errno
              * */

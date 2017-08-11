@@ -43,6 +43,21 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
 
     MPID_Request_get_ptr(*request, request_ptr);
 
+#if defined (_SHARP_SUPPORT_)
+    if (request_ptr->sharp_req != NULL) {
+        mpi_errno = MPID_SHARP_COLL_REQ_WAIT(request_ptr);
+        if (mpi_errno != MPID_SHARP_COLL_SUCCESS) {
+            PRINT_ERROR("SHArP non-blocking collective failed \n ");
+            MPID_SHARP_COLL_REQ_FREE(request_ptr);
+            mpi_errno = MPI_ERR_INTERN;
+            MPIR_ERR_POP(mpi_errno);
+        }
+        mpi_errno = MPI_SUCCESS;
+        goto fn_exit;
+    }
+#endif
+
+
     if (!MPID_Request_is_complete(request_ptr))
     {
 	MPID_Progress_state progress_state;

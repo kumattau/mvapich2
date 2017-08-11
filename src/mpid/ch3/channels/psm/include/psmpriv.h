@@ -257,6 +257,13 @@ extern pthread_spinlock_t   psmlock;
 extern pthread_spinlock_t   psmlock_progress;
 extern size_t ipath_max_transfer_size;
 
+
+
+typedef enum{
+    PACK_RMA_STREAM = 0,
+    PACK_NON_STREAM     
+}psm_pack_type; 
+
 void psm_queue_init();
 int psm_dofinalize();
 int psm_do_cancel(MPID_Request *req);
@@ -301,7 +308,10 @@ int psm_1sided_getaccumpkt(MPIDI_CH3_Pkt_get_accum_t *pkt, MPL_IOV *iov, int iov
                        MPID_Request **rptr);
 int psm_1sided_getresppkt(MPIDI_CH3_Pkt_get_resp_t *pkt, MPL_IOV *iov, int iov_n,
                        MPID_Request **rptr);
+int psm_1sided_getaccumresppkt(MPIDI_CH3_Pkt_get_accum_resp_t *pkt, MPL_IOV *iov, int iov_n,
+                       MPID_Request **rptr);
 int psm_getresp_complete(MPID_Request *req); 
+int psm_fopresp_complete(MPID_Request *req); 
 int psm_getaccumresp_complete(MPID_Request *req); 
 int psm_1sided_getpkt(MPIDI_CH3_Pkt_get_t *pkt, MPL_IOV *iov, int iov_n,
         MPID_Request **rptr);
@@ -322,7 +332,8 @@ int psm_getresp_rndv_complete(MPID_Request *req, MPIDI_msg_sz_t inlen);
 int psm_do_unpack(int count, MPI_Datatype datatype, MPID_Comm *comm, 
                   void *pkbuf, int pksz, void *inbuf, MPIDI_msg_sz_t data_sz);
 int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
-                *sreq, const void *buf, MPIDI_msg_sz_t data_sz);
+                *sreq, const void *buf, MPIDI_msg_sz_t offset, MPIDI_msg_sz_t data_sz,
+                psm_pack_type type);
 void psm_do_ncrecv_complete(MPID_Request *req);
 void psm_dequeue_compreq(MPID_Request *req);
 void psm_prepost_1sc();
@@ -343,4 +354,5 @@ extern int mv2_use_pmi_ibarrier;
 int mv2_allocate_pmi_keyval(void);
 void mv2_free_pmi_keyval(void);
 
+int psm_get_rndvtag();
 #endif 

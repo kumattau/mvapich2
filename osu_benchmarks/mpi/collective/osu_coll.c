@@ -225,7 +225,7 @@ set_num_probes (int value)
 }
 
 static int
-set_max_memlimit (int value)
+set_max_memlimit (long long value)
 {
     options.max_mem_limit = value;
 

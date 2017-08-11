@@ -17,14 +17,6 @@
 #include "mv2_arch_hca_detect.h"
 
 
-enum {
-    SCATTER_BINOMIAL = 1,            
-    SCATTER_DIRECT,                  
-    SCATTER_TWO_LEVEL_BINOMIAL,     
-    SCATTER_TWO_LEVEL_DIRECT,        
-    SCATTER_MCAST,                    
-};
-
 int *mv2_scatter_table_ppn_conf = NULL;
 int mv2_scatter_num_ppn_conf = 1;
 int *mv2_size_scatter_tuning_table = NULL;
@@ -1098,77 +1090,36 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 			     MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28, MV2_HCA_INTEL_HFI1) && !heterogeneity) {
       /*Bridges Table*/
-      mv2_scatter_indexed_num_ppn_conf = 4;
-      mv2_scatter_indexed_thresholds_table
-	= MPIU_Malloc(sizeof(mv2_scatter_indexed_tuning_table *)
-		      * mv2_scatter_indexed_num_ppn_conf);
-      table_ptrs = MPIU_Malloc(sizeof(mv2_scatter_indexed_tuning_table *)
-			       * mv2_scatter_indexed_num_ppn_conf);
-      mv2_size_scatter_indexed_tuning_table = MPIU_Malloc(sizeof(int) *
-							  mv2_scatter_indexed_num_ppn_conf);
-      mv2_scatter_indexed_table_ppn_conf = MPIU_Malloc(mv2_scatter_indexed_num_ppn_conf * sizeof(int));
-      
-      mv2_scatter_indexed_table_ppn_conf[0] = 1;
-      mv2_size_scatter_indexed_tuning_table[0] = 4;
-      mv2_scatter_indexed_tuning_table mv2_tmp_scatter_indexed_thresholds_table_1ppn[] =
-	PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__1PPN;
-      table_ptrs[0] = mv2_tmp_scatter_indexed_thresholds_table_1ppn;
-      
-      mv2_scatter_indexed_table_ppn_conf[1] = 2;
-      mv2_size_scatter_indexed_tuning_table[1] = 5;
-      mv2_scatter_indexed_tuning_table mv2_tmp_scatter_indexed_thresholds_table_2ppn[] =
-	PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__2PPN;
-      table_ptrs[1] = mv2_tmp_scatter_indexed_thresholds_table_2ppn;
-
-      mv2_scatter_indexed_table_ppn_conf[2] = 4;
-      mv2_size_scatter_indexed_tuning_table[2] = 1;
-      mv2_scatter_indexed_tuning_table mv2_tmp_scatter_indexed_thresholds_table_4ppn[] =
-	PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__4PPN;
-      table_ptrs[2] = mv2_tmp_scatter_indexed_thresholds_table_4ppn;
-      
-      mv2_scatter_indexed_table_ppn_conf[3] = 28;
-      mv2_size_scatter_indexed_tuning_table[3] = 5;
-      mv2_scatter_indexed_tuning_table mv2_tmp_scatter_indexed_thresholds_table_28ppn[] =
-	PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__28PPN;
-      table_ptrs[3] = mv2_tmp_scatter_indexed_thresholds_table_28ppn;
-
-      agg_table_sum = 0;
-      for (i = 0; i < mv2_scatter_indexed_num_ppn_conf; i++) {
-	agg_table_sum += mv2_size_scatter_indexed_tuning_table[i];
-      }
-      mv2_scatter_indexed_thresholds_table[0] =
-	MPIU_Malloc(agg_table_sum * sizeof (mv2_scatter_indexed_tuning_table));
-      MPIU_Memcpy(mv2_scatter_indexed_thresholds_table[0], table_ptrs[0],
-		  (sizeof(mv2_scatter_indexed_tuning_table)
-		   * mv2_size_scatter_indexed_tuning_table[0]));
-      for (i = 1; i < mv2_scatter_indexed_num_ppn_conf; i++) {
-	mv2_scatter_indexed_thresholds_table[i] =
-	  mv2_scatter_indexed_thresholds_table[i - 1]
-	  + mv2_size_scatter_indexed_tuning_table[i - 1];
-	MPIU_Memcpy(mv2_scatter_indexed_thresholds_table[i], table_ptrs[i],
-		    (sizeof(mv2_scatter_indexed_tuning_table)
-		     * mv2_size_scatter_indexed_tuning_table[i]));
-      }
-      MPIU_Free(table_ptrs);
-      return 0;
+      MV2_COLL_TUNING_START_TABLE  (scatter, 6)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 1,  4, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 2,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 4,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 8,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 16,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 28,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__28PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (scatter)
     }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 			     MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36, MV2_HCA_INTEL_HFI1) && !heterogeneity) {
-      /* Jade/Opal Table */
-      MV2_COLL_TUNING_START_TABLE  (scatter, 2)
+      /* Bebop/Jade/Opal Table */
+      MV2_COLL_TUNING_START_TABLE  (scatter, 5)
       MV2_COLL_TUNING_ADD_CONF     (scatter, 1,  5, PSM__INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 4,  5, PSM__INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 8,  5, PSM__INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 16,  5, PSM__INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100__16PPN)
       MV2_COLL_TUNING_ADD_CONF     (scatter, 36, 5, PSM__INTEL_XEON_E5_2695_V4_2S_36_INTEL_HFI_100__36PPN)
       MV2_COLL_TUNING_FINISH_TABLE (scatter)
     }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 			     MV2_ARCH_INTEL_XEON_PHI_7250, MV2_HCA_INTEL_HFI1) && !heterogeneity) {
       /* TACC-KNL Table */
-      MV2_COLL_TUNING_START_TABLE  (scatter, 5)
+      MV2_COLL_TUNING_START_TABLE  (scatter, 6)
       MV2_COLL_TUNING_ADD_CONF     (scatter, 1,  5, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__1PPN)
-      MV2_COLL_TUNING_ADD_CONF     (scatter, 4,  5, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 4,  6, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__4PPN)
       MV2_COLL_TUNING_ADD_CONF     (scatter, 8,  5, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__8PPN)
-      MV2_COLL_TUNING_ADD_CONF     (scatter, 16, 4, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__16PPN)
-      MV2_COLL_TUNING_ADD_CONF     (scatter, 64, 3, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__64PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 16, 6, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 32, 5, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 64, 4, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__64PPN)
       MV2_COLL_TUNING_FINISH_TABLE (scatter)
     }
     else {

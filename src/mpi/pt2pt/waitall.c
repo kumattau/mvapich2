@@ -113,7 +113,11 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
 	    }
 #           endif
             if (request_ptrs[i]->kind != MPID_REQUEST_RECV &&
-                request_ptrs[i]->kind != MPID_REQUEST_SEND)
+                request_ptrs[i]->kind != MPID_REQUEST_SEND
+#if defined (_SHARP_SUPPORT_)
+                && request_ptrs[i]->sharp_req == NULL
+#endif
+                )
             {
                 optimize = FALSE;
             }
@@ -160,6 +164,18 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
     if (optimize) {
         MPID_Progress_start(&progress_state);
         for (i = 0; i < count; ++i) {
+#if defined (_SHARP_SUPPORT_)
+            if (request_ptrs[i]->sharp_req != NULL) {
+                mpi_errno = MPID_SHARP_COLL_REQ_WAIT(request_ptrs[i]);
+                if (mpi_errno != MPID_SHARP_COLL_SUCCESS) {
+                    PRINT_ERROR("SHArP non-blocking collective failed \n ");
+                    MPID_SHARP_COLL_REQ_FREE(request_ptrs[i]);
+                    mpi_errno = MPI_ERR_INTERN;
+                    MPIR_ERR_POP(mpi_errno);
+                }
+                continue; 
+            }
+#endif
             while (!MPID_Request_is_complete(request_ptrs[i])) {
                 mpi_errno = MPID_Progress_wait(&progress_state);
                 /* must check and handle the error, can't guard with HAVE_ERROR_CHECKING, but it's
@@ -207,7 +223,18 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
                 array_of_statuses[i].MPI_ERROR = MPI_SUCCESS;
             continue;
         }
-        
+#if defined (_SHARP_SUPPORT_)
+        if (request_ptrs[i]->sharp_req != NULL) {
+            mpi_errno = MPID_SHARP_COLL_REQ_WAIT(request_ptrs[i]);
+            if (mpi_errno != MPID_SHARP_COLL_SUCCESS) {
+                PRINT_ERROR("SHArP non-blocking collective failed \n ");
+                MPID_SHARP_COLL_REQ_FREE(request_ptrs[i]);
+                mpi_errno = MPI_ERR_INTERN;
+                MPIR_ERR_POP(mpi_errno);
+            }
+            continue; 
+        }
+#endif       
         /* wait for ith request to complete */
         while (!MPID_Request_is_complete(request_ptrs[i]))
         {

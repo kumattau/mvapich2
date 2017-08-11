@@ -285,6 +285,7 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
             tail = (VBUF_FLAG_TYPE *) (v->buffer + size);
             /* If the tail has not received yet, than go ahead and
             ** poll next connection */
+            READBAR();
             if (*head != *tail) {
                 continue;
             }
@@ -888,8 +889,8 @@ int MPIDI_CH3I_MRAILI_Cq_poll_iwarp(vbuf **vbuf_handle,
     int type = T_CHANNEL_NO_ARRIVE;
     struct ibv_cq *chosen_cq = NULL;
 
-    MPIDI_STATE_DECL(MPID_GEN2_MRAILI_CQ_POLL);
-    MPIDI_FUNC_ENTER(MPID_GEN2_MRAILI_CQ_POLL);
+    MPIDI_STATE_DECL(MPID_GEN2_MRAILI_CQ_POLL_IWARP);
+    MPIDI_FUNC_ENTER(MPID_GEN2_MRAILI_CQ_POLL_IWARP);
 
     *vbuf_handle = NULL;
 
@@ -972,7 +973,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll_iwarp(vbuf **vbuf_handle,
         }
     }
 fn_exit:
-    MPIDI_FUNC_EXIT(MPID_GEN2_MRAILI_CQ_POLL);
+    MPIDI_FUNC_EXIT(MPID_GEN2_MRAILI_CQ_POLL_IWARP);
     return type;
 }
 
@@ -990,8 +991,8 @@ int MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf **vbuf_handle,
     int type = T_CHANNEL_NO_ARRIVE;
     struct ibv_cq *chosen_cq = NULL;
 
-    MPIDI_STATE_DECL(MPID_GEN2_MRAILI_CQ_POLL);
-    MPIDI_FUNC_ENTER(MPID_GEN2_MRAILI_CQ_POLL);
+    MPIDI_STATE_DECL(MPID_GEN2_MRAILI_CQ_POLL_IB);
+    MPIDI_FUNC_ENTER(MPID_GEN2_MRAILI_CQ_POLL_IB);
 
     *vbuf_handle = NULL;
 
@@ -1066,7 +1067,7 @@ get_blocking_message:
     }
 fn_exit:
 
-    MPIDI_FUNC_EXIT(MPID_GEN2_MRAILI_CQ_POLL);
+    MPIDI_FUNC_EXIT(MPID_GEN2_MRAILI_CQ_POLL_IB);
     return type;
 }
 

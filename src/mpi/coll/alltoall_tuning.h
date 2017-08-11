@@ -33,14 +33,6 @@
  *  INPLACE: MV2_ALLTOALL_TUNING=4
  */
 
-enum {
-    ALLTOALL_BRUCK_MV2=0,
-    ALLTOALL_RD_MV2,
-    ALLTOALL_SCATTER_DEST_MV2, 
-    ALLTOALL_PAIRWISE_MV2, 
-    ALLTOALL_INPLACE_MV2, 
-};
-
 /* Indicates number of processes per node */
 extern int *mv2_alltoall_table_ppn_conf;
 /* Indicates total number of configurations */
@@ -151,7 +143,7 @@ extern int MPIR_Alltoall_inplace_MV2(
 
 
 /* Architecture detection tuning */
-int MV2_set_alltoall_tuning_table();
+int MV2_set_alltoall_tuning_table(int heterogeneity);
 
 /* Function to clean free memory allocated by bcast tuning table*/
 void MV2_cleanup_alltoall_tuning_table();

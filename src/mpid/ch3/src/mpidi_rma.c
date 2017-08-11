@@ -201,6 +201,12 @@ int MPID_Win_free(MPID_Win ** win_ptr)
         }
     }
 
+#if defined (CHANNEL_MRAIL)
+    if ((*win_ptr)->fall_back != 1) {
+        MPIDI_CH3I_RDMA_win_free(win_ptr);
+    }
+#endif
+
 #if defined (CHANNEL_PSM)
     MPIU_Free((*win_ptr)->rank_mapping);
 #endif /* CHANNEL_PSM */
@@ -233,6 +239,7 @@ int MPID_Win_free(MPID_Win ** win_ptr)
     MPIU_Handle_obj_free(&MPID_Win_mem, *win_ptr);
 
   fn_exit:
+    MV2_DEC_NUM_UNEXP_RECV();
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_FREE);
     return mpi_errno;
 

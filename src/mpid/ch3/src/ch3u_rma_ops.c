@@ -17,6 +17,9 @@
 
 #include "mpidrma.h"
 #include "coll_shmem.h"
+#if defined(CHANNEL_MRAIL)  
+#include "rdma_impl.h"
+#endif
 
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(RMA, rma_rmaqueue_set);
 
@@ -60,9 +63,17 @@ int MPIDI_CH3I_Put(const void *origin_addr, int origin_count, MPI_Datatype
     MPID_Datatype *dtp;
     MPI_Aint dt_true_lb ATTRIBUTE((unused));
     MPIDI_msg_sz_t data_sz;
-    MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
+    MPIDI_VC_t *target_vc = NULL;
+#if !defined(CHANNEL_MRAIL)
+    MPIDI_VC_t *orig_vc = NULL;
+#endif
     int made_progress = 0;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_PUT);
+
+#if defined(CHANNEL_MRAIL)
+    int transfer_complete = 0;
+    MPIDI_msg_sz_t size, target_type_size;
+#endif
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PUT);
 
@@ -124,6 +135,28 @@ int MPIDI_CH3I_Put(const void *origin_addr, int origin_count, MPI_Datatype
         }
     }
     else {
+#if defined(CHANNEL_MRAIL)
+        MPID_Datatype_get_size_macro(target_datatype, target_type_size);
+        size = target_count * target_type_size;
+        if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) 
+            && MPIR_DATATYPE_IS_PREDEFINED(target_datatype)
+            && ureq == NULL
+            && win_ptr->fall_back != 1 && win_ptr->enable_fast_path == 1
+            && win_ptr->use_rdma_path == 1
+            && ((win_ptr->is_active && win_ptr->post_flag[target_rank] == 1)
+                || (!win_ptr->is_active && win_ptr->using_lock == 0))
+            && size < rdma_large_msg_rail_sharing_threshold)
+        {
+            transfer_complete = MPIDI_CH3I_RDMA_try_rma_op_fast(MPIDI_CH3_PKT_PUT, (void *)origin_addr,
+                    origin_count, origin_datatype, target_rank, target_disp,
+                    target_count, target_datatype, NULL, NULL, win_ptr);
+        }
+        if (transfer_complete) {
+            goto fn_exit;
+        }
+        else 
+#endif
+        {
         MPIDI_RMA_Op_t *op_ptr = NULL;
         MPIDI_CH3_Pkt_put_t *put_pkt = NULL;
         int use_immed_pkt = FALSE;
@@ -169,13 +202,18 @@ int MPIDI_CH3I_Put(const void *origin_addr, int origin_count, MPI_Datatype
         }
 
         /* Judge if this operation is an piggyback candidate */
-        if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) &&
-            MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
-            /* FIXME: currently we only piggyback LOCK flag with op using predefined datatypes
-             * for both origin and target data. We should extend this optimization to derived
-             * datatypes as well. */
-            if (data_sz <= MPIR_CVAR_CH3_RMA_OP_PIGGYBACK_LOCK_DATA_SIZE)
-                op_ptr->piggyback_lock_candidate = 1;
+#if defined(CHANNEL_MRAIL) 
+        if (win_ptr->fall_back == 1)
+#endif
+        {
+            if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) &&
+                    MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
+                /* FIXME: currently we only piggyback LOCK flag with op using predefined datatypes
+                 * for both origin and target data. We should extend this optimization to derived
+                 * datatypes as well. */
+                if (data_sz <= MPIR_CVAR_CH3_RMA_OP_PIGGYBACK_LOCK_DATA_SIZE)
+                    op_ptr->piggyback_lock_candidate = 1;
+            }
         }
 
         /************** Setting packet struct areas in operation ****************/
@@ -222,6 +260,7 @@ int MPIDI_CH3I_Put(const void *origin_addr, int origin_count, MPI_Datatype
                     MPIR_ERR_POP(mpi_errno);
             }
         }
+        }
     }
 
   fn_exit:
@@ -248,9 +287,17 @@ int MPIDI_CH3I_Get(void *origin_addr, int origin_count, MPI_Datatype
     int dt_contig ATTRIBUTE((unused)), rank;
     MPI_Aint dt_true_lb ATTRIBUTE((unused));
     MPID_Datatype *dtp;
-    MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
+    MPIDI_VC_t *target_vc = NULL;
+#if !defined(CHANNEL_MRAIL)
+    MPIDI_VC_t *orig_vc = NULL;
+#endif
     int made_progress = 0;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_GET);
+
+#if defined(CHANNEL_MRAIL)
+    int transfer_complete = 0;
+    MPIDI_msg_sz_t size, target_type_size;
+#endif
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_GET);
 
@@ -313,6 +360,28 @@ int MPIDI_CH3I_Get(void *origin_addr, int origin_count, MPI_Datatype
         }
     }
     else {
+#if defined(CHANNEL_MRAIL)
+        MPID_Datatype_get_size_macro(target_datatype, target_type_size);
+        size = target_count * target_type_size;
+        if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) 
+            && MPIR_DATATYPE_IS_PREDEFINED(target_datatype)
+            && ureq == NULL
+            && win_ptr->fall_back != 1 && win_ptr->enable_fast_path == 1
+            && win_ptr->use_rdma_path == 1
+            && ((win_ptr->is_active && win_ptr->post_flag[target_rank] == 1)
+                || (!win_ptr->is_active && win_ptr->using_lock == 0))
+            && size < rdma_large_msg_rail_sharing_threshold)
+        {
+            transfer_complete = MPIDI_CH3I_RDMA_try_rma_op_fast(MPIDI_CH3_PKT_GET, (void *)origin_addr,
+                    origin_count, origin_datatype, target_rank, target_disp,
+                    target_count, target_datatype, NULL, NULL, win_ptr);
+        }
+        if (transfer_complete) {
+            goto fn_exit;
+        }
+        else 
+#endif
+        {
         MPIDI_RMA_Op_t *op_ptr = NULL;
         MPIDI_CH3_Pkt_get_t *get_pkt = NULL;
         MPI_Aint target_type_size;
@@ -361,13 +430,18 @@ int MPIDI_CH3I_Get(void *origin_addr, int origin_count, MPI_Datatype
                 use_immed_resp_pkt = TRUE;
         }
 
-        /* Judge if this operation is an piggyback candidate. */
-        if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) &&
-            MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
-            /* FIXME: currently we only piggyback LOCK flag with op using predefined datatypes
-             * for both origin and target data. We should extend this optimization to derived
-             * datatypes as well. */
-            op_ptr->piggyback_lock_candidate = 1;
+#if defined(CHANNEL_MRAIL) 
+        if (win_ptr->fall_back == 1)
+#endif
+        {
+            /* Judge if this operation is an piggyback candidate. */
+            if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) &&
+                    MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
+                /* FIXME: currently we only piggyback LOCK flag with op using predefined datatypes
+                 * for both origin and target data. We should extend this optimization to derived
+                 * datatypes as well. */
+                op_ptr->piggyback_lock_candidate = 1;
+            }
         }
 
         /************** Setting packet struct areas in operation ****************/
@@ -402,6 +476,7 @@ int MPIDI_CH3I_Get(void *origin_addr, int origin_count, MPI_Datatype
                     MPIR_ERR_POP(mpi_errno);
             }
         }
+        }
     }
 
   fn_exit:
@@ -429,7 +504,10 @@ int MPIDI_CH3I_Accumulate(const void *origin_addr, int origin_count, MPI_Datatyp
     int dt_contig ATTRIBUTE((unused)), rank;
     MPI_Aint dt_true_lb ATTRIBUTE((unused));
     MPID_Datatype *dtp;
-    MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
+    MPIDI_VC_t *target_vc = NULL;
+#if !defined(CHANNEL_MRAIL)
+    MPIDI_VC_t *orig_vc = NULL;
+#endif
     int made_progress = 0;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_ACCUMULATE);
 
@@ -570,13 +648,18 @@ int MPIDI_CH3I_Accumulate(const void *origin_addr, int origin_count, MPI_Datatyp
         }
 
         /* Judge if this operation is an piggyback candidate. */
-        if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) &&
-            MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
-            /* FIXME: currently we only piggyback LOCK flag with op using predefined datatypes
-             * for both origin and target data. We should extend this optimization to derived
-             * datatypes as well. */
-            if (data_sz <= MPIR_CVAR_CH3_RMA_OP_PIGGYBACK_LOCK_DATA_SIZE)
-                op_ptr->piggyback_lock_candidate = 1;
+#if defined(CHANNEL_MRAIL) 
+        if (win_ptr->fall_back == 1)
+#endif
+        {
+            if (MPIR_DATATYPE_IS_PREDEFINED(origin_datatype) &&
+                    MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
+                /* FIXME: currently we only piggyback LOCK flag with op using predefined datatypes
+                 * for both origin and target data. We should extend this optimization to derived
+                 * datatypes as well. */
+                if (data_sz <= MPIR_CVAR_CH3_RMA_OP_PIGGYBACK_LOCK_DATA_SIZE)
+                    op_ptr->piggyback_lock_candidate = 1;
+            }
         }
 
         /************** Setting packet struct areas in operation ****************/
@@ -653,7 +736,10 @@ int MPIDI_CH3I_Get_accumulate(const void *origin_addr, int origin_count,
     int dt_contig ATTRIBUTE((unused));
     MPI_Aint dt_true_lb ATTRIBUTE((unused));
     MPID_Datatype *dtp;
-    MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
+    MPIDI_VC_t *target_vc = NULL;
+#if !defined(CHANNEL_MRAIL)
+    MPIDI_VC_t *orig_vc = NULL;
+#endif
     int made_progress = 0;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_GET_ACCUMULATE);
 
@@ -833,14 +919,19 @@ int MPIDI_CH3I_Get_accumulate(const void *origin_addr, int origin_count,
         }
 
         /* Judge if this operation is a piggyback candidate */
-        if ((is_empty_origin == TRUE || MPIR_DATATYPE_IS_PREDEFINED(origin_datatype)) &&
-            MPIR_DATATYPE_IS_PREDEFINED(result_datatype) &&
-            MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
-            /* FIXME: currently we only piggyback LOCK flag with op using predefined datatypes
-             * for origin, target and result data. We should extend this optimization to derived
-             * datatypes as well. */
-            if (orig_data_sz <= MPIR_CVAR_CH3_RMA_OP_PIGGYBACK_LOCK_DATA_SIZE)
-                op_ptr->piggyback_lock_candidate = 1;
+#if defined(CHANNEL_MRAIL) 
+        if (win_ptr->fall_back == 1)
+#endif
+        {
+            if ((is_empty_origin == TRUE || MPIR_DATATYPE_IS_PREDEFINED(origin_datatype)) &&
+                    MPIR_DATATYPE_IS_PREDEFINED(result_datatype) &&
+                    MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
+                /* FIXME: currently we only piggyback LOCK flag with op using predefined datatypes
+                 * for origin, target and result data. We should extend this optimization to derived
+                 * datatypes as well. */
+                if (orig_data_sz <= MPIR_CVAR_CH3_RMA_OP_PIGGYBACK_LOCK_DATA_SIZE)
+                    op_ptr->piggyback_lock_candidate = 1;
+            }
         }
 
         /************** Setting packet struct areas in operation ****************/
@@ -1002,8 +1093,15 @@ int MPID_Compare_and_swap(const void *origin_addr, const void *compare_addr,
 {
     int mpi_errno = MPI_SUCCESS;
     int rank;
-    MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
+    MPIDI_VC_t *target_vc = NULL;
+#if !defined(CHANNEL_MRAIL)
+    MPIDI_VC_t *orig_vc = NULL;
+#endif
     int made_progress = 0;
+
+#if defined(CHANNEL_MRAIL)
+    int transfer_complete = 0;
+#endif
 
     MPIDI_STATE_DECL(MPID_STATE_MPID_COMPARE_AND_SWAP);
 
@@ -1058,6 +1156,25 @@ int MPID_Compare_and_swap(const void *origin_addr, const void *compare_addr,
             MPIR_ERR_POP(mpi_errno);
     }
     else {
+#if defined(CHANNEL_MRAIL)
+        if (win_ptr->fall_back != 1 && win_ptr->enable_fast_path == 1
+            && win_ptr->use_rdma_path == 1
+#if defined(RDMA_CM)
+            && !mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode
+#endif
+            && ((win_ptr->is_active && win_ptr->post_flag[target_rank] == 1)
+            || (!win_ptr->is_active && win_ptr->using_lock == 0)))
+        {
+            transfer_complete = MPIDI_CH3I_RDMA_try_rma_op_fast(MPIDI_CH3_PKT_CAS_IMMED, (void *)origin_addr,
+                    0, datatype, target_rank, target_disp,
+                    0, datatype, (void *) compare_addr, result_addr, win_ptr);
+        }
+        if (transfer_complete) {
+            goto fn_exit;
+        }
+        else 
+#endif
+        {
         MPIDI_RMA_Op_t *op_ptr = NULL;
         MPIDI_CH3_Pkt_cas_t *cas_pkt = NULL;
         MPI_Aint type_size;
@@ -1080,7 +1197,12 @@ int MPID_Compare_and_swap(const void *origin_addr, const void *compare_addr,
         op_ptr->compare_addr = (void *) compare_addr;
         op_ptr->compare_datatype = datatype;
         op_ptr->target_rank = target_rank;
-        op_ptr->piggyback_lock_candidate = 1;   /* CAS is always able to piggyback LOCK */
+#if defined(CHANNEL_MRAIL) 
+        if (win_ptr->fall_back == 1)
+#endif
+        {
+            op_ptr->piggyback_lock_candidate = 1;   /* CAS is always able to piggyback LOCK */
+        }
 
         /************** Setting packet struct areas in operation ****************/
 
@@ -1125,6 +1247,7 @@ int MPID_Compare_and_swap(const void *origin_addr, const void *compare_addr,
                     MPIR_ERR_POP(mpi_errno);
             }
         }
+        }
     }
 
   fn_exit:
@@ -1147,8 +1270,15 @@ int MPID_Fetch_and_op(const void *origin_addr, void *result_addr,
 {
     int mpi_errno = MPI_SUCCESS;
     int rank;
-    MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
+    MPIDI_VC_t *target_vc = NULL;
+#if !defined(CHANNEL_MRAIL)
+    MPIDI_VC_t *orig_vc = NULL;
+#endif
     int made_progress = 0;
+
+#if defined(CHANNEL_MRAIL)
+    int transfer_complete = 0;
+#endif
 
     MPIDI_STATE_DECL(MPID_STATE_MPID_FETCH_AND_OP);
 
@@ -1202,6 +1332,27 @@ int MPID_Fetch_and_op(const void *origin_addr, void *result_addr,
             MPIR_ERR_POP(mpi_errno);
     }
     else {
+#if defined(CHANNEL_MRAIL)
+        if (win_ptr->fall_back != 1 && win_ptr->enable_fast_path == 1
+            && win_ptr->use_rdma_path == 1
+            && op == MPI_SUM
+#if defined(RDMA_CM)
+            && !mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode
+#endif
+            && datatype != MPI_DOUBLE
+            && ((win_ptr->is_active && win_ptr->post_flag[target_rank] == 1)
+                || (!win_ptr->is_active && win_ptr->using_lock == 0)))
+        {
+            transfer_complete = MPIDI_CH3I_RDMA_try_rma_op_fast(MPIDI_CH3_PKT_FOP, (void *)origin_addr,
+                    0, datatype, target_rank, target_disp,
+                    0, datatype, 0, (void *)result_addr, win_ptr);
+        }
+        if (transfer_complete) {
+            goto fn_exit;
+        }
+        else
+#endif
+        {
         MPIDI_RMA_Op_t *op_ptr = NULL;
         MPIDI_CH3_Pkt_fop_t *fop_pkt;
         MPI_Aint type_size;
@@ -1223,7 +1374,12 @@ int MPID_Fetch_and_op(const void *origin_addr, void *result_addr,
         op_ptr->result_addr = result_addr;
         op_ptr->result_datatype = datatype;
         op_ptr->target_rank = target_rank;
-        op_ptr->piggyback_lock_candidate = 1;
+#if defined(CHANNEL_MRAIL) 
+        if (win_ptr->fall_back == 1)
+#endif
+        {
+            op_ptr->piggyback_lock_candidate = 1;
+        }
 
         /************** Setting packet struct areas in operation ****************/
 
@@ -1277,6 +1433,7 @@ int MPID_Fetch_and_op(const void *origin_addr, void *result_addr,
                 if (mpi_errno != MPI_SUCCESS)
                     MPIR_ERR_POP(mpi_errno);
             }
+        }
         }
     }
 

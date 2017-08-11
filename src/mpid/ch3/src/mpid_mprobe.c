@@ -20,6 +20,7 @@ int MPID_Mprobe(int source, int tag, MPID_Comm *comm, int context_offset,
 
     *message = NULL;
 
+    MV2_INC_NUM_UNEXP_RECV();
     if (source == MPI_PROC_NULL)
     {
         MPIR_Status_set_procnull(status);
@@ -111,6 +112,7 @@ int MPID_Mprobe(int source, int tag, MPID_Comm *comm, int context_offset,
     }
 
 fn_exit:
+    MV2_DEC_NUM_UNEXP_RECV();
     return mpi_errno;
 fn_fail:
     goto fn_exit;

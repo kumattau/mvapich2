@@ -30,7 +30,7 @@
 /* SMP user parameters*/
 
 extern int                  g_smp_eagersize;
-extern int                  s_smpi_length_queue;
+extern size_t               s_smpi_length_queue;
 extern int                  s_smp_num_send_buffer;
 extern int                  s_smp_batch_size;
 extern int                  s_smp_block_size;
@@ -157,13 +157,13 @@ typedef struct {
 #endif  
 
 typedef struct {
-    volatile unsigned int ptr;
+    volatile size_t ptr;
     char pad[SMPI_CACHE_LINE_SIZE - sizeof(unsigned int)];
 } smpi_shared_tails;
 
 typedef struct {
-    volatile unsigned int first;
-    volatile unsigned int last;
+    volatile size_t first;
+    volatile size_t last;
 } smpi_rq_limit;
 
 /* the shared area itself */

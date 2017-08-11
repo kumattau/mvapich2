@@ -530,7 +530,6 @@ static int fence_barrier_complete(MPID_Request * sreq)
 /* Active Target synchronization (including WIN_FENCE, WIN_POST, WIN_START,     */
 /* WIN_COMPLETE, WIN_WAIT, WIN_TEST)                                            */
 /********************************************************************************/
-
 #undef FUNCNAME
 #define FUNCNAME MPID_Win_fence
 #undef FCNAME
@@ -591,37 +590,55 @@ int MPID_Win_fence(int assert, MPID_Win * win_ptr)
                 MPIR_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
             }
 
-            mpi_errno = MPIR_Ibarrier_impl(win_ptr->comm_ptr, &fence_sync_req);
-            if (mpi_errno != MPI_SUCCESS)
-                MPIR_ERR_POP(mpi_errno);
-
-            if (fence_sync_req == MPI_REQUEST_NULL) {
-                /* ibarrier completed immediately. */
+#if defined(CHANNEL_MRAIL)
+            if (win_ptr->fall_back != 1) {
+                MPIR_Barrier_impl(win_ptr->comm_ptr, &errflag);
                 win_ptr->states.access_state = MPIDI_RMA_FENCE_GRANTED;
-            }
-            else {
-                MPID_Request *req_ptr;
+            } else 
+#endif /* defined(CHANNEL_MRAIL) */
+            {
+                mpi_errno = MPIR_Ibarrier_impl(win_ptr->comm_ptr, &fence_sync_req);
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
 
-                /* Set window access state properly. */
-                win_ptr->states.access_state = MPIDI_RMA_FENCE_ISSUED;
-
-                MPID_Request_get_ptr(fence_sync_req, req_ptr);
-                if (!MPID_Request_is_complete(req_ptr)) {
-                    req_ptr->dev.source_win_handle = win_ptr->handle;
-                    req_ptr->request_completed_cb = fence_barrier_complete;
-                    win_ptr->sync_request_cnt++;
-                }
-                else {
+                if (fence_sync_req == MPI_REQUEST_NULL) {
                     /* ibarrier completed immediately. */
                     win_ptr->states.access_state = MPIDI_RMA_FENCE_GRANTED;
                 }
+                else {
+                    MPID_Request *req_ptr;
 
-                MPID_Request_release(req_ptr);
+                    /* Set window access state properly. */
+                    win_ptr->states.access_state = MPIDI_RMA_FENCE_ISSUED;
+
+                    MPID_Request_get_ptr(fence_sync_req, req_ptr);
+                    if (!MPID_Request_is_complete(req_ptr)) {
+                        req_ptr->dev.source_win_handle = win_ptr->handle;
+                        req_ptr->request_completed_cb = fence_barrier_complete;
+                        win_ptr->sync_request_cnt++;
+                    }
+                    else {
+                        /* ibarrier completed immediately. */
+                        win_ptr->states.access_state = MPIDI_RMA_FENCE_GRANTED;
+                    }
+
+                    MPID_Request_release(req_ptr);
+                }
             }
 
             goto finish_fence;
         }
     }
+
+#if defined(CHANNEL_MRAIL)
+    if (win_ptr->fall_back != 1) {
+        win_ptr->use_rdma_path = 1; 
+        win_ptr->is_active = 1;
+        for (i = 0; i < comm_size; i++) {
+            win_ptr->post_flag[i] = 1;
+        }
+    }
+#endif
 
     /* Perform basic algorithm by calling reduce-scatter */
     if (!scalable_fence_enabled) {
@@ -676,10 +693,22 @@ int MPID_Win_fence(int assert, MPID_Win * win_ptr)
     }
 
     /* waiting for all outstanding ACKs */
-    while (win_ptr->outstanding_acks > 0) {
-        mpi_errno = wait_progress_engine();
-        if (mpi_errno != MPI_SUCCESS)
-            MPIR_ERR_POP(mpi_errno);
+#if defined (CHANNEL_MRAIL)
+    if (win_ptr->fall_back != 1 && win_ptr->rma_issued != 0){
+        win_ptr->poll_flag = 1;
+        while(win_ptr->poll_flag == 1 || win_ptr->outstanding_acks > 0){
+            mpi_errno = wait_progress_engine();
+            if (mpi_errno != MPI_SUCCESS)
+                MPIR_ERR_POP(mpi_errno);
+        }   
+    } else 
+#endif
+    {
+        while (win_ptr->outstanding_acks > 0) {
+            mpi_errno = wait_progress_engine();
+            if (mpi_errno != MPI_SUCCESS)
+                MPIR_ERR_POP(mpi_errno);
+        }
     }
 
     /* Cleanup all targets on window. */
@@ -703,10 +732,39 @@ int MPID_Win_fence(int assert, MPID_Win * win_ptr)
     }
     else {
         /* Waiting for all operations targeting at me to be finished. */
-        while (win_ptr->at_completion_counter) {
-            mpi_errno = wait_progress_engine();
-            if (mpi_errno != MPI_SUCCESS)
-                MPIR_ERR_POP(mpi_errno);
+#if defined(CHANNEL_MRAIL) 
+        if (win_ptr->fall_back != 1) {
+            int num_wait_completions = 0, j;
+            while (win_ptr->at_completion_counter || win_ptr->outstanding_rma != 0) {
+                int newly_finished = 0; 
+                for (i = 0; i < comm_size; ++i) {
+                    for (j = 0; j < rdma_num_rails; ++j) {
+                        int index = i*rdma_num_rails+j;
+                        if (win_ptr->completion_counter[index] == 1) {
+                            win_ptr->completion_counter[index] = 0;
+                            ++num_wait_completions;
+                            if (num_wait_completions == rdma_num_rails) {
+                                ++newly_finished;
+                                num_wait_completions = 0;
+                            }
+                        }		
+                    }
+                }
+                win_ptr->at_completion_counter -= newly_finished;
+                if (win_ptr->at_completion_counter == 0)
+                    break;
+                mpi_errno = MPID_Progress_test();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }
+        } else 
+#endif /* defined(CHANNEL_MRAIL) */
+        {
+            while (win_ptr->at_completion_counter) {
+                mpi_errno = wait_progress_engine();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }
         }
 
         if (assert & MPI_MODE_NOSUCCEED) {
@@ -811,6 +869,13 @@ int MPID_Win_post(MPID_Group * post_grp_ptr, int assert, MPID_Win * win_ptr)
 
     win_ptr->at_completion_counter += post_grp_ptr->size;
 
+#if defined(CHANNEL_MRAIL)
+    if (win_ptr->fall_back != 1) {
+        MPIU_Memset((void *) win_ptr->completion_counter, 0,
+                sizeof(long long) * win_ptr->comm_ptr->local_size * rdma_num_rails);
+    }
+#endif
+
     if ((assert & MPI_MODE_NOCHECK) == 0) {
         MPI_Request *req;
         MPI_Status *status;
@@ -835,17 +900,38 @@ int MPID_Win_post(MPID_Group * post_grp_ptr, int assert, MPID_Win * win_ptr)
         MPIU_CHKLMEM_MALLOC(status, MPI_Status *, post_grp_size * sizeof(MPI_Status),
                             mpi_errno, "status");
 
+#if defined(CHANNEL_MRAIL)
+        MPIDI_VC_t* vc = NULL;
+#endif 
+
         /* Send a 0-byte message to the source processes */
         for (i = 0; i < post_grp_size; i++) {
             dst = post_ranks_in_win_grp[i];
 
+#if defined(CHANNEL_MRAIL)
+            if (SMP_INIT) {
+                MPIDI_Comm_get_vc(win_ptr->comm_ptr, dst, &vc);
+            }
+#endif /* defined(CHANNEL_MRAIL) */
+
             if (dst != rank) {
-                MPID_Request *req_ptr;
-                mpi_errno = MPID_Isend(&i, 0, MPI_INT, dst, SYNC_POST_TAG, win_comm_ptr,
-                                       MPID_CONTEXT_INTRA_PT2PT, &req_ptr);
-                if (mpi_errno != MPI_SUCCESS)
-                    MPIR_ERR_POP(mpi_errno);
-                req[i] = req_ptr->handle;
+#if defined(CHANNEL_MRAIL)
+                req[i] = MPI_REQUEST_NULL;
+                if (win_ptr->fall_back != 1
+                    && (!SMP_INIT || vc->smp.local_nodes == -1))
+                {
+                    MPIDI_CH3I_RDMA_post(win_ptr, dst);
+                } 
+                else
+#endif
+                {
+                    MPID_Request *req_ptr;
+                    mpi_errno = MPID_Isend(&i, 0, MPI_INT, dst, SYNC_POST_TAG, win_comm_ptr,
+                            MPID_CONTEXT_INTRA_PT2PT, &req_ptr);
+                    if (mpi_errno != MPI_SUCCESS)
+                        MPIR_ERR_POP(mpi_errno);
+                    req[i] = req_ptr->handle;
+                }
             }
             else {
                 req[i] = MPI_REQUEST_NULL;
@@ -966,11 +1052,52 @@ int MPID_Win_start(MPID_Group * group_ptr, int assert, MPID_Win * win_ptr)
 
         intra_cnt = 0;
         for (i = 0; i < win_ptr->start_grp_size; i++) {
-            MPID_Request *req_ptr;
+            MPID_Request *req_ptr = NULL;
+#if !defined (CHANNEL_MRAIL)
             MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
+#endif
             int src = win_ptr->start_ranks_in_win_grp[i];
 
             if (src != rank) {
+#if defined (CHANNEL_MRAIL)
+                MPIDI_VC_t* vc = NULL;
+                MPIDI_Comm_get_vc(comm_ptr, src, &vc);
+
+                if (SMP_INIT && vc->smp.local_nodes != -1) {
+                    mpi_errno = MPID_Irecv(NULL, 0, MPI_INT, src, SYNC_POST_TAG,
+                            comm_ptr, MPID_CONTEXT_INTRA_PT2PT, &req_ptr);
+                    if (mpi_errno != MPI_SUCCESS)
+                        MPIR_ERR_POP(mpi_errno);
+
+                    if (win_ptr->shm_allocated == TRUE) {
+                        intra_start_req[intra_cnt++] = req_ptr->handle;
+                    }
+                    else {
+                        if (!MPID_Request_is_complete(req_ptr)) {
+                            req_ptr->dev.source_win_handle = win_ptr->handle;
+                            req_ptr->request_completed_cb = start_req_complete;
+                            win_ptr->sync_request_cnt++;
+                        }
+
+                        MPID_Request_release(req_ptr);
+                    }
+         
+                } 
+                else if (win_ptr->fall_back == 1 && vc->smp.local_nodes == -1) {
+                    mpi_errno = MPID_Irecv(NULL, 0, MPI_INT, src, SYNC_POST_TAG,
+                            comm_ptr, MPID_CONTEXT_INTRA_PT2PT, &req_ptr);
+                    if (mpi_errno != MPI_SUCCESS)
+                        MPIR_ERR_POP(mpi_errno);
+
+                    if (!MPID_Request_is_complete(req_ptr)) {
+                        req_ptr->dev.source_win_handle = win_ptr->handle;
+                        req_ptr->request_completed_cb = start_req_complete;
+                        win_ptr->sync_request_cnt++;
+                    }
+
+                    MPID_Request_release(req_ptr);
+                } 
+#else 
                 MPIDI_Comm_get_vc(comm_ptr, rank, &orig_vc);
                 MPIDI_Comm_get_vc(comm_ptr, src, &target_vc);
 
@@ -991,6 +1118,7 @@ int MPID_Win_start(MPID_Group * group_ptr, int assert, MPID_Win * win_ptr)
 
                     MPID_Request_release(req_ptr);
                 }
+#endif
             }
         }
 
@@ -1015,8 +1143,22 @@ int MPID_Win_start(MPID_Group * group_ptr, int assert, MPID_Win * win_ptr)
     /* Set window access state properly. */
     win_ptr->states.access_state = MPIDI_RMA_PSCW_ISSUED;
 
-    if (win_ptr->sync_request_cnt == 0) {
-        win_ptr->states.access_state = MPIDI_RMA_PSCW_GRANTED;
+
+#if defined(CHANNEL_MRAIL)
+    if (win_ptr->fall_back != 1) {
+        MPIDI_CH3I_RDMA_start(win_ptr, win_ptr->start_grp_size, 
+                win_ptr->start_ranks_in_win_grp);
+        if (win_ptr->sync_request_cnt == 0) {
+            win_ptr->states.access_state = MPIDI_RMA_PSCW_GRANTED;
+            win_ptr->is_active = 1;
+            win_ptr->use_rdma_path = 1;
+        }
+    } else 
+#endif
+    {
+        if (win_ptr->sync_request_cnt == 0) {
+            win_ptr->states.access_state = MPIDI_RMA_PSCW_GRANTED;
+        }
     }
 
     /* Ensure ordering of load/store operations. */
@@ -1066,6 +1208,16 @@ int MPID_Win_complete(MPID_Win * win_ptr)
         }
     }
 
+#if defined (CHANNEL_MRAIL)
+    if (win_ptr->fall_back != 1){
+        int dest;
+        for (i = 0; i < win_ptr->start_grp_size; ++i) {
+            dest = win_ptr->start_ranks_in_win_grp[i];
+            win_ptr->post_flag[dest] = 0;
+        }
+    } 
+#endif
+
     for (i = 0; i < win_ptr->start_grp_size; i++) {
         dst = win_ptr->start_ranks_in_win_grp[i];
         if (dst == rank) {
@@ -1082,10 +1234,17 @@ int MPID_Win_complete(MPID_Win * win_ptr)
             curr_target->win_complete_flag = 1;
         }
         else {
-            /* FIXME: do we need to wait for remote completion? */
-            mpi_errno = send_decr_at_cnt_msg(dst, win_ptr, MPIDI_CH3_PKT_FLAG_NONE);
-            if (mpi_errno != MPI_SUCCESS)
-                MPIR_ERR_POP(mpi_errno);
+#if defined(CHANNEL_MRAIL)
+            if (win_ptr->fall_back != 1) {
+                MPIDI_CH3I_RDMA_set_CC(win_ptr, dst);
+            } else 
+#endif
+            {
+                /* FIXME: do we need to wait for remote completion? */
+                mpi_errno = send_decr_at_cnt_msg(dst, win_ptr, MPIDI_CH3_PKT_FLAG_NONE);
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }
         }
     }
 
@@ -1094,11 +1253,27 @@ int MPID_Win_complete(MPID_Win * win_ptr)
         MPIR_ERR_POP(mpi_errno);
 
     /* waiting for all outstanding ACKs */
-    while (win_ptr->outstanding_acks > 0) {
-        mpi_errno = wait_progress_engine();
-        if (mpi_errno != MPI_SUCCESS)
-            MPIR_ERR_POP(mpi_errno);
+#if defined (CHANNEL_MRAIL)
+    if (win_ptr->fall_back != 1 && win_ptr->rma_issued != 0){
+            win_ptr->poll_flag = 1;
+            while(win_ptr->poll_flag == 1 || win_ptr->outstanding_acks > 0){
+                mpi_errno = MPIDI_CH3I_Progress_test();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }   
+    } else 
+#endif
+    {
+        while (win_ptr->outstanding_acks > 0) {
+            mpi_errno = wait_progress_engine();
+            if (mpi_errno != MPI_SUCCESS)
+                MPIR_ERR_POP(mpi_errno);
+        }
     }
+
+#if defined (CHANNEL_MRAIL)
+    win_ptr->use_rdma_path = 0;
+#endif
 
     /* Cleanup all targets on this window. */
     mpi_errno = MPIDI_CH3I_RMA_Cleanup_targets_win(win_ptr);
@@ -1130,6 +1305,10 @@ int MPID_Win_complete(MPID_Win * win_ptr)
 int MPID_Win_wait(MPID_Win * win_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
+#if defined(CHANNEL_MRAIL)
+    int i, j, newly_finished, num_wait_completions, index;
+#endif /* defined(CHANNEL_MRAIL) */
+
     MPIDI_STATE_DECL(MPID_STATE_MPID_WIN_WAIT);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPID_WIN_WAIT);
@@ -1138,11 +1317,47 @@ int MPID_Win_wait(MPID_Win * win_ptr)
                         mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
 
     /* wait for all operations from other processes to finish */
+#if defined(CHANNEL_MRAIL)
+    while (win_ptr->outstanding_rma != 0) { 
+        mpi_errno = MPID_Progress_test();
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+    num_wait_completions = 0;
+    while (win_ptr->at_completion_counter) {
+        newly_finished = 0; 
+        if (win_ptr->fall_back != 1) {
+            for (i = 0; i < win_ptr->comm_ptr->local_size; ++i) {
+                for (j = 0; j < rdma_num_rails; ++j) {
+                    index = i*rdma_num_rails+j;
+                    if (win_ptr->completion_counter[index] == 1){
+                        win_ptr->completion_counter[index] = 0;
+                        ++num_wait_completions;
+                        if (num_wait_completions == rdma_num_rails) {
+                            ++newly_finished;
+                            num_wait_completions = 0;
+                        }
+                    }
+                }
+            }
+        }
+        win_ptr->at_completion_counter -= newly_finished;
+        if (win_ptr->at_completion_counter == 0)
+            break;
+        mpi_errno = MPID_Progress_test();
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+#else /* CHANNEL_MRAIL */
     while (win_ptr->at_completion_counter) {
         mpi_errno = wait_progress_engine();
         if (mpi_errno != MPI_SUCCESS)
             MPIR_ERR_POP(mpi_errno);
     }
+#endif /* defined(CHANNEL_MRAIL) */
 
     /* Set window exposure state properly. */
     win_ptr->states.exposure_state = MPIDI_RMA_NONE;
@@ -1180,6 +1395,28 @@ int MPID_Win_test(MPID_Win * win_ptr, int *flag)
     if (mpi_errno != MPI_SUCCESS) {
         MPIR_ERR_POP(mpi_errno);
     }
+
+#if defined(CHANNEL_MRAIL)
+    int i, j, newly_finished, num_wait_completions, index;
+    num_wait_completions = 0;
+    newly_finished = 0; 
+    if (win_ptr->fall_back != 1) {
+        for (i = 0; i < win_ptr->comm_ptr->local_size; ++i) {
+            for (j = 0; j < rdma_num_rails; ++j) {
+                index = i*rdma_num_rails+j;
+                if (win_ptr->completion_counter[index] == 1){
+                    win_ptr->completion_counter[index] = 0;
+                    ++num_wait_completions;
+                    if (num_wait_completions == rdma_num_rails) {
+                        ++newly_finished;
+                        num_wait_completions = 0;
+                    }
+                }
+            }
+        }
+        win_ptr->at_completion_counter -= newly_finished;
+    }
+#endif /* defined(CHANNEL_MRAIL) */
 
     *flag = (win_ptr->at_completion_counter) ? 0 : 1;
     if (*flag) {
@@ -1308,6 +1545,11 @@ int MPID_Win_lock(int lock_type, int dest, int assert, MPID_Win * win_ptr)
         OPA_read_write_barrier();
     }
 
+#if defined(CHANNEL_MRAIL)
+    win_ptr->using_lock = 1;
+    win_ptr->is_active = 0;
+#endif
+
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_LOCK);
     return mpi_errno;
@@ -1369,15 +1611,30 @@ int MPID_Win_unlock(int dest, MPID_Win * win_ptr)
         MPIR_ERR_POP(mpi_errno);
 
     /* Wait for remote completion. */
-    do {
-        MPIDI_CH3I_RMA_ops_completion(win_ptr, target, local_completed, remote_completed);
+#if defined (CHANNEL_MRAIL)
+    if (win_ptr->fall_back != 1){
+        do {
+            MPIDI_CH3I_RMA_ops_completion(win_ptr, target, local_completed, remote_completed);
 
-        if (!remote_completed) {
-            mpi_errno = wait_progress_engine();
-            if (mpi_errno != MPI_SUCCESS)
-                MPIR_ERR_POP(mpi_errno);
-        }
-    } while (!remote_completed);
+            if (!remote_completed || win_ptr->put_get_list_size_per_process[dest] != 0) {
+                mpi_errno = wait_progress_engine();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }
+        } while (!remote_completed || win_ptr->put_get_list_size_per_process[dest] != 0);
+    } else 
+#endif
+    {
+        do {
+            MPIDI_CH3I_RMA_ops_completion(win_ptr, target, local_completed, remote_completed);
+
+            if (!remote_completed) {
+                mpi_errno = wait_progress_engine();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }
+        } while (!remote_completed);
+    }
 
   finish_unlock:
     if (win_ptr->comm_ptr->rank == dest) {
@@ -1405,6 +1662,10 @@ int MPID_Win_unlock(int dest, MPID_Win * win_ptr)
         if (mpi_errno != MPI_SUCCESS)
             MPIR_ERR_POP(mpi_errno);
     }
+
+#if defined (CHANNEL_MRAIL)
+    win_ptr->use_rdma_path = 0;
+#endif
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_UNLOCK);
@@ -1473,15 +1734,32 @@ int MPID_Win_flush(int dest, MPID_Win * win_ptr)
         MPIR_ERR_POP(mpi_errno);
 
     /* Wait for remote completion. */
-    do {
-        MPIDI_CH3I_RMA_ops_completion(win_ptr, target, local_completed, remote_completed);
+#if defined (CHANNEL_MRAIL)
+    if (win_ptr->fall_back != 1){
+        win_ptr->use_rdma_path = 1;
+        win_ptr->using_lock = 0;
+        do {
+            MPIDI_CH3I_RMA_ops_completion(win_ptr, target, local_completed, remote_completed);
 
-        if (!remote_completed) {
-            mpi_errno = wait_progress_engine();
-            if (mpi_errno != MPI_SUCCESS)
-                MPIR_ERR_POP(mpi_errno);
-        }
-    } while (!remote_completed);
+            if (!remote_completed || win_ptr->put_get_list_size_per_process[dest] != 0) {
+                mpi_errno = wait_progress_engine();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }
+        } while (!remote_completed || win_ptr->put_get_list_size_per_process[dest] != 0);
+    } else 
+#endif
+    {
+        do {
+            MPIDI_CH3I_RMA_ops_completion(win_ptr, target, local_completed, remote_completed);
+
+            if (!remote_completed) {
+                mpi_errno = wait_progress_engine();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }
+        } while (!remote_completed);
+    }
 
   finish_flush:
     if (win_ptr->comm_ptr->rank == dest) {
@@ -1652,6 +1930,11 @@ int MPID_Win_lock_all(int assert, MPID_Win * win_ptr)
         OPA_read_write_barrier();
     }
 
+#ifdef CHANNEL_MRAIL
+    win_ptr->using_lock = 1;
+    win_ptr->is_active = 0;
+#endif
+
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_LOCK_ALL);
     return mpi_errno;
@@ -1764,14 +2047,29 @@ int MPID_Win_unlock_all(MPID_Win * win_ptr)
         MPIR_ERR_POP(mpi_errno);
 
     /* Wait for remote completion. */
-    do {
-        MPIDI_CH3I_RMA_ops_win_remote_completion(win_ptr, remote_completed);
-        if (!remote_completed) {
-            mpi_errno = wait_progress_engine();
-            if (mpi_errno != MPI_SUCCESS)
-                MPIR_ERR_POP(mpi_errno);
-        }
-    } while (!remote_completed);
+#if defined (CHANNEL_MRAIL)
+    if (win_ptr->fall_back != 1){
+        do {
+            MPIDI_CH3I_RMA_ops_win_remote_completion(win_ptr, remote_completed);
+
+            if (!remote_completed || win_ptr->rma_issued != 0) {
+                mpi_errno = wait_progress_engine();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }
+        } while (!remote_completed || win_ptr->rma_issued != 0);
+    } else 
+#endif
+    {
+        do {
+            MPIDI_CH3I_RMA_ops_win_remote_completion(win_ptr, remote_completed);
+            if (!remote_completed) {
+                mpi_errno = wait_progress_engine();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }
+        } while (!remote_completed);
+    }
 
     /* Cleanup all targets on this window. */
     mpi_errno = MPIDI_CH3I_RMA_Cleanup_targets_win(win_ptr);
@@ -1783,6 +2081,11 @@ int MPID_Win_unlock_all(MPID_Win * win_ptr)
 
     /* reset lock_all assert on window. */
     win_ptr->lock_all_assert = 0;
+
+#if defined(CHANNEL_MRAIL)
+    win_ptr->using_lock = 0;
+    win_ptr->use_rdma_path = 0;
+#endif /* defined(CHANNEL_MRAIL) */
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_UNLOCK_ALL);

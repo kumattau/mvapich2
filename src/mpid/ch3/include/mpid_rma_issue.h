@@ -324,6 +324,7 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
 
             MPIU_Object_set_ref(req, 2);
             req->kind = MPID_REQUEST_SEND;
+            MV2_INC_NUM_POSTED_SEND();
             req->dev.iov_count = iovcnt;
 
             int i = 0;
@@ -390,6 +391,7 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
 
     MPIU_Object_set_ref(req, 2);
     req->kind = MPID_REQUEST_SEND;
+    MV2_INC_NUM_POSTED_SEND();
 
     /* set extended packet header, it is freed when the request is freed.  */
     if (ext_hdr_sz > 0) {
@@ -529,23 +531,21 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
     else {
         /* origin data is non-contiguous */
 #if defined (CHANNEL_PSM)
-        MPID_Request tmp;
-        rma_op->single_req = &tmp;
         mpi_errno=  psm_do_pack(rma_op->origin_count, rma_op->origin_datatype,
-                rma_op->comm_ptr, rma_op->single_req, rma_op->origin_addr,
-                SEGMENT_IGNORE_LAST);
+                rma_op->comm_ptr, req, rma_op->origin_addr, stream_offset,
+                stream_offset + stream_size, PACK_RMA_STREAM);
         if(mpi_errno) MPIR_ERR_POP(mpi_errno);
 
 
         iov[iovcnt].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)(req->dev.ext_hdr_ptr);
         iov[iovcnt].MPL_IOV_LEN = req->dev.ext_hdr_sz;
         iovcnt++;
-        iov[iovcnt].MPL_IOV_BUF = (rma_op->single_req)->pkbuf;
-        iov[iovcnt].MPL_IOV_LEN = (rma_op->single_req)->pksz;
+        iov[iovcnt].MPL_IOV_BUF = req->pkbuf;
+        iov[iovcnt].MPL_IOV_LEN = req->pksz;
         iovcnt++;
 
         MPID_THREAD_CS_ENTER(POBJ, vc->pobj_mutex);
-        mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, iovcnt, req_ptr);
+        mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, iovcnt, &req);
         MPID_THREAD_CS_EXIT(POBJ, vc->pobj_mutex);
 
         if(mpi_errno != MPI_SUCCESS) {
@@ -830,7 +830,6 @@ static int issue_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
 #if defined(CHANNEL_MRAIL)
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(accum_pkt, seqnum);
-    MPIDI_CH3_SET_RMA_ISSUED_NUM(vc, accum_pkt);
 #endif /* defined(CHANNEL_MRAIL) */
 
 
@@ -1015,7 +1014,6 @@ static int issue_get_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
 #if defined(CHANNEL_MRAIL)
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(get_accum_pkt, seqnum);
-    MPIDI_CH3_SET_RMA_ISSUED_NUM(vc, get_accum_pkt);
 #endif /* defined(CHANNEL_MRAIL) */
 
 #if defined (CHANNEL_PSM)
@@ -1326,10 +1324,6 @@ static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
     comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc_set_active(comm_ptr, rma_op->target_rank, &vc);
 
-#if defined(CHANNEL_MRAIL)
-    MPIDI_CH3_SET_RMA_ISSUED_NUM(vc, get_pkt);
-#endif /* defined(CHANNEL_MRAIL) */
-
     MPIDI_CH3_PKT_RMA_GET_TARGET_DATATYPE(rma_op->pkt, target_datatype, mpi_errno);
     if (MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
 #if defined(CHANNEL_MRAIL)
@@ -1353,7 +1347,7 @@ static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
         } else {
             get_pkt->rndv_mode = 1;
             get_pkt->rndv_tag = psm_get_rndvtag();
-            int target_tsz;
+            MPIDI_msg_sz_t target_tsz;
             MPID_Datatype_get_size_macro(target_datatype, target_tsz);
     
             if(MPIR_DATATYPE_IS_PREDEFINED(rma_op->origin_datatype)) {

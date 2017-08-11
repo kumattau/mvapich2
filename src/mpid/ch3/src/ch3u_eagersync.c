@@ -250,6 +250,11 @@ int MPIDI_CH3_PktHandler_EagerSyncSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    "ReceivedEagerSync");
 	    
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&es_pkt->match, &found);
+#if defined(CHANNEL_MRAIL)
+    if (!found && SMP_INIT && vc->smp.local_nodes >= 0) {
+        MV2_INC_NUM_POSTED_RECV();
+    }
+#endif
     MPIR_ERR_CHKANDJUMP1(!rreq, mpi_errno,MPI_ERR_OTHER, "**nomemreq", "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
 
     /* If the completion counter is 0, that means that the communicator to

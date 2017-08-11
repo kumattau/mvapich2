@@ -159,6 +159,7 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
 #define PSM_GETACCUMRESP_REQ        0x00400000  
 #define PSM_GETACCUM_RNDV_REQ       0x01000000  
 #define PSM_GETACCUM_GET_RNDV_REQ   0x02000000  
+#define PSM_FOPRESP_REQ             0x04000000  
 
 #define MPIDI_CH3_REQUEST_INIT(__p)  \
         __p->psm_flags = 0;          \
@@ -172,7 +173,6 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
     int16_t outstanding_rma;                                                                      \
     int node_comm_size;                                                                           \
     MPID_Comm *node_comm_ptr;                                                                     \
-    int use_direct_shm;                                                                           \
     void *shm_base_addr;        /* base address of shared memory region */                        \
     int shm_coll_comm_ref;                                                                        \
     MPI_Aint shm_segment_len;   /* size of shared memory region */                                \

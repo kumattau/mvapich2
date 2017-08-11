@@ -92,6 +92,8 @@ MPID_Request ** const MPID_Recvq_unexpected_head_ptr = &recvq_unexpected_head;
       ((match1).parts.context_id == (match2).parts.context_id)))
 
 
+long int mv2_posted_recvq_length = 0;
+
 MPIR_T_PVAR_UINT_LEVEL_DECL_STATIC(RECVQ, posted_recvq_length);
 MPIR_T_PVAR_UINT_LEVEL_DECL_STATIC(RECVQ, unexpected_recvq_length);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_STATIC(RECVQ, posted_recvq_match_attempts);
@@ -635,6 +637,13 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag,
                 MPID_Request_complete(rreq);
                 goto lock_exit;
             }
+#if defined(CHANNEL_MRAIL)
+            if (SMP_INIT && vc->smp.local_nodes >= 0) {
+                MV2_INC_NUM_POSTED_RECV();
+            }
+        } else {
+            MV2_INC_NUM_POSTED_RECV();
+#endif
         }
 
 	rreq->dev.next = NULL;
@@ -885,7 +894,9 @@ static inline void dequeue_and_set_error(MPID_Request **req,  MPID_Request *prev
     
     /* remove from queue */
     if (*head == *req) {
-        if (*head == recvq_posted_head) MPIR_T_PVAR_LEVEL_DEC(RECVQ, posted_recvq_length, 1);
+        if (*head == recvq_posted_head) {
+            MPIR_T_PVAR_LEVEL_DEC(RECVQ, posted_recvq_length, 1);
+        }
 
         *head = (*req)->dev.next;
     } else

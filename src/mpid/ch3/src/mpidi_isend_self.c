@@ -42,6 +42,11 @@ int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, in
     MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_POBJ_MSGQ_MUTEX);
 
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&match, &found);
+#if defined(CHANNEL_MRAIL)
+    if (!found) {
+        MV2_INC_NUM_POSTED_RECV();
+    }
+#endif
     /* --BEGIN ERROR HANDLING-- */
     if (rreq == NULL)
     {

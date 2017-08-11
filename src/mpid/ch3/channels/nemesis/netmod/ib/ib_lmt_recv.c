@@ -673,12 +673,12 @@ void MPIDI_nem_ib_lmt_r3_recv_ack(MPIDI_VC_t * vc,
                                void *vstart)
 {
     MPIDI_CH3_Pkt_rndv_r3_ack_t* p = vstart;
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RNDV_R3_ACK_RECV);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RNDV_R3_ACK_RECV);
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_NEM_RNDV_R3_ACK_RECV);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_NEM_RNDV_R3_ACK_RECV);
 
     DEBUG_PRINT("Received R3 Ack %d\n", p->ack_data);
     VC_FIELD(vc, pending_r3_data) -= p->ack_data;
     MPIU_Assert(VC_FIELD(vc, pending_r3_data) == 0);
 
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RNDV_R3_ACK_RECV);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_NEM_RNDV_R3_ACK_RECV);
 }

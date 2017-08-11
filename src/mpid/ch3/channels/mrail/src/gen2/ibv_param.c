@@ -63,6 +63,16 @@ cvars:
         scheme. When the size of the job is larger than the threshold value, on-demand
         connection management will be used.
 
+    - name        : ENABLE_SHARP
+      category    : CH3
+      type        : int
+      default     : 0
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        This enables the hardware-based SHArP collectives.
+
 === END_MPI_T_CVAR_INFO_BLOCK ===
 */
 
@@ -85,6 +95,7 @@ int mv2_enable_sharp_coll = 0;
 int mv2_sharp_port = -1;
 char * mv2_sharp_hca_name = 0;
 #endif
+int mv2_num_extra_polls = 0;
 int mv2_is_in_finalize = 0;
 int mv2_cm_wait_time = DEF_MV2_CM_WAIT_TIME;
 int rdma_num_cqes_per_poll = RDMA_MAX_CQE_ENTRIES_PER_POLL;
@@ -1011,10 +1022,21 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
         case MV2_ARCH_INTEL_XEON_PHI_7250:
 #if defined(_SMP_CMA_)
-            g_smp_use_cma = 0;
-            s_smp_cma_max_size = 4194304;
+            /* Use CMA from 2 ppn onwards */
+            if (MPIDI_Num_local_processes(MPIDI_Process.my_pg) <= 2) {
+                g_smp_use_cma = 0;
+            }
+            if ((value = getenv("MV2_SMP_USE_CMA")) != NULL) {
+                g_smp_use_cma = atoi(value);
+            }
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 65536;
+                s_smp_cma_max_size = 4194304;
+            } else
 #endif
-            g_smp_eagersize = 65536;
+            {
+                g_smp_eagersize = 65536;
+            }
             s_smpi_length_queue = 262144;
             s_smp_num_send_buffer = 16;
             s_smp_batch_size = 8;
@@ -1092,7 +1114,7 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                 g_smp_eagersize = 65536;
             }
             s_smpi_length_queue = 524288;
-            s_smp_num_send_buffer = 48;
+            s_smp_num_send_buffer = 8;
             s_smp_batch_size = 8;
             s_smp_block_size = 32768;
             break;
@@ -1680,10 +1702,6 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     }
 #endif /* defined(CKPT) */
 
-    proc->has_flush = (value =
-            getenv("MV2_USE_RMA_FLUSH")) !=
-        NULL ? !!atoi(value) : 1;
-
     if ((value = getenv("MV2_RNDV_EXT_SENDQ_SIZE")) != NULL) {
         rdma_rndv_ext_sendq_size = atoi(value);
         if (rdma_rndv_ext_sendq_size <= 1) {
@@ -1976,7 +1994,7 @@ static void rdma_set_default_parameters_numrail_4(struct
     else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_IBM_POWER8,
               MV2_HCA_MLX_CX_EDR)) {
-        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
         rdma_fp_buffer_size = 5 * 1024;
         rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
         rdma_eagersize_1sc = 8 * 1024;
@@ -2492,7 +2510,7 @@ static void rdma_set_default_parameters_numrail_3(struct
     else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_IBM_POWER8,
               MV2_HCA_MLX_CX_EDR)) {
-        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
         rdma_fp_buffer_size = 5 * 1024;
         rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
         rdma_eagersize_1sc = 8 * 1024;
@@ -3007,7 +3025,7 @@ static void rdma_set_default_parameters_numrail_2(struct
     else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_IBM_POWER8,
               MV2_HCA_MLX_CX_EDR)) {
-        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
         rdma_fp_buffer_size = 5 * 1024;
         rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
         rdma_eagersize_1sc = 8 * 1024;
@@ -3522,7 +3540,7 @@ static void rdma_set_default_parameters_numrail_1(struct
     else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_IBM_POWER8,
               MV2_HCA_MLX_CX_EDR)) {
-        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
         rdma_fp_buffer_size = 5 * 1024;
         rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
         rdma_eagersize_1sc = 8 * 1024;
@@ -4036,7 +4054,7 @@ static void rdma_set_default_parameters_numrail_unknwn(struct
     else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_IBM_POWER8,
               MV2_HCA_MLX_CX_EDR)) {
-        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
         rdma_fp_buffer_size = 5 * 1024;
         rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
         rdma_eagersize_1sc = 8 * 1024;
@@ -4709,9 +4727,6 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
     if ((value = getenv("MV2_DEFAULT_MAX_CQ_SIZE")) != NULL) {
         rdma_default_max_cq_size = atoi(value);
-    }
-    if ((value = getenv("MV2_POLLING_LEVEL")) != NULL) {
-        rdma_polling_level = atoi(value);
     }
     /* We have read the value of the rendezvous threshold, and the number of
      * rails used for communication, increase the striping threshold
@@ -5446,7 +5461,7 @@ void mv2_print_env_info(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
     fprintf(stderr, "\tMV2_EAGERSIZE_1SC              : %lu\n",
             rdma_eagersize_1sc);
     fprintf(stderr, "\tMV2_SMP_EAGERSIZE              : %d\n", g_smp_eagersize);
-    fprintf(stderr, "\tMV2_SMPI_LENGTH_QUEUE          : %d\n",
+    fprintf(stderr, "\tMV2_SMPI_LENGTH_QUEUE          : %zu\n",
             s_smpi_length_queue);
     fprintf(stderr, "\tMV2_SMP_NUM_SEND_BUFFER        : %d\n",
             s_smp_num_send_buffer);

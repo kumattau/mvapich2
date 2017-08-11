@@ -755,11 +755,12 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
         } while(i < mv2_alltoall_indexed_num_ppn_conf);
     }
     
-  conf_check_end:
     if (partial_sub_ok != 1) {
-        conf_index = 0;
+        conf_index = mv2_alltoall_indexed_num_ppn_conf/2;
     }
     
+conf_check_end:
+
     /* Search for the corresponding system size inside the tuning table */
     /*
      * Comm sizes progress in powers of 2. Therefore comm_size can just be indexed instead
@@ -892,11 +893,12 @@ int MPIR_Alltoall_tune_intra_MV2(
             i++;
         } while(i < mv2_alltoall_num_ppn_conf);
     }
-    
-  conf_check_end:
+
     if (partial_sub_ok != 1) {
-        conf_index = 0;
+        conf_index = mv2_alltoall_num_ppn_conf/2;
     }
+
+conf_check_end:
 
     /* Search for the corresponding system size inside the tuning table */
     while ((range < (mv2_size_alltoall_tuning_table[conf_index] - 1)) &&

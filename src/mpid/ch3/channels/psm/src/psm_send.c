@@ -103,7 +103,7 @@ PSM_ERROR_T psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
     if(blocking && !CAN_BLK_PSM(buflen))
         blocking = 0;
 
-    if(blocking) {
+    if((blocking) && (likely(buflen <= ipath_max_transfer_size))){
         PRINT_DEBUG(DEBUG_CHM_verbose>1, "blocking send\n");
         _psm_enter_;
         psmerr = PSM_SEND(psmdev_cw.mq, psmdev_cw.epaddrs[dest],

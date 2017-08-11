@@ -667,7 +667,7 @@ int mv2_post_ud_recv_buffers(int num_bufs, mv2_ud_ctx_t *ud_ctx)
     PRINT_DEBUG(DEBUG_UD_verbose>0 ,"Posted %d buffers of size:%d to UD QP on HCA %d\n",
                 num_bufs, rdma_default_ud_mtu, ud_ctx->hca_num);
 
-    MPIDI_FUNC_EXIT(MPID_STATE_POST_SRQ_BUFFERS);
+    MPIDI_FUNC_EXIT(MPID_STATE_POST_RECV_BUFFERS);
     return i;
 }
 
@@ -680,8 +680,8 @@ int post_hybrid_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 {
     mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
 
-    MPIDI_STATE_DECL(MPID_STATE_POST_SRQ_SEND);
-    MPIDI_FUNC_ENTER(MPID_STATE_POST_SRQ_SEND);
+    MPIDI_STATE_DECL(MPID_STATE_POST_HYBRID_SEND);
+    MPIDI_FUNC_ENTER(MPID_STATE_POST_HYBRID_SEND);
 
     switch (v->transport) {
         case IB_TRANSPORT_UD:
@@ -723,7 +723,7 @@ int post_hybrid_send(MPIDI_VC_t* vc, vbuf* v, int rail)
             return -1;
     }
 
-    MPIDI_FUNC_EXIT(MPID_STATE_POST_SRQ_SEND);
+    MPIDI_FUNC_EXIT(MPID_STATE_POST_HYBRID_SEND);
     return 0;
 }
 #endif /* _ENABLE_UD_ */

@@ -1737,12 +1737,12 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
         } while(i < mv2_reduce_indexed_num_ppn_conf);
     }
 
-  conf_check_end:
-    
     if (partial_sub_ok != 1) {
-        conf_index = 0;
+        conf_index = mv2_reduce_indexed_num_ppn_conf/2;
     }
     
+conf_check_end:
+
     /* Search for the corresponding system size inside the tuning table */
     /*
      * Comm sizes progress in powers of 2. Therefore comm_size can just be indexed instead

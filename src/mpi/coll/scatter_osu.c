@@ -67,11 +67,11 @@ int MPIR_Scatter_mcst_MV2(const void *sendbuf,
 { 
     int mpi_errno=MPI_SUCCESS; 
     int mpi_errno_ret=MPI_SUCCESS; 
-    int rank=comm_ptr->rank; 
+    int rank=comm_ptr->rank, local_rank; 
     int comm_size = comm_ptr->local_size; 
     int sendtype_size, recvtype_size; 
     MPI_Aint sendtype_extent=0, recvtype_extent=0;
-    int nbytes, copy_offset, local_rank; 
+    MPI_Aint nbytes, copy_offset; 
     int tmp_buf_size=0, intra_node_root=0; 
     int leader_of_root, sendtype_contig; 
     void *mcast_scatter_buf=NULL; 
@@ -259,7 +259,8 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
     MPI_Status status;
     MPI_Aint extent = 0;
     int rank, comm_size, is_homogeneous, sendtype_size;
-    int curr_cnt, relative_rank, nbytes, send_subtree_cnt;
+    int curr_cnt, relative_rank;
+    MPI_Aint nbytes, send_subtree_cnt;
     int mask, recvtype_size = 0, src, dst;
 #ifdef MPID_HAS_HETERO
     int position;
@@ -881,7 +882,7 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
     int leader_comm_rank, leader_comm_size;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int recvtype_size, sendtype_size, nbytes;
+    MPI_Aint recvtype_size, sendtype_size, nbytes;
     void *tmp_buf = NULL;
     void *leader_scatter_buf = NULL;
     MPI_Status status;
@@ -1126,7 +1127,7 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
     int leader_comm_rank, leader_comm_size;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int recvtype_size, sendtype_size, nbytes;
+    MPI_Aint recvtype_size, sendtype_size, nbytes;
     void *tmp_buf = NULL;
     void *leader_scatter_buf = NULL;
     MPI_Status status;
@@ -1362,8 +1363,9 @@ int MPIR_Scatter_index_tuned_intra_MV2(const void *sendbuf,
 {
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int rank, nbytes, comm_size;
-    int recvtype_size, sendtype_size;
+    int rank, comm_size;
+    MPI_Aint nbytes;
+    MPI_Aint recvtype_size, sendtype_size;
     int partial_sub_ok = 0;
     int conf_index = 0;
     int local_size = -1;
@@ -1425,12 +1427,12 @@ int MPIR_Scatter_index_tuned_intra_MV2(const void *sendbuf,
         } while(i < mv2_scatter_indexed_num_ppn_conf);
     }
     
-  conf_check_end:
     if (partial_sub_ok != 1) {
-        conf_index = 0;
+        conf_index = mv2_scatter_indexed_num_ppn_conf/2;
     }
 
-    
+conf_check_end:
+
     /* Search for the corresponding system size inside the tuning table */
     /*
      * Comm sizes progress in powers of 2. Therefore comm_size can just be indexed instead
@@ -1580,8 +1582,9 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
     int range = 0, range_threshold = 0, range_threshold_intra = 0;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int rank, nbytes, comm_size;
-    int recvtype_size, sendtype_size;
+    int rank, comm_size;
+    MPI_Aint nbytes;
+    MPI_Aint recvtype_size, sendtype_size;
     int partial_sub_ok = 0;
     int conf_index = 0;
     int local_size = -1;
@@ -1631,10 +1634,11 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
         } while(i < mv2_scatter_num_ppn_conf);
     }
     
-  conf_check_end:
     if (partial_sub_ok != 1) {
-        conf_index = 0;
+        conf_index = mv2_scatter_num_ppn_conf/2;
     }
+
+conf_check_end:
 
     /* Search for the corresponding system size inside the tuning table */
     while ((range < (mv2_size_scatter_tuning_table[conf_index] - 1)) &&
@@ -1736,8 +1740,9 @@ int MPIR_Scatter_intra_MV2(const void *sendbuf,
     int range = 0;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int rank, nbytes, comm_size;
-    int recvtype_size, sendtype_size;
+    int rank, comm_size;
+    MPI_Aint nbytes;
+    MPI_Aint recvtype_size, sendtype_size;
     MPIU_THREADPRIV_DECL;
 
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
@@ -1859,7 +1864,8 @@ int MPIR_Scatter_inter_MV2(void *sendbuf,
 
     int rank, local_size, remote_size, mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int i, nbytes, sendtype_size, recvtype_size;
+    int i;
+    MPI_Aint nbytes, sendtype_size, recvtype_size;
     MPI_Status status;
     MPI_Aint extent, true_extent, true_lb = 0;
     void *tmp_buf = NULL;
@@ -1999,7 +2005,7 @@ int MPIR_Scatter_MV2(const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
    MPI_Aint sendtype_extent, recvtype_extent;
    MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
    MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
-   int nbytes = recvtype_extent * recvcnt;
+   MPI_Aint nbytes = recvtype_extent * recvcnt;
    int send_mem_type = 0;
    int recv_mem_type = 0;
    int comm_size = comm_ptr->local_size;

@@ -151,7 +151,7 @@ extern int MPIR_Reduce_Zcpy_MV2(const void *sendbuf,
 				MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 /* Architecture detection tuning */
-int MV2_set_reduce_tuning_table();
+int MV2_set_reduce_tuning_table(int heterogeneity);
 
 /* Function to clean free memory allocated by reduce tuning table*/
 void MV2_cleanup_reduce_tuning_table();

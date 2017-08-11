@@ -79,7 +79,7 @@ extern int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
                                          MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 /* Architecture detection tuning */
-int MV2_set_red_scat_tuning_table();
+int MV2_set_red_scat_tuning_table(int heterogeneity);
 
 /* Function to clean free memory allocated by red_scat tuning table*/
 void MV2_cleanup_red_scat_tuning_table();

@@ -989,7 +989,7 @@ typedef struct MPIDI_CH3_Pkt_put
         char data[MPIDI_RMA_IMMED_BYTES];
     } info;
 #if defined (CHANNEL_PSM)
-    uint32_t rndv_len;
+    MPIDI_msg_sz_t rndv_len;
     int source_rank;
     int target_rank;
     int rndv_tag;
@@ -1022,7 +1022,7 @@ typedef struct MPIDI_CH3_Pkt_get
     int rndv_mode;
     int target_rank;
     int source_rank;
-    int rndv_len;
+    MPIDI_msg_sz_t rndv_len;
     int rndv_tag;
     int mapped_srank;
     int mapped_trank;
@@ -1080,7 +1080,7 @@ typedef struct MPIDI_CH3_Pkt_get_resp
     int source_rank;
     int rndv_tag;
     int rndv_mode;
-    int rndv_len;
+    MPIDI_msg_sz_t rndv_len;
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
     int mapped_trank;
@@ -1169,7 +1169,7 @@ typedef struct MPIDI_CH3_Pkt_accum
         char data[MPIDI_RMA_IMMED_BYTES];
     } info;
 #if defined (CHANNEL_PSM)
-    uint32_t rndv_len;
+    MPIDI_msg_sz_t rndv_len;
     int source_rank;
     int target_rank;
     int rndv_tag;
@@ -1202,7 +1202,7 @@ typedef struct MPIDI_CH3_Pkt_get_accum {
         char data[MPIDI_RMA_IMMED_BYTES];
     } info;
 #if defined (CHANNEL_PSM)
-    uint32_t rndv_len;
+    MPIDI_msg_sz_t rndv_len;
     int source_rank;
     int target_rank;
     int rndv_tag;
@@ -1240,7 +1240,7 @@ typedef struct MPIDI_CH3_Pkt_get_accum_resp
     int source_rank;
     int rndv_tag;
     int rndv_mode;
-    int rndv_len;
+    MPIDI_msg_sz_t rndv_len;
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
     int mapped_trank;

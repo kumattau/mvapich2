@@ -130,7 +130,7 @@ int free_2level_comm (MPID_Comm* comm_ptr)
     local_rank = shmem_comm_ptr->rank;
 
 #if defined (_SHARP_SUPPORT_)
-    if (mv2_enable_sharp_coll && (comm_ptr->dev.ch.is_sharp_ok == 1)) {
+    if (mv2_enable_sharp_coll) {
         mpi_errno = mv2_free_sharp_handlers(comm_ptr->dev.ch.sharp_coll_info); 
         if (mpi_errno != MPI_SUCCESS) { 
             goto fn_fail;
@@ -1042,7 +1042,6 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
             MPIU_Free(mcast_ctx);
         }
 	
-	if (comm_ptr->dev.ch.is_mcast_ok == 0) mv2_enable_zcpy_bcast = 1;
     }
 
 #endif
@@ -1079,6 +1078,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
         if (mpi_errno) {
            mv2_free_sharp_handlers(comm_ptr->dev.ch.sharp_coll_info); 
            /* avoid using sharp and fall back to other designs */
+           comm_ptr->dev.ch.sharp_coll_info = NULL;
            mpi_errno = MPI_SUCCESS;
            goto sharp_fall_back;
         }
@@ -1126,6 +1126,7 @@ sharp_fall_back:
        MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
 #if defined (_SHARP_SUPPORT_)
        mv2_free_sharp_handlers(comm_ptr->dev.ch.sharp_coll_info);
+       comm_ptr->dev.ch.sharp_coll_info = NULL;
 #endif
        goto fn_exit; 
 }

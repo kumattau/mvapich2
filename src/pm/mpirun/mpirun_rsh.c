@@ -1940,7 +1940,7 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
         for (k = 0; k < pglist->npgs; k++) {
             /* Make a list of hosts and the number of processes on each host */
             /* NOTE: RFCs do not allow : or ; in hostnames */
-            ptr += sprintf(ptr, "%s:%d:", pglist->data[k].hostname, pglist->data[k].npids);
+            ptr += sprintf(ptr, "%s:%zu:", pglist->data[k].hostname, pglist->data[k].npids);
             for (n = 0; n < pglist->data[k].npids; n++) {
                 ptr += sprintf(ptr, "%d:", pglist->data[k].plist_indices[n]);
             }

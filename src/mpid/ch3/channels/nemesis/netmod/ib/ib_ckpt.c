@@ -159,7 +159,7 @@ int MPID_nem_ib_ckpt_restart_vc(MPIDI_VC_t *vc)
     }
     
 fn_exit:
-    MPIDI_FUNC_EXIT(MPID_STATE_MPID_NEM_TCP_CKPT_RESTART_VC);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPID_NEM_IB_CKPT_RESTART_VC);
     return mpi_errno;
 fn_fail:
 

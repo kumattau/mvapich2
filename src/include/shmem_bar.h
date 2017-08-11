@@ -31,6 +31,15 @@ extern void __iospace_sync(void);
 #endif /* defined(__IBMC__) || defined(__IBMCPP__) */
 #endif /* defined(__GNUC__) */
 
+#elif defined(__aarch64__)
+#if defined(__GNUC__)
+#define STBAR() asm volatile("dmb ish" ::: "memory")
+#define READBAR() asm volatile("dmb ishld" ::: "memory")
+#define WRITEBAR() asm volatile("dmb ishst" ::: "memory")
+#else /* defined(__GNUC__) */
+#error Do not know how to make a store barrier for this system
+#endif /* defined(__aarch64__) */
+
 #if !defined(WRITEBAR)
 #define WRITEBAR() STBAR()
 #endif /* !defined(WRITEBAR) */

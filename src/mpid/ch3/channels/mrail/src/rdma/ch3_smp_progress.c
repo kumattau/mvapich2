@@ -175,18 +175,18 @@ static char *shmem_file = NULL;
 static char *pool_file = NULL;
 
 /* local header/tail for send and receive pointing to cyclic buffer */
-static int* s_header_ptr_s = NULL;
-static int* s_tail_ptr_s = NULL;
-static int* avail = NULL;
-static int* s_header_ptr_r = NULL;
+static size_t* s_header_ptr_s = NULL;
+static size_t* s_tail_ptr_s = NULL;
+static size_t* avail = NULL;
+static size_t* s_header_ptr_r = NULL;
 
-int g_size_shmem = 0;
-int g_size_pool = 0; 
+size_t g_size_shmem = 0;
+size_t g_size_pool = 0; 
 
 /* SMP user parameters */
  
 int g_smp_eagersize;
-int s_smpi_length_queue;
+size_t s_smpi_length_queue;
 int s_smp_num_send_buffer;
 int s_smp_batch_size;
 int s_smp_block_size;
@@ -576,6 +576,9 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
         {
             if (MPIDI_CH3I_Request_adjust_iov(sreq, nb)) {
                 MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
+                /* We have recived the expected fin message as part of the
+                 * CMA/LiMIC based message transfer */
+                MV2_DEC_NUM_POSTED_RECV();
             }
             MPIU_Assert(complete);
         }
@@ -1841,7 +1844,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_INIT);
     int mpi_errno = MPI_SUCCESS;
     unsigned int i;
-    int sh_size, pid_len, st_len;
+    size_t sh_size, pid_len, st_len;
     int pagesize = getpagesize();
     volatile struct shared_mem * shmem;
 
@@ -1849,7 +1852,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     int cu_ipc_offset, cu_ipc_len;
 #endif
 #if defined(_SMP_CMA_)
-    int cma_test_buffer_offset;
+    size_t cma_test_buffer_offset;
 #endif /* defined(_SMP_CMA_) */
 #if defined(_X86_64_)
     volatile char tmpchar ATTRIBUTE((unused));
@@ -1882,7 +1885,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     /* Convert to bytes */
     g_smp_eagersize = g_smp_eagersize + 1;
 
-    PRINT_DEBUG(DEBUG_SHM_verbose>1, "smp eager size %d\n, smp queue length %d\n",
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "smp eager size %d\n, smp queue length %zu\n",
                 g_smp_eagersize, s_smpi_length_queue);
 
     if (g_smp_eagersize > s_smpi_length_queue / 2) {
@@ -1898,10 +1901,10 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     g_smpi.mmap_ptr = NULL; 
     g_smpi.send_buf_pool_ptr = NULL;
     g_smpi.available_queue_length =
-          (s_smpi_length_queue - g_smp_eagersize - sizeof(int));
+          (s_smpi_length_queue - g_smp_eagersize - sizeof(size_t));
 
     /* Compute the size of shmem files */
-    pid_len = g_smpi.num_local_nodes * sizeof(int);
+    pid_len = g_smpi.num_local_nodes * sizeof(size_t);
     /* pid_len need to be padded to cache aligned, in order to make sure the
      * following flow control structures cache aligned.
      */
@@ -1948,7 +1951,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
             SMPI_ALIGN ((sizeof (SEND_BUF_T) + s_smp_block_size)
                 * s_smp_num_send_buffer + pagesize));
 
-    PRINT_DEBUG(DEBUG_SHM_verbose>1, "size_shmem=%d, size_pool = %d\n", 
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "size_shmem=%zu, size_pool = %zu\n", 
                 g_size_shmem, g_size_pool);
 
     /* Call helper function to create shmem region */
@@ -2211,28 +2214,28 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
            "**nomem %s", "s_total_bytes");
     }
 
-    s_header_ptr_s = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
+    s_header_ptr_s = (size_t *) MPIU_Malloc(sizeof(size_t) * g_smpi.num_local_nodes);
 
     if(!s_header_ptr_s) {
     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
         "**nomem %s", "s_header_ptr");
     }
 
-    s_header_ptr_r = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
+    s_header_ptr_r = (size_t *) MPIU_Malloc(sizeof(size_t) * g_smpi.num_local_nodes);
 
     if(!s_header_ptr_r) {
     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
         "**nomem %s", "s_header_ptr");
     }
 
-    s_tail_ptr_s = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
+    s_tail_ptr_s = (size_t *) MPIU_Malloc(sizeof(size_t) * g_smpi.num_local_nodes);
 
     if(!s_tail_ptr_s) {
     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
         "**nomem %s", "s_tail_ptr");
     }
 
-    avail = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
+    avail = (size_t *) MPIU_Malloc(sizeof(size_t) * g_smpi.num_local_nodes);
 
     if(!avail) {
     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
@@ -2766,6 +2769,8 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPL_IOV * iov,
 
         *num_bytes_ptr = iov[0].MPL_IOV_LEN;
         smpi_complete_send(vc->smp.local_nodes, pkt_len, pkt_len, ptr, ptr_head, ptr_flag);
+        /* For a CMA based trasnfer, we expect a FIN message */
+        MV2_INC_NUM_POSTED_RECV();
     } else {
 #endif /* _SMP_CMA */
 
@@ -2820,6 +2825,8 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPL_IOV * iov,
         *num_bytes_ptr = iov[0].MPL_IOV_LEN;
 
         smpi_complete_send(vc->smp.local_nodes, pkt_len, pkt_len, ptr, ptr_head, ptr_flag);
+        /* For a LiMIC based trasnfer, we expect a FIN message */
+        MV2_INC_NUM_POSTED_RECV();
     } else {
 #endif /* _SMP_LIMIC */
 
@@ -3550,6 +3557,8 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPL_IOV * iov,
 
     /* update(header) */
     smpi_complete_send(vc->smp.local_nodes, len, len, ptr, ptr_head, ptr_flag);
+    /* For a CMA based trasnfer, we expect a FIN message */
+    MV2_INC_NUM_POSTED_RECV();
 
     *num_bytes_ptr += pkt_len;
 
@@ -4136,6 +4145,209 @@ fn_fail:
 }
 #endif
 
+#if defined(_SMP_CMA_) 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SMP_do_cma_read
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIDI_CH3I_SMP_do_cma_read(const MPL_IOV * iov,
+        const int iovlen, void *cma_header,
+        size_t *num_bytes_ptr)
+{
+    int mpi_errno = MPI_SUCCESS;
+    size_t cerr;
+    pid_t pid;
+    struct cma_header *c_header = (struct cma_header *) cma_header;
+    size_t cma_total_bytes = c_header->total_bytes;
+    struct iovec *local_iovec;
+    size_t msglen, iov_len;
+    int iov_off = 0, buf_off = 0;
+    size_t received_bytes = 0;
+
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_DO_CMA_READ);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_DO_CMA_READ);
+
+    local_iovec = (struct iovec *)iov;
+    pid = c_header->pid;
+    msglen = cma_total_bytes;
+    iov_len = iov[0].MPL_IOV_LEN;
+    for (; cma_total_bytes > 0 && iov_off < iovlen; ) {
+        if (unlikely(msglen > MV2_CMA_MSG_LIMIT)) {
+            local_iovec[iov_off].iov_len = MV2_CMA_MSG_LIMIT;
+            cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
+            if( cerr == -1 ) 
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "CMA: (MPIDI_CH3I_SMP_do_cma_read) process_vm_readv fail");
+
+            local_iovec[iov_off].iov_base += MV2_CMA_MSG_LIMIT;
+            local_iovec[iov_off].iov_len = iov_len - MV2_CMA_MSG_LIMIT;
+            received_bytes += MV2_CMA_MSG_LIMIT;
+            cma_total_bytes -= MV2_CMA_MSG_LIMIT;
+            msglen -= MV2_CMA_MSG_LIMIT;
+
+            c_header->remote[0].iov_len -= MV2_CMA_MSG_LIMIT;
+            c_header->remote[0].iov_base += MV2_CMA_MSG_LIMIT;
+
+
+        } else if (msglen == iov_len) {
+            local_iovec[iov_off].iov_base += buf_off;
+            cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
+            if( cerr == -1 ) 
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "CMA: (MPIDI_CH3I_SMP_do_cma_read) process_vm_readv fail");
+
+            received_bytes += msglen;
+            cma_total_bytes -= msglen;
+
+            MPIU_Assert(cma_total_bytes == 0 && ++iov_off >= iovlen);
+
+        } else if (msglen > iov_len) {
+            local_iovec[iov_off].iov_base += buf_off;
+            cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
+            if( cerr == -1 ) 
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "CMA: (MPIDI_CH3I_SMP_do_cma_read) process_vm_readv fail");
+
+            received_bytes += iov_len;
+            cma_total_bytes -= iov_len;
+            msglen -= iov_len;
+           
+            c_header->remote[0].iov_len -= iov_len;
+            c_header->remote[0].iov_base += iov_len;
+
+            if (++iov_off >= iovlen)
+                break;
+            buf_off = 0;
+            iov_len = iov[iov_off].MPL_IOV_LEN;
+
+        }  else if (msglen > 0) {
+            local_iovec[iov_off].iov_base += buf_off;
+            cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
+            if( cerr == -1 ) 
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "CMA: (MPIDI_CH3I_SMP_do_cma_read) process_vm_readv fail");
+
+            received_bytes += msglen;
+            cma_total_bytes -= msglen;
+        }
+    }
+    *num_bytes_ptr = received_bytes;
+    c_header->total_bytes -= received_bytes;
+
+fn_exit:
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "return with nb %ld\n", *num_bytes_ptr);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_DO_CMA_READ);
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
+}
+#endif
+
+#if defined(_SMP_LIMIC_)
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SMP_do_limic_read
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIDI_CH3I_SMP_do_limic_read (
+        MPIDI_VC_t * recv_vc_ptr,
+        const MPL_IOV * iov,
+        const int iovlen, void *limic_header,
+        size_t *num_bytes_ptr)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int iov_off = 0, buf_off = 0;
+    size_t received_bytes = 0;
+    size_t err, old_len;
+    size_t msglen, iov_len;
+    struct limic_header *l_header = (struct limic_header *) limic_header;
+    size_t total_bytes = l_header->total_bytes;
+
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_DO_LIMIC_READ);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_DO_LIMIC_READ);
+
+    /* copy the message from the send buffer to the receive buffer */
+    msglen = total_bytes;
+    iov_len = iov[0].MPL_IOV_LEN;
+
+    for (; total_bytes > 0 && iov_off < iovlen; ) {
+        if (msglen == iov_len) {
+            err = limic_rx_comp(limic_fd,
+                    (void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF + buf_off),
+                    msglen, &(l_header->lu));
+
+            if (mv2_MPIDI_CH3I_RDMA_Process.g_smp_can_fallback && !err) {
+                MPIDI_CH3I_SMP_send_comp(l_header, recv_vc_ptr, received_bytes, SMP_DMA_LIMIC, FALLBACK);
+                *num_bytes_ptr = 0;
+                l_header->total_bytes = 0;    
+                recv_vc_ptr->smp.recv_active = NULL;
+                goto fn_exit;
+            }
+
+            received_bytes += msglen;
+            total_bytes -= msglen;
+
+            assert(total_bytes == 0 && ++iov_off >= iovlen);
+
+        } else if (msglen > iov_len) {
+            old_len = l_header->lu.length;
+            err = limic_rx_comp(limic_fd,
+                    (void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF + buf_off),
+                    iov_len, &(l_header->lu));
+
+            if (mv2_MPIDI_CH3I_RDMA_Process.g_smp_can_fallback && !err) {
+                MPIDI_CH3I_SMP_send_comp(l_header, recv_vc_ptr, received_bytes, SMP_DMA_LIMIC, FALLBACK);
+                *num_bytes_ptr = 0;
+                l_header->total_bytes = 0;    
+                recv_vc_ptr->smp.recv_active = NULL;
+                goto fn_exit;
+            }
+
+            received_bytes += iov_len;
+            total_bytes -= iov_len;
+            msglen -= iov_len;
+
+            adjust_lu_info(&(l_header->lu), old_len);
+
+            if (++iov_off >= iovlen)
+                break;
+            buf_off = 0;
+            iov_len = iov[iov_off].MPL_IOV_LEN;
+
+        }  else if (msglen > 0) {
+            err = limic_rx_comp(limic_fd,
+                    (void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF + buf_off),
+                    msglen, &(l_header->lu));
+            if (mv2_MPIDI_CH3I_RDMA_Process.g_smp_can_fallback && !err) {
+                MPIDI_CH3I_SMP_send_comp(l_header, recv_vc_ptr, received_bytes, SMP_DMA_LIMIC, FALLBACK);
+                *num_bytes_ptr = 0;
+                l_header->total_bytes = 0;    
+                recv_vc_ptr->smp.recv_active = NULL;
+                goto fn_exit;
+            }
+
+            received_bytes += msglen;
+            total_bytes -= msglen;
+        }
+    }
+
+    *num_bytes_ptr = received_bytes;
+    l_header->total_bytes -= received_bytes;
+
+fn_exit:
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, "return with nb %ld\n", *num_bytes_ptr);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_DO_LIMIC_READ);
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
+}
+#endif
+
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SMP_readv_rndv_cont
 #undef FCNAME
@@ -4153,20 +4365,6 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov
     size_t msglen, iov_len;
     void *current_buf;
     SEND_BUF_T *recv_buf;
-#if defined(_SMP_LIMIC_)
-    size_t err, old_len;
-    struct limic_header *l_header = (struct limic_header *) limic_header;
-    int total_bytes = l_header->total_bytes;
-#endif
-
-#if defined(_SMP_CMA_)
-    size_t cerr;
-    pid_t pid;
-    struct cma_header *c_header = (struct cma_header *) cma_header;
-    int cma_total_bytes = c_header->total_bytes;
-    struct iovec *local_iovec;
-#endif
-
 
 #if defined(_ENABLE_CUDA_)
     int iov_isdev = 0;
@@ -4178,153 +4376,20 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov
 
     *num_bytes_ptr = 0;
 
-
 #if defined(_SMP_CMA_) 
     if (dma_flag == SMP_DMA_CMA) {
-        /* copy the message from the send buffer to the receive buffer */
-        local_iovec = (struct iovec *)iov;
-        pid = c_header->pid;
-        msglen = cma_total_bytes;
-        iov_len = iov[0].MPL_IOV_LEN;
-        for (; cma_total_bytes > 0 && iov_off < iovlen; ) {
-            if (unlikely(msglen > MV2_CMA_MSG_LIMIT)){
-                local_iovec[iov_off].iov_len = MV2_CMA_MSG_LIMIT;
-                cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
-                if( cerr == -1 ) 
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                            "**fail", "**fail %s",
-                            "CMA: (MPIDI_CH3I_SMP_readv_rndv) process_vm_readv fail");
-
-                local_iovec[iov_off].iov_base += MV2_CMA_MSG_LIMIT;
-                local_iovec[iov_off].iov_len = iov_len - MV2_CMA_MSG_LIMIT;
-                received_bytes += MV2_CMA_MSG_LIMIT;
-                cma_total_bytes -= MV2_CMA_MSG_LIMIT;
-                msglen -= MV2_CMA_MSG_LIMIT;
-               
-                c_header->remote[0].iov_len -= MV2_CMA_MSG_LIMIT;
-                c_header->remote[0].iov_base += MV2_CMA_MSG_LIMIT;
-
-            } else if (msglen == iov_len) {
-                local_iovec[iov_off].iov_base += buf_off;
-                cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
-                if( cerr == -1 ) 
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                            "**fail", "**fail %s",
-                            "CMA: (MPIDI_CH3I_SMP_readv_rndv) process_vm_readv fail");
-
-                received_bytes += msglen;
-                cma_total_bytes -= msglen;
-
-                MPIU_Assert(cma_total_bytes == 0 && ++iov_off >= iovlen);
-
-            } else if (msglen > iov_len) {
-                local_iovec[iov_off].iov_base += buf_off;
-                cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
-                if( cerr == -1 ) 
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                            "**fail", "**fail %s",
-                            "CMA: (MPIDI_CH3I_SMP_readv_rndv) process_vm_readv fail");
-
-                received_bytes += iov_len;
-                cma_total_bytes -= iov_len;
-                msglen -= iov_len;
-               
-                c_header->remote[0].iov_len -= iov_len;
-                c_header->remote[0].iov_base += iov_len;
-
-                if (++iov_off >= iovlen)
-                    break;
-                buf_off = 0;
-                iov_len = iov[iov_off].MPL_IOV_LEN;
-
-            }  else if (msglen > 0) {
-                local_iovec[iov_off].iov_base += buf_off;
-                cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
-                if( cerr == -1 ) 
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                            "**fail", "**fail %s",
-                            "CMA: (MPIDI_CH3I_SMP_readv_rndv) process_vm_readv fail");
-
-                received_bytes += msglen;
-                cma_total_bytes -= msglen;
-            }
-        }
-        *num_bytes_ptr = received_bytes;
-        c_header->total_bytes -= received_bytes;
+        mpi_errno = MPIDI_CH3I_SMP_do_cma_read(
+                iov, iovlen, cma_header, num_bytes_ptr);
     } else {
 #endif /* _SMP_CMA_ */
 
 #if defined(_SMP_LIMIC_)
     if (dma_flag == SMP_DMA_LIMIC) {
-        /* copy the message from the send buffer to the receive buffer */
-        msglen = total_bytes;
-        iov_len = iov[0].MPL_IOV_LEN;
-
-        for (; total_bytes > 0 && iov_off < iovlen; ) {
-            if (msglen == iov_len) {
-                err = limic_rx_comp(limic_fd,
-                      (void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF + buf_off),
-                      msglen, &(l_header->lu));
-
-                if (mv2_MPIDI_CH3I_RDMA_Process.g_smp_can_fallback && !err) {
-                    MPIDI_CH3I_SMP_send_comp(l_header, recv_vc_ptr, received_bytes, SMP_DMA_LIMIC, FALLBACK);
-                    *num_bytes_ptr = 0;
-                    l_header->total_bytes = 0;    
-                    recv_vc_ptr->smp.recv_active = NULL;
-                    goto fn_exit;
-                }
-
-                received_bytes += msglen;
-                total_bytes -= msglen;
-
-                assert(total_bytes == 0 && ++iov_off >= iovlen);
-
-            } else if (msglen > iov_len) {
-                old_len = l_header->lu.length;
-                err = limic_rx_comp(limic_fd,
-                      (void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF + buf_off),
-                      iov_len, &(l_header->lu));
-
-                if (mv2_MPIDI_CH3I_RDMA_Process.g_smp_can_fallback && !err) {
-                    MPIDI_CH3I_SMP_send_comp(l_header, recv_vc_ptr, received_bytes, SMP_DMA_LIMIC, FALLBACK);
-                    *num_bytes_ptr = 0;
-                    l_header->total_bytes = 0;    
-                    recv_vc_ptr->smp.recv_active = NULL;
-                    goto fn_exit;
-                }
-
-                received_bytes += iov_len;
-                total_bytes -= iov_len;
-                msglen -= iov_len;
-
-                adjust_lu_info(&(l_header->lu), old_len);
-
-                if (++iov_off >= iovlen)
-                    break;
-                buf_off = 0;
-                iov_len = iov[iov_off].MPL_IOV_LEN;
-
-            }  else if (msglen > 0) {
-                err = limic_rx_comp(limic_fd,
-                      (void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF + buf_off),
-                      msglen, &(l_header->lu));
-                if (mv2_MPIDI_CH3I_RDMA_Process.g_smp_can_fallback && !err) {
-                    MPIDI_CH3I_SMP_send_comp(l_header, recv_vc_ptr, received_bytes, SMP_DMA_LIMIC, FALLBACK);
-                    *num_bytes_ptr = 0;
-                    l_header->total_bytes = 0;    
-                    recv_vc_ptr->smp.recv_active = NULL;
-                    goto fn_exit;
-                }
-
-                received_bytes += msglen;
-                total_bytes -= msglen;
-            }
-        }
-
-        *num_bytes_ptr = received_bytes;
-        l_header->total_bytes -= received_bytes;
+        mpi_errno = MPIDI_CH3I_SMP_do_limic_read(
+                recv_vc_ptr, iov, iovlen, limic_header, num_bytes_ptr);
     } else {
 #endif /* _SMP_LIMIC_ */
+
     if (s_current_bytes[recv_vc_ptr->smp.local_nodes] == 0) {
     if(s_total_bytes[recv_vc_ptr->smp.local_nodes] != 0) {
         MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -4605,19 +4670,6 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
     size_t received_bytes = 0;
     size_t msglen, iov_len;
     /* all variable must be declared before the state declarations */
-#if defined(_SMP_LIMIC_)
-    size_t  err, old_len;
-    struct limic_header *l_header = (struct limic_header *) limic_header;
-    size_t total_bytes = l_header->total_bytes;
-#endif
-
-#if defined(_SMP_CMA_)
-    size_t  cerr;
-    struct cma_header *c_header = (struct cma_header *) cma_header; 
-    size_t cma_total_bytes = c_header->total_bytes;
-    struct iovec *local_iovec;
-    pid_t pid;
-#endif
 
     int destination = recv_vc_ptr->smp.local_nodes;
     int current_index = index;
@@ -4653,149 +4705,15 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
     }
 #if defined(_SMP_CMA_) 
     if (dma_flag == SMP_DMA_CMA) {
-        local_iovec = (struct iovec *)iov;
-        pid = c_header->pid;
-        msglen = cma_total_bytes;
-        iov_len = iov[0].MPL_IOV_LEN;
-        for (; cma_total_bytes > 0 && iov_off < iovlen; ) {
-            if (unlikely(msglen > MV2_CMA_MSG_LIMIT)) {
-                local_iovec[iov_off].iov_len = MV2_CMA_MSG_LIMIT;
-                cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
-                if( cerr == -1 ) 
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                            "**fail", "**fail %s",
-                            "CMA: (MPIDI_CH3I_SMP_readv_rndv) process_vm_readv fail");
-
-                local_iovec[iov_off].iov_base += MV2_CMA_MSG_LIMIT;
-                local_iovec[iov_off].iov_len = iov_len - MV2_CMA_MSG_LIMIT;
-                received_bytes += MV2_CMA_MSG_LIMIT;
-                cma_total_bytes -= MV2_CMA_MSG_LIMIT;
-                msglen -= MV2_CMA_MSG_LIMIT;
-
-                c_header->remote[0].iov_len -= MV2_CMA_MSG_LIMIT;
-                c_header->remote[0].iov_base += MV2_CMA_MSG_LIMIT;
-
-
-            } else if (msglen == iov_len) {
-                local_iovec[iov_off].iov_base += buf_off;
-                cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
-                if( cerr == -1 ) 
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                            "**fail", "**fail %s",
-                            "CMA: (MPIDI_CH3I_SMP_readv_rndv) process_vm_readv fail");
-
-                received_bytes += msglen;
-                cma_total_bytes -= msglen;
-
-                MPIU_Assert(cma_total_bytes == 0 && ++iov_off >= iovlen);
-
-            } else if (msglen > iov_len) {
-                local_iovec[iov_off].iov_base += buf_off;
-                cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
-                if( cerr == -1 ) 
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                            "**fail", "**fail %s",
-                            "CMA: (MPIDI_CH3I_SMP_readv_rndv) process_vm_readv fail");
-
-                received_bytes += iov_len;
-                cma_total_bytes -= iov_len;
-                msglen -= iov_len;
-               
-                c_header->remote[0].iov_len -= iov_len;
-                c_header->remote[0].iov_base += iov_len;
-
-                if (++iov_off >= iovlen)
-                    break;
-                buf_off = 0;
-                iov_len = iov[iov_off].MPL_IOV_LEN;
-
-            }  else if (msglen > 0) {
-                local_iovec[iov_off].iov_base += buf_off;
-                cerr = process_vm_readv(pid, &local_iovec[iov_off], 1, c_header->remote, 1, 0);
-                if( cerr == -1 ) 
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                            "**fail", "**fail %s",
-                            "CMA: (MPIDI_CH3I_SMP_readv_rndv) process_vm_readv fail");
-
-                received_bytes += msglen;
-                cma_total_bytes -= msglen;
-            }
-        }
-        *num_bytes_ptr = received_bytes;
-        c_header->total_bytes -= received_bytes;
+        mpi_errno = MPIDI_CH3I_SMP_do_cma_read(
+                iov, iovlen, cma_header, num_bytes_ptr);
     } else {
 #endif /* _SMP_CMA_ */
 
 #if defined(_SMP_LIMIC_)
     if (dma_flag == SMP_DMA_LIMIC) {
-        /* copy the message from the send buffer to the receive buffer */
-        msglen = total_bytes;
-        iov_len = iov[0].MPL_IOV_LEN;
-
-        for (; total_bytes > 0 && iov_off < iovlen; ) {
-            if (msglen == iov_len) {
-                err = limic_rx_comp(limic_fd,
-                      (void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF + buf_off),
-                      msglen, &(l_header->lu));
-
-                if (mv2_MPIDI_CH3I_RDMA_Process.g_smp_can_fallback && !err) {
-                      MPIDI_CH3I_SMP_send_comp(l_header, recv_vc_ptr, received_bytes, SMP_DMA_LIMIC, FALLBACK);
-                      *num_bytes_ptr = 0;
-                      l_header->total_bytes = 0;    
-                      recv_vc_ptr->smp.recv_active = NULL;
-                      goto fn_exit;
-                }
-
-                received_bytes += msglen;
-                total_bytes -= msglen;
-
-                assert(total_bytes == 0 && ++iov_off >= iovlen);
-
-            } else if (msglen > iov_len) {
-                old_len = l_header->lu.length;
-                err = limic_rx_comp(limic_fd,
-                      (void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF + buf_off),
-                      iov_len, &(l_header->lu));
-
-                if (mv2_MPIDI_CH3I_RDMA_Process.g_smp_can_fallback && !err) {
-                      MPIDI_CH3I_SMP_send_comp(l_header, recv_vc_ptr, received_bytes, SMP_DMA_LIMIC, FALLBACK);
-                      *num_bytes_ptr = 0;
-                      l_header->total_bytes = 0;    
-                      recv_vc_ptr->smp.recv_active = NULL;
-                      goto fn_exit;
-                }
-
-                received_bytes += iov_len;
-                total_bytes -= iov_len;
-                msglen -= iov_len;
-
-                adjust_lu_info(&(l_header->lu), old_len);
-
-                if (++iov_off >= iovlen)
-                    break;
-                buf_off = 0;
-                iov_len = iov[iov_off].MPL_IOV_LEN;
-
-            } else if (msglen > 0) {
-                err = limic_rx_comp(limic_fd,
-                      (void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF + buf_off),
-                      msglen, &(l_header->lu));
-
-                if (mv2_MPIDI_CH3I_RDMA_Process.g_smp_can_fallback && !err) {
-                      MPIDI_CH3I_SMP_send_comp(l_header, recv_vc_ptr, received_bytes, SMP_DMA_LIMIC, FALLBACK);
-                      *num_bytes_ptr = 0;
-                      l_header->total_bytes = 0;    
-                      recv_vc_ptr->smp.recv_active = NULL;
-                      goto fn_exit;
-                }
-
-                received_bytes += msglen;
-                total_bytes -= msglen;
-            }
-        }
-
-        *num_bytes_ptr = received_bytes;
-        l_header->total_bytes -= received_bytes;
+        mpi_errno = MPIDI_CH3I_SMP_do_limic_read(
+                recv_vc_ptr, iov, iovlen, limic_header, num_bytes_ptr);
     } else {
 #endif /* _SMP_LIMIC_ */
 

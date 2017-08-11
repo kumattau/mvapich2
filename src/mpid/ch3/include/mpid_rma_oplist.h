@@ -393,6 +393,10 @@ static inline int MPIDI_CH3I_Win_enqueue_op(MPID_Win * win_ptr, MPIDI_RMA_Op_t *
         }
     }
 
+#if defined(CHANNEL_MRAIL)
+    target->issue_2s_sync = 0;
+#endif
+
     /* Note that if it is a request-based RMA, do not put it in pending user list,
      * otherwise a wait call before unlock will be blocked. */
     if (MPIR_CVAR_CH3_RMA_DELAY_ISSUING_FOR_PIGGYBACKING && op->ureq == NULL) {

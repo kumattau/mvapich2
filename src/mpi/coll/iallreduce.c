@@ -642,6 +642,12 @@ fn_fail:
 }
 
 
+#if defined (_SHARP_SUPPORT_)
+#include "api/sharp_coll.h"
+#include "ibv_sharp.h"
+extern int mv2_sharp_tuned_msg_size;
+#endif
+
 #undef FUNCNAME
 #define FUNCNAME MPIR_Iallreduce_impl
 #undef FCNAME
@@ -654,6 +660,23 @@ int MPIR_Iallreduce_impl(const void *sendbuf, void *recvbuf, int count, MPI_Data
     MPID_Sched_t s = MPID_SCHED_NULL;
 
     *request = MPI_REQUEST_NULL;
+
+#if defined (_SHARP_SUPPORT_)
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 && /*nbytes CHANGE THIS: */count <= mv2_sharp_tuned_msg_size/4
+        && mv2_enable_sharp_coll == 2) {
+            /* Direct flat algorithm in which every process calls Sharp
+            *  MV2_ENABLE_SHARP should be set to 2 */
+            mpi_errno = MPIR_Sharp_Iallreduce_MV2(sendbuf, recvbuf, count,
+            datatype, op, comm_ptr, NULL, &reqp);
+            if (mpi_errno == MPI_SUCCESS) {
+                if (reqp)
+                    *request = reqp->handle;
+                goto fn_exit;
+            }
+        /* SHArP collective is not supported,
+        * continue without using SHArP */
+    }
+#endif /* end of defined (_SHARP_SUPPORT_) */
 
     MPIU_Assert(comm_ptr->coll_fns != NULL);
     if (comm_ptr->coll_fns->Iallreduce_req != NULL) {

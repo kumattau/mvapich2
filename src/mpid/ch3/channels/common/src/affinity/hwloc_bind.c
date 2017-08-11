@@ -47,13 +47,25 @@
 #define HOSTNAME_LENGTH 255
 #define FILENAME_LENGTH 512
 
+/* Hybrid mapping related definitions */
+#define BASE_THREAD_SIBLING_FILE \
+    "/sys/devices/system/cpu/cpu0/topology/thread_siblings_list"
+
+#define HYBRID_LINEAR  0x100
+#define HYBRID_COMPACT 0x101
+
+int mv2_threads_binding_policy = HYBRID_LINEAR; /* default as linear */
+int mv2_pivot_core_id = 0; /* specify pivot core to start binding MPI ranks */
+int mv2_threads_per_proc = 0; 
+int max_physical_cores = 0;
+int max_logical_cores = 0;
+int hw_threads_per_core = 0;
+
 int mv2_my_cpu_id = -1;
 int mv2_my_sock_id = -1;
 int mv2_my_async_cpu_id = -1;
 int *local_core_ids = NULL;
 int mv2_user_defined_mapping = FALSE;
-
-int mv2_threads_per_proc = 0;
 
 unsigned int mv2_enable_affinity = 1;
 unsigned int mv2_enable_leastload = 0;
@@ -2425,13 +2437,12 @@ int mv2_show_hca_affinity(int verbosity)
     int pg_size = 0;
     int my_rank = 0;
     int i = 0, j = 0, k = 0;
-    int mpi_errno = MPI_SUCCESS, errflag = 0;
-    int hca;
+    int mpi_errno = MPI_SUCCESS;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
     struct ibv_device **hcas = NULL;
 
     char *hca_names = NULL; 
-    char *names = NULL;
     char *all_hca_names = NULL;
     
     MPIDI_VC_t *vc = NULL;
@@ -2508,19 +2519,62 @@ int mv2_show_hca_affinity(int verbosity)
 #define FUNCNAME mv2_generate_implicit_cpu_mapping
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-static int mv2_generate_implicit_cpu_mapping (unsigned int local_procs, unsigned int num_threads) 
-{
-    int count, i, j;
+static int mv2_generate_implicit_cpu_mapping (int local_procs, int num_threads) {
+    
+    int i, j, k, curr, count;
+    size_t read, len;    
     char mapping [s_cpu_mapping_line_max];
+    
+    FILE *fp;
+    char *line = NULL;
+    char *token, *rest;
 
-    count = j = 0;
-    for (i = 0; i < local_procs; i++) {
-        j += snprintf (mapping+j, s_cpu_mapping_line_max, "%d-%d:", count, (count+num_threads-1));
-        count += num_threads;
+    i = j = k = curr = count = len = 0;
+    count = mv2_pivot_core_id;
+    
+    fp = fopen (BASE_THREAD_SIBLING_FILE, "r");
+    if (fp == NULL) {
+        fprintf (stderr, 
+            "Unable to open /sys/devices/system/cpu/cpu0/topology/thread_siblings_list");
     }
+
+    while ((read = getline(&line, &len, fp)) != -1) {
+        rest = line;
+        while ((token = strtok_r(rest, ",", &rest)))
+            hw_threads_per_core++;
+    }
+    
+    max_logical_cores = sysconf(_SC_NPROCESSORS_ONLN);
+    max_physical_cores = max_logical_cores / hw_threads_per_core;
+
+    if (mv2_threads_binding_policy == HYBRID_COMPACT) {   
+        for (i = 0; i < local_procs; i++) {
+            curr = count;
+            for (k = 0; k < num_threads; k++) {
+                j += snprintf (mapping+j, _POSIX2_LINE_MAX, "%d,", curr);
+                curr = (curr + max_physical_cores) % max_logical_cores;
+            }
+            mapping [--j] = '\0'; 
+            j += snprintf (mapping+j, _POSIX2_LINE_MAX, ":");
+            count = (count + 1) % max_physical_cores;
+        }
+    } else { /* HYBRID_LINEAR */
+        for (i = 0; i < local_procs; i++) {
+            j += snprintf (mapping+j, s_cpu_mapping_line_max, "%d-%d:", 
+                    count, (count+num_threads-1));
+            count += num_threads;
+        }
+    }
+
+    /* copy the generated mapping string to final mapping*/
     s_cpu_mapping = (char *) MPIU_Malloc (sizeof (char) * j);
     strncpy (s_cpu_mapping, mapping, j);
-    s_cpu_mapping[j-1] = '\0'; /* replace the last character */
+    s_cpu_mapping[j-1] = '\0';
+
+    if (fp != NULL) {
+        fclose(fp);
+    }
+    return MPI_SUCCESS;
 }
 
 #undef FUNCNAME
@@ -2533,14 +2587,32 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
     int mpi_errno = MPI_SUCCESS;
     int my_local_id;
     int num_local_procs;
+    long N_CPUs_online;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SET_AFFINITY);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SET_AFFINITY);
 
     num_local_procs = MPIDI_Num_local_processes (pg);
     
+    N_CPUs_online = sysconf(_SC_NPROCESSORS_ONLN);
+
     if ((value = getenv("MV2_ENABLE_AFFINITY")) != NULL) {
         mv2_enable_affinity = atoi(value);
+    }
+
+    if (mv2_enable_affinity && (num_local_procs > N_CPUs_online)) {
+        if (MPIDI_Process.my_pg_rank == 0) {
+            PRINT_ERROR ("WARNING: You are running %d MPI processes on a processor "
+                            "that supports up to %ld cores. If you still wish to run "
+                            "in oversubscribed mode, please set MV2_ENABLE_AFFINITY=0 "
+                            "and re-run the program.\n\n", 
+                            num_local_procs, N_CPUs_online);
+
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    "**fail", "**fail %s",
+                    "MV2_ENABLE_AFFINITY: oversubscribed cores.");
+        }
+        goto fn_fail;
     }
 
     if (mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) != NULL) {
@@ -2592,7 +2664,6 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
                }
 
                if (mv2_threads_per_proc > 0) {
-                   long N_CPUs_online = sysconf(_SC_NPROCESSORS_ONLN);
                    if ( (mv2_threads_per_proc * num_local_procs) > N_CPUs_online) {
                        if (MPIDI_Process.my_pg_rank == 0) {
                            PRINT_ERROR ("User defined vaules for MV2_CPU_BINDING_POLICY and "
@@ -2605,7 +2676,24 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
                                    "CPU_BINDING_PRIMITIVE: over-subscribed hybrid configuration.");
                        }
                    } 
+                    
+                   /* Check to see if any pivot core is designated */
+                   if ((value = getenv("MV2_PIVOT_CORE_ID")) != NULL) {
+                       mv2_pivot_core_id = atoi(value);
+                   }
                    
+                   /* since mv2_threads_per_proc > 0, check if any threads
+                    * binding policy have been explicitly specified */
+                   if ((value = getenv("MV2_THREADS_BINDING_POLICY")) != NULL) {
+                       if (!strcmp(value, "linear") || !strcmp(value, "LINEAR")) {
+                           mv2_threads_binding_policy = HYBRID_LINEAR;
+                       } else if (!strcmp(value, "compact") || !strcmp(value, "COMPACT")) {
+                           mv2_threads_binding_policy = HYBRID_COMPACT;
+                       }
+                   }
+
+                   /* generate implicit mapping string based on liner or compact
+                    * policy */
                    mv2_generate_implicit_cpu_mapping (num_local_procs, mv2_threads_per_proc);
                    mv2_binding_level = LEVEL_MULTIPLE_CORES;
                

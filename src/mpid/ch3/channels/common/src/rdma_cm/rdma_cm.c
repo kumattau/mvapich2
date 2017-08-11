@@ -1118,7 +1118,7 @@ int rdma_cm_exchange_hostid(MPIDI_PG_t *pg, int pg_rank, int pg_size)
 
     MPIU_Free(hostid_all);
 
-    MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_GET_HOSTNAMES);
+    MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_EXCHANGE_HOSTID);
     return error;
 }
 

@@ -116,6 +116,9 @@ MPID_Request * MPID_Request_create(void)
 #ifdef MPIDI_CH3_REQUEST_INIT
 	MPIDI_CH3_REQUEST_INIT(req);
 #endif
+#if defined (_SHARP_SUPPORT_)
+    MPIDI_CH3_SHARP_REQUEST_INIT(req);
+#endif
     }
     else
     {
@@ -243,6 +246,24 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
     }
 #endif
 
+#if defined(CHANNEL_MRAIL)
+    if (req->kind == MPID_REQUEST_RECV) {
+        if (req->comm && req->dev.match.parts.rank != MPI_ANY_SOURCE) {
+            MPIDI_VC_t *vc;
+            MPIDI_Comm_get_vc(req->comm, req->dev.match.parts.rank, &vc);
+            if (SMP_INIT && vc->smp.local_nodes >= 0) {
+                MV2_DEC_NUM_POSTED_RECV();
+            }
+        } else {
+            MV2_DEC_NUM_POSTED_RECV();
+        }
+        MPIU_Assert(mv2_posted_recvq_length >= 0);
+    }
+    if (req->kind == MPID_REQUEST_SEND) {
+        MV2_DEC_NUM_POSTED_SEND();
+        MPIU_Assert(mv2_num_posted_send >= 0);
+    }
+#endif
     MPIU_Handle_obj_free(&MPID_Request_mem, req);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_REQUEST_DESTROY);
 }
@@ -264,6 +285,7 @@ int mv2_create_dummy_request()
 int mv2_free_dummy_request()
 {
     mv2_dummy_request->ch.reqtype = REQUEST_NORMAL;
+    mv2_dummy_request->kind = MPID_REQUEST_UNDEFINED;
     MPIDI_CH3_Request_destroy(mv2_dummy_request);
 
     return MPI_SUCCESS;

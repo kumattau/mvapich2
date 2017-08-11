@@ -166,7 +166,7 @@ extern int MPIR_Mcast_inter_node_MV2(void *buffer,
 #endif                          /* #if defined(_MCST_SUPPORT_) */
 
 /* Architecture detection tuning */
-int MV2_set_bcast_tuning_table();
+int MV2_set_bcast_tuning_table(int heterogeneity);
 
 /* Function to clean free memory allocated by bcast tuning table*/
 void MV2_cleanup_bcast_tuning_table();

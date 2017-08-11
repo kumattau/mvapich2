@@ -1334,6 +1334,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 
     if (pg->size == 1) {
         pg->vct[0].node_id = ++g_max_node_id;
+        g_max_node_id = 1;
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
         pg->ch.local_process_id = 0;
         pg->ch.num_local_processes = 1;

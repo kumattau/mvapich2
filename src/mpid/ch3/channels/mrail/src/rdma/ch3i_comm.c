@@ -61,7 +61,6 @@ int init_MV2_collops (MPID_Comm *comm)
         comm->coll_fns->Ibarrier_sched = MPIR_Ibarrier_MV2;
     }
     
-fn_exit:
     return mpi_errno;
 }
 

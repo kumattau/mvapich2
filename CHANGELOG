@@ -3,6 +3,43 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.3b (08/10/2017)
+
+* Features and Enhancements (since 2.3a):
+    - Enhance performance of point-to-point operations for CH3-Gen2 (InfiniBand),
+      CH3-PSM, and CH3-PSM2 (Omni-Path) channels
+    - Improve performance for MPI-3 RMA operations
+    - Introduce support for Cavium ARM (ThunderX) systems
+    - Improve support for process to core mapping on many-core systems
+        - New enviroment variable MV2_THREADS_BINDING_POLICY for
+          multi-threaded MPI and MPI+OpenMP applications
+        - Support `linear' and `compact' placement of threads
+        - Warn user if oversubcription of core is detected
+    - Improve launch time for large-scale jobs with mpirun_rsh
+    - Add support for non-blocking Allreduce using Mellanox SHARP
+    - Efficient support for different Intel Knight's Landing (KNL) models
+    - Improve performance for Intra- and Inter-node communication for OpenPOWER
+      architecture
+    - Improve support for large processes per node and hugepages on SMP systems
+    - Enhance collective tuning for Intel Knight's Landing and Intel Omni-Path
+      based systems
+    - Enhance collective tuning for Bebop@ANL, Bridges@PSC, and Stampede2@TACC
+      systems
+    - Enhance large message intra-node performance with CH3-IB-Gen2 channel on
+      Intel Knight's Landing
+    - Enhance support for MPI_T PVARs and CVARs
+* Bug Fixes (since 2.3a):
+    - Fix issue with bcast algorithm selection
+    - Fix issue with large message transfers using CMA
+    - Fix issue in Scatter and Gather with large messages
+    - Fix tuning tables for various collectives
+    - Fix issue with launching single-process MPI jobs
+    - Fix compilation error in the CH3-TCP/IP channel
+        - Thanks to Isaac Carroll@Lightfleet for the patch
+    - Fix issue with memory barrier instructions on ARM
+        - Thanks to Pavel (Pasha) Shamis@ARM for reporting the issue
+    - Fix compilation warnings and memory leaks
+
 MVAPICH2 2.3a (03/29/2017)
 
 * Features and Enhancements (since 2.2):

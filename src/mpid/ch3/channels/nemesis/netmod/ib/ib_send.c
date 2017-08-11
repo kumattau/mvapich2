@@ -1820,7 +1820,7 @@ int MPIDI_nem_ib_lmt_r3_ack_send(MPIDI_VC_t *vc)
     int rail;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_NEM_IB_LMT_R3_ACK_SEND);
-    MPIDI_FUNC_ENTER(PID_STATE_MPIDI_NEM_IB_LMT_R3_ACK_SEND);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_NEM_IB_LMT_R3_ACK_SEND);
 
     v = get_vbuf();
     MPIDI_CH3_Pkt_rndv_r3_ack_t* p = (MPIDI_CH3_Pkt_rndv_r3_ack_t*) v->pheader;

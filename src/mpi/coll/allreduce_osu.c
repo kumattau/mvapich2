@@ -2381,11 +2381,11 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
         } while(i < mv2_allreduce_indexed_num_ppn_conf);
     }
 
- conf_check_end:
-    
     if (partial_sub_ok != 1) {
-        conf_index = 0;
+        conf_index = mv2_allreduce_indexed_num_ppn_conf/2;
     }
+ 
+conf_check_end:
 
 #ifdef MPID_HAS_HETERO
     if (comm_ptr->is_hetero) {

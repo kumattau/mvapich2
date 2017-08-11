@@ -27,6 +27,12 @@ MPIDI_CH3I_PKT_SC_CONN_ACCEPT,		        \
 MPIDI_CH3I_PKT_SC_OPEN_RESP,			\
 MPIDI_CH3I_PKT_SC_CLOSE
 
+#define MPIDI_CH3_PKT_ENUM_TYPE_TO_STRING                               \
+    [MPIDI_CH3I_PKT_SC_OPEN_REQ] = "MPIDI_CH3I_PKT_SC_OPEN_REQ",        \
+    [MPIDI_CH3I_PKT_SC_CONN_ACCEPT] = "MPIDI_CH3I_PKT_SC_CONNACCEPT",   \
+    [MPIDI_CH3I_PKT_SC_OPEN_RESP] = "MPIDI_CH3I_PKT_SC_OPEN_RESP",      \
+    [MPIDI_CH3I_PKT_SC_CLOSE] = "MPIDI_CH3I_PKT_SC_CLOSE",
+
 typedef struct {
     int dummy;  /* dummy variable to ensure we don't have an empty structure */
 } MPIDI_CH3I_CH_comm_t;

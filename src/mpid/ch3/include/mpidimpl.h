@@ -71,6 +71,26 @@ extern char *MPIDI_failed_procs_string;
 
 extern int MPIDI_Use_pmi2_api;
 
+#if defined(CHANNEL_MRAIL)
+extern long int mv2_posted_recvq_length;
+extern long int mv2_num_posted_send;
+extern long int mv2_unexp_msg_recv;
+
+#define MV2_INC_NUM_POSTED_SEND()  mv2_num_posted_send++;
+#define MV2_DEC_NUM_POSTED_SEND()  mv2_num_posted_send--;
+#define MV2_INC_NUM_POSTED_RECV()  mv2_posted_recvq_length++;
+#define MV2_DEC_NUM_POSTED_RECV()  mv2_posted_recvq_length--;
+#define MV2_INC_NUM_UNEXP_RECV()  mv2_unexp_msg_recv++;
+#define MV2_DEC_NUM_UNEXP_RECV()  mv2_unexp_msg_recv--;
+#else
+#define MV2_INC_NUM_POSTED_SEND()
+#define MV2_DEC_NUM_POSTED_SEND()
+#define MV2_INC_NUM_POSTED_RECV()
+#define MV2_DEC_NUM_POSTED_RECV()
+#define MV2_INC_NUM_UNEXP_RECV()
+#define MV2_DEC_NUM_UNEXP_RECV()
+#endif
+
 #define MPIDI_CHANGE_VC_STATE(vc, new_state) do {               \
         MPIU_DBG_VCSTATECHANGE(vc, VC_STATE_##new_state);       \
         (vc)->state = MPIDI_VC_STATE_##new_state;               \
@@ -358,6 +378,7 @@ extern MPIDI_Process_t MPIDI_Process;
     (sreq_)->dev.iov_count	   = 0;                         \
     MPIDI_Request_clear_dbg(sreq_);                             \
     MPIDI_CH3_REQUEST_INIT(sreq_);                              \
+    MV2_INC_NUM_POSTED_SEND();                      \
 }
 
 /* This is the receive request version of MPIDI_Request_create_sreq */
@@ -2152,18 +2173,6 @@ int mv2_show_hca_affinity(int verbosity);
 
 #define MPIDI_CH3U_PKT_SIZE(_pkt) \
     (MPIDI_CH3_Pkt_size_index[((MPIDI_CH3_Pkt_t *)(_pkt))->type])
-
-#define MPIDI_CH3_SET_RMA_ISSUED_NUM(_vc, _pkt)    \
-{                                                  \
-    _vc->rma_issued++;                             \
-    _pkt->rma_issued = _vc->rma_issued;            \
-    /* FIXME2: take a look when RDMA is merged
-    if (_pkt->source_win_handle != MPI_WIN_NULL)   \
-    {                                              \
-        _vc->rma_issued = 0;                       \
-    }                                              \
-    */                                             \
-}
 #endif /* if defined(CHANNEL_MRAIL) */
 
 #if defined (CHANNEL_PSM)

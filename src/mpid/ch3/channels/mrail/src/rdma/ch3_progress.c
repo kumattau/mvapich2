@@ -54,6 +54,9 @@ do {                                                          \
 }
 
 #define MAX_PROGRESS_HOOKS 4
+long int mv2_num_posted_send;
+long int mv2_unexp_msg_recv;
+
 typedef int (*progress_func_ptr_t) (int* made_progress);
 
 typedef struct progress_hook_slot {
@@ -214,15 +217,19 @@ start_polling:
         smp_found = 0;
         /*needed if early send complete does not occur */
         if (SMP_INIT) {
-            mpi_errno = MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
-            if (mpi_errno != MPI_SUCCESS) {
-                MPIR_ERR_POP(mpi_errno);
+            if (mv2_posted_recvq_length || mv2_unexp_msg_recv) {
+                mpi_errno = MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
+                if (mpi_errno != MPI_SUCCESS) {
+                    MPIR_ERR_POP(mpi_errno);
+                }
             }
-            if ((mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS) {
-                MPIR_ERR_POP(mpi_errno);
+            if (mv2_num_posted_send) {
+                if ((mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS) {
+                    MPIR_ERR_POP(mpi_errno);
+                }
             }
             if (smp_completions != MPIDI_CH3I_progress_completion_count) {
-                smp_found = 1;
+                break;
             }
         }
 
@@ -362,14 +369,7 @@ handle_recv_pkt:
         MV2_CUDA_PROGRESS();
 #endif
         
-        /* make progress on NBC schedules */
         int made_progress = FALSE;
-        mpi_errno = MPIDU_Sched_progress(&made_progress);
-        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-        if (made_progress) {
-            MPIDI_CH3_Progress_signal_completion();
-        }
-
         for (i = 0; i < MAX_PROGRESS_HOOKS; i++) {
             if (progress_hooks[i].active == TRUE) {
                 MPIU_Assert(progress_hooks[i].func_ptr != NULL);
@@ -518,10 +518,10 @@ int MPIDI_CH3I_Progress_deregister_hook(int id)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PROGRESS_DEREGISTER_HOOK);
     MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
-    MPIU_Assert(id >= 0 && id < MAX_PROGRESS_HOOKS && progress_hooks[id].func_ptr != NULL);
-
+    MPIU_Assert(id >= 0 && id < MAX_PROGRESS_HOOKS);
+    MPIU_Assert(progress_hooks[id].active == FALSE);
+    MPIU_Assert(progress_hooks[id].func_ptr != NULL);
     progress_hooks[id].func_ptr = NULL;
-    progress_hooks[id].active = FALSE;
 
     MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_PROGRESS_DEREGISTER_HOOK);
@@ -542,8 +542,9 @@ int MPIDI_CH3I_Progress_activate_hook(int id)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PROGRESS_ACTIVATE_HOOK);
     MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
-    MPIU_Assert(id >= 0 && id < MAX_PROGRESS_HOOKS &&
-                progress_hooks[id].active == FALSE && progress_hooks[id].func_ptr != NULL);
+    MPIU_Assert(id >= 0 && id < MAX_PROGRESS_HOOKS);
+    MPIU_Assert(progress_hooks[id].active == FALSE);
+    MPIU_Assert(progress_hooks[id].func_ptr != NULL);
     progress_hooks[id].active = TRUE;
 
     MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
@@ -565,8 +566,9 @@ int MPIDI_CH3I_Progress_deactivate_hook(int id)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PROGRESS_DEACTIVATE_HOOK);
     MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
-    MPIU_Assert(id >= 0 && id < MAX_PROGRESS_HOOKS &&
-                progress_hooks[id].active == TRUE && progress_hooks[id].func_ptr != NULL);
+    MPIU_Assert(id >= 0 && id < MAX_PROGRESS_HOOKS);
+    MPIU_Assert(progress_hooks[id].active == TRUE);
+    MPIU_Assert(progress_hooks[id].func_ptr != NULL);
     progress_hooks[id].active = FALSE;
 
     MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
@@ -582,6 +584,7 @@ int MPIDI_CH3I_Progress_deactivate_hook(int id)
 int MPIDI_CH3I_Progress_test()
 {
     int mpi_errno = MPI_SUCCESS;
+    int made_progress;
 
     MPIDI_STATE_DECL(MPID_CH3I_PROGRESS_TEST);
     MPIDI_STATE_DECL(MPID_STATE_MPIDU_YIELD);
@@ -601,24 +604,23 @@ int MPIDI_CH3I_Progress_test()
 #endif /* (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE) */
 
     /*needed if early send complete doesnot occur */
-    if (SMP_INIT)
-    {
-        int completion_count = MPIDI_CH3I_progress_completion_count;
+    if (SMP_INIT) {
+        int smp_completions = MPIDI_CH3I_progress_completion_count;
 
-	    mpi_errno = MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
-        if (mpi_errno != MPI_SUCCESS)
-        {
-            MPIR_ERR_POP(mpi_errno);
+        if (mv2_posted_recvq_length || mv2_unexp_msg_recv) {
+            mpi_errno = MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIR_ERR_POP(mpi_errno);
+            }
         }
-    	mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg);
-	    if (mpi_errno != MPI_SUCCESS)
-        {
-            MPIR_ERR_POP(mpi_errno);
-	    }
+        if (mv2_num_posted_send) {
+            if ((mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
 	    /* check if we made any progress */
-	    if (completion_count != MPIDI_CH3I_progress_completion_count)
-        {
-	       goto fn_exit;
+        if (smp_completions != MPIDI_CH3I_progress_completion_count) {
+            goto fn_exit;
 	    }
     }
 
@@ -761,7 +763,7 @@ test_handle_recv_pkt:
 #endif
 
     /* make progress on NBC schedules */
-    int made_progress = FALSE;
+    made_progress = FALSE;
     mpi_errno = MPIDU_Sched_progress(&made_progress);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     if (made_progress) {

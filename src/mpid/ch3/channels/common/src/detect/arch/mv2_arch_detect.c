@@ -44,6 +44,8 @@ static int g_mv2_num_cpus = -1;
 static int g_mv2_cpu_model = -1;
 static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 
+extern int mv2_enable_zcpy_bcast;
+extern int mv2_enable_shmem_bcast;
 
 #define CONFIG_FILE         "/proc/cpuinfo"
 #define MAX_LINE_LENGTH     512
@@ -70,6 +72,8 @@ static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 #define MV2_STR_PHYSICAL     "physical"
 #define MV2_STR_MODEL_NAME   "model name"
 #define MV2_STR_POWER8_ID    "POWER8"
+#define MV2_STR_CAVIUM_ID    "0x43"
+#define MV2_ARM_CAVIUM_V8_MODEL 8
 
 #define INTEL_E5_2670_MODEL_NAME    "Intel(R) Xeon(R) CPU E5-2670 0 @ 2.60GHz"
 #define INTEL_E5_2680_MODEL_NAME    "Intel(R) Xeon(R) CPU E5-2680 0 @ 2.70GHz"
@@ -86,7 +90,12 @@ static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 #define INTEL_E5_2670_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2670 v3 @ 2.30GHz"
 #define INTEL_E5_2695_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2695 v3 @ 2.30GHz"
 #define INTEL_E5_2695_V4_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2695 v4 @ 2.10GHz"
-#define INTEL_XEON_PHI_7250_MODEL_NAME "Intel(R) Xeon Phi(TM) CPU 7250 @ 1.40GHz"
+
+#define INTEL_XEON_PHI_GENERIC_MODEL_NAME "Intel(R) Xeon Phi(TM) CPU"
+#define INTEL_XEON_PHI_7210_MODEL_NAME    "Intel(R) Xeon Phi(TM) CPU 7210 @ 1.30GHz"
+#define INTEL_XEON_PHI_7230_MODEL_NAME    "Intel(R) Xeon Phi(TM) CPU 7230 @ 1.30GHz"
+#define INTEL_XEON_PHI_7250_MODEL_NAME    "Intel(R) Xeon Phi(TM) CPU 7250 @ 1.40GHz"
+#define INTEL_XEON_PHI_7290_MODEL_NAME    "Intel(R) Xeon Phi(TM) CPU 7290 @ 1.50GHz"
 
 typedef struct _mv2_arch_types_log_t{
     uint64_t arch_type;
@@ -120,7 +129,13 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28,"MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28"},
     {MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36,"MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36"},
     {MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28,"MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28"},
+
+    /* KNL Architectures */
+    {MV2_ARCH_INTEL_KNL_GENERIC,    "MV2_ARCH_INTEL_KNL_GENERIC"},
+    {MV2_ARCH_INTEL_XEON_PHI_7210,  "MV2_ARCH_INTEL_XEON_PHI_7210"},
+    {MV2_ARCH_INTEL_XEON_PHI_7230,  "MV2_ARCH_INTEL_XEON_PHI_7230"},
     {MV2_ARCH_INTEL_XEON_PHI_7250,  "MV2_ARCH_INTEL_XEON_PHI_7250"},
+    {MV2_ARCH_INTEL_XEON_PHI_7290,  "MV2_ARCH_INTEL_XEON_PHI_7290"},
 
     /* AMD Architectures */
     {MV2_ARCH_AMD_GENERIC,          "MV2_ARCH_AMD_GENERIC"},
@@ -134,6 +149,9 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     /* IBM Architectures */
     {MV2_ARCH_IBM_PPC,              "MV2_ARCH_IBM_PPC"},
     {MV2_ARCH_IBM_POWER8,           "MV2_ARCH_IBM_POWER8"},
+
+    /* ARM Architectures */
+    {MV2_ARCH_ARM_CAVIUM_V8,           "MV2_ARCH_ARM_CAVIUM_V8"},
 
     /* Unknown */
     {MV2_ARCH_UNKWN,                "MV2_ARCH_UNKWN"},
@@ -151,6 +169,7 @@ static mv2_cpu_family_types_log_t mv2_cpu_family_types_log[] =
     {MV2_CPU_FAMILY_INTEL, "MV2_CPU_FAMILY_INTEL"},
     {MV2_CPU_FAMILY_AMD,   "MV2_CPU_FAMILY_AMD"},
     {MV2_CPU_FAMILY_POWER, "MV2_CPU_FAMILY_POWER"},
+    {MV2_CPU_FAMILY_ARM,   "MV2_CPU_FAMILY_ARM"},
 };
 
 char *mv2_get_cpu_family_name(mv2_cpu_family_type cpu_family_type)
@@ -176,7 +195,8 @@ int mv2_check_proc_arch(mv2_arch_type type, int rank)
     if (type <= MV2_ARCH_LIST_START  || type >= MV2_ARCH_LIST_END  ||
         type == MV2_ARCH_INTEL_START || type == MV2_ARCH_INTEL_END ||
         type == MV2_ARCH_AMD_START   || type == MV2_ARCH_AMD_END   ||
-        type == MV2_ARCH_IBM_START   || type == MV2_ARCH_IBM_END) {
+        type == MV2_ARCH_IBM_START   || type == MV2_ARCH_IBM_END   ||
+        type == MV2_ARCH_ARM_START   || type == MV2_ARCH_ARM_END) {
 
         PRINT_INFO((rank==0), "Wrong value specified for MV2_FORCE_ARCH_TYPE\n");
         PRINT_INFO((rank==0), "Value must be greater than %d and less than %d \n",
@@ -187,6 +207,8 @@ int mv2_check_proc_arch(mv2_arch_type type, int rank)
                     MV2_ARCH_AMD_START, MV2_ARCH_AMD_END);
         PRINT_INFO((rank==0), "For IBM Architectures: Please enter value greater than %d and less than %d\n",
                     MV2_ARCH_IBM_START, MV2_ARCH_IBM_END);
+        PRINT_INFO((rank==0), "For ARM Architectures: Please enter value greater than %d and less than %d\n",
+                    MV2_ARCH_ARM_START, MV2_ARCH_ARM_END);
         return 1;
     }
     return 0;
@@ -198,8 +220,12 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
     arch_type = MV2_ARCH_INTEL_GENERIC;
 
     if (1 == num_sockets) {
-        if (68 == num_cpus) {
-            if (NULL != strstr(model_name, INTEL_XEON_PHI_7250_MODEL_NAME)) {
+        if (64 == num_cpus ||
+            68 == num_cpus ||
+            72 == num_cpus )
+        {
+            /* Map all KNL CPUs to 7250 */
+            if (NULL != strstr(model_name, INTEL_XEON_PHI_GENERIC_MODEL_NAME)) {
                 arch_type = MV2_ARCH_INTEL_XEON_PHI_7250;
             }
         }
@@ -293,6 +319,8 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
         }
 
     }
+
+    return arch_type;
 }
 
 /* Identify architecture type */
@@ -307,7 +335,7 @@ mv2_arch_type mv2_get_arch_type()
         mv2_arch_type val = atoi(value);
         int retval = mv2_check_proc_arch(val, my_rank);
         if (retval) {
-            PRINT_INFO((my_rank==0), "Falling back to Automatic architecture detection\n");
+            PRINT_INFO((my_rank==0), "Falling back to automatic architecture detection\n");
         } else {
             g_mv2_arch_type = val;
         }
@@ -389,6 +417,19 @@ mv2_arch_type mv2_get_arch_type()
                     }
                 }
 
+                /* Identify the CPU Family for ARM */
+                if(! strcmp(key, "CPU implementer")) {
+                    /* Skip ':' */
+                    strtok(NULL, MV2_STR_WS);
+                    tmp = strtok(NULL, MV2_STR_WS);
+                    if (! strncmp(tmp, MV2_STR_CAVIUM_ID, strlen(MV2_STR_CAVIUM_ID))) {
+                        g_mv2_cpu_family_type = MV2_CPU_FAMILY_ARM;
+                        arch_type = MV2_ARCH_ARM_CAVIUM_V8;
+                        g_mv2_cpu_model = MV2_ARM_CAVIUM_V8_MODEL;
+                        continue;
+                    }
+                }
+
                 if( -1 == g_mv2_cpu_model ) {
 
                     if(! strcmp(key, MV2_STR_MODEL)) {
@@ -435,6 +476,14 @@ mv2_arch_type mv2_get_arch_type()
                 }
             } else if(MV2_CPU_FAMILY_POWER == g_mv2_cpu_family_type) {
                 arch_type = MV2_ARCH_IBM_POWER8;
+                /* Disable zero-copy broadcast algorithm for POWER8 
+                 * architecture  */
+                mv2_enable_zcpy_bcast = 0;
+            } else if(MV2_CPU_FAMILY_ARM == g_mv2_cpu_family_type) { 
+                arch_type = MV2_ARCH_ARM_CAVIUM_V8;
+                /* Disable shmem broadcast algorithms for ARM 
+                 * architecture */
+                mv2_enable_shmem_bcast = 0;
             }
         } else {
             fprintf(stderr, "Warning: %s: Failed to open \"%s\".\n", __func__,

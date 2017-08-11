@@ -476,7 +476,6 @@ int mv2_free_sharp_handlers (sharp_info_t * sharp_info)
         }
 
         MPIU_Free(sharp_info);
-        sharp_info = NULL;
     }
     if (mv2_sharp_hca_name != NULL) {
         MPIU_Free(mv2_sharp_hca_name);

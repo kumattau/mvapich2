@@ -106,6 +106,11 @@ int MPIDI_CH3U_Win_gather_info(void *base, MPI_Aint size, int disp_unit,
         (*win_ptr)->basic_info_table[i].win_handle = (MPI_Win) tmp_buf[k++];
     }
 
+#if defined(CHANNEL_MRAIL)
+    MPIDI_CH3I_RDMA_win_create(base, size, comm_size,
+            rank, win_ptr, comm_ptr);
+#endif 
+
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_WIN_GATHER_INFO);

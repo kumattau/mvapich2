@@ -1677,6 +1677,7 @@ int MPIR_Shmem_Bcast_Zcpy_MV2(void *buffer,
     shmem_comm = comm_ptr->dev.ch.shmem_comm; 
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
 
+    MPIU_Assert(mv2_enable_zcpy_bcast==1 && mv2_use_slot_shmem_coll==1);
     if ( count == 0) {
         return MPI_SUCCESS;
     }
@@ -1739,6 +1740,7 @@ int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     MPID_Datatype_get_extent_macro(datatype, extent);
 
+    MPIU_Assert(mv2_enable_zcpy_bcast==1 && mv2_use_slot_shmem_coll==1);
     local_rank = shmem_commptr->rank;
     nbytes = count*extent; 
     rem_count = nbytes;
@@ -2156,9 +2158,9 @@ int MPIR_Bcast_intra_MV2(void *buffer,
     MPID_Datatype *dtp;
 
     MPIU_THREADPRIV_DECL;
-    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_BCAST);
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_BCAST_INTRA_MV2);
 
-    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_BCAST);
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_BCAST_INTRA_MV2);
     MPIU_CHKLMEM_DECL(1);
 
     /* The various MPIR_Bcast_* impls use NMPI functions, so we bump the nest
@@ -2312,6 +2314,7 @@ int MPIR_Bcast_intra_MV2(void *buffer,
     }
 
   fn_exit:
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_BCAST_INTRA_MV2);
     MPIU_CHKLMEM_FREEALL();
     if (mpi_errno_ret)
         mpi_errno = mpi_errno_ret;
@@ -2363,9 +2366,9 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
     MPID_Datatype *dtp;
 
     MPIU_THREADPRIV_DECL;
-    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_BCAST);
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_BCAST_INDEX_TUNED_INTRA_MV2);
 
-    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_BCAST);
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_BCAST_INDEX_TUNED_INTRA_MV2);
     MPIU_CHKLMEM_DECL(1);
 
     /* The various MPIR_Bcast_* impls use NMPI functions, so we bump the nest
@@ -2428,13 +2431,13 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
             i++;
         } while(i < mv2_bcast_indexed_num_ppn_conf);
     }
-
-  conf_check_end:
-    
+ 
     if (partial_sub_ok != 1) {
-        conf_index = 0;
+        conf_index = mv2_bcast_indexed_num_ppn_conf/2;
     }
         
+conf_check_end:
+
     /* Search for the corresponding system size inside the tuning table */
     /*
      * Comm sizes progress in powers of 2. Therefore comm_size can just be indexed instead
@@ -2562,6 +2565,15 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
 #else
         mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].is_two_level_bcast[inter_node_algo_index];
 #endif
+
+#if defined CHANNEL_MRAIL_GEN2
+    if (mv2_enable_zcpy_bcast == 0) { 
+        MV2_Bcast_intra_node_function = &MPIR_Shmem_Bcast_MV2;
+        MV2_Bcast_function = &MPIR_Bcast_scatter_ring_allgather_MV2;
+        two_level_bcast = 1;
+    }
+#endif
+                
     if (comm_ptr->dev.ch.shmem_coll_ok != 1) {
         if(nbytes < MPICH_LARGE_MSG_COLLECTIVE_SIZE) { 
             mpi_errno = MPIR_Bcast_intra(buffer, count, datatype, root, 
@@ -2653,6 +2665,16 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
             /* Fall back to non-tuned version */
             MPIR_Bcast_intra_MV2(buffer, count, datatype, root, comm_ptr, errflag);
         } else {
+#ifdef CHANNEL_MRAIL_GEN2
+            if ((&MPIR_Pipelined_Bcast_Zcpy_MV2 == MV2_Bcast_function) &&
+                (mv2_enable_zcpy_bcast == 0)) {
+                /* We should not be reaching here, with bcast_fn set to the 
+                 * zcpy function. The bcast-zcpy runtime variable has been disabled. 
+                 * Just set MV2_Bcast_function to something else to handle this corner
+                 * case */
+                MV2_Bcast_function = &MPIR_Bcast_binomial_MV2; 
+            } 
+#endif
             mpi_errno = MV2_Bcast_function(buffer, count, datatype, root,
                                            comm_ptr, errflag);
 
@@ -2667,6 +2689,7 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
     }
 
   fn_exit:
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_BCAST_INDEX_TUNED_INTRA_MV2);
     MPIU_CHKLMEM_FREEALL();
     if (mpi_errno_ret)
         mpi_errno = mpi_errno_ret;
@@ -2705,9 +2728,9 @@ int MPIR_Bcast_tune_intra_MV2(void *buffer,
     MPID_Datatype *dtp;
 
     MPIU_THREADPRIV_DECL;
-    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_BCAST);
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_BCAST_TUNE_INTRA_MV2);
 
-    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_BCAST);
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_BCAST_TUNE_INTRA_MV2);
     MPIU_CHKLMEM_DECL(1);
 
     /* The various MPIR_Bcast_* impls use NMPI functions, so we bump the nest
@@ -2930,6 +2953,7 @@ int MPIR_Bcast_tune_intra_MV2(void *buffer,
     }
 
   fn_exit:
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_BCAST_TUNE_INTRA_MV2);
     MPIU_CHKLMEM_FREEALL();
     if (mpi_errno_ret)
         mpi_errno = mpi_errno_ret;

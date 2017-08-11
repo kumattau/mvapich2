@@ -1610,6 +1610,9 @@ typedef struct MPID_Request {
 #if defined(CHANNEL_PSM)
     MPID_DEV_PSM_REQUEST_DECL
 #endif
+#if defined (_SHARP_SUPPORT_)
+    MPID_DEV_SHARP_REQUEST_DECL
+#endif 
 } MPID_Request ATTRIBUTE((__aligned__(32)));
 
 extern MPIU_Object_alloc_t MPID_Request_mem;

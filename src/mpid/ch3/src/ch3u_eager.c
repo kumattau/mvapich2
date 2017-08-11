@@ -153,7 +153,7 @@ int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p,
 #endif
 
 #if defined (CHANNEL_PSM)
-        mpi_errno = psm_do_pack(count, datatype, comm, sreq, buf, data_sz);
+        mpi_errno = psm_do_pack(count, datatype, comm, sreq, buf, 0, data_sz, PACK_NON_STREAM);
         if(mpi_errno) MPIR_ERR_POP(mpi_errno);
 
         mpi_errno = psm_send_noncontig(vc, sreq, eager_pkt->match);
@@ -386,6 +386,9 @@ int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p,
 	MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
     }
 
+#if !defined(CHANNEL_MRAIL)
+fn_fail:
+#endif
     return mpi_errno;
 }
 
@@ -417,6 +420,11 @@ int MPIDI_CH3_PktHandler_EagerShortSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    eagershort_pkt->match.parts.rank,eagershort_pkt->data_sz,
 		    "ReceivedEagerShort");
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&eagershort_pkt->match, &found);
+#if defined(CHANNEL_MRAIL)
+    if (!found && SMP_INIT && vc->smp.local_nodes >= 0) {
+        MV2_INC_NUM_POSTED_RECV();
+    }
+#endif
     MPIR_ERR_CHKANDJUMP1(!rreq, mpi_errno,MPI_ERR_OTHER, "**nomemreq", "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
 
     /* If the completion counter is 0, that means that the communicator to
@@ -753,6 +761,11 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
            "ReceivedEager");
        
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&eager_pkt->match, &found);
+#if defined(CHANNEL_MRAIL)
+    if (!found && SMP_INIT && vc->smp.local_nodes >= 0) {
+        MV2_INC_NUM_POSTED_RECV();
+    }
+#endif
     MPIR_ERR_CHKANDJUMP1(!rreq, mpi_errno,MPI_ERR_OTHER, "**nomemreq", "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
    
     set_request_info(rreq, eager_pkt, MPIDI_REQUEST_EAGER_MSG);
@@ -915,6 +928,11 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    "ReceivedEager");
 	    
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&eager_pkt->match, &found);
+#if defined(CHANNEL_MRAIL)
+    if (!found && SMP_INIT && vc->smp.local_nodes >= 0) {
+        MV2_INC_NUM_POSTED_RECV();
+    }
+#endif
     MPIR_ERR_CHKANDJUMP1(!rreq, mpi_errno,MPI_ERR_OTHER, "**nomemreq", "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
 
     /* If the completion counter is 0, that means that the communicator to
@@ -1063,6 +1081,11 @@ int MPIDI_CH3_PktHandler_ReadySend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    "ReceivedReady");
 	    
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&ready_pkt->match, &found);
+#if defined(CHANNEL_MRAIL)
+    if (!found && SMP_INIT && vc->smp.local_nodes >= 0) {
+        MV2_INC_NUM_POSTED_RECV();
+    }
+#endif
     MPIR_ERR_CHKANDJUMP1(!rreq, mpi_errno,MPI_ERR_OTHER, "**nomemreq", "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
 
     /* If the completion counter is 0, that means that the communicator to
@@ -1224,11 +1247,12 @@ int MPIDI_CH3_PktPrint_ReadySend( FILE *fp, MPIDI_CH3_Pkt_t *pkt )
 
 #if defined (CHANNEL_PSM)
 int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
-                *sreq, const void *buf, MPIDI_msg_sz_t data_sz)
+                *sreq, const void *buf, MPIDI_msg_sz_t offset, 
+                MPIDI_msg_sz_t data_sz, psm_pack_type type)
 {
     MPIDI_msg_sz_t pksz;
     MPID_Segment *segp;
-    MPI_Aint first = 0, last = data_sz;
+    MPI_Aint first = offset, last = data_sz;
     MPL_IOV iov[MPL_IOV_LIMIT];
     int iov_n = MPL_IOV_LIMIT;
 
@@ -1252,14 +1276,18 @@ int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
         sreq->pkbuf = iov[0].MPL_IOV_BUF;
         sreq->pksz = iov[0].MPL_IOV_LEN;
     } else {  
-        MPIR_Pack_size_impl(count, datatype, &pksz);
-        sreq->pksz = pksz;    
+        if (type == PACK_NON_STREAM) {
+            MPIR_Pack_size_impl(count, datatype, &pksz);
+            sreq->pksz = pksz;    
+        } else {
+            pksz = data_sz - offset;
+            sreq->pksz = data_sz - offset;
+        }
 
         sreq->pkbuf = MPIU_Malloc(pksz);
         if(!sreq->pkbuf)
             return MPI_ERR_NO_MEM;
 
-        first = 0; 
         last = data_sz;
         MPID_Segment_pack(segp, first, &last, sreq->pkbuf);
 

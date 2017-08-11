@@ -101,6 +101,9 @@ typedef struct MPIDI_RMA_Target {
     int num_ops_flush_not_issued;
 
     MPIDI_RMA_Pool_type_t pool_type;
+#if defined(CHANNEL_MRAIL)
+    int issue_2s_sync;
+#endif
 } MPIDI_RMA_Target_t;
 
 typedef struct MPIDI_RMA_Slot {

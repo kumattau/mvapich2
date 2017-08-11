@@ -59,6 +59,7 @@ MPID_Request * create_request(void * hdr, MPIDI_msg_sz_t hdr_sz,
     /* --END ERROR HANDLING-- */
     MPIU_Object_set_ref(sreq, 2);
     sreq->kind = MPID_REQUEST_SEND;
+    MV2_INC_NUM_POSTED_SEND();
 #ifdef _ENABLE_CUDA_
     sreq->dev.pending_pkt = MPIU_Malloc(hdr_sz - nb);
     MPIU_Memcpy(sreq->dev.pending_pkt, (char *)hdr + nb, hdr_sz - nb);
@@ -188,6 +189,7 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
                 goto fn_exit;
             }
             sreq->kind = MPID_REQUEST_SEND;
+            MV2_INC_NUM_POSTED_SEND();
             MPID_cc_set(&sreq->cc, 0);
             /* TODO: Create an appropriate error message based on the value of errno
              * */

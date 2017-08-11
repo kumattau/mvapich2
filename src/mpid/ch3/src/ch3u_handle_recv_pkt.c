@@ -163,6 +163,11 @@ int MPIDI_CH3U_Handle_recv_rndv_pkt(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 
     if (!*foundp)
     {
+#if defined(CHANNEL_MRAIL)
+    if (SMP_INIT && vc->smp.local_nodes >= 0) {
+        MV2_INC_NUM_POSTED_RECV();
+    }
+#endif
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"unexpected request allocated");
 
 	/*

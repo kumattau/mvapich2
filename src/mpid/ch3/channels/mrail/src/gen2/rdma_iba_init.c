@@ -83,7 +83,9 @@ int MPIDI_CH3I_MRAIL_CM_Alloc(MPIDI_PG_t * pg)
 #endif /* _ENABLE_UD_ */
     }
 
+#ifdef _ENABLE_UD_
   fn_fail:
+#endif
     return mpi_errno;
 }
 
@@ -2310,8 +2312,8 @@ int MPIDI_CH3I_RDMA_CM_Finalize(void)
     int pg_rank = MPIDI_Process.my_pg_rank;
     int pg_size = MPIDI_PG_Get_size(pg);
 
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RDMA_CM_FINALIZE);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_CM_FINALIZE);
 
     /* Show memory usage statistics */
     if (DEBUG_MEM_verbose) {
@@ -2411,7 +2413,7 @@ int MPIDI_CH3I_RDMA_CM_Finalize(void)
     }
 
   fn_exit:
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RDMA_CM_FINALIZE);
     return mpi_errno;
 
   fn_fail:

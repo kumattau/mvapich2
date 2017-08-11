@@ -24,6 +24,10 @@
 #include "smp_smpi.h"
 #include "mpiu_os_wrappers_pre.h"
 
+#if defined (_SHARP_SUPPORT_)
+#include "api/sharp_coll.h"
+#endif
+
 /*#define MPICH_DBG_OUTPUT*/
 
 #ifdef _OSU_MVAPICH_
@@ -72,6 +76,19 @@ typedef struct {
     int dummy;  /* dummy variable to ensure we don't have an empty structure */
 } MPIDI_CH3I_CH_comm_t;
 #endif /* _OSU_MVAPICH_ */
+
+#if defined (_SHARP_SUPPORT_)
+#define SHARP_REQ_HANDLE void
+#define MPID_DEV_SHARP_REQUEST_DECL         \
+            SHARP_REQ_HANDLE * sharp_req;   \
+
+#define MPIDI_CH3_SHARP_REQUEST_INIT(_req)  \
+            (_req)->sharp_req = NULL;       \
+
+#define MPID_SHARP_COLL_REQ_WAIT(_req)     sharp_coll_req_wait(_req->sharp_req)
+#define MPID_SHARP_COLL_REQ_FREE(_req)     sharp_coll_req_free(_req->sharp_req)
+#define MPID_SHARP_COLL_SUCCESS            SHARP_COLL_SUCCESS 
+#endif
 
 typedef struct MPIDI_CH3I_Process_group_s
 {
@@ -392,7 +409,6 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
     int ** remote_post_flags;                                                    \
                                                                                  \
     int using_start;                                                             \
-    int use_direct_shm;                                                          \
     /*for get/put queue*/                                                        \
     MPIDI_CH3I_RDMA_put_get_list * put_get_list;                                 \
     int put_get_list_size;                                                       \
@@ -405,8 +421,6 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
     int    pinnedpool_1sc_index;                                                 \
     struct dreg_entry * pinnedpool_1sc_dentry;                                   \
                                                                                  \
-    int my_id;                                                                   \
-    int comm_size;                                                               \
     int16_t outstanding_rma;                                                     \
     int *shm_l2g_rank;                                                           \
     int node_comm_size;                                                          \

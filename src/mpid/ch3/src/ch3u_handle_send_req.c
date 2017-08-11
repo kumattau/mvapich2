@@ -66,9 +66,6 @@ int MPIDI_CH3_ReqHandler_GetSendComplete(MPIDI_VC_t * vc ATTRIBUTE((unused)),
     MPID_Win *win_ptr;
     
     MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
-#if defined(CHANNEL_MRAIL)
-    win_ptr->outstanding_rma --;
-#endif /* defined(CHANNEL_MRAIL) */
 
     MPIDI_CH3_Pkt_flags_t flags = sreq->dev.flags;
 
@@ -88,6 +85,7 @@ int MPIDI_CH3_ReqHandler_GetSendComplete(MPIDI_VC_t * vc ATTRIBUTE((unused)),
         resp_req->dev.OnFinal = NULL;
         resp_req->dev.OnDataAvail = NULL;
         resp_req->kind = MPID_REQUEST_SEND;
+        MV2_INC_NUM_POSTED_SEND();
 
 
         get_resp_pkt->request_handle = sreq->dev.resp_request_handle;
@@ -213,6 +211,7 @@ int MPIDI_CH3_ReqHandler_GaccumSendComplete(MPIDI_VC_t * vc, MPID_Request * rreq
         resp_req->dev.OnFinal = NULL;
         resp_req->dev.OnDataAvail = NULL;
         resp_req->kind = MPID_REQUEST_SEND;
+        MV2_INC_NUM_POSTED_SEND();
 
 
         get_accum_resp_pkt->request_handle = rreq->dev.resp_request_handle;

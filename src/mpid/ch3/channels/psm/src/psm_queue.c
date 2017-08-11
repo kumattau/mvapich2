@@ -155,6 +155,13 @@ int psm_process_completion(MPID_Request *req, PSM_MQ_STATUS_T gblstatus)
         goto fn_exit;
     }
 
+    /* request is a FOP-Response */
+    if(req->psm_flags & PSM_FOPRESP_REQ) {
+        mpi_errno = psm_fopresp_complete(req);
+        if(mpi_errno)   MPIR_ERR_POP(mpi_errno);
+        goto fn_exit;
+    }
+
     /* request is a GET-Accum-response */
     if(req->psm_flags & PSM_GETACCUMRESP_REQ) {
         mpi_errno = psm_getaccumresp_complete(req);
@@ -179,7 +186,6 @@ int psm_process_completion(MPID_Request *req, PSM_MQ_STATUS_T gblstatus)
     /* request was a PUT/ACCUM RNDV receive */
     if(req->psm_flags & (PSM_RNDVRECV_ACCUM_REQ | PSM_RNDVRECV_PUT_REQ
         | PSM_GETACCUM_RNDV_REQ)) {
-        PRINT_DEBUG(DEBUG_1SC_verbose>1, "1-sided PUT comp on %x\n", req);
         mpi_errno = psm_complete_rndvrecv(req, gblstatus.nbytes);
         if(mpi_errno)   MPIR_ERR_POP(mpi_errno);
         goto fn_exit;
@@ -225,34 +231,14 @@ int psm_progress_wait(int blocking)
     PSM_ERROR_T psmerr;
     PSM_MQ_STATUS_T gblstatus;
     PSM_MQ_REQ_T gblpsmreq;
-    int i;
+    int i, made_progress;
     register MPID_Request *req;
     int mpi_errno = MPI_SUCCESS;
     int yield_count = ipath_progress_yield_count;
 
     _psm_progress_enter_;
     do {
-        /* make progress on NBC schedules */
-        int made_progress = FALSE;
-        /* is MPIDU_Sched_progress psm critical section */
-        mpi_errno = MPIDU_Sched_progress(&made_progress);
-        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-        if (made_progress) {
-            _psm_progress_exit_;
-            goto out_2; 
-        }
 
-        for (i = 0; i < MAX_PROGRESS_HOOKS; i++) {
-            if (progress_hooks[i].active == TRUE) {
-                MPIU_Assert(progress_hooks[i].func_ptr != NULL);
-                mpi_errno = progress_hooks[i].func_ptr(&made_progress);
-                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-                if (made_progress) {
-                    _psm_progress_exit_;
-                    goto out_2; 
-                }
-            }
-        }
 
         psmerr = PSM_IPEEK(psmdev_cw.mq, &gblpsmreq, NULL);
 
@@ -276,6 +262,19 @@ int psm_progress_wait(int blocking)
             if ((MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) &&
                 (--yield_count == 0)) {
                 goto out;
+            }
+        }
+
+        made_progress = FALSE;
+        for (i = 0; i < MAX_PROGRESS_HOOKS; i++) {
+            if (progress_hooks[i].active == TRUE) {
+                MPIU_Assert(progress_hooks[i].func_ptr != NULL);
+                mpi_errno = progress_hooks[i].func_ptr(&made_progress);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+                if (made_progress) {
+                    _psm_progress_exit_;
+                    goto out_2; 
+                }
             }
         }
     } while (blocking);

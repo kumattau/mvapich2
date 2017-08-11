@@ -149,17 +149,46 @@ static inline int check_and_switch_target_state(MPID_Win * win_ptr, MPIDI_RMA_Ta
         if (target->win_complete_flag) {
             if (target->pending_net_ops_list_head == NULL) {
                 MPIDI_CH3_Pkt_flags_t flags = MPIDI_CH3_PKT_FLAG_NONE;
-                if (target->sync.sync_flag == MPIDI_RMA_SYNC_FLUSH &&
-                    target->num_ops_flush_not_issued > 0) {
-                    flags |= MPIDI_CH3_PKT_FLAG_RMA_FLUSH;
-                    win_ptr->outstanding_acks++;
-                    target->sync.outstanding_acks++;
-                    target->num_ops_flush_not_issued = 0;
-                }
+#if defined(CHANNEL_MRAIL)
+                if (win_ptr->fall_back != 1 && target->issue_2s_sync != 1) {
+                    if (target->sync.sync_flag == MPIDI_RMA_SYNC_FLUSH &&
+                            target->num_ops_flush_not_issued > 0) {
+                        target->num_ops_flush_not_issued = 0;
+                    }
+                    if (win_ptr->put_get_list_size_per_process[target->target_rank] != 0) {
+                        while (win_ptr->put_get_list_size_per_process[target->target_rank] != 0) {
+                            mpi_errno = MPIDI_CH3I_Progress_test();
+                            if (mpi_errno != MPI_SUCCESS)
+                                MPIR_ERR_POP(mpi_errno);
+                        }
+                    }
+                    
+                    MPIDI_CH3I_RDMA_set_CC(win_ptr, target->target_rank);
+                } else 
+#endif
+                {
+                    if (target->sync.sync_flag == MPIDI_RMA_SYNC_FLUSH &&
+                            target->num_ops_flush_not_issued > 0) {
+                        flags |= MPIDI_CH3_PKT_FLAG_RMA_FLUSH;
+                        win_ptr->outstanding_acks++;
+                        target->sync.outstanding_acks++;
+                        target->num_ops_flush_not_issued = 0;
+                    }
 
-                mpi_errno = send_decr_at_cnt_msg(target->target_rank, win_ptr, flags);
-                if (mpi_errno != MPI_SUCCESS)
-                    MPIR_ERR_POP(mpi_errno);
+#if defined(CHANNEL_MRAIL)
+                    if (win_ptr->fall_back != 1 && win_ptr->put_get_list_size_per_process[target->target_rank] != 0) {
+                        while (win_ptr->put_get_list_size_per_process[target->target_rank] != 0) {
+                            mpi_errno = MPIDI_CH3I_Progress_test();
+                            if (mpi_errno != MPI_SUCCESS)
+                                MPIR_ERR_POP(mpi_errno);
+                        }
+                    }
+#endif
+
+                    mpi_errno = send_decr_at_cnt_msg(target->target_rank, win_ptr, flags);
+                    if (mpi_errno != MPI_SUCCESS)
+                        MPIR_ERR_POP(mpi_errno);
+                }
 
                 /* We are done with ending synchronization, unset target's sync_flag. */
                 target->sync.sync_flag = MPIDI_RMA_SYNC_NONE;
@@ -413,6 +442,12 @@ static inline int issue_ops_win(MPID_Win * win_ptr, int *made_progress)
                 continue;
             }
 
+#if defined(CHANNEL_MRAIL)
+            if (win_ptr->fall_back != 1) {
+                MPIDI_CH3I_RDMA_try_rma(win_ptr, target);
+            }
+#endif
+
             /* issue operations to this target */
             mpi_errno = issue_ops_target(win_ptr, target, &temp_progress);
             if (mpi_errno != MPI_SUCCESS)
@@ -610,6 +645,12 @@ int MPIDI_CH3I_RMA_Make_progress_target(MPID_Win * win_ptr, int target_rank, int
         goto fn_exit;
     }
 
+#if defined(CHANNEL_MRAIL)
+    if (win_ptr->fall_back != 1) {
+        MPIDI_CH3I_RDMA_try_rma(win_ptr, target);
+    }                                       
+#endif
+
     /* issue operations to this target */
     mpi_errno = issue_ops_target(win_ptr, target, &temp_progress);
     if (mpi_errno)
@@ -673,6 +714,10 @@ int MPIDI_CH3I_RMA_Make_progress_global(int *made_progress)
     MPID_Win *win_ptr;
     int mpi_errno = MPI_SUCCESS;
 
+#if defined(CHANNEL_MRAIL)
+    static int enter = 0;
+#endif
+
     (*made_progress) = 0;
 
     if (MPIDI_RMA_Win_active_list_head == NULL)
@@ -694,6 +739,10 @@ int MPIDI_CH3I_RMA_Make_progress_global(int *made_progress)
         if (temp_progress)
             (*made_progress) = 1;
 #if defined(CHANNEL_MRAIL)        
+        if (enter) {
+            return mpi_errno;
+        }
+        enter = 1;
         /* To guarantee the completion of RNDV protocol in the progress engine */
         int local_completed=0;
         do {
@@ -708,6 +757,9 @@ int MPIDI_CH3I_RMA_Make_progress_global(int *made_progress)
     }
 
   fn_exit:
+#if defined(CHANNEL_MRAIL)
+    enter = 0;
+#endif
     return mpi_errno;
   fn_fail:
     goto fn_exit;

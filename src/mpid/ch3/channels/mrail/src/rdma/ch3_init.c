@@ -298,6 +298,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         mv2_use_eager_fast_send = 0;
     }
 
+    if ((value = getenv("MV2_POLLING_LEVEL")) != NULL) {
+        rdma_polling_level = atoi(value);
+    }
     if (!SMP_ONLY) {
         /*
          * Identify local rank and number of local processes
@@ -400,7 +403,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         MPIU_Free(conn_info);
     }
 
-    MV2_collectives_arch_init(mv2_MPIDI_CH3I_RDMA_Process.heterogeneity);
+    mpi_errno = MV2_collectives_arch_init(mv2_MPIDI_CH3I_RDMA_Process.heterogeneity);
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIR_ERR_POP(mpi_errno);
+    }
 
     /* Initialize the smp channel */
     if ((mpi_errno = MPIDI_CH3I_SMP_init(pg))) {
@@ -478,6 +484,8 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #if defined(_SHARP_SUPPORT_)
     if ((value = getenv("MV2_ENABLE_SHARP")) != NULL) {
         mv2_enable_sharp_coll = atoi(value);
+    } else {
+        mv2_enable_sharp_coll = MPIR_CVAR_ENABLE_SHARP; 
     }
     if ((value = getenv("MV2_SHARP_PORT")) != NULL) {
         mv2_sharp_port = atoi(value);

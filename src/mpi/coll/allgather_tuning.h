@@ -126,7 +126,7 @@ extern int MPIR_2lvl_Allgather_MV2(const void *sendbuf,int sendcnt, MPI_Datatype
 
 
 /* Architecture detection tuning */
-int MV2_set_allgather_tuning_table();
+int MV2_set_allgather_tuning_table(int heterogeneity);
 
 /* Function to clean free memory allocated by allgather tuning table*/
 void MV2_cleanup_allgather_tuning_table();

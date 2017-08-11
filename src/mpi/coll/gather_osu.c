@@ -337,7 +337,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
     int leader_comm_rank = -1, leader_comm_size = 0;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int recvtype_size = 0, sendtype_size = 0, nbytes=0;
+    MPI_Aint recvtype_size = 0, sendtype_size = 0, nbytes=0;
     int leader_root, leader_of_root;
     MPI_Status status;
     MPI_Aint sendtype_extent = 0, recvtype_extent = 0;  /* Datatype extent */
@@ -663,7 +663,7 @@ static int MPIR_Limic_Gather_Scheme_PT_PT(
     int rank;
     int local_size;
     int mpi_errno = MPI_SUCCESS;
-    int recvtype_size = 0, sendtype_size = 0, nbytes=0;
+    MPI_Aint recvtype_size = 0, sendtype_size = 0, nbytes=0;
     int sendtype_iscontig;
     int intra_sock_rank=0, intra_sock_comm_size=0;
     int intra_node_leader_rank=0, intra_node_leader_comm_size=0;
@@ -893,11 +893,11 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
     int rank;
     int local_rank, local_size;
     int mpi_errno = MPI_SUCCESS;
-    int recvtype_size = 0, nbytes=0;
+    MPI_Aint recvtype_size = 0, nbytes=0;
     int sendtype_iscontig;
     int intra_sock_rank=0, intra_sock_comm_size=0;
     int intra_node_leader_rank=0, intra_node_leader_comm_size=0;
-    int send_nbytes=0;
+    MPI_Aint send_nbytes=0;
     MPI_Aint recvtype_extent = 0;  /* Datatype extent */
     MPI_Aint true_lb, sendtype_true_extent, recvtype_true_extent;
     MPI_Comm shmem_comm;
@@ -1146,7 +1146,7 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_PT(
     int rank;
     int local_size;
     int mpi_errno = MPI_SUCCESS;
-    int recvtype_size = 0, sendtype_size = 0, nbytes=0;
+    MPI_Aint recvtype_size = 0, sendtype_size = 0, nbytes=0;
     int sendtype_iscontig;
     int intra_sock_rank=0, intra_sock_comm_size=0;
     int intra_node_leader_rank=0;
@@ -1291,11 +1291,11 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
     int rank;
     int local_rank, local_size;
     int mpi_errno = MPI_SUCCESS;
-    int recvtype_size = 0, nbytes=0;
+    MPI_Aint recvtype_size = 0, nbytes=0;
     int sendtype_iscontig;
     int intra_sock_rank=0, intra_sock_comm_size=0;
     int intra_node_leader_rank=0;
-    int send_nbytes=0;
+    MPI_Aint send_nbytes=0;
     MPI_Aint recvtype_extent = 0;  /* Datatype extent */
     MPI_Aint true_lb, sendtype_true_extent, recvtype_true_extent;
     MPI_Comm shmem_comm;
@@ -1461,9 +1461,9 @@ static int MPIR_Limic_Gather_Scheme_SINGLE_LEADER(
     int rank;
     int local_rank, local_size;
     int mpi_errno = MPI_SUCCESS;
-    int recvtype_size = 0, nbytes=0;
+    MPI_Aint recvtype_size = 0, nbytes=0;
     int sendtype_iscontig;
-    int send_nbytes=0; 
+    MPI_Aint send_nbytes=0; 
     MPI_Aint recvtype_extent = 0;  /* Datatype extent */
     MPI_Aint true_lb, sendtype_true_extent, recvtype_true_extent;
     MPI_Comm shmem_comm;
@@ -1740,9 +1740,9 @@ int MPIR_Gather_index_tuned_intra_MV2(const void *sendbuf,
     MPID_Comm *shmem_commptr = NULL;
     MPI_Comm shmem_comm;
     int mpi_errno = MPI_SUCCESS;
-    int nbytes = 0;
     int comm_size = 0;
-    int recvtype_size, sendtype_size;
+    MPI_Aint nbytes = 0;
+    MPI_Aint recvtype_size, sendtype_size;
     int rank = -1;
     MPIU_THREADPRIV_DECL;
 
@@ -1781,12 +1781,12 @@ int MPIR_Gather_index_tuned_intra_MV2(const void *sendbuf,
         } while(i < mv2_gather_indexed_num_ppn_conf);
     }
 
-  conf_check_end:
-    
     if (partial_sub_ok != 1) {
-        conf_index = 0;
+        conf_index = mv2_gather_indexed_num_ppn_conf/2;
     }
     
+conf_check_end:
+
     /* Search for the corresponding system size inside the tuning table */
     /*
      * Comm sizes progress in powers of 2. Therefore comm_size can just be indexed instead
@@ -1968,9 +1968,9 @@ int MPIR_Gather_MV2(const void *sendbuf,
     int range = 0;
     int range_threshold = 0;
     int range_intra_threshold = 0;
-    int nbytes = 0;
+    MPI_Aint nbytes = 0;
     int comm_size = 0;
-    int recvtype_size, sendtype_size;
+    MPI_Aint recvtype_size, sendtype_size;
     int rank = -1;
     MPIU_THREADPRIV_DECL;
 

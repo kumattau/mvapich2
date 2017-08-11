@@ -273,6 +273,7 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     MPIDI_FUNC_ENTER(MPID_STATE_WIN_INIT);
 
     MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
+    MV2_INC_NUM_UNEXP_RECV();
     if (initRMAoptions) {
 
         MPIDI_CH3_RMA_Init_sync_pvars();
@@ -335,7 +336,6 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     (*win_ptr)->fall_back           = 1;
     (*win_ptr)->outstanding_rma     = 0;
     (*win_ptr)->use_rdma_path       = 0;
-    (*win_ptr)->use_direct_shm      = 0;
     (*win_ptr)->shm_coll_comm_ref   = -1;
     (*win_ptr)->node_comm_size      = 0;
     (*win_ptr)->node_comm_ptr       = NULL;
@@ -351,7 +351,6 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
         MPIR_ERR_SET(mpi_errno, MPI_ERR_NO_MEM, "**nomem");
         goto fn_fail;
     }
-    (*win_ptr)->use_direct_shm      = 0;
     (*win_ptr)->node_comm_size      = 0;
     (*win_ptr)->node_comm_ptr       = NULL;
 #endif

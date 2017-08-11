@@ -267,7 +267,11 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     /* initialize tuning-table for collectives. 
      * Its ok to pass heterogeneity as 0. We anyway fall-back to the 
      * basic case for PSM */ 
-    MV2_collectives_arch_init(heterogeneity); 
+    mpi_errno = MV2_collectives_arch_init(heterogeneity); 
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIR_ERR_POP(mpi_errno);
+    }
+
     /* initialize shared memory for collectives */
     if (mv2_enable_shmem_collectives) {
         if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(pg, pg->ch.local_process_id)) != MPI_SUCCESS)

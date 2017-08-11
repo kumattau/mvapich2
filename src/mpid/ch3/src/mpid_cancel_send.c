@@ -293,6 +293,12 @@ int MPIDI_CH3_PktHandler_CancelSendReq( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	}
 #if defined(CHANNEL_MRAIL)
 	MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
+    /* MPID_Request_release() treats all rreqs as posted recvs and always
+     * decrements mv2_posted_recvq_length.  Here rreq is unexpected, so
+     * increment mv2_posted_recvq_length and decrement mv2_unexp_msg_recv (#908)
+     */
+    MV2_INC_NUM_POSTED_RECV();
+    MV2_DEC_NUM_UNEXP_RECV();
 #endif /* defined(CHANNEL_MRAIL) */
 	MPID_Request_release(rreq);
 	ack = TRUE;

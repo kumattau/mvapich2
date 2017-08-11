@@ -23,6 +23,7 @@ int MPID_Imrecv(void *buf, int count, MPI_Datatype datatype,
     if (message == NULL)
     {
         MPIDI_Request_create_null_rreq(rreq, mpi_errno, goto fn_fail);
+        MV2_INC_NUM_POSTED_RECV();
         *rreqp = rreq;
         goto fn_exit;
     }
@@ -32,6 +33,7 @@ int MPID_Imrecv(void *buf, int count, MPI_Datatype datatype,
 
     /* promote the request object to be a "real" recv request */
     message->kind = MPID_REQUEST_RECV;
+    MV2_INC_NUM_POSTED_RECV();
 
     *rreqp = rreq = message;
 
