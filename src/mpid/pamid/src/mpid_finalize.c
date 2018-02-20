@@ -19,7 +19,7 @@
  * \file src/mpid_finalize.c
  * \brief Normal job termination code
  *
- * Copyright (c) 2001-2017, The Ohio State University. All rights
+ * Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the

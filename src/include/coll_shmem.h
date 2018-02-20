@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -155,6 +155,7 @@ struct allgatherv_tuning{
 #define SHMEM_BCAST_METADATA	(sizeof(addrint_t) + 2*sizeof(int))       
   /* METADATA: buffer address, offset, num_bytes */ 
 
+extern int shmem_coll_count_threshold;
 extern int mv2_g_shmem_coll_max_msg_size;
 extern int mv2_g_shmem_coll_blocks;
 extern int mv2_shmem_coll_num_procs;
@@ -168,6 +169,10 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
 void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
 int create_allgather_comm(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
+#define MV2_DEFAULT_COLL_SKIP_TABLE_THRESHOLD 1024
+
+extern int mv2_coll_skip_table_threshold;
+extern int mv2_enable_skip_tuning_table_search;
 extern int mv2_tune_parameter;
 extern int mv2_use_indexed_bcast_tuning;
 extern int mv2_use_indexed_scatter_tuning;
@@ -354,6 +359,13 @@ int create_2level_comm (MPI_Comm, int, int);
 int free_2level_comm (MPID_Comm *);
 int enable_split_comm(pthread_t);
 void MPIR_pof2_comm(MPID_Comm *, int, int);
+#if defined(_MCST_SUPPORT_)
+int create_mcast_comm (MPI_Comm, int, int);
+#endif /*defined(_MCST_SUPPORT_)*/
+#if defined (_SHARP_SUPPORT_)
+int create_sharp_comm(MPI_Comm, int, int);
+#endif /*defined (_SHARP_SUPPORT_)*/
+
 
 /*Fn pointers for collectives */
 int (*reduce_fn)(const void *sendbuf,
@@ -558,6 +570,13 @@ int mv2_set_alltoall_collective_algorithm();
 #define MV2_ALLGATHER_RD                    "2"
 #define MV2_ALLGATHER_BRUCK                 "3"
 #define MV2_ALLGATHER_RING                  "4"
+#define MV2_ALLGATHER_DIRECT                "5"
+#define MV2_ALLGATHER_DIRECTSPREAD          "6"
+#define MV2_ALLGATHER_GATHER_BCAST          "7"
+#define MV2_ALLGATHER_2LVL_NONBLOCKED       "8"
+#define MV2_ALLGATHER_2LVL_RING_NONBLOCKED  "9"
+#define MV2_ALLGATHER_2LVL_DIRECT           "10"
+#define MV2_ALLGATHER_2LVL_RING             "11"
 
 /* Collective values for alltoall  */
 #define MV2_ALLTOALL_BRUCK_MV2              "0"
@@ -649,6 +668,13 @@ enum mv2_allgather_coll_funcs
     MV2_RD_ALLGATHER,
     MV2_BRUCK_ALLGATHER,
     MV2_RING_ALLGATHER,
+    MV2_DIRECT_ALLGATHER,
+    MV2_DIRECTSPREAD_ALLGATHER,
+    MV2_GATHER_BCAST_ALLGATHER,
+    MV2_2LVL_NONBLOCKED_ALLGATHER,
+    MV2_2LVL_RING_NONBLOCKED_ALLGATHER,
+    MV2_2LVL_DIRECT_ALLGATHER,
+    MV2_2LVL_RING_ALLGATHER,
     MV2_MAX_NUM_ALLGATHER_FUNCS
 };
 

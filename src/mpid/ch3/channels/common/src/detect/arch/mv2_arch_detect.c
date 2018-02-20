@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,12 +25,39 @@
 #include "mv2_arch_hca_detect.h"
 #include "debug_utils.h"
 #include "upmi.h"
+#include "mpi.h"
+
+#if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
+#include "rdma_impl.h"
+#include "mv2_mpit_cvars.h"
+#endif
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : FORCE_ARCH_TYPE
+      category    : CH3
+      type        : int
+      default     : 0
+      class       : none
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        This parameter forces the architecture type.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
+
+#if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
+MPI_T_cvar_handle mv2_force_arch_type_handle = NULL;
+#endif
 
 #if defined(_SMP_LIMIC_)
 #define SOCKETS 32
 #define CORES 32
 #define HEX_FORMAT 16
 #define CORES_REP_AS_BITS 32
+
 
 /*global variables*/
 static int node[SOCKETS][CORES] = {{0}};
@@ -45,7 +72,7 @@ static int g_mv2_cpu_model = -1;
 static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 
 extern int mv2_enable_zcpy_bcast;
-extern int mv2_enable_shmem_bcast;
+extern int mv2_use_slot_shmem_coll;
 
 #define CONFIG_FILE         "/proc/cpuinfo"
 #define MAX_LINE_LENGTH     512
@@ -64,6 +91,8 @@ extern int mv2_enable_shmem_bcast;
 #define INTEL_XEON_E5_2695_V3_MODEL 63
 #define INTEL_XEON_E5_2670_V3_MODEL 64
 #define INTEL_XEON_E5_2680_V4_MODEL 79
+#define INTEL_PLATINUM_8160_MODEL   85
+#define INTEL_PLATINUM_8170_MODEL   85
 
 #define MV2_STR_VENDOR_ID    "vendor_id"
 #define MV2_STR_AUTH_AMD     "AuthenticAMD"
@@ -90,6 +119,8 @@ extern int mv2_enable_shmem_bcast;
 #define INTEL_E5_2670_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2670 v3 @ 2.30GHz"
 #define INTEL_E5_2695_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2695 v3 @ 2.30GHz"
 #define INTEL_E5_2695_V4_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2695 v4 @ 2.10GHz"
+#define INTEL_PLATINUM_8160_MODEL_NAME "Intel(R) Xeon(R) Platinum 8160 CPU @ 2.10GHz"
+#define INTEL_PLATINUM_8170_MODEL_NAME "Intel(R) Xeon(R) Platinum 8170 CPU @ 2.10GHz"
 
 #define INTEL_XEON_PHI_GENERIC_MODEL_NAME "Intel(R) Xeon Phi(TM) CPU"
 #define INTEL_XEON_PHI_7210_MODEL_NAME    "Intel(R) Xeon Phi(TM) CPU 7210 @ 1.30GHz"
@@ -129,6 +160,8 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28,"MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28"},
     {MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36,"MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36"},
     {MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28,"MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28"},
+    {MV2_ARCH_INTEL_PLATINUM_8160_2S_48, "MV2_ARCH_INTEL_PLATINUM_8160_2S_48"},
+    {MV2_ARCH_INTEL_PLATINUM_8170_2S_52, "MV2_ARCH_INTEL_PLATINUM_8170_2S_52"},
 
     /* KNL Architectures */
     {MV2_ARCH_INTEL_KNL_GENERIC,    "MV2_ARCH_INTEL_KNL_GENERIC"},
@@ -230,7 +263,6 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
             }
         }
     } else if(2 == num_sockets) {
-
         if(4 == num_cpus) {
             arch_type = MV2_ARCH_INTEL_XEON_DUAL_4;
 
@@ -310,6 +342,18 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
             if(INTEL_XEON_E5_2698_V3_MODEL == g_mv2_cpu_model) {
                 if(NULL != strstr(model_name, INTEL_E5_2698_V3_MODEL_NAME)) {
                     arch_type = MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32;
+                }
+            }
+        } else if(48 == num_cpus){
+            if(INTEL_PLATINUM_8160_MODEL == g_mv2_cpu_model) {
+                if(NULL != strstr(model_name, INTEL_PLATINUM_8160_MODEL_NAME)) {
+                    arch_type = MV2_ARCH_INTEL_PLATINUM_8160_2S_48;
+                }
+            }
+        } else if(52 == num_cpus){
+            if(INTEL_PLATINUM_8170_MODEL == g_mv2_cpu_model) {
+                if(NULL != strstr(model_name, INTEL_PLATINUM_8170_MODEL_NAME)) {
+                    arch_type = MV2_ARCH_INTEL_PLATINUM_8170_2S_52;
                 }
             }
         }  else if(36 == num_cpus || 72 == num_cpus){
@@ -476,20 +520,29 @@ mv2_arch_type mv2_get_arch_type()
                 }
             } else if(MV2_CPU_FAMILY_POWER == g_mv2_cpu_family_type) {
                 arch_type = MV2_ARCH_IBM_POWER8;
-                /* Disable zero-copy broadcast algorithm for POWER8 
-                 * architecture  */
+                /* Note: Slotted-shmem collectives are already disabled 
+                 * for POWER architecture and runtime variable has no
+                 * effect. Further, disable zeroy copy broadcast 
+                 * algorithm as well for POWER8 architecture. 
+                 * */
                 mv2_enable_zcpy_bcast = 0;
             } else if(MV2_CPU_FAMILY_ARM == g_mv2_cpu_family_type) { 
                 arch_type = MV2_ARCH_ARM_CAVIUM_V8;
-                /* Disable shmem broadcast algorithms for ARM 
+                /* Disable slotted shmem collective algorithms for ARM 
                  * architecture */
-                mv2_enable_shmem_bcast = 0;
+                mv2_use_slot_shmem_coll = 0;
             }
         } else {
             fprintf(stderr, "Warning: %s: Failed to open \"%s\".\n", __func__,
                     CONFIG_FILE);
         }
         g_mv2_arch_type = arch_type;
+        if (MV2_ARCH_UNKWN == g_mv2_arch_type) {
+            PRINT_INFO((my_rank==0), "**********************WARNING***********************\n");
+            PRINT_INFO((my_rank==0), "Failed to automatically detect the CPU architecture.\n");
+            PRINT_INFO((my_rank==0), "This may lead to subpar communication performance.\n");
+            PRINT_INFO((my_rank==0), "****************************************************\n");
+        }
         return arch_type;
     } else {
         return g_mv2_arch_type;
@@ -724,3 +777,61 @@ int numOfCoresPerSocket(int socket) { return 0; }
 int numofSocketsPerNode (void) { return 0; }
 int get_socket_bound(void) { return -1; }
 #endif /*#if defined(_SMP_LIMIC_)*/
+
+#if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
+int mv2_set_force_arch_type()
+{
+    int mpi_errno = MPI_SUCCESS;
+    int cvar_index = 0;
+    int skip_setting = 0;
+    int read_value = 0;
+
+    /* Get CVAR index by name */
+    MPIR_CVAR_GET_INDEX_impl(MPIR_CVAR_FORCE_ARCH_TYPE, cvar_index);
+    if (cvar_index < 0) {
+        mpi_errno = MPI_ERR_INTERN;
+        goto fn_fail;
+    }
+    mv2_mpit_cvar_access_t wrapper;
+    wrapper.cvar_name = "MPIR_CVAR_FORCE_ARCH_TYPE";
+    wrapper.cvar_index = cvar_index;
+    wrapper.cvar_handle = mv2_force_arch_type_handle;
+    wrapper.default_cvar_value = MV2_ARCH_UNKWN;
+    wrapper.skip_if_default_has_set = 1;
+    wrapper.error_type = MV2_CVAR_FATAL_ERR;
+    wrapper.check4_associate_env_conflict = 1;
+    wrapper.env_name = "MV2_FORCE_ARCH_TYPE";
+    wrapper.env_conflict_error_msg = "the CVAR will set up to default";
+    wrapper.check_max = 1;
+    wrapper.max_value = MV2_ARCH_LIST_END-1;
+    wrapper.check_min = 1;
+    wrapper.min_value = MV2_ARCH_LIST_START+1;
+    wrapper.boundary_error_msg = "Wrong value specified for MPIR_CVAR_FORCE_ARCH_TYPE";
+    wrapper.skip = &skip_setting;
+    wrapper.value = &read_value;
+    mpi_errno = mv2_read_and_check_cvar(wrapper);
+    if (mpi_errno != MPI_SUCCESS){
+        goto fn_fail;
+    }
+    /* Choose algorithm based on CVAR */
+    if (!skip_setting) {
+        mv2_arch_type val = read_value;
+        int retval = mv2_check_proc_arch(val, MPIDI_Process.my_pg_rank);
+        if (retval) {
+            PRINT_INFO(MPIDI_Process.my_pg_rank == 0, "Falling back to automatic"
+                " architecture detection\n");
+        } else {
+            g_mv2_arch_type = val;
+        }
+    }
+    fn_fail:
+    fn_exit:
+        return mpi_errno;
+}
+void mv2_free_arch_handle () {
+    if (mv2_force_arch_type_handle) {
+        MPIU_Free(mv2_force_arch_type_handle);
+        mv2_force_arch_type_handle = NULL;
+    }
+}
+#endif

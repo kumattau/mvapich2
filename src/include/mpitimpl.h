@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2001-2017, The Ohio State University. All rights
+ * Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1392,6 +1392,25 @@ extern int MPIR_T_init_balance;
 static inline int MPIR_T_is_initialized() {
     return MPIR_T_init_balance > 0;
 }
+
+/* Helper function to update count and volume of send and recv messages for PVARS */
+#if ENABLE_PVAR_MV2
+    #define MPIR_PVAR_INC(_mpicoll, _algo, _operation, _count, _datatype)                        \
+    do {                                                                                         \
+        int _pSize = 0;                                                                          \
+        MPID_Datatype_get_size_macro(_datatype, _pSize);                                         \
+        int _size = _count * _pSize;                                                             \
+        if (_size < 0) {                                                                         \
+            _size = 0;                                                                           \
+        }                                                                                        \
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_##_mpicoll##_##_algo##_bytes_##_operation, _size); \
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_##_mpicoll##_##_algo##_count_##_operation, 1);     \
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_##_mpicoll##_bytes_##_operation, _size);           \
+        MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_##_mpicoll##_count_##_operation, 1);               \
+    } while (0)
+#else /*ENABLE_PVAR_MV2*/
+    #define MPIR_PVAR_INC(_mpicoll, _algo, _operation, _count, _datatype)
+#endif /*ENABLE_PVAR_MV2*/
 
 /* A special strncpy to return strings in behavior defined by MPI_T */
 extern void MPIR_T_strncpy(char *dst, const char *src, int *len);

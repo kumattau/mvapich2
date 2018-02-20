@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -211,6 +211,26 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
        when we destroy a request */
     /* FIXME: We need a way to call these routines ONLY when the
        related ref count has become zero. */
+
+#if defined(CHANNEL_MRAIL)
+    if (req->kind == MPID_REQUEST_RECV) {
+        if (req->comm && req->dev.match.parts.rank != MPI_ANY_SOURCE) {
+            MPIDI_VC_t *vc;
+            MPIDI_Comm_get_vc(req->comm, req->dev.match.parts.rank, &vc);
+            if (SMP_INIT && vc->smp.local_nodes >= 0) {
+                MV2_DEC_NUM_POSTED_RECV();
+            }
+        } else {
+            MV2_DEC_NUM_POSTED_RECV();
+        }
+        MPIU_Assert(mv2_posted_recvq_length >= 0);
+    }
+    if (req->kind == MPID_REQUEST_SEND) {
+        MV2_DEC_NUM_POSTED_SEND();
+        MPIU_Assert(mv2_num_posted_send >= 0);
+    }
+#endif
+
     if (req->comm != NULL) {
         MPIR_Comm_release(req->comm);
     }
@@ -246,24 +266,6 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
     }
 #endif
 
-#if defined(CHANNEL_MRAIL)
-    if (req->kind == MPID_REQUEST_RECV) {
-        if (req->comm && req->dev.match.parts.rank != MPI_ANY_SOURCE) {
-            MPIDI_VC_t *vc;
-            MPIDI_Comm_get_vc(req->comm, req->dev.match.parts.rank, &vc);
-            if (SMP_INIT && vc->smp.local_nodes >= 0) {
-                MV2_DEC_NUM_POSTED_RECV();
-            }
-        } else {
-            MV2_DEC_NUM_POSTED_RECV();
-        }
-        MPIU_Assert(mv2_posted_recvq_length >= 0);
-    }
-    if (req->kind == MPID_REQUEST_SEND) {
-        MV2_DEC_NUM_POSTED_SEND();
-        MPIU_Assert(mv2_num_posted_send >= 0);
-    }
-#endif
     MPIU_Handle_obj_free(&MPID_Request_mem, req);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_REQUEST_DESTROY);
 }

@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -466,14 +466,29 @@ static inline int flush_all(MPID_Win * win_ptr)
         MPIR_ERR_POP(mpi_errno);
 
     /* Wait for remote completion. */
-    do {
-        MPIDI_CH3I_RMA_ops_win_remote_completion(win_ptr, remote_completed);
-        if (!remote_completed) {
-            mpi_errno = wait_progress_engine();
-            if (mpi_errno != MPI_SUCCESS)
-                MPIR_ERR_POP(mpi_errno);
-        }
-    } while (!remote_completed);
+#if defined (CHANNEL_MRAIL)
+    if (win_ptr->fall_back != 1){
+        do {
+            MPIDI_CH3I_RMA_ops_win_remote_completion(win_ptr, remote_completed);
+
+            if (!remote_completed || win_ptr->rma_issued != 0) {
+                mpi_errno = wait_progress_engine();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }
+        } while (!remote_completed || win_ptr->rma_issued != 0);
+    } else 
+#endif
+    {
+        do {
+            MPIDI_CH3I_RMA_ops_win_remote_completion(win_ptr, remote_completed);
+            if (!remote_completed) {
+                mpi_errno = wait_progress_engine();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIR_ERR_POP(mpi_errno);
+            }
+        } while (!remote_completed);
+    }
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_FLUSH_ALL);

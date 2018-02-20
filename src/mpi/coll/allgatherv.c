@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,9 @@
  */
 
 #include "mpiimpl.h"
+#ifdef _OSU_MVAPICH_
+#include "coll_shmem.h"
+#endif /* _OSU_MVAPICH_ */
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -1194,7 +1197,16 @@ int MPI_Allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                                      recvbuf, recvcounts, displs, recvtype,
                                      comm_ptr, &errflag);
     if (mpi_errno) goto fn_fail;
-
+#ifdef _OSU_MVAPICH_
+    if (mv2_use_osu_collectives) {
+        if(comm_ptr->dev.ch.allgather_comm_ok == 0) {
+            mpi_errno = mv2_increment_allgather_coll_counter(comm_ptr);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
+    }
+#endif /* _OSU_MVAPICH_ */
     /* ... end of body of routine ... */
 
   fn_exit:

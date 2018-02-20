@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -65,7 +65,7 @@ static inline MPID_Request * create_eagercontig_request_inline(MPIDI_VC_t * vc,
             sreq->dev.iov[0].MPL_IOV_BUF, sreq->dev.iov[0].MPL_IOV_LEN);
     sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) sreq->dev.pending_pkt;
 #else
-    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) sreq->dev.iov[0].MPL_IOV_BUF;
+    MPIU_Memcpy(&sreq->dev.pending_pkt, sreq->dev.iov[0].MPL_IOV_BUF, sizeof(MPIDI_CH3_Pkt_t));
     sreq->dev.iov[0].MPL_IOV_BUF = (void *)&sreq->dev.pending_pkt;
 #endif
     sreq->ch.reqtype = REQUEST_NORMAL;

@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2015 Inria.  All rights reserved.
+ * Copyright © 2009-2017 Inria.  All rights reserved.
  * Copyright © 2009-2012 Université Bordeaux
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -13,10 +13,6 @@
 #include <private/autogen/config.h>
 #include <private/private.h>
 #include <hwloc.h>
-
-#ifdef HAVE_SETLOCALE
-#include <locale.h>
-#endif /* HAVE_SETLOCALE */
 
 #ifdef HAVE_NL_LANGINFO
 #include <langinfo.h>
@@ -439,7 +435,7 @@ ascii_line(void *output, int r __hwloc_attribute_unused, int g __hwloc_attribute
 }
 
 static void
-ascii_text(void *output, int r, int g, int b, int size __hwloc_attribute_unused, unsigned depth __hwloc_attribute_unused, unsigned x, unsigned y, const char *text)
+ascii_text(void *output, int r, int g, int b, unsigned depth __hwloc_attribute_unused, unsigned x, unsigned y, const char *text)
 {
   struct lstopo_ascii_output *disp = output;
 
@@ -464,8 +460,8 @@ ascii_text(void *output, int r, int g, int b, int size __hwloc_attribute_unused,
 #endif
 }
 
-void
-ascii_textsize(void *output __hwloc_attribute_unused, const char *text __hwloc_attribute_unused, unsigned textlength, unsigned fontsize __hwloc_attribute_unused, unsigned *width)
+static void
+ascii_textsize(void *output __hwloc_attribute_unused, const char *text __hwloc_attribute_unused, unsigned textlength, unsigned *width)
 {
   *width = textlength*(gridsize/2);
 }
@@ -496,11 +492,6 @@ void output_ascii(struct lstopo_output *loutput, const char *filename)
     fprintf(stderr, "Failed to open %s for writing (%s)\n", filename, strerror(errno));
     return;
   }
-
-  /* Try to use utf-8 characters */
-#ifdef HAVE_SETLOCALE
-  setlocale(LC_ALL, "");
-#endif /* HAVE_SETLOCALE */
 
 #ifdef HWLOC_HAVE_LIBTERMCAP
   /* If we are outputing to a tty, use colors */

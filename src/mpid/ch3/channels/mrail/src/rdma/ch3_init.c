@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -71,7 +71,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 {
     int mpi_errno = MPI_SUCCESS;
     int pg_size, threshold, dpm = 0, p;
-    char *dpm_str, *value, *conn_info = NULL;
+    char *value, *conn_info = NULL;
     int mv2_rdma_init_timers = 0;
     MPIDI_VC_t *vc;
 
@@ -99,11 +99,26 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     mpi_errno = MPIDI_CH3U_Comm_register_create_hook(MPIDI_CH3I_comm_create, NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     
-    /* Default startup */
-    MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
-
-    /*Determine to use which connection management */
-    threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
+    /* Choose default startup method and set default on-demand threshold */
+#if defined(RDMA_CM) && !defined(CKPT)
+    /* If user has not forcefully disabled RDMA_CM, and if user has not
+     * specified the use of MCAST use it by default */
+    if (
+        (((value = getenv("MV2_USE_RDMA_CM")) == NULL) || !!atoi(value))
+        && (((value = getenv("MV2_USE_RoCE")) == NULL) || !!!atoi(value))
+#if defined(_MCST_SUPPORT_)
+        && (((value = getenv("MV2_USE_MCAST")) == NULL) || !!!atoi(value))
+#endif /*defined(_MCST_SUPPORT_)*/
+       )
+    {
+        MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+        threshold = MPIDI_CH3I_RDMA_CM_DEFAULT_ON_DEMAND_THRESHOLD;
+    } else
+#endif /*defined(RDMA_CM) && !defined(CKPT)*/
+    {
+        MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
+        threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
+    }
 
     /*check ON_DEMAND_THRESHOLD */
     value = getenv("MV2_ON_DEMAND_THRESHOLD");
@@ -111,11 +126,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         threshold = atoi(value);
     }
 
-    dpm_str = getenv("MV2_SUPPORT_DPM");
-    if (dpm_str) {
-        dpm = !!atoi(dpm_str);
+    if ((value = getenv("MV2_SUPPORT_DPM")) != NULL) {
+        dpm = !!atoi(value);
+        MPIDI_CH3I_Process.has_dpm = dpm;
     }
-    MPIDI_CH3I_Process.has_dpm = dpm;
 #ifdef _ENABLE_UD_
     if (MPIDI_CH3I_Process.has_dpm) {
         MPL_error_printf("Error: DPM is not supported with Hybrid builds.\n"
@@ -125,6 +139,14 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #endif /* _ENABLE_UD_ */
     if (MPIDI_CH3I_Process.has_dpm) {
         setenv("MV2_ENABLE_AFFINITY", "0", 1);
+#if defined(RDMA_CM) && !defined(CKPT)
+        /* DPM is not supported with RDMA_CM. Fall back to basic alltoall CM */
+        MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
+        /* Reset value of threshold if user has not set it already */
+        if ((value = getenv("MV2_ON_DEMAND_THRESHOLD")) == NULL) {
+            threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
+        }
+#endif /*defined(RDMA_CM) && !defined(CKPT)*/
     }
 
     if ((value = getenv("MV2_USE_CUDA")) != NULL) {
@@ -172,6 +194,14 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         mv2_enable_zcpy_bcast = 0; 
         mv2_enable_zcpy_reduce = 0; 
         mv2_rdma_init_timers = 1;
+#if defined(RDMA_CM) && !defined(CKPT)
+        /* UD/Hybrid is not supported with RDMA_CM. Fall back to basic alltoall CM */
+        MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
+        /* Reset value of threshold if user has not set it already */
+        if ((value = getenv("MV2_ON_DEMAND_THRESHOLD")) == NULL) {
+            threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
+        }
+#endif /*defined(RDMA_CM) && !defined(CKPT)*/
     } 
 #endif
 
@@ -188,6 +218,11 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             } else
 #endif /*_ENABLE_UD_*/
             {
+#if defined(RDMA_CM) && !defined(CKPT)
+                /* XRC is not supported with RDMA_CM. Fall back to basic alltoall CM.
+                 * This will get reset to on-demand CM later on in this function. */
+                MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
+#endif /*defined(RDMA_CM) && !defined(CKPT)*/
                 /* Enable on-demand */
                 threshold = 0;
             }
@@ -259,12 +294,24 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
 #endif
 
+#if defined(RDMA_CM) && !defined(CKPT)
     if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
-        check_cq_overflow           = check_cq_overflow_for_iwarp;
-        handle_multiple_cqs         = handle_multiple_cqs_for_iwarp;
-        MPIDI_CH3I_MRAILI_Cq_poll   = MPIDI_CH3I_MRAILI_Cq_poll_iwarp;
-        perform_blocking_progress   = perform_blocking_progress_for_iwarp;
-    } else {
+        setenv("MV2_USE_RDMA_CM", "1", 1);
+        if (mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode ||
+                (((value = getenv("MV2_USE_IWARP_MODE")) != NULL) && !!atoi(value))) {
+            check_cq_overflow           = check_cq_overflow_for_iwarp;
+            handle_multiple_cqs         = handle_multiple_cqs_for_iwarp;
+            MPIDI_CH3I_MRAILI_Cq_poll   = MPIDI_CH3I_MRAILI_Cq_poll_iwarp;
+            perform_blocking_progress   = perform_blocking_progress_for_iwarp;
+        } else {
+            check_cq_overflow           = check_cq_overflow_for_ib;
+            handle_multiple_cqs         = handle_multiple_cqs_for_ib;
+            MPIDI_CH3I_MRAILI_Cq_poll   = MPIDI_CH3I_MRAILI_Cq_poll_ib;
+            perform_blocking_progress   = perform_blocking_progress_for_ib;
+        }
+    } else 
+#endif /* defined(RDMA_CM) && !defined(CKPT) */
+    {
         check_cq_overflow           = check_cq_overflow_for_ib;
         handle_multiple_cqs         = handle_multiple_cqs_for_ib;
         MPIDI_CH3I_MRAILI_Cq_poll   = MPIDI_CH3I_MRAILI_Cq_poll_ib;
@@ -346,6 +393,8 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister = 0;
 #endif /* !defined(DISABLE_PTMALLOC) */
 
+        /* Read RDMA FAST Path related params */
+        rdma_set_rdma_fast_path_params(pg_size);
         switch (MPIDI_CH3I_Process.cm_type) {
                 /* allocate rmda memory and set up the queues */
 #if defined(RDMA_CM)
@@ -376,8 +425,6 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
                 }
                 break;
         }
-        /* Read RDMA FAST Path related params */
-        rdma_set_rdma_fast_path_params(pg_size);
     }
 #if defined(CKPT)
 #if defined(DISABLE_PTMALLOC)

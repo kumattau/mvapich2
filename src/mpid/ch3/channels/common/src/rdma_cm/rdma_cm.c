@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,6 +26,9 @@
 #include "cm.h"
 
 #ifdef RDMA_CM
+#include <sys/socket.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 
 #define RDMA_MAX_PRIVATE_LENGTH     56
 #define MV2_RDMA_CM_MIN_PORT_LIMIT  1024
@@ -42,6 +45,7 @@ int *rdma_cm_accept_count;
 volatile int *rdma_cm_connect_count;
 volatile int *rdma_cm_iwarp_msg_count;
 volatile int rdma_cm_connected_count = 0;
+volatile int rdma_cm_num_expected_connections = 0;
 volatile int rdma_cm_finalized = 0;
 int rdma_cm_arp_timeout = 2000;
 int g_num_smp_peers = 0;
@@ -100,6 +104,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
     MPIDI_VC_t  *vc, *gotvc;
     MPIDI_PG_t *pg_tmp;
     struct rdma_conn_param conn_param;
+
     MPIDI_STATE_DECL(MPIDI_STATE_IB_CMA_EVENT_HANDLER);
     MPIDI_FUNC_ENTER(MPIDI_STATE_IB_CMA_EVENT_HANDLER);
 
@@ -153,8 +158,18 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
 
             /* Connect to remote node */
             MPIU_Memset(&conn_param, 0, sizeof conn_param);
-            conn_param.responder_resources = 1;
-            conn_param.initiator_depth = 1;
+#ifdef _ENABLE_XRC_
+            if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity || USE_XRC)
+#else
+            if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity)
+#endif
+            {
+                conn_param.initiator_depth      = rdma_default_max_rdma_dst_ops;
+                conn_param.responder_resources  = rdma_default_max_rdma_dst_ops;
+            } else {
+                conn_param.initiator_depth      = rdma_supported_max_rdma_dst_ops;
+                conn_param.responder_resources  = rdma_supported_max_rdma_dst_ops;
+            }
             conn_param.retry_count = rdma_default_rnr_retry;
             conn_param.rnr_retry_count = rdma_default_rnr_retry;
 
@@ -306,8 +321,18 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             offset = private_data_start_offset;
             /* Accept remote connection - passive connect */
             MPIU_Memset(&conn_param, 0, sizeof conn_param);
-            conn_param.responder_resources = 1;
-            conn_param.initiator_depth = 1;
+#ifdef _ENABLE_XRC_
+            if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity || USE_XRC)
+#else
+            if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity)
+#endif
+            {
+                conn_param.initiator_depth      = rdma_default_max_rdma_dst_ops;
+                conn_param.responder_resources  = rdma_default_max_rdma_dst_ops;
+            } else {
+                conn_param.initiator_depth      = rdma_supported_max_rdma_dst_ops;
+                conn_param.responder_resources  = rdma_supported_max_rdma_dst_ops;
+            }
             conn_param.retry_count = rdma_default_rnr_retry;
             conn_param.rnr_retry_count = rdma_default_rnr_retry;
             conn_param.private_data_len = tmplen;
@@ -354,6 +379,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
 
             rdma_cm_connect_count[rank]++;
 
+            int i = 0;
             if (rdma_cm_connect_count[rank] == rdma_num_rails)
             {
                 if (vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_CLI) {
@@ -362,7 +388,6 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
 
                     /* Sending a noop for handling the iWARP requirement */
                     if (proc->use_iwarp_mode) {
-                        int i;
                         vc->ch.state = MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING;
                         for (i = 0; i < rdma_num_rails; i++){
                             MRAILI_Send_noop(vc, i);
@@ -390,7 +415,9 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                              vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                              vc->state = MPIDI_VC_STATE_ACTIVE;
                              MPIDI_CH3I_Process.new_conn_complete = 1;
-                             MRAILI_Send_noop(vc, 0);
+                             for (i = 0; i < rdma_num_rails; i++){
+                                 MRAILI_Send_noop(vc, i);
+                             }
                              PRINT_DEBUG(DEBUG_RDMACM_verbose,"Connection Complete - Server: "
                              "%d->%d\n", pg_rank, rank);
                          }
@@ -400,7 +427,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
              }
 
              /* All connections connected? Used only for non-on_demand case */
-             if (rdma_cm_connected_count == (pg_size - 1 - g_num_smp_peers)) {
+             if (rdma_cm_connected_count == (rdma_cm_num_expected_connections-1)) {
                  sem_post(&proc->rdma_cm);        
              }
 
@@ -827,34 +854,24 @@ int rdma_cm_connect_all(int pg_rank, MPIDI_PG_t *pg)
     MPIDI_VC_t  *vc;
     mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
     int max_num_ips = rdma_num_hcas * rdma_num_ports;
-    int procs_on_same_node = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_CONNECT_ALL);
     MPIDI_FUNC_ENTER(MPID_STATE_RDMA_CM_CONNECT_ALL);
 
     if (!proc->use_rdma_cm_on_demand){
-        /* Initiate non-smp active connect requests */
-        for (i = 0; i < pg_rank; i++){
-            procs_on_same_node = 0;
-#ifdef _MULTI_SUBNET_SUPPORT_
-            if (mv2_rdma_cm_multi_subnet_support) {
-                if (!memcmp(&rdma_cm_host_gid_list[i*max_num_ips],
-                            &rdma_cm_host_gid_list[pg_rank * max_num_ips],
-                            sizeof(union ibv_gid))) {
-                    procs_on_same_node = 1;
-                }
-            } else
-#endif /*_MULTI_SUBNET_SUPPORT_*/
-            {
-                if (rdma_cm_host_list[i * max_num_ips] ==
-                    rdma_cm_host_list[pg_rank * max_num_ips]) {
-                    procs_on_same_node = 1;
-                }
+        pg_size = MPIDI_PG_Get_size(pg);
+        /* Identify number of connections to wait for */
+        for (i = 0; i < pg_size; i++) {
+            MPIDI_PG_Get_vc(pg, i, &vc);
+            if (qp_required(vc, pg_rank, i)) {
+                rdma_cm_num_expected_connections++;
             }
+        }
 
-            if (!rdma_use_smp || !procs_on_same_node) {
-
-                MPIDI_PG_Get_vc(pg, i, &vc);
+        /* Initiate active connect requests */
+        for (i = 0; i < pg_rank; i++){
+            MPIDI_PG_Get_vc(pg, i, &vc);
+            if (qp_required(vc, pg_rank, i)) {
                 vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_CLI;
                 vc->state = MPIDI_VC_STATE_LOCAL_ACTIVE;
                 PRINT_DEBUG(DEBUG_CM_verbose>0, "Current state of %d is %s.\n",
@@ -872,9 +889,8 @@ int rdma_cm_connect_all(int pg_rank, MPIDI_PG_t *pg)
             }
         }
     
-        /* Wait for all non-smp connections to complete */
-        pg_size = MPIDI_PG_Get_size(pg);
-        if (pg_size - 1 - g_num_smp_peers > 0)
+        /* Wait for all connections to complete */
+        if (rdma_cm_num_expected_connections > 0)
             sem_wait(&proc->rdma_cm);
 
         /* RDMA CM Connection Setup Complete */
@@ -1168,12 +1184,12 @@ int rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
     if (mv2_rdma_cm_multi_subnet_support) {
         sprintf(buffer, "%016lx", rdma_base_listen_sid[pg_rank]);
         for(i = 0; i < rdma_num_hcas; i++) {
-            for(j = 0; j < rdma_num_hcas; j++) {
+            for(j = 1; j <= rdma_num_ports; j++) {
                 sprintf(buffer+strlen(buffer), "-%016" SCNx64 ":%016" SCNx64,
-                        mv2_MPIDI_CH3I_RDMA_Process.gids[i][j].global.subnet_prefix,
-                        mv2_MPIDI_CH3I_RDMA_Process.gids[i][j].global.interface_id);
+                        mv2_MPIDI_CH3I_RDMA_Process.gids[i][j-1].global.subnet_prefix,
+                        mv2_MPIDI_CH3I_RDMA_Process.gids[i][j-1].global.interface_id);
                 MPIU_Memcpy(&rdma_cm_host_gid_list[pg_rank*max_num_ips + k],
-                            &mv2_MPIDI_CH3I_RDMA_Process.gids[i][j],
+                            &mv2_MPIDI_CH3I_RDMA_Process.gids[i][j-1],
                             sizeof(union ibv_gid));
                 k++;
             }
@@ -1278,6 +1294,97 @@ int rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
     return error;
 }
 
+/*
+ * Iterate over available interfaces
+ * and determine verbs capable ones
+ * Exclude Loopback & down interfaces
+ */
+#undef FUNCNAME
+#define FUNCNAME rdma_cm_get_verbs_ip
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int rdma_cm_get_verbs_ip(void)
+{
+    int i = 0, max_ips = 0, ret = 0;
+    char *ip = NULL, *dev_name = NULL;
+    struct ifaddrs *ifaddr = NULL, *ifa;
+    struct rdma_cm_id *cm_id = NULL;
+    struct rdma_event_channel *ch = NULL;
+    struct sockaddr_in *sin = NULL;
+    char *value = getenv("MV2_IBA_HCA");
+    struct ibv_port_attr port_attr;
+
+    MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_GET_VERBS_IP);
+    MPIDI_FUNC_ENTER(MPID_STATE_RDMA_CM_GET_VERBS_IP);
+
+    max_ips = rdma_num_hcas * rdma_num_ports;
+    rdma_cm_local_ips = MPIU_Malloc(max_ips * sizeof(int));
+
+    ret = getifaddrs(&ifaddr);
+    if (ret) {
+        ibv_va_error_abort(IBV_RETURN_ERR,
+                        "getifaddrs error %d\n", errno);
+    }
+
+    for (ifa = ifaddr; ifa != NULL && i < max_ips; ifa = ifa->ifa_next) {
+
+        if (ifa->ifa_addr != NULL
+            && ifa->ifa_addr->sa_family == AF_INET
+            && ifa->ifa_flags & IFF_UP
+            && !(ifa->ifa_flags & IFF_LOOPBACK)
+            && !(ifa->ifa_flags & IFF_POINTOPOINT)
+        ) {
+            ch =  rdma_create_event_channel();
+            if(!ch) {
+                ibv_va_error_abort(IBV_RETURN_ERR,
+                        "rdma_create_event_channel error %d\n", errno);
+            }
+
+            if (rdma_create_id(ch, &cm_id, NULL, RDMA_PS_TCP)) {
+                ibv_va_error_abort(IBV_RETURN_ERR,
+                        "rdma_create_id error %d\n", errno);
+            }
+
+            sin = (struct sockaddr_in *) ifa->ifa_addr;
+            ip = inet_ntoa(sin->sin_addr);
+
+            ret = rdma_bind_addr(cm_id, ifa->ifa_addr);
+            if (ret == 0 && cm_id->verbs != 0) {
+                dev_name = (char *) ibv_get_device_name(cm_id->verbs->device);
+                if (value && dev_name) {
+                    if(strstr(value, dev_name) == NULL) {
+                        goto skip;
+                    }
+                }
+                /* Skip interfaces that are not in active state */
+                if ((!ibv_query_port(cm_id->verbs, cm_id->port_num, &port_attr))
+                    && port_attr.state == IBV_PORT_ACTIVE) {
+                    rdma_cm_local_ips[i] = inet_addr(ip);
+                    PRINT_DEBUG(DEBUG_RDMACM_verbose,"Active: dev_name: %s, port: %d, ip: %s\n",
+                                dev_name, cm_id->port_num, ip);
+                    i++;
+                } else {
+                    PRINT_DEBUG(DEBUG_RDMACM_verbose,"Not Active (%d): dev_name: %s, port: %d, ip: %s\n",
+                                port_attr.state, dev_name, cm_id->port_num, ip);
+                }
+            }
+
+            skip:
+            PRINT_DEBUG(DEBUG_RDMACM_verbose, "i: %d, interface: %s, device: %s, ip: %s, verbs: %d\n",
+                                            i, ifa->ifa_name, dev_name, ip, !!cm_id->verbs);
+
+            rdma_destroy_id(cm_id); cm_id = NULL;
+            rdma_destroy_event_channel(ch); ch = NULL;
+            dev_name = NULL;
+        }
+    }
+
+    freeifaddrs(ifaddr); ifaddr = NULL;
+
+    MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_GET_VERBS_IP);
+    return i;
+}
+
 /* Gets the ip address in network byte order */
 /*
  * TODO add error handling
@@ -1307,18 +1414,18 @@ int rdma_cm_get_local_ip(){
     fp_port = fopen(fname, "r");
 
     if (NULL == fp_port){
-        ibv_va_error_abort(GEN_EXIT_ERR, 
-            "Error opening file %s"
-            "Local rdma_cm address required in this file.\n", fname);
-    }
+        PRINT_DEBUG(DEBUG_RDMACM_verbose, "Can't open file: %s, "
+                    "trying to determine verbs capable IP\n", fname);
+        i = rdma_cm_get_verbs_ip();
+    } else {
+        rdma_cm_local_ips = MPIU_Malloc(rdma_num_hcas*rdma_num_ports*sizeof(int));
 
-    rdma_cm_local_ips = MPIU_Malloc(rdma_num_hcas*rdma_num_ports*sizeof(int));
-
-    while ((fscanf(fp_port, "%s\n", ip)) != EOF && (i < (rdma_num_hcas*rdma_num_ports))){
-        rdma_cm_local_ips[i] = inet_addr(ip);
-        i++;
+        while ((fscanf(fp_port, "%s\n", ip)) != EOF && (i < (rdma_num_hcas*rdma_num_ports))){
+            rdma_cm_local_ips[i] = inet_addr(ip);
+            i++;
+        }
+        fclose(fp_port);
     }
-    fclose(fp_port);
 
     MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_GET_LOCAL_IP);
     return i;

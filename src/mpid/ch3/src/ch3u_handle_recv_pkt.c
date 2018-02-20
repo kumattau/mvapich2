@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -191,6 +191,21 @@ int MPIDI_CH3U_Handle_recv_rndv_pkt(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 }
 #endif
 
+static MPIDI_CH3_PktHandler_Fcn *pktArray[MPIDI_CH3_PKT_END_CH3+1];
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_PktHandler_Init_MV2
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIDI_CH3_PktHandler_Init_MV2()
+{
+    int mpi_errno = MPI_SUCCESS;
+
+	mpi_errno = MPIDI_CH3_PktHandler_Init(pktArray, MPIDI_CH3_PKT_END_CH3);
+
+    return mpi_errno;
+}
+
 /*
  * MPIDI_CH3U_Handle_recv_pkt()
  *
@@ -213,10 +228,7 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 				       MPIDI_msg_sz_t *buflen, MPID_Request ** rreqp)
 {
     int mpi_errno = MPI_SUCCESS;
-    static MPIDI_CH3_PktHandler_Fcn *pktArray[MPIDI_CH3_PKT_END_CH3+1];
-    static int needsInit = 1;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_HANDLE_ORDERED_RECV_PKT);
-
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_HANDLE_ORDERED_RECV_PKT);
 
     MPIU_DBG_STMT(CH3_OTHER,VERBOSE,MPIDI_DBG_Print_packet(pkt));
@@ -229,10 +241,6 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
        in the progress engine itself.  Then this routine is not necessary.
     */
 
-    if (needsInit) {
-	MPIDI_CH3_PktHandler_Init( pktArray, MPIDI_CH3_PKT_END_CH3 );
-	needsInit = 0;
-    }
     /* Packet type is an enum and hence >= 0 */
     MPIU_Assert(pkt->type <= MPIDI_CH3_PKT_END_CH3);
     mpi_errno = pktArray[pkt->type](vc, pkt, buflen, rreqp);
@@ -272,7 +280,6 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
 #endif
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_RECEIVE_DATA_FOUND);
-
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_RECEIVE_DATA_FOUND);
 
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"posted request found");
@@ -281,23 +288,22 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
 			    dt_contig, userbuf_sz, dt_ptr, dt_true_lb);
 		
     if (rreq->dev.recv_data_sz <= userbuf_sz) {
-	data_sz = rreq->dev.recv_data_sz;
-    }
-    else {
-	MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
-               "receive buffer too small; message truncated, msg_sz=" MPIDI_MSG_SZ_FMT ", userbuf_sz="
-					    MPIDI_MSG_SZ_FMT,
-				 rreq->dev.recv_data_sz, userbuf_sz));
-	rreq->status.MPI_ERROR = MPIR_Err_create_code(MPI_SUCCESS, 
-                     MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_TRUNCATE,
-		     "**truncate", "**truncate %d %d %d %d", 
-		     rreq->status.MPI_SOURCE, rreq->status.MPI_TAG, 
-		     rreq->dev.recv_data_sz, userbuf_sz );
-	MPIR_STATUS_SET_COUNT(rreq->status, userbuf_sz);
-	data_sz = userbuf_sz;
+        data_sz = rreq->dev.recv_data_sz;
+    } else {
+        MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+                    "receive buffer too small; message truncated, msg_sz=" MPIDI_MSG_SZ_FMT ", userbuf_sz="
+                    MPIDI_MSG_SZ_FMT,
+                    rreq->dev.recv_data_sz, userbuf_sz));
+        rreq->status.MPI_ERROR = MPIR_Err_create_code(MPI_SUCCESS, 
+                MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_TRUNCATE,
+                "**truncate", "**truncate %d %d %d %d", 
+                rreq->status.MPI_SOURCE, rreq->status.MPI_TAG, 
+                rreq->dev.recv_data_sz, userbuf_sz );
+        MPIR_STATUS_SET_COUNT(rreq->status, userbuf_sz);
+        data_sz = userbuf_sz;
     }
 
-    if (dt_contig && data_sz == rreq->dev.recv_data_sz)
+    if (likely(dt_contig && data_sz == rreq->dev.recv_data_sz))
     {
 	/* user buffer is contiguous and large enough to store the
 	   entire message.  However, we haven't yet *read* the data 
@@ -305,7 +311,7 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
 
         /* if all of the data has already been received, unpack it
            now, otherwise build an iov and let the channel unpack */
-        if (*buflen >= data_sz)
+        if (likely(*buflen >= data_sz))
         {
             MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"Copying contiguous data to user buffer");
             /* copy data out of the receive buffer */
@@ -316,18 +322,16 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
             }
             if (userbuf_isdev) {
                 MPIU_Memcpy_CUDA((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
-                        buf, data_sz,
-                        cudaMemcpyDefault);
+                                    buf, data_sz, cudaMemcpyDefault);
             }
             else if (!is_device_buffer(rreq->dev.user_buf)
                     && is_device_buffer(buf)) {
                 MPIU_Memcpy_CUDA((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
-                        buf, data_sz,
-                        cudaMemcpyDeviceToHost);
+                                    buf, data_sz, cudaMemcpyDeviceToHost);
             }
             else
 #endif
-            if (rreq->dev.drop_data == FALSE) {
+            if (likely(rreq->dev.drop_data == FALSE)) {
                 MPIU_Memcpy((char*)(rreq->dev.user_buf) + dt_true_lb, buf, data_sz);
             }
             *buflen = data_sz;

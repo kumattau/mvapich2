@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -45,6 +45,9 @@ void clear_2level_comm (MPID_Comm* comm_ptr)
     comm_ptr->dev.ch.shmem_coll_ok = 0;
     comm_ptr->dev.ch.leader_map  = NULL;
     comm_ptr->dev.ch.leader_rank = NULL;
+    comm_ptr->dev.ch.node_disps  = NULL;
+    comm_ptr->dev.ch.rank_list   = NULL;
+    comm_ptr->dev.ch.rank_list_index = -1;
     comm_ptr->dev.ch.shmem_comm = MPI_COMM_NULL; 
     comm_ptr->dev.ch.leader_comm = MPI_COMM_NULL;
     comm_ptr->dev.ch.allgather_comm = MPI_COMM_NULL;
@@ -118,6 +121,9 @@ int free_2level_comm (MPID_Comm* comm_ptr)
     if (comm_ptr->dev.ch.leader_rank != NULL) { 
         MPIU_Free(comm_ptr->dev.ch.leader_rank); 
     }
+    if (comm_ptr->dev.ch.rank_list != NULL) {
+        MPIU_Free(comm_ptr->dev.ch.rank_list);
+    }
  
     MPID_Comm_get_ptr((comm_ptr->dev.ch.shmem_comm), shmem_comm_ptr );
     MPID_Comm_get_ptr((comm_ptr->dev.ch.leader_comm), leader_comm_ptr );
@@ -167,6 +173,9 @@ int free_2level_comm (MPID_Comm* comm_ptr)
             MPIU_Free(comm_ptr->dev.ch.node_sizes); 
         } 
     } 
+    if(comm_ptr->dev.ch.node_disps != NULL) {
+        MPIU_Free(comm_ptr->dev.ch.node_disps);
+    }
     if (local_rank == 0 && leader_comm_ptr != NULL) { 
         mpi_errno = MPIR_Comm_release(leader_comm_ptr);
         if (mpi_errno != MPI_SUCCESS) { 
@@ -507,22 +516,39 @@ int create_allgather_comm(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
     int mpi_errno = MPI_SUCCESS; 
     int is_contig =1, check_leader =1, check_size=1, is_local_ok=0,is_block=0;
     int PPN, i=0;
-    int leader_rank; 
+    int leader_rank = -1, leader_comm_size = -1;
     int size = comm_ptr->local_size; 
     int my_rank = comm_ptr->rank; 
+    int my_local_id = -1, my_local_size = -1;
     int grp_index=0, leader=0; 
     MPID_Comm *shmem_ptr=NULL; 
+    MPID_Comm *leader_ptr=NULL; 
     MPI_Group allgather_group, comm_group; 
     comm_ptr->dev.ch.allgather_comm=MPI_COMM_NULL; 
     comm_ptr->dev.ch.allgather_new_ranks=NULL;
 
     if(comm_ptr->dev.ch.leader_comm != MPI_COMM_NULL) { 
-        PMPI_Comm_rank(comm_ptr->dev.ch.leader_comm, &leader_rank); 
+        MPID_Comm_get_ptr(comm_ptr->dev.ch.leader_comm, leader_ptr); 
+        mpi_errno = PMPI_Comm_rank(comm_ptr->dev.ch.leader_comm, &leader_rank); 
+        if(mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+        mpi_errno = PMPI_Comm_size(comm_ptr->dev.ch.leader_comm, &leader_comm_size);
+        if(mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
     } 
-   if(comm_ptr->dev.ch.shmem_comm != MPI_COMM_NULL){ 
+    if(comm_ptr->dev.ch.shmem_comm != MPI_COMM_NULL){ 
         MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_ptr); 
+        mpi_errno = PMPI_Comm_rank(comm_ptr->dev.ch.shmem_comm, &my_local_id);
+        if(mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+        mpi_errno = PMPI_Comm_size(comm_ptr->dev.ch.shmem_comm, &my_local_size);
+        if(mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
     } 
-    int shmem_grp_size = shmem_ptr->local_size; 
 
     int* shmem_group = MPIU_Malloc(sizeof(int) * size);
     if (NULL == shmem_group){
@@ -533,13 +559,14 @@ int create_allgather_comm(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
     }              
     
     MPIDI_VC_t* vc = NULL;
-    for (; i < size ; ++i){
+    for (i = 0; i < size ; ++i){
        MPIDI_Comm_get_vc(comm_ptr, i, &vc);
 #if CHANNEL_NEMESIS_IB
-       if (my_rank == i || vc->ch.is_local){
+       if (my_rank == i || vc->ch.is_local)
 #else
-       if (my_rank == i || vc->smp.local_rank >= 0){
+       if (my_rank == i || vc->smp.local_rank >= 0)
 #endif
+       {
            shmem_group[grp_index++] = i;
        }   
     }  
@@ -555,17 +582,18 @@ int create_allgather_comm(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
         MPIR_ERR_POP(mpi_errno);
     } 
 
-    for (i=1; i < shmem_grp_size; i++ ){
+    for (i=1; i < my_local_size; i++ ){
         if (shmem_group[i] != shmem_group[i-1]+1){
             is_contig =0; 
             break;
         }
     }
-    if (leader != (shmem_grp_size*leader_rank)){
+
+    if (leader != (my_local_size*leader_rank)){
         check_leader=0;
     }
 
-    if (shmem_grp_size != (size/comm_ptr->dev.ch.leader_group_size)){
+    if (my_local_size != (size/comm_ptr->dev.ch.leader_group_size)){
         check_size=0;
     }
 
@@ -587,7 +615,7 @@ int create_allgather_comm(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
                 return mpi_errno;
         }
    
-        PPN = shmem_grp_size;
+        PPN = my_local_size;
         
         for (j=0; j < PPN; j++){
             for (i=0; i < comm_ptr->dev.ch.leader_group_size; i++){
@@ -620,6 +648,82 @@ int create_allgather_comm(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
         comm_ptr->dev.ch.allgather_comm_ok = -1;
     }
 
+    /* Gives the mapping to any process's leader in comm */
+    comm_ptr->dev.ch.rank_list = MPIU_Malloc(sizeof(int) * size);
+    if (NULL == comm_ptr->dev.ch.rank_list){
+        mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                   "memory allocation failed", strerror(errno));
+                   MPIR_ERR_POP(mpi_errno);
+    }
+
+    /* gather full rank list on leader processes, the rank list is ordered
+     * by node based on leader rank, and then by rank within the node according
+     * to the shmem_group list */
+    if (my_local_id == 0) {
+        /* execute allgather or allgatherv across leaders */
+        if (comm_ptr->dev.ch.is_uniform != 1) {
+            /* allocate memory for displacements and counts */
+            int* displs = MPIU_Malloc(sizeof(int) * leader_comm_size);
+            int* counts = MPIU_Malloc(sizeof(int) * leader_comm_size);
+            if (!displs || !counts) {
+                mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,
+                        MPIR_ERR_RECOVERABLE,
+                        FCNAME, __LINE__,
+                        MPI_ERR_OTHER,
+                        "**nomem", 0);
+                return mpi_errno;
+            }
+
+            /* get pointer to array of node sizes */
+            int* node_sizes = comm_ptr->dev.ch.node_sizes;
+
+            /* compute values for displacements and counts arrays */
+            displs[0] = 0;
+            counts[0] = node_sizes[0];
+            for (i = 1; i < leader_comm_size; i++) {
+                displs[i] = displs[i - 1] + node_sizes[i - 1];
+                counts[i] = node_sizes[i];
+            }
+
+            /* execute the allgatherv to collect full rank list */
+            mpi_errno = MPIR_Allgatherv_impl(
+                shmem_group, my_local_size, MPI_INT,
+                comm_ptr->dev.ch.rank_list, counts, displs, MPI_INT,
+                leader_ptr, errflag
+            );
+
+            /* free displacements and counts arrays */
+            MPIU_Free(displs);
+            MPIU_Free(counts);
+        } else {
+            /* execute the allgather to collect full rank list */
+            mpi_errno = MPIR_Allgather_impl(
+                shmem_group, my_local_size, MPI_INT,
+                comm_ptr->dev.ch.rank_list, my_local_size, MPI_INT,
+                leader_ptr, errflag
+            );
+        }
+
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+    /* broadcast rank list to other ranks on this node */
+    mpi_errno = MPIR_Bcast_impl(comm_ptr->dev.ch.rank_list, size, MPI_INT, 0, shmem_ptr, errflag);
+    if(mpi_errno) {
+        MPIR_ERR_POP(mpi_errno);
+    }
+
+    /* lookup and record our index within the rank list */
+    for (i = 0; i < size; i++) {
+        if (my_rank == comm_ptr->dev.ch.rank_list[i]) {
+            /* found ourself in the list, record the index */
+            comm_ptr->dev.ch.rank_list_index = i;
+            break;
+        }
+    }
     mpi_errno=PMPI_Group_free(&comm_group);
     if(mpi_errno) {
         MPIR_ERR_POP(mpi_errno);
@@ -630,7 +734,203 @@ fn_exit:
     return mpi_errno;
 fn_fail: 
     goto fn_exit; 
-} 
+}
+
+#if defined (_SHARP_SUPPORT_)
+int create_sharp_comm(MPI_Comm comm, int size, int my_rank)
+{
+    static const char FCNAME[] = "create_sharp_comm";
+    int mpi_errno = MPI_SUCCESS;
+    MPID_Comm* comm_ptr = NULL;
+    int leader_group_size = 0, my_local_id = -1;
+
+    if (size <= 1) {
+        return mpi_errno;
+    }
+
+    MPID_Comm_get_ptr(comm, comm_ptr);
+    mpi_errno = PMPI_Comm_rank(comm_ptr->dev.ch.shmem_comm, &my_local_id);
+    if(mpi_errno) {
+       MPIR_ERR_POP(mpi_errno);
+    }
+    leader_group_size = comm_ptr->dev.ch.leader_group_size;
+    comm_ptr->dev.ch.sharp_coll_info = NULL;
+
+    if (comm == MPI_COMM_WORLD && mv2_enable_sharp_coll
+        && (leader_group_size > 1) && (comm_ptr->dev.ch.is_sharp_ok == 0)) {
+        sharp_info_t * sharp_coll_info = NULL;        
+
+        comm_ptr->dev.ch.sharp_coll_info = 
+            (sharp_info_t *)MPIU_Malloc(sizeof(sharp_info_t));
+        sharp_coll_info = comm_ptr->dev.ch.sharp_coll_info; 
+        sharp_coll_info->sharp_comm_module = NULL;
+        sharp_coll_info->sharp_conf = MPIU_Malloc(sizeof(sharp_conf_t));
+        
+        sharp_coll_log_early_init();  
+        mpi_errno = mv2_setup_sharp_env(sharp_coll_info->sharp_conf, MPI_COMM_WORLD);
+        if (mpi_errno) {
+           MPIR_ERR_POP(mpi_errno);  
+        }
+        
+        /* Initialize sharp */
+        if (mv2_enable_sharp_coll == 2) {
+            /* Flat algorithm in which every process uses SHArP */
+            mpi_errno = mv2_sharp_coll_init(sharp_coll_info->sharp_conf, my_local_id);
+        } else if (mv2_enable_sharp_coll == 1) {
+            /* Two-level hierarchical algorithm in which, one process at each
+             * node uses SHArP for inter-node communication */
+            mpi_errno = mv2_sharp_coll_init(sharp_coll_info->sharp_conf, 0);
+        } else {
+            PRINT_ERROR("Invalid value for MV2_ENABLE_SHARP\n");
+            mpi_errno = MPI_ERR_OTHER;
+        }
+        if (mpi_errno) {
+           mv2_free_sharp_handlers(comm_ptr->dev.ch.sharp_coll_info); 
+           /* avoid using sharp and fall back to other designs */
+           comm_ptr->dev.ch.sharp_coll_info = NULL;
+           mpi_errno = MPI_SUCCESS;
+           goto sharp_fall_back;
+        }
+        
+        sharp_coll_info->sharp_comm_module = MPIU_Malloc(sizeof(coll_sharp_module_t));
+        MPIU_Memset(sharp_coll_info->sharp_comm_module, 0, sizeof(coll_sharp_module_t));
+        /* create sharp module which contains sharp communicator */
+        if (mv2_enable_sharp_coll == 2) {
+            sharp_coll_info->sharp_comm_module->comm = MPI_COMM_WORLD; 
+            mpi_errno = mv2_sharp_coll_comm_init(sharp_coll_info->sharp_comm_module);
+            if (mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);  
+            } 
+        } else if (my_local_id == 0) {
+            sharp_coll_info->sharp_comm_module->comm = comm_ptr->dev.ch.leader_comm;
+            mpi_errno = mv2_sharp_coll_comm_init(sharp_coll_info->sharp_comm_module);
+            if (mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);  
+            } 
+        }
+        comm_ptr->dev.ch.is_sharp_ok = 1;
+
+        /* If the user does not set the MV2_SHARP_MAX_MSG_SIZE then try to tune
+         * mv2_sharp_tuned_msg_size variable based on node count */
+        if (mv2_enable_sharp_coll == 1 &&
+            (getenv("MV2_SHARP_MAX_MSG_SIZE")) == NULL) {
+            if (leader_group_size == 2) {
+                    mv2_sharp_tuned_msg_size = 256;
+            } else if (leader_group_size <= 4) {
+                mv2_sharp_tuned_msg_size = 512;
+            } else {
+                /* in all other cases set max msg size to
+                 * MV2_DEFAULT_SHARP_MAX_MSG_SIZE */
+                mv2_sharp_tuned_msg_size = MV2_DEFAULT_SHARP_MAX_MSG_SIZE;
+            }
+        }
+    }
+sharp_fall_back:
+
+    fn_exit:
+       return (mpi_errno);
+    fn_fail: 
+       MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+       mv2_free_sharp_handlers(comm_ptr->dev.ch.sharp_coll_info);
+       comm_ptr->dev.ch.sharp_coll_info = NULL;
+       goto fn_exit; 
+}
+#endif /*(_SHARP_SUPPORT_)*/
+
+#if defined(_MCST_SUPPORT_)
+int create_mcast_comm (MPI_Comm comm, int size, int my_rank)
+{
+    static const char FCNAME[] = "create_mcast_comm";
+    int mpi_errno = MPI_SUCCESS;
+    int mcast_setup_success = 0;
+    int leader_group_size = 0, my_local_id = -1;
+    MPID_Comm *comm_ptr = NULL;
+    MPID_Comm *shmem_ptr = NULL;
+    MPID_Comm *leader_ptr = NULL;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
+
+    if (size <= 1) {
+        return mpi_errno;
+    }
+
+    MPID_Comm_get_ptr(comm, comm_ptr);
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_ptr);
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.leader_comm, leader_ptr);
+
+    mpi_errno = PMPI_Comm_rank(comm_ptr->dev.ch.shmem_comm, &my_local_id);
+    if(mpi_errno) {
+       MPIR_ERR_POP(mpi_errno);
+    }
+
+    leader_group_size = comm_ptr->dev.ch.leader_group_size;
+
+    comm_ptr->dev.ch.is_mcast_ok = 0;
+    bcast_info_t **bcast_info = (bcast_info_t **)&comm_ptr->dev.ch.bcast_info;
+    if (leader_group_size >= mcast_num_nodes_threshold && rdma_enable_mcast) {
+        mv2_mcast_init_bcast_info(bcast_info);
+        if (my_local_id == 0) {
+            if (mv2_setup_multicast(&(*bcast_info)->minfo, comm_ptr) == MCAST_SUCCESS) {
+                mcast_setup_success = 1;
+            }   
+        }
+    }
+
+    if (leader_group_size >= mcast_num_nodes_threshold && rdma_enable_mcast) {
+        int leader_rank;
+        int status = 0;
+        int mcast_status[2] = {0, 0}; /* status, comm_id */
+        if(comm_ptr->dev.ch.leader_comm != MPI_COMM_NULL) { 
+            PMPI_Comm_rank(comm_ptr->dev.ch.leader_comm, &leader_rank); 
+            if (leader_rank == 0 && mcast_setup_success) {
+                /* wait for comm ready */
+                status = mv2_mcast_progress_comm_ready(comm_ptr);
+            }
+        } 
+
+        if (my_local_id == 0) {
+            mpi_errno = MPIR_Bcast_impl(&status, 1, MPI_INT, 0, leader_ptr, &errflag);
+            if (mpi_errno) {
+                goto fn_fail;
+            }
+            mcast_status[0] = status;
+            mcast_status[1] = ((bcast_info_t *) comm_ptr->dev.ch.bcast_info)->minfo.grp_info.comm_id;
+            if (!status) {
+                mv2_cleanup_multicast(&((bcast_info_t *) comm_ptr->dev.ch.bcast_info)->minfo, comm_ptr);
+            }
+        }
+
+        mpi_errno = MPIR_Bcast_impl (mcast_status, 2, MPI_INT, 0, shmem_ptr, &errflag);
+        if(mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+
+        comm_ptr->dev.ch.is_mcast_ok = mcast_status[0];
+
+        if (my_rank == 0) {
+            PRINT_DEBUG(DEBUG_MCST_verbose > 1, 
+                    "multicast setup status:%d\n", comm_ptr->dev.ch.is_mcast_ok);
+            if (comm_ptr->dev.ch.is_mcast_ok == 0) {
+                PRINT_INFO (1, "Warning: Multicast group setup failed. Not using any multicast features\n");
+            }
+        }
+
+        if (comm_ptr->dev.ch.is_mcast_ok == 0 && comm == MPI_COMM_WORLD) {
+            /* if mcast setup failed on comm world because of any reason, it is
+            ** most likely is going to fail on other communicators. Hence, disable
+            ** the mcast feaure */
+            rdma_enable_mcast = 0;
+            mv2_ud_destroy_ctx(mcast_ctx->ud_ctx);
+            MPIU_Free(mcast_ctx);
+        }
+	
+    }
+    fn_exit:
+       return (mpi_errno);
+    fn_fail: 
+       MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+       goto fn_exit; 
+}
+#endif /*(_MCST_SUPPORT_)*/
 
 int create_2level_comm (MPI_Comm comm, int size, int my_rank)
 {
@@ -665,13 +965,13 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     /* Find out if ranks are block ordered locally */
     for (iter = 0; iter < size; iter++) {
         MPID_Get_node_id(comm_ptr, iter, &node_id);
-	if ((node_id != -1) && (prev == -1)) {
-	    up++;
-	}
-	if ((node_id == -1) && (prev == 1)) {
-	    down++;
-	}
-	prev = node_id;
+        if ((node_id != -1) && (prev == -1)) {
+            up++;
+        }
+        if ((node_id == -1) && (prev == 1)) {
+            down++;
+        }
+        prev = node_id;
     }
     blocked = (up > 1) ? 0 : 1;
     
@@ -689,18 +989,16 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     int grp_index = 0;
     comm_ptr->dev.ch.leader_comm=MPI_COMM_NULL;
     comm_ptr->dev.ch.shmem_comm=MPI_COMM_NULL;
-#if defined (_SHARP_SUPPORT_)
-    comm_ptr->dev.ch.sharp_coll_info = NULL;
-#endif
 
     MPIDI_VC_t* vc = NULL;
-    for (; i < size ; ++i){
+    for (i = 0; i < size ; ++i){
        MPIDI_Comm_get_vc(comm_ptr, i, &vc);
 #ifdef CHANNEL_NEMESIS_IB
-       if (my_rank == i || vc->ch.is_local){
+       if (my_rank == i || vc->ch.is_local)
 #else
-       if (my_rank == i || vc->smp.local_rank >= 0){
+       if (my_rank == i || vc->smp.local_rank >= 0)
 #endif
+        {
            shmem_group[grp_index] = i;
            if (my_rank == i){
                local_rank = grp_index;
@@ -753,7 +1051,6 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     int leader = 0;
     leader = shmem_group[0];
 
-
     /* Gives the mapping to any process's leader in comm */
     comm_ptr->dev.ch.leader_map = MPIU_Malloc(sizeof(int) * size);
     if (NULL == comm_ptr->dev.ch.leader_map){
@@ -763,7 +1060,8 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
                    MPIR_ERR_POP(mpi_errno);
     }
     
-    mpi_errno = MPIR_Allgather_impl (&leader, 1, MPI_INT , comm_ptr->dev.ch.leader_map, 1, MPI_INT, comm_ptr, &errflag);
+    mpi_errno = MPIR_Allgather_impl (&leader, 1, MPI_INT , comm_ptr->dev.ch.leader_map,
+                                        1, MPI_INT, comm_ptr, &errflag);
     if(mpi_errno) {
        MPIR_ERR_POP(mpi_errno);
     }
@@ -867,19 +1165,6 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
        MPIR_ERR_POP(mpi_errno);
     }
     comm_ptr->dev.ch.intra_node_done = 0;
-#if defined(_MCST_SUPPORT_)
-    comm_ptr->dev.ch.is_mcast_ok = 0;
-    int mcast_setup_success = 0;
-    bcast_info_t **bcast_info = (bcast_info_t **)&comm_ptr->dev.ch.bcast_info;
-    if (leader_group_size >= mcast_num_nodes_threshold && rdma_enable_mcast) {
-        mv2_mcast_init_bcast_info(bcast_info);
-        if (my_local_id == 0) {
-            if (mv2_setup_multicast(&(*bcast_info)->minfo, comm_ptr) == MCAST_SUCCESS) {
-                mcast_setup_success = 1;
-            }   
-        }
-    }
-#endif
 
     if(my_local_id == 0) { 
            int array_index=0;
@@ -894,6 +1179,18 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
            if(mpi_errno) {
               MPIR_ERR_POP(mpi_errno);
            }
+
+           /* allocate memory for displacements into rank_list */
+           comm_ptr->dev.ch.node_disps = MPIU_Malloc(sizeof(int)*leader_comm_size);
+
+           /* compute values for displacements and counts arrays */
+           int* sizes = comm_ptr->dev.ch.node_sizes;
+           int* disps = comm_ptr->dev.ch.node_disps;
+           disps[0] = 0;
+           for (i = 1; i < leader_comm_size; i++) {
+               disps[i] = disps[i - 1] + sizes[i - 1];
+           }
+
            comm_ptr->dev.ch.is_uniform = 1; 
            for(array_index=0; array_index < leader_comm_size; array_index++) { 
                 if(comm_ptr->dev.ch.node_sizes[0] != comm_ptr->dev.ch.node_sizes[array_index]) {
@@ -980,7 +1277,6 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
         }
         shmem_ptr->dev.ch.shmem_info = comm_ptr->dev.ch.shmem_info;
     }
-
     comm_ptr->dev.ch.shmem_coll_ok = 1;
 
 #if defined(_SMP_LIMIC_)
@@ -990,144 +1286,13 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
             MPIR_ERR_POP(mpi_errno);
         }
     }
-
 #endif  /* #if defined(_SMP_LIMIC_) */ 
-
-#if defined(_MCST_SUPPORT_)
-    if (leader_group_size >= mcast_num_nodes_threshold && rdma_enable_mcast) {
-        int leader_rank;
-        int status = 0;
-        int mcast_status[2] = {0, 0}; /* status, comm_id */
-        if(comm_ptr->dev.ch.leader_comm != MPI_COMM_NULL) { 
-            PMPI_Comm_rank(comm_ptr->dev.ch.leader_comm, &leader_rank); 
-            if (leader_rank == 0 && mcast_setup_success) {
-                /* wait for comm ready */
-                status = mv2_mcast_progress_comm_ready(comm_ptr);
-            }
-        } 
-
-        if (my_local_id == 0) {
-            mpi_errno = MPIR_Bcast_impl(&status, 1, MPI_INT, 0, leader_ptr, &errflag);
-            if (mpi_errno) {
-                goto fn_fail;
-            }
-            mcast_status[0] = status;
-            mcast_status[1] = ((bcast_info_t *) comm_ptr->dev.ch.bcast_info)->minfo.grp_info.comm_id;
-            if (!status) {
-                mv2_cleanup_multicast(&((bcast_info_t *) comm_ptr->dev.ch.bcast_info)->minfo, comm_ptr);
-            }
-        }
-
-        mpi_errno = MPIR_Bcast_impl (mcast_status, 2, MPI_INT, 0, shmem_ptr, &errflag);
-        if(mpi_errno) {
-            MPIR_ERR_POP(mpi_errno);
-        }
-
-        comm_ptr->dev.ch.is_mcast_ok = mcast_status[0];
-
-        if (my_rank == 0) {
-            PRINT_DEBUG(DEBUG_MCST_verbose > 1, 
-                    "multicast setup status:%d\n", comm_ptr->dev.ch.is_mcast_ok);
-            if (comm_ptr->dev.ch.is_mcast_ok == 0) {
-                PRINT_INFO (1, "Warning: Multicast group setup failed. Not using any multicast features\n");
-            }
-        }
-
-        if (comm_ptr->dev.ch.is_mcast_ok == 0 && comm == MPI_COMM_WORLD) {
-            /* if mcast setup failed on comm world because of any reason, it is
-            ** most likely is going to fail on other communicators. Hence, disable
-            ** the mcast feaure */
-            rdma_enable_mcast = 0;
-            mv2_ud_destroy_ctx(mcast_ctx->ud_ctx);
-            MPIU_Free(mcast_ctx);
-        }
-	
-    }
-
-#endif
-
-#if defined (_SHARP_SUPPORT_) 
-    if (comm == MPI_COMM_WORLD && mv2_enable_sharp_coll
-        && (leader_group_size > 1) && (comm_ptr->dev.ch.is_sharp_ok == 0)) {
-        sharp_info_t * sharp_coll_info = NULL;        
-
-        comm_ptr->dev.ch.sharp_coll_info = 
-            (sharp_info_t *)MPIU_Malloc(sizeof(sharp_info_t));
-        sharp_coll_info = comm_ptr->dev.ch.sharp_coll_info; 
-        sharp_coll_info->sharp_comm_module = NULL;
-        sharp_coll_info->sharp_conf = MPIU_Malloc(sizeof(sharp_conf_t));
-        
-        sharp_coll_log_early_init();  
-        mpi_errno = mv2_setup_sharp_env(sharp_coll_info->sharp_conf, MPI_COMM_WORLD);
-        if (mpi_errno) {
-           MPIR_ERR_POP(mpi_errno);  
-        }
-        
-        /* Initialize sharp */
-        if (mv2_enable_sharp_coll == 2) {
-            /* Flat algorithm in which every process uses SHArP */
-            mpi_errno = mv2_sharp_coll_init(sharp_coll_info->sharp_conf, my_local_id);
-        } else if (mv2_enable_sharp_coll == 1) {
-            /* Two-level hierarchical algorithm in which, one process at each
-             * node uses SHArP for inter-node communication */
-            mpi_errno = mv2_sharp_coll_init(sharp_coll_info->sharp_conf, 0);
-        } else {
-            PRINT_ERROR("Invalid value for MV2_ENABLE_SHARP \n");
-            mpi_errno = MPI_ERR_OTHER;
-        }
-        if (mpi_errno) {
-           mv2_free_sharp_handlers(comm_ptr->dev.ch.sharp_coll_info); 
-           /* avoid using sharp and fall back to other designs */
-           comm_ptr->dev.ch.sharp_coll_info = NULL;
-           mpi_errno = MPI_SUCCESS;
-           goto sharp_fall_back;
-        }
-        
-        sharp_coll_info->sharp_comm_module = MPIU_Malloc(sizeof(coll_sharp_module_t));
-        MPIU_Memset(sharp_coll_info->sharp_comm_module, 0, sizeof(coll_sharp_module_t));
-        /* create sharp module which contains sharp communicator */
-        if (mv2_enable_sharp_coll == 2) {
-            sharp_coll_info->sharp_comm_module->comm = MPI_COMM_WORLD; 
-            mpi_errno = mv2_sharp_coll_comm_init(sharp_coll_info->sharp_comm_module);
-            if (mpi_errno) {
-               MPIR_ERR_POP(mpi_errno);  
-            } 
-        } else if (my_local_id == 0) {
-            sharp_coll_info->sharp_comm_module->comm = comm_ptr->dev.ch.leader_comm;
-            mpi_errno = mv2_sharp_coll_comm_init(sharp_coll_info->sharp_comm_module);
-            if (mpi_errno) {
-               MPIR_ERR_POP(mpi_errno);  
-            } 
-        }
-        comm_ptr->dev.ch.is_sharp_ok = 1;
-
-        /* If the user does not set the MV2_SHARP_MAX_MSG_SIZE then try to tune
-         * mv2_sharp_tuned_msg_size variable based on node count */
-        if (mv2_enable_sharp_coll == 1 &&
-            (getenv("MV2_SHARP_MAX_MSG_SIZE")) == NULL) {
-            if (leader_group_size == 2) {
-                    mv2_sharp_tuned_msg_size = 256;
-            } else if (leader_group_size <= 4) {
-                mv2_sharp_tuned_msg_size = 512;
-            } else {
-                /* in all other cases set max msg size to
-                 * MV2_DEFAULT_SHARP_MAX_MSG_SIZE */
-                mv2_sharp_tuned_msg_size = MV2_DEFAULT_SHARP_MAX_MSG_SIZE;
-            }
-        }
-    }
-sharp_fall_back:
-#endif /* if defined (_SHARP_SUPPORT_) */
 
     fn_exit:
        MPIU_Free(shmem_group);
        return (mpi_errno);
     fn_fail: 
        MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
-#if defined (_SHARP_SUPPORT_)
-       mv2_free_sharp_handlers(comm_ptr->dev.ch.sharp_coll_info);
-       comm_ptr->dev.ch.sharp_coll_info = NULL;
-#endif
        goto fn_exit; 
 }
 

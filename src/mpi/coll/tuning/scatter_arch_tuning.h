@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2017, The Ohio State University. All rights
+ * Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -13,10 +13,14 @@
 #include "scatter/gen2_cma_RI2_1ppn.h"
 #include "scatter/gen2_cma_RI2_2ppn.h"
 #include "scatter/gen2_cma_RI2_4ppn.h"
+#include "scatter/gen2_cma_RI2_8ppn.h"
+#include "scatter/gen2_cma_RI2_16ppn.h"
 #include "scatter/gen2_cma_RI2_28ppn.h"
 #include "scatter/gen2_RI2_1ppn.h"
 #include "scatter/gen2_RI2_2ppn.h"
 #include "scatter/gen2_RI2_4ppn.h"
+#include "scatter/gen2_RI2_8ppn.h"
+#include "scatter/gen2_RI2_16ppn.h"
 #include "scatter/gen2_RI2_28ppn.h"
 #include "scatter/gen2_RI_1ppn.h"
 #include "scatter/gen2_RI_2ppn.h"
@@ -97,3 +101,19 @@
 #include "scatter/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_16ppn.h"
 #include "scatter/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_32ppn.h"
 #include "scatter/psm_INTEL_XEON_PHI_7250_68_INTEL_HFI_100_64ppn.h"
+#include "scatter/psm_INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100_1ppn.h"
+#include "scatter/psm_INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100_2ppn.h"
+#include "scatter/psm_INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100_4ppn.h"
+#include "scatter/psm_INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100_8ppn.h"
+#include "scatter/psm_INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100_16ppn.h"
+#include "scatter/psm_INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100_24ppn.h"
+#include "scatter/psm_INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100_48ppn.h"
+#include "scatter/gen2_cma_ARM_CAVIUM_V8_MLX_CX_FDR_1ppn.h"
+#include "scatter/gen2_cma_ARM_CAVIUM_V8_MLX_CX_FDR_4ppn.h"
+#include "scatter/gen2_cma_ARM_CAVIUM_V8_MLX_CX_FDR_8ppn.h"
+#include "scatter/gen2_cma_ARM_CAVIUM_V8_MLX_CX_FDR_16ppn.h"
+#include "scatter/gen2_cma_ARM_CAVIUM_V8_MLX_CX_FDR_24ppn.h"
+#include "scatter/gen2_cma_IBM_POWER8_MLX_CX_EDR_2ppn.h"
+#include "scatter/gen2_cma_IBM_POWER8_MLX_CX_EDR_4ppn.h"
+#include "scatter/gen2_cma_IBM_POWER8_MLX_CX_EDR_8ppn.h"
+

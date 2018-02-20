@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1594,10 +1594,26 @@ int MPI_Bcast( void *buffer, int count, MPI_Datatype datatype, int root,
 
 #ifdef _OSU_MVAPICH_
     if (mv2_use_osu_collectives) {
-        mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
-        if (mpi_errno) {
-            MPIR_ERR_POP(mpi_errno);
+        comm_ptr->dev.ch.bcast_coll_count++;
+        if (comm_ptr->dev.ch.shmem_coll_ok == 0) {
+            mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
         }
+#if defined(_MCST_SUPPORT_)
+        if (rdma_enable_mcast &&
+            (comm_ptr->dev.ch.is_mcast_ok == 0) &&
+            (comm_ptr->dev.ch.shmem_coll_ok == 1) &&
+            (comm_ptr->dev.ch.bcast_coll_count >= shmem_coll_count_threshold)) { 
+            disable_split_comm(pthread_self());
+            mpi_errno = create_mcast_comm(comm_ptr->handle, comm_ptr->local_size, comm_ptr->rank);
+            if(mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);
+            }
+            enable_split_comm(pthread_self());
+        }
+#endif /*(_MCST_SUPPORT_)*/
     }
 #endif /* _OSU_MVAPICH_ */
 

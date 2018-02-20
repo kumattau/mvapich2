@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -736,6 +736,7 @@ char MPIU_hostname[MAX_HOSTNAME_LEN] = "_UNKNOWN_"; /* '_' is an illegal char fo
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_Get_node_id(MPID_Comm *comm, int rank, MPID_Node_id_t *id_p)
 {
+    MPIU_Assert(rank >= 0);
     *id_p = comm->dev.vcrt->vcr_table[rank]->node_id;
     return MPI_SUCCESS;
 }
@@ -1430,13 +1431,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
             mpi_errno = populate_ids_from_mapping(value, &g_max_node_id, pg, &did_map);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
-            /* We can rely on Hydra proccess mapping info on signle node case. */
-#if defined(CHANNEL_MRAIL) 
-            if (g_max_node_id == 1 || using_slurm != NULL) 
-#endif            
-		    {
-                MPIDI_Get_local_host_mapping(pg, our_pg_rank);
-            }
+            MPIDI_Get_local_host_mapping(pg, our_pg_rank);
 #endif
             if (did_map) {
                 goto odd_even_cliques;

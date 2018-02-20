@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -101,6 +101,9 @@ typedef struct {
                                 with mcast and bcast */
     int     shmem_coll_count;
     int     allgather_coll_count;
+    int     allreduce_coll_count;
+    int     bcast_coll_count;
+    int     scatter_coll_count;
     void    *shmem_info; /* intra node shmem info */
 #if defined(_SMP_LIMIC_)
     MPI_Comm     intra_sock_comm;

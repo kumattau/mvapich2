@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,6 +25,15 @@
 
 extern void *mv2_cuda_allgather_store_buf;
 extern int mv2_cuda_allgather_store_buf_size;
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgather_cuda_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgather_cuda_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgather_cuda_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgather_cuda_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgather_cuda_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgather_cuda_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgather_cuda_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgather_cuda_count_recv);
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allgather_cuda_intra_MV2
@@ -120,6 +129,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
         j     = rank;
         jnext = left;
 
+        MPIR_PVAR_INC(allgather_cuda, intra, recv, recvcount*recvtype_extent, MPI_BYTE);
         mpi_errno = MPIC_Irecv( ((char *)mv2_cuda_allgather_store_buf + jnext*recvcount*recvtype_extent),
                                 recvcount*recvtype_extent,
                                 MPI_BYTE,
@@ -127,6 +137,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                 MPIR_ALLGATHER_TAG,
                                 comm_ptr,
                                 &recv_req );
+        MPIR_PVAR_INC(allgather_cuda, intra, send, recvcount*recvtype_extent, MPI_BYTE);
         mpi_errno = MPIC_Isend(((char *)recvbuf + j*recvcount*recvtype_extent),
                             recvcount*recvtype_extent,
                             MPI_BYTE,
@@ -135,12 +146,12 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                             comm_ptr,
                             &send_req, errflag);
         mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
-	    if (mpi_errno) {
+        if (mpi_errno) {
             /* for communication errors, just record the error but continue */
             *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
             MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
             MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
-	    }
+        }
 
         MPIU_Memcpy_CUDA_Async((void *)((char *)recvbuf + jnext*recvcount*recvtype_extent),
                 (void *)((char *)mv2_cuda_allgather_store_buf + jnext*recvcount*recvtype_extent),
@@ -149,18 +160,19 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                 stream_h2d );
 
         mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
-	    if (mpi_errno) {
+        if (mpi_errno) {
             /* for communication errors, just record the error but continue */
             *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
             MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
             MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
-	    }
+        }
 
         j       = jnext;
         jnext = (comm_size + jnext - 1) % comm_size;
 
         /*Intermediate steps of communication*/
         for (i=2; i<comm_size-1; i++) {
+            MPIR_PVAR_INC(allgather_cuda, intra, recv, recvcount, recvtype);
             mpi_errno = MPIC_Irecv( ((char *)mv2_cuda_allgather_store_buf + jnext*recvcount*recvtype_extent),
                                     recvcount,
                                     recvtype,
@@ -168,6 +180,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                     MPIR_ALLGATHER_TAG,
                                     comm_ptr,
                                     &recv_req );
+            MPIR_PVAR_INC(allgather_cuda, intra, send, recvcount, recvtype);
             mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + j*recvcount*recvtype_extent),
                                     recvcount,
                                     recvtype,
@@ -176,12 +189,12 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                     comm_ptr,
                                     &send_req, errflag);
             mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
-	        if (mpi_errno) {
+            if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
                 MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
                 MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
-	        }
+            }
                     
             MPIU_Memcpy_CUDA_Async((void *)((char *)recvbuf + jnext*recvcount*recvtype_extent),
                     (void *)((char *)mv2_cuda_allgather_store_buf + jnext*recvcount*recvtype_extent),
@@ -190,19 +203,20 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                     stream_h2d );
 
             mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
-	        if (mpi_errno) {
+            if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
                 MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
                 MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
-	        }
+            }
 
-            j	    = jnext;
+            j        = jnext;
             jnext = (comm_size + jnext - 1) % comm_size;
         }
 
         /*Last stage of communication - copy directly to device*/
         if ( i < comm_size ){
+            MPIR_PVAR_INC(allgather_cuda, intra, recv, recvcount, recvtype);
             mpi_errno = MPIC_Irecv( ((char *)recvbuf + jnext*recvcount*recvtype_extent),
                     recvcount,
                     recvtype,
@@ -210,6 +224,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                     MPIR_ALLGATHER_TAG,
                     comm_ptr,
                     &recv_req );
+            MPIR_PVAR_INC(allgather_cuda, intra, send, recvcount, recvtype);
             mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + j*recvcount*recvtype_extent),
                     recvcount,
                     recvtype,
@@ -218,19 +233,19 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                     comm_ptr,
                     &send_req, errflag);
             mpi_errno = MPIC_Waitall(1, &recv_req, &status, errflag);
-	        if (mpi_errno) {
+            if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
                 MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
                 MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
-	        }
+            }
             mpi_errno = MPIC_Waitall(1, &send_req, &status, errflag);
-	        if (mpi_errno) {
+            if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
                 MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
                 MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
-	        }
+            }
 
         }
 
@@ -268,7 +283,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
             my_tree_root = rank >> i;
             my_tree_root <<= i;
 
-		/* F: saving an MPI_Aint into an int */
+        /* F: saving an MPI_Aint into an int */
             send_offset = my_tree_root * recvcount * recvtype_extent;
             recv_offset = dst_tree_root * recvcount * recvtype_extent;
             
@@ -278,6 +293,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                         recvcount * recvtype_extent, 
                                         cudaMemcpyDeviceToHost);
 
+                MPIR_PVAR_INC(allgather_cuda, intra, recv, (mask)*recvcount, recvtype);
                 mpi_errno = MPIC_Irecv( ((char *)mv2_cuda_allgather_store_buf + recv_offset),
                                         (mask)*recvcount, 
                                         recvtype, 
@@ -285,6 +301,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                         MPIR_ALLGATHER_TAG,
                                         comm_ptr,
                                         &recv_req );
+                MPIR_PVAR_INC(allgather_cuda, intra, send, curr_cnt, recvtype);
                 mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + send_offset),
                                         curr_cnt, 
                                         recvtype, 
@@ -335,12 +352,13 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                 my_tree_root = rank >> i;
                 my_tree_root <<= i;
 
-		/* FIXME: saving an MPI_Aint into an int */
+        /* FIXME: saving an MPI_Aint into an int */
                 send_offset = my_tree_root * recvcount * recvtype_extent;
                 recv_offset = dst_tree_root * recvcount * recvtype_extent;
                 
                 if (dst < comm_size) {
                     if (mask == comm_size/2) {
+                        MPIR_PVAR_INC(allgather_cuda, intra, recv, (mask)*recvcount, recvtype);
                         mpi_errno = MPIC_Irecv( ((char *)recvbuf + recv_offset),
                                                 (mask)*recvcount, 
                                                 recvtype, 
@@ -349,6 +367,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                                 comm_ptr,
                                                 &recv_req );
                     } else {
+                        MPIR_PVAR_INC(allgather_cuda, intra, recv, (mask)*recvcount, recvtype);
                         mpi_errno = MPIC_Irecv( ((char *)mv2_cuda_allgather_store_buf + recv_offset),
                                                 (mask)*recvcount, 
                                                 recvtype, 
@@ -357,6 +376,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                                                 comm_ptr,
                                                 &recv_req );
                     }
+                    MPIR_PVAR_INC(allgather_cuda, intra, send, curr_cnt, recvtype);                        
                     mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + send_offset),
                                             curr_cnt, 
                                             recvtype, 

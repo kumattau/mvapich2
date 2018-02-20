@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -445,15 +445,43 @@ int MV2_set_allgather_tuning_table(int heterogeneity)
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
                 MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
       /* RI2 table */
-      MV2_COLL_TUNING_START_TABLE  (allgather, 4)
+force_default_tables:
+      MV2_COLL_TUNING_START_TABLE  (allgather, 6)
       MV2_COLL_TUNING_ADD_CONF     (allgather, 1,  4, GEN2__RI2__1PPN)
       MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 1,  4, GEN2_CMA__RI2__1PPN)
       MV2_COLL_TUNING_ADD_CONF     (allgather, 2,  5, GEN2__RI2__2PPN)
       MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 2,  5, GEN2_CMA__RI2__2PPN)
       MV2_COLL_TUNING_ADD_CONF     (allgather, 4,  1, GEN2__RI2__4PPN)
       MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 4,  1, GEN2_CMA__RI2__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 8,  4, GEN2__RI2__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 8,  4, GEN2_CMA__RI2__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 16,  4, GEN2__RI2__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 16,  4, GEN2_CMA__RI2__16PPN)
       MV2_COLL_TUNING_ADD_CONF     (allgather, 28, 5, GEN2__RI2__28PPN)
       MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 28, 5, GEN2_CMA__RI2__28PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (allgather)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+				    MV2_ARCH_ARM_CAVIUM_V8, MV2_HCA_MLX_CX_FDR) && !heterogeneity) {
+      /* ARM system at Hartree Center */
+      MV2_COLL_TUNING_START_TABLE  (allgather, 5)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 1,  2, GEN2_CMA__ARM_CAVIUM_V8_MLX_CX_FDR__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 4,  3, GEN2_CMA__ARM_CAVIUM_V8_MLX_CX_FDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 8,  3, GEN2_CMA__ARM_CAVIUM_V8_MLX_CX_FDR__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 16,  3, GEN2_CMA__ARM_CAVIUM_V8_MLX_CX_FDR__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 24,  3, GEN2_CMA__ARM_CAVIUM_V8_MLX_CX_FDR__24PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (allgather)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+				    MV2_ARCH_IBM_POWER8, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+      /* Ray Table */
+      int pg_size = MPIDI_PG_Get_size(MPIDI_Process.my_pg);
+      if (pg_size > 64) goto force_default_tables;
+
+      MV2_COLL_TUNING_START_TABLE  (allgather, 3)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 2,  5, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 4,  2, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 8,  2, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__8PPN)
       MV2_COLL_TUNING_FINISH_TABLE (allgather)
     }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
@@ -1065,49 +1093,29 @@ int MV2_set_allgather_tuning_table(int heterogeneity)
       MV2_COLL_TUNING_ADD_CONF     (allgather, 64, 1, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__64PPN)
       MV2_COLL_TUNING_FINISH_TABLE (allgather)
     }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+			     MV2_ARCH_INTEL_PLATINUM_8160_2S_48, MV2_HCA_INTEL_HFI1) && !heterogeneity) {
+      /* TACC-Skylake Table */
+      MV2_COLL_TUNING_START_TABLE  (allgather, 7)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 1,  4, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 2,  5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 4,  5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 8,  5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 16, 5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 24, 5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__24PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 48, 5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__48PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (allgather)
+    }
     else {
-      /*Sierra Table*/
-      mv2_allgather_indexed_num_ppn_conf = 2;
-      mv2_allgather_indexed_thresholds_table
-	= MPIU_Malloc(sizeof(mv2_allgather_indexed_tuning_table *)
-		      * mv2_allgather_indexed_num_ppn_conf);
-      table_ptrs = MPIU_Malloc(sizeof(mv2_allgather_indexed_tuning_table *)
-			       * mv2_allgather_indexed_num_ppn_conf);
-      mv2_size_allgather_indexed_tuning_table = MPIU_Malloc(sizeof(int) *
-							    mv2_allgather_indexed_num_ppn_conf);
-      mv2_allgather_indexed_table_ppn_conf = MPIU_Malloc(mv2_allgather_indexed_num_ppn_conf * sizeof(int));
-      
-      mv2_allgather_indexed_table_ppn_conf[0] = 1;
-      mv2_size_allgather_indexed_tuning_table[0] = 5;
-      mv2_allgather_indexed_tuning_table mv2_tmp_allgather_indexed_thresholds_table_1ppn[] =
-	PSM__INTEL_XEON_X5650_12__MV2_HCA_QLGIC_QIB__1PPN;
-      table_ptrs[0] = mv2_tmp_allgather_indexed_thresholds_table_1ppn;
-      
-      mv2_allgather_indexed_table_ppn_conf[1] = 12;
-      mv2_size_allgather_indexed_tuning_table[1] = 6;
-      mv2_allgather_indexed_tuning_table mv2_tmp_allgather_indexed_thresholds_table_12ppn[] =
-	PSM__INTEL_XEON_X5650_12__MV2_HCA_QLGIC_QIB__12PPN;
-      table_ptrs[1] = mv2_tmp_allgather_indexed_thresholds_table_12ppn;
-      
-      agg_table_sum = 0;
-      for (i = 0; i < mv2_allgather_indexed_num_ppn_conf; i++) {
-	agg_table_sum += mv2_size_allgather_indexed_tuning_table[i];
-      }
-      mv2_allgather_indexed_thresholds_table[0] =
-	MPIU_Malloc(agg_table_sum * sizeof (mv2_allgather_indexed_tuning_table));
-      MPIU_Memcpy(mv2_allgather_indexed_thresholds_table[0], table_ptrs[0],
-		  (sizeof(mv2_allgather_indexed_tuning_table)
-		   * mv2_size_allgather_indexed_tuning_table[0]));
-      for (i = 1; i < mv2_allgather_indexed_num_ppn_conf; i++) {
-	mv2_allgather_indexed_thresholds_table[i] =
-	  mv2_allgather_indexed_thresholds_table[i - 1]
-	  + mv2_size_allgather_indexed_tuning_table[i - 1];
-	MPIU_Memcpy(mv2_allgather_indexed_thresholds_table[i], table_ptrs[i],
-		    (sizeof(mv2_allgather_indexed_tuning_table)
-		     * mv2_size_allgather_indexed_tuning_table[i]));
-      }
-      MPIU_Free(table_ptrs);
-      return 0;
+      /*default psm table: Bridges Table*/
+      MV2_COLL_TUNING_START_TABLE  (allgather, 6)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 1,  4, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 2,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 4,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 8,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 16,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 28,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__28PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (allgather)
     }
 #endif /* !CHANNEL_PSM */
     {
@@ -2546,202 +2554,280 @@ static int count_sep(char *string)
 
 int MV2_internode_Allgather_is_define(char *mv2_user_allgather_inter)
 {
-  int i = 0;
-  int nb_element = count_sep(mv2_user_allgather_inter) + 1;
+    int i = 0;
+    int nb_element = count_sep(mv2_user_allgather_inter) + 1;
 
-  if (mv2_use_indexed_tuning || mv2_use_indexed_allgather_tuning) {
+    if (mv2_use_indexed_tuning || mv2_use_indexed_allgather_tuning) {
+        mv2_allgather_indexed_tuning_table mv2_tmp_allgather_indexed_thresholds_table[1];
+        mv2_allgather_indexed_num_ppn_conf = 1;
+        if (mv2_size_allgather_indexed_tuning_table == NULL) {
+            mv2_size_allgather_indexed_tuning_table =
+                MPIU_Malloc(mv2_allgather_indexed_num_ppn_conf * sizeof(int));
+        }
+        mv2_size_allgather_indexed_tuning_table[0] = 1;
 
-    mv2_allgather_indexed_tuning_table mv2_tmp_allgather_indexed_thresholds_table[1];
-    mv2_allgather_indexed_num_ppn_conf = 1;
-    if (mv2_size_allgather_indexed_tuning_table == NULL) {
-      mv2_size_allgather_indexed_tuning_table =
-	MPIU_Malloc(mv2_allgather_indexed_num_ppn_conf * sizeof(int));
-    }
-    mv2_size_allgather_indexed_tuning_table[0] = 1;
+        if (mv2_allgather_indexed_table_ppn_conf == NULL) {
+            mv2_allgather_indexed_table_ppn_conf =
+                MPIU_Malloc(mv2_allgather_indexed_num_ppn_conf * sizeof(int));
+        }
+        /* -1 indicates user defined algorithm */
+        mv2_allgather_indexed_table_ppn_conf[0] = -1;
 
-    if (mv2_allgather_indexed_table_ppn_conf == NULL) {
-      mv2_allgather_indexed_table_ppn_conf =
-	MPIU_Malloc(mv2_allgather_indexed_num_ppn_conf * sizeof(int));
-    }
-    /* -1 indicates user defined algorithm */
-    mv2_allgather_indexed_table_ppn_conf[0] = -1;
+        /* If one allgather tuning table is already defined */
+        if (mv2_allgather_indexed_thresholds_table != NULL) {
+            if (mv2_allgather_indexed_thresholds_table[0] != NULL) {
+                MPIU_Free(mv2_allgather_indexed_thresholds_table[0]);
+            }
+            MPIU_Free(mv2_allgather_indexed_thresholds_table);
+        }
 
-    /* If one allgather tuning table is already defined */
-    if (mv2_allgather_indexed_thresholds_table != NULL) {
-      if (mv2_allgather_indexed_thresholds_table[0] != NULL) {
-          MPIU_Free(mv2_allgather_indexed_thresholds_table[0]);
-      }
-      MPIU_Free(mv2_allgather_indexed_thresholds_table);
-    }
+        /* We realloc the space for the new allgather_indexed tuning table */
+        mv2_allgather_indexed_thresholds_table =
+            MPIU_Malloc(mv2_allgather_indexed_num_ppn_conf *
+                    sizeof(mv2_allgather_indexed_tuning_table *));
+        mv2_allgather_indexed_thresholds_table[0] =
+            MPIU_Malloc(mv2_size_allgather_indexed_tuning_table[0] *
+                    sizeof(mv2_allgather_indexed_tuning_table));
 
-    /* We realloc the space for the new allgather_indexed tuning table */
-    mv2_allgather_indexed_thresholds_table =
-      MPIU_Malloc(mv2_allgather_indexed_num_ppn_conf *
-		  sizeof(mv2_allgather_indexed_tuning_table *));
-    mv2_allgather_indexed_thresholds_table[0] =
-      MPIU_Malloc(mv2_size_allgather_indexed_tuning_table[0] *
-		  sizeof(mv2_allgather_indexed_tuning_table));
+        if (nb_element == 1) {
+            mv2_tmp_allgather_indexed_thresholds_table[0].numproc = 1;
+            mv2_tmp_allgather_indexed_thresholds_table[0].size_inter_table = 1;
+            mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].msg_sz = 1;
 
-    if (nb_element == 1) {
-
-      mv2_tmp_allgather_indexed_thresholds_table[0].numproc = 1;
-      mv2_tmp_allgather_indexed_thresholds_table[0].size_inter_table = 1;
-      mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].msg_sz = 1;
-    
-      switch (atoi(mv2_user_allgather_inter)) {
-      case ALLGATHER_RD_ALLGATHER_COMM:
-	mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
-	  &MPIR_Allgather_RD_Allgather_Comm_MV2;
-	break;
-      case ALLGATHER_RD:
-	mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
-	  &MPIR_Allgather_RD_MV2;
-	break;
-      case ALLGATHER_BRUCK:
-	mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
-	  &MPIR_Allgather_Bruck_MV2;
-	break;
-      case ALLGATHER_RING:
-	mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
-	  &MPIR_Allgather_Ring_MV2;
-	break;
-      default:
-	mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
-	  &MPIR_Allgather_RD_MV2;
-      }
-    }
-
-    MPIU_Memcpy(mv2_allgather_indexed_thresholds_table[0], mv2_tmp_allgather_indexed_thresholds_table, sizeof
+            switch (atoi(mv2_user_allgather_inter)) {
+                case ALLGATHER_RD_ALLGATHER_COMM:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_RD_Allgather_Comm_MV2;
+                    break;
+                case ALLGATHER_RD:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_RD_MV2;
+                    break;
+                case ALLGATHER_BRUCK:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_Bruck_MV2;
+                    break;
+                case ALLGATHER_RING:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_Ring_MV2;
+                    break;
+                case ALLGATHER_DIRECT:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_Direct_MV2;
+                    break;
+                case ALLGATHER_DIRECTSPREAD:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_DirectSpread_MV2;
+                    break;
+                case ALLGATHER_GATHER_BCAST:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_gather_bcast_MV2;
+                    break;
+                case ALLGATHER_2LVL_NONBLOCKED:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_2lvl_Allgather_nonblocked_MV2;
+                    break;
+                case ALLGATHER_2LVL_RING_NONBLOCKED:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_2lvl_Allgather_Ring_nonblocked_MV2;
+                    break;
+                case ALLGATHER_2LVL_DIRECT:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_2lvl_Allgather_Direct_MV2;
+                    break;
+                case ALLGATHER_2LVL_RING:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_2lvl_Allgather_Ring_MV2;
+                    break;
+                default:
+                    mv2_tmp_allgather_indexed_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_RD_MV2;
+            }
+        }
+        MPIU_Memcpy(mv2_allgather_indexed_thresholds_table[0], mv2_tmp_allgather_indexed_thresholds_table, sizeof
                 (mv2_allgather_indexed_tuning_table));
-  }
-  else {
-
-    mv2_allgather_tuning_table mv2_tmp_allgather_thresholds_table[1];
-    mv2_allgather_num_ppn_conf = 1;
-    if (mv2_size_allgather_tuning_table == NULL) {
-      mv2_size_allgather_tuning_table =
-	MPIU_Malloc(mv2_allgather_num_ppn_conf * sizeof(int));
-    }
-    mv2_size_allgather_tuning_table[0] = 1;
-
-    if (mv2_allgather_table_ppn_conf == NULL) {
-      mv2_allgather_table_ppn_conf =
-	MPIU_Malloc(mv2_allgather_num_ppn_conf * sizeof(int));
-    }
-    /* -1 indicates user defined algorithm */
-    mv2_allgather_table_ppn_conf[0] = -1;
-
-    /* If one allgather tuning table is already defined */
-    if (mv2_allgather_thresholds_table != NULL) {
-      MPIU_Free(mv2_allgather_thresholds_table);
-    }
-
-    /* We realloc the space for the new allgather tuning table */
-    mv2_allgather_thresholds_table =
-      MPIU_Malloc(mv2_allgather_num_ppn_conf *
-		  sizeof(mv2_allgather_tuning_table *));
-    mv2_allgather_thresholds_table[0] =
-      MPIU_Malloc(mv2_size_allgather_tuning_table[0] *
-		  sizeof(mv2_allgather_tuning_table));
-
-    if (nb_element == 1) {
-
-      mv2_tmp_allgather_thresholds_table[0].numproc = 1;
-      mv2_tmp_allgather_thresholds_table[0].size_inter_table = 1;
-      mv2_tmp_allgather_thresholds_table[0].inter_leader[0].min = 0;
-      mv2_tmp_allgather_thresholds_table[0].inter_leader[0].max = -1;
-      mv2_tmp_allgather_thresholds_table[0].two_level[0] = mv2_user_allgather_two_level;
-    
-      switch (atoi(mv2_user_allgather_inter)) {
-      case ALLGATHER_RD_ALLGATHER_COMM:
-	mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
-	  &MPIR_Allgather_RD_Allgather_Comm_MV2;
-	break;
-      case ALLGATHER_RD:
-	mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
-	  &MPIR_Allgather_RD_MV2;
-	break;
-      case ALLGATHER_BRUCK:
-	mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
-	  &MPIR_Allgather_Bruck_MV2;
-	break;
-      case ALLGATHER_RING:
-	mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
-	  &MPIR_Allgather_Ring_MV2;
-	break;
-      default:
-	mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
-	  &MPIR_Allgather_RD_MV2;
-      }
-        
     } else {
-      char *dup, *p, *save_p;
-      regmatch_t match[NMATCH];
-      regex_t preg;
-      const char *regexp = "([0-9]+):([0-9]+)-([0-9]+|\\+)";
+        mv2_allgather_tuning_table mv2_tmp_allgather_thresholds_table[1];
+        mv2_allgather_num_ppn_conf = 1;
+        if (mv2_size_allgather_tuning_table == NULL) {
+            mv2_size_allgather_tuning_table =
+                MPIU_Malloc(mv2_allgather_num_ppn_conf * sizeof(int));
+        }
+        mv2_size_allgather_tuning_table[0] = 1;
 
-      if (!(dup = MPIU_Strdup(mv2_user_allgather_inter))) {
-	fprintf(stderr, "failed to duplicate `%s'\n", mv2_user_allgather_inter);
-	return -1;
-      }
+        if (mv2_allgather_table_ppn_conf == NULL) {
+            mv2_allgather_table_ppn_conf =
+                MPIU_Malloc(mv2_allgather_num_ppn_conf * sizeof(int));
+        }
+        /* -1 indicates user defined algorithm */
+        mv2_allgather_table_ppn_conf[0] = -1;
 
-      if (regcomp(&preg, regexp, REG_EXTENDED)) {
-	fprintf(stderr, "failed to compile regexp `%s'\n", mv2_user_allgather_inter);
-	MPIU_Free(dup);
-	return -1;
-      }
+        /* If one allgather tuning table is already defined */
+        if (mv2_allgather_thresholds_table != NULL) {
+            MPIU_Free(mv2_allgather_thresholds_table);
+        }
 
-      mv2_tmp_allgather_thresholds_table[0].numproc = 1;
-      mv2_tmp_allgather_thresholds_table[0].size_inter_table = nb_element;
+        /* We realloc the space for the new allgather tuning table */
+        mv2_allgather_thresholds_table =
+            MPIU_Malloc(mv2_allgather_num_ppn_conf *
+                    sizeof(mv2_allgather_tuning_table *));
+        mv2_allgather_thresholds_table[0] =
+            MPIU_Malloc(mv2_size_allgather_tuning_table[0] *
+                    sizeof(mv2_allgather_tuning_table));
 
-      i = 0;
-      for (p = strtok_r(dup, ",", &save_p); p; p = strtok_r(NULL, ",", &save_p)) {
-	if (regexec(&preg, p, NMATCH, match, 0)) {
-	  fprintf(stderr, "failed to match on `%s'\n", p);
-	  regfree(&preg);
-	  MPIU_Free(dup);
-	  return -1;
-	}
-	/* given () start at 1 */
-	switch (atoi(p + match[1].rm_so)) {
-	case ALLGATHER_RD_ALLGATHER_COMM:
-	  mv2_tmp_allgather_thresholds_table[0].inter_leader[i].MV2_pt_Allgather_function =
-	    &MPIR_Allgather_RD_Allgather_Comm_MV2;
-	  break;
-	case ALLGATHER_RD:
-	  mv2_tmp_allgather_thresholds_table[0].inter_leader[i].MV2_pt_Allgather_function =
-	    &MPIR_Allgather_RD_MV2;
-	  break;
-	case ALLGATHER_BRUCK:
-	  mv2_tmp_allgather_thresholds_table[0].inter_leader[i].MV2_pt_Allgather_function =
-	    &MPIR_Allgather_Bruck_MV2;
-	  break;
-	case ALLGATHER_RING:
-	  mv2_tmp_allgather_thresholds_table[0].inter_leader[i].MV2_pt_Allgather_function =
-	    &MPIR_Allgather_Ring_MV2;
-	  break;
-	default:
-	  mv2_tmp_allgather_thresholds_table[0].inter_leader[i].MV2_pt_Allgather_function =
-	    &MPIR_Allgather_RD_MV2;
+        if (nb_element == 1) {
 
-	}
+            mv2_tmp_allgather_thresholds_table[0].numproc = 1;
+            mv2_tmp_allgather_thresholds_table[0].size_inter_table = 1;
+            mv2_tmp_allgather_thresholds_table[0].inter_leader[0].min = 0;
+            mv2_tmp_allgather_thresholds_table[0].inter_leader[0].max = -1;
+            mv2_tmp_allgather_thresholds_table[0].two_level[0] = mv2_user_allgather_two_level;
 
-	mv2_tmp_allgather_thresholds_table[0].inter_leader[i].min = atoi(p +
-                                                                         match[2].rm_so);
-	if (p[match[3].rm_so] == '+') {
-	  mv2_tmp_allgather_thresholds_table[0].inter_leader[i].max = -1;
-	} else {
-	  mv2_tmp_allgather_thresholds_table[0].inter_leader[i].max =
-	    atoi(p + match[3].rm_so);
-	}
-	i++;
-      }
-      MPIU_Free(dup);
-      regfree(&preg);
-    }
+            switch (atoi(mv2_user_allgather_inter)) {
+                case ALLGATHER_RD_ALLGATHER_COMM:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_RD_Allgather_Comm_MV2;
+                    break;
+                case ALLGATHER_RD:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_RD_MV2;
+                    break;
+                case ALLGATHER_BRUCK:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_Bruck_MV2;
+                    break;
+                case ALLGATHER_RING:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_Ring_MV2;
+                    break;
+                case ALLGATHER_DIRECT:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_Direct_MV2;
+                    break;
+                case ALLGATHER_DIRECTSPREAD:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_DirectSpread_MV2;
+                    break;
+                case ALLGATHER_GATHER_BCAST:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_gather_bcast_MV2;
+                    break;
+                case ALLGATHER_2LVL_NONBLOCKED:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_2lvl_Allgather_nonblocked_MV2;
+                    break;
+                case ALLGATHER_2LVL_RING_NONBLOCKED:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_2lvl_Allgather_Ring_nonblocked_MV2;
+                    break;
+                case ALLGATHER_2LVL_DIRECT:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_2lvl_Allgather_Direct_MV2;
+                    break;
+                case ALLGATHER_2LVL_RING:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_2lvl_Allgather_Ring_MV2;
+                    break;
 
-    MPIU_Memcpy(mv2_allgather_thresholds_table[0], mv2_tmp_allgather_thresholds_table, sizeof
+                default:
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                        &MPIR_Allgather_RD_MV2;
+            }
+
+        } else {
+            char *dup, *p, *save_p;
+            regmatch_t match[NMATCH];
+            regex_t preg;
+            const char *regexp = "([0-9]+):([0-9]+)-([0-9]+|\\+)";
+
+            if (!(dup = MPIU_Strdup(mv2_user_allgather_inter))) {
+                fprintf(stderr, "failed to duplicate `%s'\n", mv2_user_allgather_inter);
+                return -1;
+            }
+
+            if (regcomp(&preg, regexp, REG_EXTENDED)) {
+                fprintf(stderr, "failed to compile regexp `%s'\n", mv2_user_allgather_inter);
+                MPIU_Free(dup);
+                return -1;
+            }
+
+            mv2_tmp_allgather_thresholds_table[0].numproc = 1;
+            mv2_tmp_allgather_thresholds_table[0].size_inter_table = nb_element;
+
+            i = 0;
+            for (p = strtok_r(dup, ",", &save_p); p; p = strtok_r(NULL, ",", &save_p)) {
+                if (regexec(&preg, p, NMATCH, match, 0)) {
+                    fprintf(stderr, "failed to match on `%s'\n", p);
+                    regfree(&preg);
+                    MPIU_Free(dup);
+                    return -1;
+                }
+                /* given () start at 1 */
+                switch (atoi(p + match[1].rm_so)) {
+                    case ALLGATHER_RD_ALLGATHER_COMM:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[i].MV2_pt_Allgather_function =
+                            &MPIR_Allgather_RD_Allgather_Comm_MV2;
+                        break;
+                    case ALLGATHER_RD:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[i].MV2_pt_Allgather_function =
+                            &MPIR_Allgather_RD_MV2;
+                        break;
+                    case ALLGATHER_BRUCK:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[i].MV2_pt_Allgather_function =
+                            &MPIR_Allgather_Bruck_MV2;
+                        break;
+                    case ALLGATHER_RING:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[i].MV2_pt_Allgather_function =
+                            &MPIR_Allgather_Ring_MV2;
+                        break;
+                    case ALLGATHER_DIRECT:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                            &MPIR_Allgather_Direct_MV2;
+                        break;
+                    case ALLGATHER_DIRECTSPREAD:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                            &MPIR_Allgather_DirectSpread_MV2;
+                        break;
+                    case ALLGATHER_GATHER_BCAST:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                            &MPIR_Allgather_gather_bcast_MV2;
+                        break;
+                    case ALLGATHER_2LVL_NONBLOCKED:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                            &MPIR_2lvl_Allgather_nonblocked_MV2;
+                        break;
+                    case ALLGATHER_2LVL_RING_NONBLOCKED:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                            &MPIR_2lvl_Allgather_Ring_nonblocked_MV2;
+                        break;
+                    case ALLGATHER_2LVL_DIRECT:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                            &MPIR_2lvl_Allgather_Direct_MV2;
+                        break;
+                    case ALLGATHER_2LVL_RING:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[0].MV2_pt_Allgather_function =
+                            &MPIR_2lvl_Allgather_Ring_MV2;
+                        break;
+                    default:
+                        mv2_tmp_allgather_thresholds_table[0].inter_leader[i].MV2_pt_Allgather_function =
+                            &MPIR_Allgather_RD_MV2;
+                }
+
+                mv2_tmp_allgather_thresholds_table[0].inter_leader[i].min = atoi(p + match[2].rm_so);
+                if (p[match[3].rm_so] == '+') {
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[i].max = -1;
+                } else {
+                    mv2_tmp_allgather_thresholds_table[0].inter_leader[i].max =
+                        atoi(p + match[3].rm_so);
+                }
+                i++;
+            }
+            MPIU_Free(dup);
+            regfree(&preg);
+        }
+
+        MPIU_Memcpy(mv2_allgather_thresholds_table[0], mv2_tmp_allgather_thresholds_table, sizeof
                 (mv2_allgather_tuning_table));
-  }
-  return 0;
+    }
+    return 0;
 }

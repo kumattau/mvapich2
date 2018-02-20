@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1000,7 +1000,7 @@ int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     if (mpi_errno) goto fn_fail;
 #ifdef _OSU_MVAPICH_
     if (mv2_use_osu_collectives) {
-        if(comm_ptr->dev.ch.allgather_comm_ok >= 0) {
+        if(comm_ptr->dev.ch.allgather_comm_ok == 0) {
             mpi_errno = mv2_increment_allgather_coll_counter(comm_ptr);
             if (mpi_errno) {
                 MPIR_ERR_POP(mpi_errno);

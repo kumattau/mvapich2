@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
- /* Copyright (c) 2001-2017, The Ohio State University. All rights
+ /* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -115,6 +115,9 @@ int MPIR_Comm_init(MPID_Comm * comm_p)
 #ifdef _OSU_MVAPICH_
     comm_p->dev.ch.shmem_coll_count = 0; 
     comm_p->dev.ch.allgather_coll_count = 0; 
+    comm_p->dev.ch.allreduce_coll_count = 0; 
+    comm_p->dev.ch.bcast_coll_count = 0;
+    comm_p->dev.ch.scatter_coll_count = 0;
     comm_p->dev.ch.shmem_coll_ok = 0;
     comm_p->dev.ch.allgather_comm_ok = 0;
     comm_p->dev.ch.is_global_block  = 0;
@@ -130,6 +133,10 @@ int MPIR_Comm_init(MPID_Comm * comm_p)
     comm_p->dev.ch.bcast_info = NULL;
 #endif
     comm_p->dev.ch.shmem_info = NULL;
+    comm_p->dev.ch.leader_map  = NULL;
+    comm_p->dev.ch.leader_rank = NULL;
+    comm_p->dev.ch.node_disps  = NULL;
+    comm_p->dev.ch.rank_list   = NULL;
 
 #if defined(_SMP_LIMIC)    
     comm_p->dev.ch.socket_size=MPI_COMM_NULL;

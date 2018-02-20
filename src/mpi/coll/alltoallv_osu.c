@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,7 +18,15 @@
 #include "mpiimpl.h"
 #include "coll_shmem.h"
 
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mpit_alltoallv_mv2_pw);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_pw);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_count_recv);
 
 /* This is the default implementation of alltoallv. The algorithm is:
    
@@ -57,7 +65,7 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
                              MPI_Datatype recvtype,
                              MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mpit_alltoallv_mv2_pw, 1);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoallv_pw, 1);
     int comm_size, i, j;
     MPI_Aint send_extent, recv_extent;
     int mpi_errno = MPI_SUCCESS;
@@ -92,6 +100,8 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
             for (j = i; j < comm_size; ++j) {
                 if (rank == i) {
                     /* also covers the (rank == i && rank == j) case */
+                    MPIR_PVAR_INC(alltoallv, intra, send, recvcnts[j], recvtype);
+                    MPIR_PVAR_INC(alltoallv, intra, recv, recvcnts[j], recvtype);
                     mpi_errno =
                         MPIC_Sendrecv_replace(((char *) recvbuf +
                                                   rdispls[j] * recv_extent),
@@ -108,6 +118,8 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
                     }
                 } else if (rank == j) {
                     /* same as above with i/j args reversed */
+                    MPIR_PVAR_INC(alltoallv, intra, send, recvcnts[j], recvtype);
+                    MPIR_PVAR_INC(alltoallv, intra, recv, recvcnts[j], recvtype);
                     mpi_errno =
                         MPIC_Sendrecv_replace(((char *) recvbuf +
                                                   rdispls[i] * recv_extent),
@@ -152,7 +164,8 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
                 src = (rank - i + comm_size) % comm_size;
                 dst = (rank + i) % comm_size;
             }
-
+            MPIR_PVAR_INC(alltoallv, intra, send, sendcnts[dst], sendtype);
+            MPIR_PVAR_INC(alltoallv, intra, recv, recvcnts[src], recvtype);
             mpi_errno = MPIC_Sendrecv(((char *) sendbuf +
                                           sdispls[dst] * send_extent),
                                          sendcnts[dst], sendtype, dst,

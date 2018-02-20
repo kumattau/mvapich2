@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -27,6 +27,31 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_bruck);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_rd);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_sd);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_pw);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_inplace_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_bruck_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_sd_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_pw_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_inplace_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_bruck_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_sd_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_pw_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_inplace_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_bruck_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_sd_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_pw_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_inplace_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_bruck_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_sd_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_pw_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_count_recv);
 
 /* This is the default implementation of alltoall. The algorithm is:
    
@@ -127,6 +152,8 @@ int MPIR_Alltoall_inplace_MV2(
         for (j = i; j < comm_size; ++j) {
             if (rank == i) {
                 /* also covers the (rank == i && rank == j) case */
+                MPIR_PVAR_INC(alltoall, inplace, send, recvcount, recvtype);
+                MPIR_PVAR_INC(alltoall, inplace, recv, recvcount, recvtype);
                 mpi_errno = MPIC_Sendrecv_replace(((char *)recvbuf + 
                                                       j*recvcount*recvtype_extent),
                                                       recvcount, recvtype,
@@ -143,6 +170,8 @@ int MPIR_Alltoall_inplace_MV2(
             }
             else if (rank == j) {
                 /* same as above with i/j args reversed */
+                MPIR_PVAR_INC(alltoall, inplace, send, recvcount, recvtype);
+                MPIR_PVAR_INC(alltoall, inplace, recv, recvcount, recvtype);
                 mpi_errno = MPIC_Sendrecv_replace(((char *)recvbuf + 
                                                      i*recvcount*recvtype_extent),
                                                      recvcount, recvtype,
@@ -286,6 +315,8 @@ int MPIR_Alltoall_bruck_MV2(
             MPIR_ERR_POP(mpi_errno);
         }
         
+        MPIR_PVAR_INC(alltoall, bruck, send, position, MPI_PACKED);
+        MPIR_PVAR_INC(alltoall, bruck, recv, 1, newtype);                
         mpi_errno = MPIC_Sendrecv(tmp_buf, position, MPI_PACKED, dst,
                                      MPIR_ALLTOALL_TAG, recvbuf, 1, newtype,
                                      src, MPIR_ALLTOALL_TAG, comm_ptr,
@@ -545,6 +576,7 @@ int MPIR_Alltoall_Scatter_dest_MV2(
         /* do the communication -- post ss sends and receives: */
         for ( i=0; i<ss; i++ ) {
             dst = (rank+i+ii) % comm_size;
+            MPIR_PVAR_INC(alltoall, sd, recv, recvcount, recvtype);
             mpi_errno = MPIC_Irecv((char *)recvbuf +
                                       dst*recvcount*recvtype_extent,
                                       recvcount, recvtype, dst,
@@ -554,6 +586,7 @@ int MPIR_Alltoall_Scatter_dest_MV2(
         }
         for ( i=0; i<ss; i++ ) {
             dst = (rank-i-ii+comm_size) % comm_size;
+            MPIR_PVAR_INC(alltoall, sd, send, sendcount, sendtype);
             mpi_errno = MPIC_Isend((char *)sendbuf +
                                           dst*sendcount*sendtype_extent,
                                           sendcount, sendtype, dst,
@@ -659,6 +692,8 @@ int MPIR_Alltoall_pairwise_MV2(
             src = (rank - i + comm_size) % comm_size;
             dst = (rank + i) % comm_size;
         }
+        MPIR_PVAR_INC(alltoall, pw, send, sendcount, sendtype);
+        MPIR_PVAR_INC(alltoall, pw, recv, recvcount, recvtype);
         mpi_errno = MPIC_Sendrecv(((char *)sendbuf +
                                      dst*sendcount*sendtype_extent),
                                      sendcount, sendtype, dst,
@@ -725,9 +760,10 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
     nbytes = sendtype_size * sendcount;
 
 #ifdef CHANNEL_PSM
-    //To avoid picking up algorithms like recursive doubling alltoall if psm is used
+    /* To avoid picking up algorithms like recursive doubling alltoall if psm is used */
     if (nbytes >= ipath_max_transfer_size) {
-	goto psm_a2a_bypass;
+        MV2_Alltoall_function = MPIR_Alltoall_pairwise_MV2;
+        goto psm_a2a_bypass;
     }
 #endif
 
@@ -744,6 +780,15 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
             /* Indicating user defined tuning */
             conf_index = 0;
             goto conf_check_end;
+        }
+        if (likely(mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
+            /* for small messages, force Bruck or RD */
+            if (local_size < 16 && nbytes < 32) {
+               MV2_Alltoall_function = MPIR_Alltoall_RD_MV2; 
+            } else { 
+                MV2_Alltoall_function = MPIR_Alltoall_bruck_MV2;
+            }
+            goto skip_tuning_tables;
         }
         do {
             if (local_size == mv2_alltoall_indexed_table_ppn_conf[i]) {
@@ -816,8 +861,8 @@ conf_check_end:
 
 #ifdef CHANNEL_PSM
  psm_a2a_bypass:
-    MV2_Alltoall_function = MPIR_Alltoall_pairwise_MV2;
 #endif
+skip_tuning_tables:
 
     if(sendbuf != MPI_IN_PLACE) {  
         mpi_errno = MV2_Alltoall_function(sendbuf, sendcount, sendtype,
@@ -1006,6 +1051,8 @@ int MPIR_Alltoall_intra_MV2(
             for (j = i; j < comm_size; ++j) {
                 if (rank == i) {
                     /* also covers the (rank == i && rank == j) case */
+                    MPIR_PVAR_INC(alltoall, intra, send, recvcount, recvtype);
+                    MPIR_PVAR_INC(alltoall, intra, recv, recvcount, recvtype);
                     mpi_errno = MPIC_Sendrecv_replace(((char *)recvbuf + 
                                                       j*recvcount*recvtype_extent),
                                                       recvcount, recvtype,
@@ -1021,6 +1068,8 @@ int MPIR_Alltoall_intra_MV2(
                 }
                 else if (rank == j) {
                     /* same as above with i/j args reversed */
+                    MPIR_PVAR_INC(alltoall, intra, send, recvcount, recvtype);
+                    MPIR_PVAR_INC(alltoall, intra, recv, recvcount, recvtype);
                     mpi_errno = MPIC_Sendrecv_replace(((char *)recvbuf + 
                                                       i*recvcount*recvtype_extent),
                                                       recvcount, recvtype,
@@ -1125,6 +1174,8 @@ int MPIR_Alltoall_intra_MV2(
                 MPIR_ERR_POP(mpi_errno); 
             }
 
+            MPIR_PVAR_INC(alltoall, intra, send, position, MPI_PACKED);
+            MPIR_PVAR_INC(alltoall, intra, recv, 1, newtype);
             mpi_errno = MPIC_Sendrecv(tmp_buf, position, MPI_PACKED, dst,
                                       MPIR_ALLTOALL_TAG, recvbuf, 1, newtype,
                                       src, MPIR_ALLTOALL_TAG, comm_ptr,
@@ -1238,6 +1289,8 @@ int MPIR_Alltoall_intra_MV2(
             my_tree_root <<= i;
             
             if (dst < comm_size) {
+                MPIR_PVAR_INC(alltoall, intra, send, curr_cnt, sendtype);
+                MPIR_PVAR_INC(alltoall, intra, recv, sendbuf_extent*(comm_size-dst_tree_root), sendtype);
                 mpi_errno = MPIC_Sendrecv(((char *)tmp_buf +
                                            my_tree_root*sendbuf_extent),
                                           curr_cnt, sendtype,
@@ -1296,6 +1349,7 @@ int MPIR_Alltoall_intra_MV2(
                         (rank < tree_root + nprocs_completed)
                         && (dst >= tree_root + nprocs_completed)) {
                         /* send the data received in this step above */
+                        MPIR_PVAR_INC(alltoall, intra, send, last_recv_cnt, sendtype);
                         mpi_errno = MPIC_Send(((char *)tmp_buf +
                                                dst_tree_root*sendbuf_extent),
                                               last_recv_cnt, sendtype,
@@ -1313,6 +1367,7 @@ int MPIR_Alltoall_intra_MV2(
                     else if ((dst < rank) && 
                              (dst < tree_root + nprocs_completed) &&
                              (rank >= tree_root + nprocs_completed)) {
+                        MPIR_PVAR_INC(alltoall, intra, recv, sendbuf_extent*(comm_size-dst_tree_root), sendtype);
                         mpi_errno = MPIC_Recv(((char *)tmp_buf +
                                                dst_tree_root*sendbuf_extent),
                                               sendbuf_extent*(comm_size-dst_tree_root),
@@ -1396,6 +1451,7 @@ int MPIR_Alltoall_intra_MV2(
             /* do the communication -- post ss sends and receives: */
             for ( i=0; i<ss; i++ ) {
                 dst = (rank+i+ii) % comm_size;
+                MPIR_PVAR_INC(alltoall, intra, recv, recvcount, recvtype);
                 mpi_errno = MPIC_Irecv((char *)recvbuf +
                                           dst*recvcount*recvtype_extent,
                                           recvcount, recvtype, dst,
@@ -1406,6 +1462,7 @@ int MPIR_Alltoall_intra_MV2(
 
             for ( i=0; i<ss; i++ ) {
                 dst = (rank-i-ii+comm_size) % comm_size;
+                MPIR_PVAR_INC(alltoall, intra, send, sendcount, sendtype);
                 mpi_errno = MPIC_Isend((char *)sendbuf +
                                           dst*sendcount*sendtype_extent,
                                           sendcount, sendtype, dst,
@@ -1466,6 +1523,8 @@ int MPIR_Alltoall_intra_MV2(
                 dst = (rank + i) % comm_size;
             }
 
+            MPIR_PVAR_INC(alltoall, intra, send, sendcount, sendtype);
+            MPIR_PVAR_INC(alltoall, intra, recv, recvcount, recvtype);
             mpi_errno = MPIC_Sendrecv(((char *)sendbuf +
                                        dst*sendcount*sendtype_extent), 
                                       sendcount, sendtype, dst,

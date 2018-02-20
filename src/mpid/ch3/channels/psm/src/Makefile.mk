@@ -1,7 +1,7 @@
 ## -*- Mode: Makefile; -*-
 ## vim: set ft=automake :
 ##
-## Copyright (c) 2001-2014, The Ohio State University. All rights
+## Copyright (c) 2001-2017, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -21,6 +21,7 @@ AM_CPPFLAGS += -D_GNU_SOURCE
 mpi_core_sources +=   \
     src/mpid/ch3/channels/common/src/detect/arch/mv2_arch_detect.c 	\
     src/mpid/ch3/channels/common/src/detect/hca/mv2_hca_detect.c	\
+    src/mpid/ch3/channels/common/src/util/mv2_utils.c				\
     src/mpid/ch3/channels/psm/src/mpidi_calls.c  \
     src/mpid/ch3/channels/psm/src/psm_entry.c    \
     src/mpid/ch3/channels/psm/src/psm_exit.c     \

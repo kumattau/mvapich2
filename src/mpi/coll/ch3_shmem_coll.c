@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -54,6 +54,7 @@
 #include "reduce_tuning.h"
 #include "allgather_tuning.h"
 #include "red_scat_tuning.h"
+#include "red_scat_block_tuning.h"
 #include "allgatherv_tuning.h"
 #include "igather_tuning.h"
 #include "ibcast_tuning.h"
@@ -73,7 +74,6 @@
 #include "datatype.h"
 #endif
 #include "debug_utils.h"
-
 
 /* 
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -372,9 +372,16 @@ char *mv2_user_ibarrier_intra = NULL;
 char *mv2_user_ibarrier_inter = NULL;
 int ibarrier_segment_size = 8192;
 int mv2_enable_ibarrier = 1;
+int mv2_gather_status_alignment = 16;
+int mv2_bcast_status_alignment = 16;
+
+int mv2_enable_allreduce_all_compute = 1;
 
 /* Runtime threshold for red_scat */
 char *mv2_user_red_scat_inter = NULL;
+
+/* Runtime threshold for red_scat_block */
+char *mv2_user_red_scat_block_inter = NULL;
 
 /* Runtime threshold for allgatherv */
 char *mv2_user_allgatherv_inter = NULL;
@@ -423,6 +430,9 @@ int mv2_use_mcast_pipeline_shm = 0;
 int use_limic_gather = 0;
 #endif                          /*#if defined(_SMP_LIMIC_) */
 int use_2lvl_allgather = 0;
+
+int mv2_enable_skip_tuning_table_search = 1;
+int mv2_coll_skip_table_threshold = MV2_DEFAULT_COLL_SKIP_TABLE_THRESHOLD; /* msg sizes larger than this will pick an algorithm from tuning table */
 
 struct coll_runtime mv2_coll_param = { MPIR_ALLGATHER_SHORT_MSG,
     MPIR_ALLGATHER_LONG_MSG,
@@ -494,6 +504,7 @@ int MV2_collectives_arch_init(int heterogeneity)
       MV2_set_reduce_tuning_table(heterogeneity);
       MV2_set_allgather_tuning_table(heterogeneity);
       MV2_set_red_scat_tuning_table(heterogeneity);
+      MV2_set_red_scat_block_tuning_table(heterogeneity);
       MV2_set_allgatherv_tuning_table(heterogeneity);
     }
     if (mv2_use_osu_nb_collectives) {
@@ -783,9 +794,14 @@ static int tuning_runtime_init()
         MV2_internode_Allgather_is_define(mv2_user_allgather_inter);
     }
 
-    /* if MV2_INTER_RED_SCAT_TUNING is define with/without MV2_INTRA_RED_SCAT_TUNING */
+    /* if MV2_INTER_RED_SCAT_TUNING is define */
     if (mv2_user_red_scat_inter != NULL) {
         MV2_internode_Red_scat_is_define(mv2_user_red_scat_inter);
+    }
+
+    /* if MV2_INTER_RED_SCAT_BLOCK_TUNING is define */
+    if (mv2_user_red_scat_block_inter != NULL) {
+        MV2_internode_Red_scat_block_is_define(mv2_user_red_scat_block_inter);
     }
 
     /* if MV2_INTER_ALLGATHERV_TUNING is define */
@@ -818,6 +834,7 @@ void MV2_collectives_arch_finalize()
         MV2_cleanup_reduce_tuning_table();
         MV2_cleanup_allgather_tuning_table();
         MV2_cleanup_red_scat_tuning_table();
+        MV2_cleanup_red_scat_block_tuning_table();
         MV2_cleanup_allgatherv_tuning_table();
     }
     if (mv2_use_osu_nb_collectives) {
@@ -1172,6 +1189,18 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
         mv2_shmem_coll_num_procs = (int) atoi(value);
     }
 
+    if ((value = getenv("MV2_ENABLE_ALLREDUCE_ALL_COMPUTE")) != NULL) {
+        mv2_enable_allreduce_all_compute = atoi(value);
+    }
+
+    if ((value = getenv("MV2_GATHER_STATUS_ALIGNMENT")) != NULL) {
+        mv2_gather_status_alignment = atoi(value);
+    }
+
+    if ((value = getenv("MV2_BCAST_STATUS_ALIGNMENT")) != NULL) {
+        mv2_bcast_status_alignment = atoi(value);
+    }
+
     /* Find out the size of the region to create */
     mv2_shmem_coll_size = SHMEM_ALIGN(SHMEM_COLL_BUF_SIZE + getpagesize())
                                 + SHMEM_CACHE_LINE_SIZE;
@@ -1247,13 +1276,14 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
 #if defined(_SMP_LIMIC_)
         num_cntrl_bufs = 6;
 #endif
-        MPIU_Memset(buf, 0, num_cntrl_bufs*SHMEM_COLL_SYNC_ARRAY_SIZE);
+        MPIU_Memset(buf, 0, (num_cntrl_bufs-1)*SHMEM_COLL_SYNC_ARRAY_SIZE + 
+                SHMEM_BCAST_SYNC_ARRAY_SIZE);
     }  
 
     shmem_coll_block_status = (volatile int *) buf;
     buf += SHMEM_COLL_STATUS_ARRAY_SIZE;
     child_complete_bcast = (volatile int *) buf;
-    buf += SHMEM_COLL_SYNC_ARRAY_SIZE;
+    buf += SHMEM_BCAST_SYNC_ARRAY_SIZE;
     child_complete_gather = (volatile int *) buf;
     buf += SHMEM_COLL_SYNC_ARRAY_SIZE;
     root_complete_gather = (volatile int *) buf;
@@ -1269,7 +1299,7 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
     if (local_id == 0) {
         for (j = 0; j < mv2_shmem_coll_num_comm; ++j) {
             for (i = 0; i < mv2_shmem_coll_num_procs; ++i) {
-                SHMEM_COLL_SYNC_CLR(child_complete_bcast, j, i);
+                SHMEM_BCAST_SYNC_CLR(child_complete_bcast, j, i);
                 WRITEBAR();
             }
 
@@ -1497,7 +1527,7 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
     if (rank == 0) {
         for (; i < size; ++i) {
             READBAR();
-            while (SHMEM_COLL_SYNC_ISSET(child_complete_bcast, shmem_comm_rank, i)) {
+            while (SHMEM_BCAST_SYNC_ISSET(child_complete_bcast, shmem_comm_rank, i)) {
 #if defined(CKPT)
                 Wait_for_CR_Completion();
 #endif
@@ -1534,7 +1564,7 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
         *output_buf = (char *) shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
     } else {
         READBAR();
-        while (SHMEM_COLL_SYNC_ISCLR(child_complete_bcast, shmem_comm_rank, rank)) {
+        while (SHMEM_BCAST_SYNC_ISCLR(child_complete_bcast, shmem_comm_rank, rank)) {
 #if defined(CKPT)
             Wait_for_CR_Completion();
 #endif
@@ -1585,11 +1615,11 @@ void MPIDI_CH3I_SHMEM_Bcast_Complete(int size, int rank, int shmem_comm_rank)
 
     if (rank == 0) {
         for (; i < size; ++i) {
-            SHMEM_COLL_SYNC_SET(child_complete_bcast, shmem_comm_rank, i);
+            SHMEM_BCAST_SYNC_SET(child_complete_bcast, shmem_comm_rank, i);
             WRITEBAR();
         }
     } else {
-        SHMEM_COLL_SYNC_CLR(child_complete_bcast, shmem_comm_rank, rank);
+        SHMEM_BCAST_SYNC_CLR(child_complete_bcast, shmem_comm_rank, rank);
         WRITEBAR();
     }
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETBCASTCOMPLETE);
@@ -1800,7 +1830,6 @@ int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr)
    if(flag == 0 
       && mv2_allgather_ranking 
       && mv2_enable_shmem_collectives
-      && comm_ptr->dev.ch.allgather_comm_ok == 0
       && check_split_comm(pthread_self())) {
         comm_ptr->dev.ch.allgather_coll_count++;
 
@@ -1875,6 +1904,16 @@ void MV2_Read_env_vars(void)
             if (mv2_bitonic_comm_split_threshold < 0) {
                 mv2_bitonic_comm_split_threshold = MV2_DEFAULT_BITONIC_COMM_SPLIT_THRESHOLD;
             }
+        }
+    }
+
+    if ((value = getenv("MV2_ENABLE_SKIP_TUNING_TABLE_SEARCH")) != NULL) {
+        mv2_enable_skip_tuning_table_search = !!atoi(value);
+    }
+    if ((value = getenv("MV2_COLL_SKIP_TABLE_THRESHOLD")) != NULL) {
+        mv2_coll_skip_table_threshold = atoi(value);
+        if (mv2_coll_skip_table_threshold < 0) {
+            mv2_enable_skip_tuning_table_search = MV2_DEFAULT_COLL_SKIP_TABLE_THRESHOLD;
         }
     }
 
@@ -2494,6 +2533,11 @@ void MV2_Read_env_vars(void)
 
     if ((value = getenv("MV2_INTER_RED_SCAT_TUNING")) != NULL) {
         mv2_user_red_scat_inter = value;
+        mv2_tune_parameter = 1;
+    }
+
+    if ((value = getenv("MV2_INTER_RED_SCAT_BLOCK_TUNING")) != NULL) {
+        mv2_user_red_scat_block_inter = value;
         mv2_tune_parameter = 1;
     }
 
@@ -3579,8 +3623,6 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
     windex = shmem->write % mv2_shm_window_size;
     rindex = shmem->read % mv2_shm_window_size;
 
-
-
     if(shmem->local_size > 0) { 
         if (shmem->local_rank == root) {
 #if defined(_ENABLE_CUDA_)
@@ -4636,7 +4678,7 @@ int mv2_set_bcast_collective_algorithm()
         goto fn_exit;
     }
     /* Check if environment variable and CVAR has been set at the same time */ 
-    if (read_value != 0 &&
+    if (read_value != -1 &&
        (getenv("MV2_INTRA_BCAST_TUNING") != NULL ||
         getenv("MV2_INTRA_BCAST_TUNING") != NULL ||
         getenv("MV2_USE_ZCOPY_BCAST") != NULL ||
@@ -4797,7 +4839,7 @@ int mv2_set_scatter_collective_algorithm()
         goto fn_exit;
     }
     /* Check if environment variable and CVAR has been set at the same time */
-    if (read_value != 0 &&
+    if (read_value != -1 &&
        (getenv("MV2_INTER_SCATTER_TUNING") != NULL || 
         getenv("MV2_INTRA_SCATTER_TUNING") != NULL)) {
         PRINT_INFO(MPIDI_Process.my_pg_rank == 0, "User has set environment "
@@ -4807,8 +4849,8 @@ int mv2_set_scatter_collective_algorithm()
         MPIR_ERR_POP(mpi_errno);
     }
     /* Check if value for CVAR is valid */
-    if (read_value < 0 || read_value > MV2_MAX_NUM_SCATTER_FUNCS ) {
-        PRINT_INFO(MPIDI_Process.my_pg_rank == 0 , "\nSelected value of CVARS:"
+    if (read_value < 0 || read_value >= MV2_MAX_NUM_SCATTER_FUNCS ) {
+        PRINT_INFO(MPIDI_Process.my_pg_rank == 0 , "\nSelected value of CVAR:"
             " MPIR_CVAR_SCATTER_COLLECTIVE_ALGORITHM is out of range; valid"
             "values are natural numbers less than %d (entered value is %d)\n",
             MV2_MAX_NUM_SCATTER_FUNCS,
@@ -4847,7 +4889,7 @@ int mv2_set_scatter_collective_algorithm()
             mv2_tune_parameter = 1;
             break;
         default:
-            PRINT_INFO(MPIDI_Process.my_pg_rank == 0, "\nSelected value of CVARS:"
+            PRINT_INFO(MPIDI_Process.my_pg_rank == 0, "\nSelected value of CVAR:"
                 " MPIR_CVAR_SCATTER_COLLECTIVE_ALGORITHM is not valid. Valid values"
                 " are natural numbers less than %d\n",
                  MV2_MAX_NUM_SCATTER_FUNCS);
@@ -4891,7 +4933,7 @@ int mv2_set_gather_collective_algorithm()
         goto fn_exit;
     }
     /* Check if environment variable and CVAR has been set at the same time */
-    if (read_value != 0 && 
+    if (read_value != -1 && 
         (getenv("MV2_INTRA_GATHER_TUNING") != NULL ||
          getenv("MV2_INTER_GATHER_TUNING") != NULL)){
         PRINT_INFO(MPIDI_Process.my_pg_rank == 0, "User has set environment "
@@ -4902,7 +4944,7 @@ int mv2_set_gather_collective_algorithm()
     }
     /* Check if value for CVAR is valid */
     if (read_value < 0 || read_value > MV2_MAX_NUM_GATHER_FUNCS ) {
-        PRINT_INFO(MPIDI_Process.my_pg_rank == 0 , "\nSelected value of CVARS:"
+        PRINT_INFO(MPIDI_Process.my_pg_rank == 0 , "\nSelected value of CVAR:"
             " MPIR_CVAR_GATHER_COLLECTIVE_ALGORITHM is out of range; valid"
             "values are natural numbers less than %d (entered value is %d)\n",
             MV2_MAX_NUM_GATHER_FUNCS,
@@ -4976,7 +5018,7 @@ int mv2_set_reduce_collective_algorithm()
         goto fn_exit;
     }
     /* Check if environment variable and CVAR has been set at the same time */
-    if (read_value != 0 && 
+    if (read_value != -1 && 
        (getenv("MV2_INTER_REDUCE_TUNING") != NULL || 
         getenv("MV2_INTRA_REDUCE_TUNING") != NULL || 
         getenv("MV2_USE_ZCOPY_REDUCE") != NULL || 
@@ -5115,7 +5157,7 @@ int mv2_set_allgather_collective_algorithm()
         goto fn_exit;
     }
     /* Check if environment variable and CVAR has been set at the same time */
-     if (read_value != 0 &&
+     if (read_value != -1 &&
         (getenv("MV2_INTER_ALLGATHER_TUNING") != NULL)) {
         PRINT_INFO(MPIDI_Process.my_pg_rank == 0, "User has set environment "
             "variables and CVAR for choosing collective algorithm for " 
@@ -5134,7 +5176,7 @@ int mv2_set_allgather_collective_algorithm()
         MPIR_ERR_POP(mpi_errno);
     }
     switch(read_value){
-        case MV2_RD_ALLGATHER_COMM: 
+        case MV2_RD_ALLGATHER_COMM:
             mv2_user_allgather_inter = MV2_ALLGATHER_RD_ALLGATHER_COMM;
             mv2_tune_parameter = 1;
             break;
@@ -5142,12 +5184,40 @@ int mv2_set_allgather_collective_algorithm()
             mv2_user_allgather_inter = MV2_ALLGATHER_RD;
             mv2_tune_parameter = 1;		
             break;
-        case MV2_BRUCK_ALLGATHER: 
+        case MV2_BRUCK_ALLGATHER:
             mv2_user_allgather_inter = MV2_ALLGATHER_BRUCK;
             mv2_tune_parameter = 1;			     
             break;
-        case MV2_RING_ALLGATHER: 
+        case MV2_RING_ALLGATHER:
             mv2_user_allgather_inter = MV2_ALLGATHER_RING;
+            mv2_tune_parameter = 1;
+            break;
+        case MV2_DIRECT_ALLGATHER:
+            mv2_user_allgather_inter = MV2_ALLGATHER_DIRECT;
+            mv2_tune_parameter = 1;
+            break;
+        case MV2_DIRECTSPREAD_ALLGATHER:
+            mv2_user_allgather_inter = MV2_ALLGATHER_DIRECTSPREAD;
+            mv2_tune_parameter = 1;
+            break;
+        case MV2_GATHER_BCAST_ALLGATHER:
+            mv2_user_allgather_inter = MV2_ALLGATHER_GATHER_BCAST;
+            mv2_tune_parameter = 1;
+            break;
+        case MV2_2LVL_NONBLOCKED_ALLGATHER:
+            mv2_user_allgather_inter = MV2_ALLGATHER_2LVL_NONBLOCKED;
+            mv2_tune_parameter = 1;
+            break;
+        case MV2_2LVL_RING_NONBLOCKED_ALLGATHER:
+            mv2_user_allgather_inter = MV2_ALLGATHER_2LVL_RING_NONBLOCKED;
+            mv2_tune_parameter = 1;
+            break;
+        case MV2_2LVL_DIRECT_ALLGATHER:
+            mv2_user_allgather_inter = MV2_ALLGATHER_2LVL_DIRECT;
+            mv2_tune_parameter = 1;
+            break;
+        case MV2_2LVL_RING_ALLGATHER:
+            mv2_user_allgather_inter = MV2_ALLGATHER_2LVL_RING;
             mv2_tune_parameter = 1;
             break;
         default:
@@ -5195,7 +5265,7 @@ int mv2_set_allreduce_collective_algorithm()
         goto fn_exit;
     }
     /* Check if environment variable and CVAR has been set at the same time */
-    if (read_value != 0 && 
+    if (read_value != -1 && 
        (getenv("MV2_INTER_ALLREDUCE_TUNING") != NULL || 
         getenv("MV2_INTRA_ALLREDUCE_TUNING") != NULL || 
         getenv("MV2_INTER_ALLREDUCE_TUNING_TWO_LEVEL") != NULL )) {
@@ -5319,7 +5389,7 @@ int mv2_set_alltoall_collective_algorithm()
         goto fn_exit;
     }
     /* Check if environment variable and CVAR has been set at the same time */
-    if (read_value != 0 &&
+    if (read_value != -1 &&
        (getenv("MV2_ALLTOALL_TUNING") != NULL)) {
         PRINT_INFO(MPIDI_Process.my_pg_rank == 0, "User has set environment "
             "variables and CVAR for choosing collective algorithm for "

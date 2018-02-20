@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,6 +20,38 @@
 #include "mpiimpl.h"
 #include "coll_shmem.h"
 #include "reduce_tuning.h"
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_binomial);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_redscat_gather);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_shmem);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_knomial);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_zcpy);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_binomial_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_redscat_gather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_two_level_helper_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_knomial_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_zcpy_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_binomial_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_redscat_gather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_two_level_helper_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_knomial_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_zcpy_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_binomial_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_redscat_gather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_two_level_helper_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_knomial_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_zcpy_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_binomial_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_redscat_gather_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_two_level_helper_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_knomial_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_zcpy_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_count_recv);
+
 
 int (*MV2_Reduce_function)(const void *sendbuf,
                            void *recvbuf,
@@ -67,6 +99,8 @@ int MPIR_Reduce_binomial_MV2(const void *sendbuf,
 #endif
     MPIU_CHKLMEM_DECL(2);
     MPIU_THREADPRIV_DECL;
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_binomial, 1);
 
     if (count == 0)
         return MPI_SUCCESS;
@@ -119,14 +153,14 @@ int MPIR_Reduce_binomial_MV2(const void *sendbuf,
 
     /* If I'm not the root, then my recvbuf may not be valid, therefore
        I have to allocate a temporary one */
-    if (rank != root) {
+    if ((rank != root) && (recvbuf == NULL)) {
         MPIU_CHKLMEM_MALLOC(recvbuf, void *,
                             count * (MPIR_MAX(extent, true_extent)),
                             mpi_errno, "receive buffer");
         recvbuf = (void *) ((char *) recvbuf - true_lb);
     }
 
-    if ((rank != root) || (sendbuf != MPI_IN_PLACE)) {
+    if ((sendbuf != MPI_IN_PLACE) && (sendbuf != recvbuf)) {
         mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf,
                                    count, datatype);
         if (mpi_errno) {
@@ -178,6 +212,7 @@ int MPIR_Reduce_binomial_MV2(const void *sendbuf,
             source = (relrank | mask);
             if (source < comm_size) {
                 source = (source + lroot) % comm_size;
+                MPIR_PVAR_INC(reduce, binomial, recv, count, datatype);
                 mpi_errno = MPIC_Recv(tmp_buf, count, datatype, source,
                                          MPIR_REDUCE_TAG, comm_ptr, &status,
                                          errflag);
@@ -217,6 +252,7 @@ int MPIR_Reduce_binomial_MV2(const void *sendbuf,
             /* I've received all that I'm going to.  Send my result to 
                my parent */
             source = ((relrank & (~mask)) + lroot) % comm_size;
+            MPIR_PVAR_INC(reduce, binomial, send, count, datatype);
             mpi_errno = MPIC_Send(recvbuf, count, datatype,
                                      source, MPIR_REDUCE_TAG, comm_ptr, errflag);
             if (mpi_errno) {
@@ -232,9 +268,11 @@ int MPIR_Reduce_binomial_MV2(const void *sendbuf,
 
     if (!is_commutative && (root != 0)) {
         if (rank == 0) {
+            MPIR_PVAR_INC(reduce, binomial, send, count, datatype);
             mpi_errno = MPIC_Send(recvbuf, count, datatype, root,
                                      MPIR_REDUCE_TAG, comm_ptr, errflag);
         } else if (rank == root) {
+            MPIR_PVAR_INC(reduce, binomial, recv, count, datatype);
             mpi_errno = MPIC_Recv(recvbuf, count, datatype, 0,
                                      MPIR_REDUCE_TAG, comm_ptr, &status, errflag);
         }
@@ -321,6 +359,8 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
     MPIU_CHKLMEM_DECL(4);
     MPIU_THREADPRIV_DECL;
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_redscat_gather, 1);
+
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
 
@@ -402,6 +442,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
 
     if (rank < 2 * rem) {
         if (rank % 2 != 0) {    /* odd */
+            MPIR_PVAR_INC(reduce, redscat_gather, send, count, datatype);
             mpi_errno = MPIC_Send(recvbuf, count,
                                      datatype, rank - 1,
                                      MPIR_REDUCE_TAG, comm_ptr, errflag);
@@ -417,6 +458,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                doubling */
             newrank = -1;
         } else {                /* even */
+            MPIR_PVAR_INC(reduce, redscat_gather, recv, count, datatype);
             mpi_errno = MPIC_Recv(tmp_buf, count,
                                      datatype, rank + 1,
                                      MPIR_REDUCE_TAG, comm_ptr,
@@ -492,6 +534,8 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                   send_cnt, recv_cnt, last_idx);
 */
             /* Send data from recvbuf. Recv into tmp_buf */
+            MPIR_PVAR_INC(reduce, redscat_gather, send, send_cnt, datatype);
+            MPIR_PVAR_INC(reduce, redscat_gather, recv, recv_cnt, datatype);
             mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                          disps[send_idx] * extent,
                                          send_cnt, datatype,
@@ -556,6 +600,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                 for (i = 1; i < pof2; i++)
                     disps[i] = disps[i - 1] + cnts[i - 1];
 
+                MPIR_PVAR_INC(reduce, redscat_gather, recv, cnts[0], datatype);
                 mpi_errno = MPIC_Recv(recvbuf, cnts[0], datatype,
                                          0, MPIR_REDUCE_TAG, comm_ptr,
                                          MPI_STATUS_IGNORE, errflag);
@@ -569,6 +614,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                 send_idx = 0;
                 last_idx = 2;
             } else if (newrank == 0) {  /* send */
+                MPIR_PVAR_INC(reduce, redscat_gather, send, cnts[0], datatype);
                 mpi_errno = MPIC_Send(recvbuf, cnts[0], datatype,
                                          root, MPIR_REDUCE_TAG, comm_ptr, errflag);
                 if (mpi_errno) {
@@ -638,6 +684,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                 /* printf("Rank %d, send_idx %d, send_cnt %d, last_idx %d\n", newrank, send_idx, send_cnt, last_idx);
                    fflush(stdout); */
                 /* Send data from recvbuf. Recv into tmp_buf */
+                MPIR_PVAR_INC(reduce, redscat_gather, send, send_cnt, datatype);
                 mpi_errno = MPIC_Send((char *) recvbuf +
                                          disps[send_idx] * extent,
                                          send_cnt, datatype,
@@ -653,6 +700,7 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                 /* recv and continue */
                 /* printf("Rank %d, recv_idx %d, recv_cnt %d, last_idx %d\n", newrank, recv_idx, recv_cnt, last_idx);
                    fflush(stdout); */
+                MPIR_PVAR_INC(reduce, redscat_gather, recv, recv_cnt, datatype);
                 mpi_errno = MPIC_Recv((char *) recvbuf +
                                          disps[recv_idx] * extent,
                                          recv_cnt, datatype, dst,
@@ -718,6 +766,8 @@ int MPIR_Reduce_shmem_MV2(const void *sendbuf,
 #ifdef HAVE_CXX_BINDING
     int is_cxx_uop = 0;
 #endif
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_shmem, 1);
 
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
     MPID_Datatype_get_extent_macro(datatype, extent);
@@ -920,6 +970,8 @@ int MPIR_Reduce_knomial_MV2 (
     MPIU_CHKLMEM_DECL(1);
     MPIU_THREADPRIV_DECL;
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_knomial, 1);
+
     if (count == 0) return MPI_SUCCESS;
 
     rank = comm_ptr->rank;
@@ -993,6 +1045,7 @@ int MPIR_Reduce_knomial_MV2 (
         while(recv_iter  < expected_recv_count) {
             src = src_array[expected_recv_count - (recv_iter+1)];
 
+            MPIR_PVAR_INC(reduce, knomial, recv, count, datatype);
             mpi_errno = MPIC_Irecv (tmp_buf[recv_iter], count, datatype ,src,
                     MPIR_REDUCE_TAG, comm_ptr, &requests[recv_iter]);
             /* Convert the MPID_Request objects to MPI_Request objects */
@@ -1044,6 +1097,7 @@ int MPIR_Reduce_knomial_MV2 (
     } 
 
     if(rank != root) {
+        MPIR_PVAR_INC(reduce, knomial, send, count, datatype);
         mpi_errno = MPIC_Isend(recvbuf,count, datatype, dst,
                 MPIR_REDUCE_TAG,comm_ptr,&send_request,
                 errflag);
@@ -1155,6 +1209,9 @@ int MPIR_Reduce_Zcpy_MV2(const void *sendbuf,
     int pseudo_root = 0;
     static int fn_call=0;  
     MPI_Status status; 
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_zcpy, 1);
+
     fn_call++; 
 
     my_rank = comm_ptr->rank;
@@ -1218,6 +1275,7 @@ int MPIR_Reduce_Zcpy_MV2(const void *sendbuf,
     } else {  
         /* Send the message to the root if the root is not rank0 */ 
         if ((my_rank == 0) && (root != my_rank)) { 
+            MPIR_PVAR_INC(reduce, zcpy, send, count, datatype);
             mpi_errno = MPIC_Send(out_buf, count, datatype, root,
                                      MPIR_REDUCE_TAG, comm_ptr, errflag);
             if (mpi_errno) {
@@ -1232,6 +1290,7 @@ int MPIR_Reduce_Zcpy_MV2(const void *sendbuf,
         }
 
         if ((my_rank != 0) && (root == my_rank)) {
+            MPIR_PVAR_INC(reduce, zcpy, recv, count, datatype);
             mpi_errno = MPIC_Recv(recvbuf, count, datatype,
                                      pseudo_root,
                                      MPIR_REDUCE_TAG, comm_ptr,
@@ -1357,7 +1416,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
                }
             }
 
-	    if (count * (MPIR_MAX(extent, true_extent)) < SHMEM_COLL_BLOCK_SIZE) {
+	    if (count * (MPIR_MAX(extent, true_extent)) < mv2_g_shmem_coll_max_msg_size) {
 		mpi_errno = MPIR_Reduce_shmem_MV2(in_buf, out_buf, count,
 						  datatype, op,
 						  0, shmem_commptr, errflag);
@@ -1369,10 +1428,12 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
 	    }
 	    
             if (local_rank == 0 && root != my_rank) {
+                MPIR_PVAR_INC(reduce, two_level_helper, send, count, datatype);
                 mpi_errno = MPIC_Send(out_buf, count, datatype, root,
                                          MPIR_REDUCE_TAG, comm_ptr, errflag);
             }
             if ((local_rank != 0) && (root == my_rank)) {
+                MPIR_PVAR_INC(reduce, two_level_helper, recv, count, datatype);
                 mpi_errno = MPIC_Recv(recvbuf, count, datatype,
                                          leader_of_root, MPIR_REDUCE_TAG, comm_ptr,
                                          MPI_STATUS_IGNORE, errflag);
@@ -1454,7 +1515,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
         {
             if (comm_ptr->dev.ch.shmem_coll_ok == 1 &&
                 mv2_enable_shmem_reduce && is_commutative == 1
-		&& (count * (MPIR_MAX(extent, true_extent)) < SHMEM_COLL_BLOCK_SIZE)) {
+		&& (count * (MPIR_MAX(extent, true_extent)) < mv2_g_shmem_coll_max_msg_size)) {
                     mpi_errno = MV2_Reduce_intra_function(in_buf, out_buf, count,
                                       datatype, op,
                                       intra_node_root, shmem_commptr, errflag);
@@ -1525,6 +1586,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
          * root of the reduce operation. The reduced data is in tmp_buf */
         if ((local_rank == 0) && (root != my_rank)
             && (leader_root == leader_comm_rank)) {
+            MPIR_PVAR_INC(reduce, two_level_helper, send, count, datatype);
             mpi_errno = MPIC_Send(tmp_buf, count, datatype, root,
                                      MPIR_REDUCE_TAG, comm_ptr, errflag);
             if (mpi_errno) {
@@ -1537,6 +1599,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
         }
 
         if ((local_rank != 0) && (root == my_rank)) {
+            MPIR_PVAR_INC(reduce, two_level_helper, recv, count, datatype);
             mpi_errno = MPIC_Recv(recvbuf, count, datatype,
                                      leader_of_root,
                                      MPIR_REDUCE_TAG, comm_ptr,
@@ -1727,6 +1790,13 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
             conf_index = 0;
             goto conf_check_end;
         }
+        if (likely(mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
+            /* for small messages, force shmem + binomial */
+            MV2_Reduce_intra_function = MPIR_Reduce_shmem_MV2;
+            MV2_Reduce_function = MPIR_Reduce_binomial_MV2;
+            is_two_level = 1;
+            goto skip_tuning_tables;
+        }
         do {
             if (local_size == mv2_reduce_indexed_table_ppn_conf[i]) {
                 conf_index = i;
@@ -1837,6 +1907,7 @@ conf_check_end:
                is_two_level = 1;
     }
     
+skip_tuning_tables:
 #ifdef CHANNEL_MRAIL_GEN2
     if (MPIR_Reduce_Zcpy_MV2 == MV2_Reduce_function) {
        

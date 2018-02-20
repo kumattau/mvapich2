@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,6 +38,21 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_intra_p2p);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_2lvl);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_shmem);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_mcast);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_reduce_scatter_allgather_colls);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rd_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rs_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rd_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rs_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rd_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rs_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rd_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rs_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_count_recv);
+
 
 int (*MV2_Allreduce_function)(const void *sendbuf,
                              void *recvbuf,
@@ -309,6 +324,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
     if (rank < 2 * rem) {
         if (rank % 2 == 0) {
             /* even */
+            MPIR_PVAR_INC(allreduce, pt2pt_rd, send, count, datatype);
             mpi_errno = MPIC_Send(recvbuf, count, datatype, rank + 1,
                                      MPIR_ALLREDUCE_TAG, comm_ptr, errflag);
             if (mpi_errno) {
@@ -324,6 +340,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
             newrank = -1;
         } else {
             /* odd */
+            MPIR_PVAR_INC(allreduce, pt2pt_rd, recv, count, datatype);
             mpi_errno = MPIC_Recv(tmp_buf, count, datatype, rank - 1,
                                      MPIR_ALLREDUCE_TAG, comm_ptr,
                                      MPI_STATUS_IGNORE, errflag);
@@ -373,6 +390,8 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
 
             /* Send the most current data, which is in recvbuf. Recv
                into tmp_buf */
+            MPIR_PVAR_INC(allreduce, pt2pt_rd, send, count, datatype);
+            MPIR_PVAR_INC(allreduce, pt2pt_rd, recv, count, datatype);
             mpi_errno = MPIC_Sendrecv(recvbuf, count, datatype,
                                          dst, MPIR_ALLREDUCE_TAG,
                                          tmp_buf, count, datatype, dst,
@@ -430,11 +449,12 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
        (rank-1), the ranks who didn't participate above. */
     if (rank < 2 * rem) {
         if (rank % 2) {     /* odd */
+            MPIR_PVAR_INC(allreduce, pt2pt_rd, send, count, datatype);
             mpi_errno = MPIC_Send(recvbuf, count,
                                      datatype, rank - 1,
                                      MPIR_ALLREDUCE_TAG, comm_ptr, errflag);
         } else {            /* even */
-
+            MPIR_PVAR_INC(allreduce, pt2pt_rd, recv, count, datatype);
             mpi_errno = MPIC_Recv(recvbuf, count,
                                   datatype, rank + 1,
                                   MPIR_ALLREDUCE_TAG, comm_ptr,
@@ -572,6 +592,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
     if (rank < 2 * rem) {
         if (rank % 2 == 0) {
             /* even */
+            MPIR_PVAR_INC(allreduce, pt2pt_rs, send, count, datatype);
             mpi_errno = MPIC_Send(recvbuf, count, datatype, rank + 1,
                                      MPIR_ALLREDUCE_TAG, comm_ptr, errflag);
             if (mpi_errno) {
@@ -587,6 +608,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
             newrank = -1;
         } else {
             /* odd */
+            MPIR_PVAR_INC(allreduce, pt2pt_rs, recv, count, datatype);
             mpi_errno = MPIC_Recv(tmp_buf, count, datatype, rank - 1,
                                      MPIR_ALLREDUCE_TAG, comm_ptr,
                                      MPI_STATUS_IGNORE, errflag);
@@ -637,6 +659,8 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
 
                 /* Send the most current data, which is in recvbuf. Recv
                    into tmp_buf */
+                MPIR_PVAR_INC(allreduce, pt2pt_rs, send, count, datatype);
+                MPIR_PVAR_INC(allreduce, pt2pt_rs, recv, count, datatype);
                 mpi_errno = MPIC_Sendrecv(recvbuf, count, datatype,
                                              dst, MPIR_ALLREDUCE_TAG,
                                              tmp_buf, count, datatype, dst,
@@ -734,6 +758,8 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                 }
 
                 /* Send data from recvbuf. Recv into tmp_buf */
+                MPIR_PVAR_INC(allreduce, pt2pt_rs, send, send_cnt, datatype);
+                MPIR_PVAR_INC(allreduce, pt2pt_rs, recv, recv_cnt, datatype);
                 mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                              disps[send_idx] * extent,
                                              send_cnt, datatype,
@@ -802,7 +828,8 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                         recv_cnt += cnts[i];
                     }
                 }
-
+                MPIR_PVAR_INC(allreduce, pt2pt_rs, send, send_cnt, datatype);
+                MPIR_PVAR_INC(allreduce, pt2pt_rs, recv, recv_cnt, datatype);
                 mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                              disps[send_idx] * extent,
                                              send_cnt, datatype,
@@ -833,11 +860,12 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
        (rank-1), the ranks who didn't participate above. */
     if (rank < 2 * rem) {
         if (rank % 2) {     /* odd */
+            MPIR_PVAR_INC(allreduce, pt2pt_rs, send, count, datatype);
             mpi_errno = MPIC_Send(recvbuf, count,
                                      datatype, rank - 1,
                                      MPIR_ALLREDUCE_TAG, comm_ptr, errflag);
         } else {            /* even */
-
+            MPIR_PVAR_INC(allreduce, pt2pt_rs, recv, count, datatype);
             mpi_errno = MPIC_Recv(recvbuf, count,
                                   datatype, rank + 1,
                                   MPIR_ALLREDUCE_TAG, comm_ptr,
@@ -1338,7 +1366,7 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
     shmem_comm = comm_ptr->dev.ch.shmem_comm;
     PMPI_Comm_size(shmem_comm, &local_size);
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);   
-    if (count * (MPIR_MAX(extent, true_extent)) >= SHMEM_COLL_BLOCK_SIZE) {
+    if (count * (MPIR_MAX(extent, true_extent)) >= mv2_g_shmem_coll_max_msg_size) {
                 mpi_errno =
                     MPIR_Reduce_intra(sendbuf, recvbuf, count, datatype, op, 0,
                                       shmem_commptr, errflag);
@@ -1568,6 +1596,11 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
                 mpi_errno =
                     MPIR_Allreduce_pt2pt_rd_MV2(MPI_IN_PLACE, recvbuf, count, datatype, op,
                                       leader_commptr, errflag);
+            } else if (MV2_Allreduce_function == &MPIR_Allreduce_pt2pt_reduce_scatter_allgather_MV2) {
+                mpi_errno =
+                    MPIR_Allreduce_pt2pt_reduce_scatter_allgather_MV2(MPI_IN_PLACE,
+                            recvbuf, count, datatype, op, leader_commptr,
+                            errflag); 
             } else 
 #if defined (_SHARP_SUPPORT_)
             if (MV2_Allreduce_function == &MPIR_Sharp_Allreduce_MV2) {
@@ -2371,6 +2404,13 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
             conf_index = 0;
             goto conf_check_end;
         }
+        if (likely(mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
+            /* for small messages, force Shmem + RD */
+            MV2_Allreduce_intra_function = MPIR_Allreduce_reduce_shmem_MV2;
+            MV2_Allreduce_function = MPIR_Allreduce_pt2pt_rd_MV2;
+            is_two_level = 1;
+            goto skip_tuning_tables;
+        }
         do {
             if (local_size == mv2_allreduce_indexed_table_ppn_conf[i]) {
                 conf_index = i;
@@ -2501,6 +2541,7 @@ conf_check_end:
 	    MV2_Allreduce_intra_function = mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].
 		intra_node[intra_node_algo_index].MV2_pt_Allreduce_function;
 
+skip_tuning_tables:
 	    /* check if mcast is ready, otherwise replace mcast with other algorithm */
 	    if((MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2)||
 	       (MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2)){
@@ -2596,6 +2637,158 @@ conf_check_end:
 }
 
 
+
+/* This is flat reduce-scatter-allgather allreduce */
+/* This function uses reduce_scatter and allgather colls */
+#undef FCNAME
+#define FCNAME "MPIR_Allreduce_pt2pt_reduce_scatter_allgather_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Allreduce_pt2pt_reduce_scatter_allgather_MV2(const void *sendbuf,
+                             void *recvbuf,
+                             int count,
+                             MPI_Datatype datatype,
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_reduce_scatter_allgather_colls, 1);
+    int comm_size, rank;
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    int is_commutative, i, send_cnt, recv_cnt, *cnts, *disps;
+    MPI_Aint true_lb, true_extent, extent;
+    void *tmp_buf;
+    MPI_User_function *uop;
+    MPID_Op *op_ptr;
+    MPIU_THREADPRIV_DECL;
+#ifdef HAVE_CXX_BINDING
+    int is_cxx_uop = 0;
+#endif
+    MPIU_CHKLMEM_DECL(3);
+
+    if (count == 0) {
+        return MPI_SUCCESS;
+    }
+
+    MPIU_THREADPRIV_GET;
+
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
+
+    /* homogeneous */
+
+    /* set op_errno to 0. stored in perthread structure */
+    MPIU_THREADPRIV_FIELD(op_errno) = 0;
+
+    comm_size = comm_ptr->local_size;
+    rank = comm_ptr->rank;
+
+    if (count < comm_size) {
+        mpi_errno = MPIR_Allreduce_pt2pt_rs_MV2(sendbuf, recvbuf, count, datatype,
+                op, comm_ptr, errflag); 
+        return mpi_errno;
+    } 
+
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+ 
+    {
+        /* do a reduce-scatter followed by allgather */
+
+        /* for the reduce-scatter, calculate the count that
+           each process receives and the displacement within
+           the buffer */
+
+       MPIU_CHKLMEM_MALLOC(cnts, int *, comm_size * sizeof (int), mpi_errno,
+                           "counts");
+       for (i = 0; i < (comm_size - 1); i++) {
+           cnts[i] = count / comm_size;
+       }
+       cnts[comm_size - 1] = count - (count / comm_size) * (comm_size - 1);
+
+       MPIU_CHKLMEM_MALLOC(tmp_buf, void *,
+                           cnts[rank] * (MPIR_MAX(extent, true_extent)), mpi_errno,
+                           "temporary buffer");
+        
+        /* adjust for potential negative lower bound in datatype */
+       tmp_buf = (void *) ((char *) tmp_buf - true_lb);
+       MPIU_CHKLMEM_MALLOC(disps, int *, comm_size * sizeof (int),
+                           mpi_errno, "displacements");
+       disps[0] = 0;
+       for (i = 1; i < comm_size; i++) {
+           disps[i] = disps[i - 1] + cnts[i - 1];
+       }
+
+       void * tmp_recvbuf = recvbuf + disps[rank] * (MPIR_MAX(extent, true_extent));
+       if (sendbuf != MPI_IN_PLACE) {
+            mpi_errno =
+               MPIR_Reduce_scatter_MV2(sendbuf, tmp_recvbuf, cnts, datatype, op, comm_ptr,
+                   errflag); 
+            MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+                                "**fail");
+       } else {
+            mpi_errno =
+               MPIR_Reduce_scatter_MV2(MPI_IN_PLACE, recvbuf, cnts, datatype, op, comm_ptr,
+                   errflag); 
+            MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+                                "**fail");
+
+            if (recvbuf != tmp_recvbuf) {
+                /* need to shift the resutls to the location pointed by
+                 * tmp_recbuf so that the following Allgather IN_PLACE works properly */
+                if (disps[rank] >= cnts[rank]) {
+                    /* make sure that there is no overlap between src and dst */
+                    mpi_errno =
+                       MPIR_Localcopy(recvbuf, cnts[rank], datatype, tmp_recvbuf, cnts[rank],
+                                       datatype);
+                    MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+                                        "**fail");
+                } else {
+                    /* there is overlap between src and dst of shift */
+                    void * shift_recvbuf = tmp_recvbuf + disps[rank] *
+                        (MPIR_MAX(extent, true_extent)); 
+                    MPI_Aint overlapped_count = cnts[rank] - disps[rank];
+                    MPIU_Assert(overlapped_count > 0);
+
+                    /* first shift the overlapped data */
+                    mpi_errno =
+                       MPIR_Localcopy(tmp_recvbuf, overlapped_count, datatype,
+                               shift_recvbuf, overlapped_count, datatype);
+                    MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+                                        "**fail");
+                    /* now copy the non overlapped data */
+                    mpi_errno =
+                       MPIR_Localcopy(recvbuf, disps[rank], datatype, tmp_recvbuf, disps[rank],
+                                       datatype);
+                    MPIR_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
+                                        "**fail");
+                }
+            }
+       }
+
+       if (count % comm_size == 0) {
+           MPIR_Allgather_MV2(MPI_IN_PLACE, cnts[rank], datatype, recvbuf, cnts[rank],
+                   datatype, comm_ptr, errflag);
+       } else {
+           MPIR_Allgatherv_MV2(MPI_IN_PLACE, cnts[rank], datatype, recvbuf, cnts,
+                disps, datatype, comm_ptr, errflag);
+       }
+    }
+    
+
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
+
+    if (MPIU_THREADPRIV_FIELD(op_errno)) {
+        mpi_errno = MPIU_THREADPRIV_FIELD(op_errno);
+    }
+
+  fn_exit:
+    MPIU_CHKLMEM_FREEALL();
+    return (mpi_errno);
+
+  fn_fail:
+    goto fn_exit;
+}
 
 
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -32,19 +32,25 @@
     #define PSM_OK                      PSM2_OK
     #define PSM_EP_CLOSE_GRACEFUL       PSM2_EP_CLOSE_GRACEFUL
     #define PSM_EP_OPEN_AFFINITY_SKIP   PSM2_EP_OPEN_AFFINITY_SKIP
-    #define PSM_MQ_RNDV_IPATH_SZ        PSM2_MQ_RNDV_IPATH_SZ
     #define PSM_MQ_NO_COMPLETIONS       PSM2_MQ_NO_COMPLETIONS
     #define PSM_MQ_ORDERMASK_ALL        PSM2_MQ_ORDERMASK_ALL
     #define PSM_MQ_TRUNCATION           PSM2_MQ_TRUNCATION
+    #define PSM_MQ_RNDV_IPATH_SZ        PSM2_MQ_RNDV_HFI_SZ
     #define PSM_MQ_RNDV_SHM_SZ          PSM2_MQ_RNDV_SHM_SZ
     #define PSM_MQ_FLAG_SENDSYNC        PSM2_MQ_FLAG_SENDSYNC
     /* Currently PSM2 has a max transfer limit of 4GB */
     #define DEFAULT_IPATH_MAX_TRANSFER_SIZE (4L*1024*1024*1024 - 256)
+    #define DEFAULT_IPATH_RNDV_THRESH   (128*1024)
+    #define DEFAULT_PSM_HFI_RNDV_THRESH (128*1024)
+    #define DEFAULT_PSM_SHM_RNDV_THRESH (32*1024)
 #elif HAVE_LIBPSM_INFINIPATH
     #include <psm.h>
     #include <psm_mq.h>
     /* Currently PSM has a max transfer limit of 1GB */
     #define DEFAULT_IPATH_MAX_TRANSFER_SIZE (1L*1024*1024*1024)
+    #define DEFAULT_IPATH_RNDV_THRESH   (128*1024)
+    #define DEFAULT_PSM_HFI_RNDV_THRESH (128*1024)
+    #define DEFAULT_PSM_SHM_RNDV_THRESH (32*1024)
 #endif
 
 #define PSM_2_1_VERSION         0x0201
@@ -145,6 +151,7 @@
     #define PSM_ERROR_TOKEN_T                                                   psm2_error_token_t
     #define PSM_EP_OPEN_OPTS                                                    psm2_ep_open_opts
     #define PSM_MQ_GETOPT                                                       psm2_mq_getopt
+    #define PSM_MQ_SETOPT                                                       psm2_mq_setopt
     #define PSM_FINALIZE                                                        psm2_finalize
     #define PSM_ERROR_T                                                         psm2_error_t
     #define PSM_ERROR_REGISTER_HANDLER                                          psm2_error_register_handler
@@ -183,6 +190,7 @@
     #define PSM_ERROR_TOKEN_T                                                   psm_error_token_t
     #define PSM_EP_OPEN_OPTS                                                    psm_ep_open_opts
     #define PSM_MQ_GETOPT                                                       psm_mq_getopt
+    #define PSM_MQ_SETOPT                                                       psm_mq_setopt
     #define PSM_INIT                                                            psm_init
     #define PSM_FINALIZE                                                        psm_finalize
     #define PSM_ERROR_T                                                         psm_error_t
@@ -250,6 +258,8 @@ struct psmdev_info_t {
 /* externs */
 extern struct psmdev_info_t psmdev_cw;
 extern uint32_t             ipath_rndv_thresh;
+extern uint32_t             hfi_rndv_thresh;
+extern uint32_t             shm_rndv_thresh;
 extern uint8_t              ipath_debug_enable;
 extern uint8_t                 ipath_enable_func_lock;
 extern uint32_t                ipath_progress_yield_count;

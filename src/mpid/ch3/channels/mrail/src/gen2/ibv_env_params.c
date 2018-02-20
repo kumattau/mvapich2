@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -286,6 +286,16 @@ mv2_env_param_list_t  param_list[] = {
     0,
     NULL    },
 /* collectives */
+#if defined(_MCST_SUPPORT_)
+{
+    MV2_USE_MCAST,
+    MV2_PARAM_TYPE_INT8, 
+    MV2_PARAM_GROUP_collective,
+    "MV2_USE_MCAST",
+    &rdma_enable_mcast,
+    1,
+    NULL    },
+#endif /*_MCST_SUPPORT_*/
 {
     MV2_ALLGATHER_BRUCK_THRESHOLD,
     MV2_PARAM_TYPE_INT,
@@ -1099,6 +1109,14 @@ mv2_env_param_list_t  param_list[] = {
 /* pt-pt */
 /* pt-pt */
 {
+    MV2_NUM_CQES_PER_POLL,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_pt2pt,
+    "MV2_NUM_CQES_PER_POLL",
+    &rdma_num_cqes_per_poll,
+    0,
+    NULL    },
+{
     MV2_COALESCE_THRESHOLD,
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_pt2pt,
@@ -1224,7 +1242,7 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_GROUP_pt2pt,
     "MV2_RAIL_SHARING_LARGE_MSG_THRESHOLD",
     &rdma_large_msg_rail_sharing_threshold,
-    1,
+    0,
     NULL    },
 {
     MV2_RAIL_SHARING_MED_MSG_THRESHOLD,
@@ -1295,7 +1313,7 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_TYPE_INVALID,
     MV2_PARAM_GROUP_pt2pt,
     "MV2_SM_SCHEDULING",
-    NULL,
+    &rdma_rail_sharing_policy,
     1,
     NULL    },
 {
@@ -1418,14 +1436,16 @@ mv2_env_param_list_t  param_list[] = {
     &rdma_vbuf_total_size,
     1,
     NULL    },
+#if defined(RDMA_CM)
 {
     MV2_USE_IWARP_MODE,
-    MV2_PARAM_TYPE_INVALID,
+    MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_pt2pt,
     "MV2_USE_IWARP_MODE",
-    NULL,
+    &mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode,
     1,
     NULL    },
+#endif /*RDMA_CM*/
 {
     MV2_USE_RoCE,
     MV2_PARAM_TYPE_INVALID,
@@ -2029,6 +2049,7 @@ mv2_env_param_list_t  param_list[] = {
     1,
     NULL    },
 /* rdma cm */
+#if defined(RDMA_CM)
 {
     MV2_RDMA_CM_ARP_TIMEOUT,
     MV2_PARAM_TYPE_INVALID,
@@ -2071,12 +2092,13 @@ mv2_env_param_list_t  param_list[] = {
     NULL    },
 {
     MV2_USE_RDMA_CM,
-    MV2_PARAM_TYPE_INVALID,
+    MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_rdma_cm,
     "MV2_USE_RDMA_CM",
-    NULL,
+    &mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm,
     1,
     NULL    },
+#endif /*RDMA_CM*/
 /* hybrid */
 #if defined (_ENABLE_UD_)
 #if defined (_MV2_UD_DROP_PACKET_RATE_)
@@ -2310,10 +2332,10 @@ mv2_env_param_list_t  param_list[] = {
 /* other */
 {
     MV2_SUPPORT_DPM,
-    MV2_PARAM_TYPE_INVALID,
+    MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_other,
     "MV2_SUPPORT_DPM",
-    NULL,
+    &MPIDI_CH3I_Process.has_dpm, // Hari 
     1,
     NULL    },
 {

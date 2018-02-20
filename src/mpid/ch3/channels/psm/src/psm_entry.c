@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -16,6 +16,7 @@
 #include <dirent.h>
 #include "coll_shmem.h"
 #include "debug_utils.h"
+#include "mv2_utils.h"
 #include <mv2_arch_hca_detect.h>
 #include <upmi.h>
 
@@ -26,15 +27,19 @@ volatile int MPIDI_CH3I_progress_wakeup_signalled = FALSE;
 /* Globals */
 /* psm device instance */
 struct psmdev_info_t    psmdev_cw;
-uint32_t                ipath_rndv_thresh;
+uint32_t                ipath_rndv_thresh = DEFAULT_IPATH_RNDV_THRESH;
+uint32_t                mv2_hfi_rndv_thresh = DEFAULT_PSM_HFI_RNDV_THRESH;
+uint32_t                mv2_shm_rndv_thresh = DEFAULT_PSM_SHM_RNDV_THRESH;
 uint8_t                 ipath_debug_enable;
 uint32_t                ipath_dump_frequency;
 uint8_t                 ipath_enable_func_lock;
 uint32_t                ipath_progress_yield_count;
 size_t                  ipath_max_transfer_size = DEFAULT_IPATH_MAX_TRANSFER_SIZE;
 int g_mv2_show_env_info = 0;
+int mv2_psm_bcast_uuid  = 0;
 int mv2_use_pmi_ibarrier = 0;
 int mv2_use_on_demand_cm = 0;
+int mv2_homogeneous_cluster = 0;
 int mv2_on_demand_threshold = MPIDI_PSM_DEFAULT_ON_DEMAND_THRESHOLD;
 mv2_arch_hca_type g_mv2_arch_hca_type = 0;
 
@@ -54,12 +59,15 @@ static PSM_UUID_T       psm_uuid;
 
 static void psm_read_user_params(void);
 static int  psm_bcast_uuid(int pg_size, int pg_rank);
+static int  psm_create_uuid(void);
 static int  psm_start_epid_exchange(PSM_EPID_T myid, int pg_size, int pg_rank);
 static void psm_other_init(MPIDI_PG_t *pg);
-static void psm_preinit(int pg_size);
+static void psm_preinit(MPIDI_PG_t *pg);
 static int  decode(unsigned s_len, char *src, unsigned d_len, char *dst);
 static int  encode(unsigned s_len, char *src, unsigned d_len, char *dst);
 static int psm_connect_alltoall(PSM_EPADDR_T *addrs, int pg_size, int pg_rank);
+static int psm_detect_heterogeneity(mv2_arch_hca_type myarch, int pg_size, int pg_rank);
+static unsigned int psm_hash_str(char *str);
 
 extern void MPIDI_CH3I_SHMEM_COLL_Cleanup();
 
@@ -238,7 +246,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     char *flag = NULL;
     int verno_major, verno_minor;
     int pg_size, mpi_errno;
-    int heterogeneity = 0, i; 
+    int heterogeneity, i; 
     PSM_EPID_T myid;
     PSM_ERROR_T err;
     struct PSM_EP_OPEN_OPTS psm_opts;
@@ -247,6 +255,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     MPID_Comm_fns = &comm_fns;
 
     pg_size = MPIDI_PG_Get_size(pg);
+    MPIU_Assert(pg_rank < pg_size);
     MPIDI_PG_GetConnKVSname(&kvsid);
     psmdev_cw.pg_size = pg_size;
     verno_major = PSM_VERNO_MAJOR;
@@ -263,10 +272,14 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
 
     /* detect architecture and hca type */
     g_mv2_arch_hca_type = MV2_get_arch_hca_type();
-    
+
+    /* Detect heterogeneity if not overriden by user */
+    psm_detect_heterogeneity(g_mv2_arch_hca_type, pg_size, pg_rank);
+
     /* initialize tuning-table for collectives. 
      * Its ok to pass heterogeneity as 0. We anyway fall-back to the 
      * basic case for PSM */ 
+    heterogeneity = !mv2_homogeneous_cluster;
     mpi_errno = MV2_collectives_arch_init(heterogeneity); 
     if (mpi_errno != MPI_SUCCESS) {
         MPIR_ERR_POP(mpi_errno);
@@ -296,13 +309,16 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
         MPIDI_CH3I_SHMEM_COLL_Unlink();
     }  
 
-    assert(pg_rank < pg_size);
-    mpi_errno = psm_bcast_uuid(pg_size, pg_rank);
+    if (mv2_psm_bcast_uuid) {
+        mpi_errno = psm_bcast_uuid(pg_size, pg_rank);
+    } else {
+        mpi_errno = psm_create_uuid();
+    }
     if(mpi_errno != MPI_SUCCESS) {
         goto fn_fail;
     }
 
-    psm_preinit(pg_size);
+    psm_preinit(pg);
 
     /* override global error handler so we can print error messages */
     PSM_ERROR_REGISTER_HANDLER(NULL, mv2_psm_err_handler);
@@ -426,29 +442,26 @@ fn_fail:
     return MPI_ERR_INTERN;
 }
 
-static int filter(const struct dirent *ent)
-{
-    int res;
-    sprintf(scratch, "mpi_%s_", kvsid);
-    res = strncmp(ent->d_name, scratch, strlen(scratch));
-    if(res)     return 0;
-    else        return 1;
-}
-    
 /*  handle special psm init. PSM_DEVICES init, version test for setting
  *  MPI_LOCALRANKS, MPI_LOCALRANKID 
  *  Updated on Fed 2 2010 based on patch provided by Ben Truscott. Refer to 
- *  TRAC Ticket #457 */
-static void psm_preinit(int pg_size)
+ *  TRAC Ticket #457 i
+ *  Updated on Jan 3 2018 to remove unnecessary barriers */
+static void psm_preinit(MPIDI_PG_t *pg)
 {
-    FILE *fp;
-    struct dirent **fls;
-    int n, id = 0, i, universesize;
+    int id, n;
+    int pg_size, universesize;
+
+    pg_size = MPIDI_PG_Get_size(pg);
+    id = pg->ch.local_process_id;
+    n = pg->ch.num_local_processes;
 
     if(pg_size > 0)
         universesize = pg_size;
     else
         universesize = 1; /*May be started without mpiexec.*/
+
+    PRINT_DEBUG(DEBUG_CM_verbose, "localid %d localranks %d\n", id, n);
 
     /* We should not override user settings for these parameters. 
      * This might cause problems with the new greedy context acquisition 
@@ -458,27 +471,10 @@ static void psm_preinit(int pg_size)
 
     /* for psm versions 2.0 or later, hints are needed for context sharing */
     if(PSM_VERNO_MAJOR >= PSM_2_VERSION_MAJOR) {
-        sprintf(scratch, "/dev/shm/mpi_%s_%d", kvsid, getpid());
-        fp = fopen(scratch, "w");
-        if(fp == NULL) {
-            goto skip;
-        }
-        UPMI_BARRIER();
-        n = scandir("/dev/shm", &fls, filter, NULL);  
-        sprintf(scratch, "mpi_%s_%d", kvsid, getpid());
-        for(i = 0; i < n; i++) {
-            if(0 == strcmp(scratch, fls[i]->d_name))
-                id = i;
-            MPIU_Memalign_Free(fls[i]);
-        }   
-        MPIU_Memalign_Free(fls);
-
-        UPMI_BARRIER();
-        PRINT_DEBUG(DEBUG_CM_verbose>0, "localid %d localranks %d\n", id, n);
         snprintf(scratch, sizeof(scratch), "%d", n);
-	setenv("MPI_LOCALNRANKS", scratch, 1);
+        setenv("MPI_LOCALNRANKS", scratch, 1);
         snprintf(scratch, sizeof(scratch), "%d", id);
-	setenv("MPI_LOCALRANKID", scratch, 1);
+        setenv("MPI_LOCALRANKID", scratch, 1);
 
         /* Should not override user settings. Updating to handle all 
          * possible scenarios. Refer to TRAC Ticket #457 */
@@ -530,25 +526,62 @@ static void psm_preinit(int pg_size)
                  * previously was. */
             }
         }
-
-        sprintf(scratch, "/dev/shm/mpi_%s_%d", kvsid, getpid());
-        unlink(scratch);
-        fclose(fp);
-    } else {
-skip:
-        /* If we cannot not open the memory-mapped file for writing (shm) 
-         * or if we are unsure of the version of PSM, let PSM_DEVICES
-         * to be the default (usually "self,ipath") or what the user 
-         * has set. Refer to TRAC Ticket #457
-         * putenv("PSM_DEVICES=self,shm,ipath"); */
-        #if PSM_VERNO >= PSM_2_1_VERSION
-             PRINT_DEBUG(DEBUG_CM_verbose>0, "Memory-mapped file creation failed or unknown PSM version. \
-                  Leaving PSM2_DEVICES to default or user's settings. \n");
-        #else
-             PRINT_DEBUG(DEBUG_CM_verbose>0, "Memory-mapped file creation failed or unknown PSM version. \
-                  Leaving PSM_DEVICES to default or user's settings. \n");
-        #endif
     }
+
+}
+
+/* detect if arch and hca type is same for all processes */
+static int psm_detect_heterogeneity(mv2_arch_hca_type myarch, int pg_size, int pg_rank)
+{
+    int i, mpi_errno = MPI_SUCCESS;
+    mv2_arch_hca_type arch = 0;
+    mv2_homogeneous_cluster = 1;
+    char *flag;
+
+    if ((flag = getenv("MV2_HOMOGENEOUS_CLUSTER")) != NULL) {
+        mv2_homogeneous_cluster = !!atoi(flag);
+        goto fn_exit;
+    }
+
+    PRINT_DEBUG(DEBUG_CM_verbose>1, "my arch_hca_type = %016lx\n", myarch);
+    MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_ahkey_%d", pg_rank);
+    MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen, "%016lx", myarch);
+
+    if(UPMI_KVS_PUT(kvsid, mv2_pmi_key, mv2_pmi_val) != UPMI_SUCCESS) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ahtype_putfailed");
+    }
+    if(UPMI_KVS_COMMIT(kvsid) != UPMI_SUCCESS) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ahtype_putcommit");
+    }
+    if(UPMI_BARRIER() != UPMI_SUCCESS) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ahtype_putcommit");
+    }
+
+    for (i = 0; i < pg_size; i++) {
+        if (i != pg_rank) {
+            MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_ahkey_%d", i);
+            mpi_errno = UPMI_KVS_GET(kvsid, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
+            if(mpi_errno != UPMI_SUCCESS) {
+                MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_getfailed");
+            }
+
+            sscanf(mv2_pmi_val, "%016lx", &arch);
+            PRINT_DEBUG(DEBUG_CM_verbose>1,
+                    "peer: %d, val: %s, arch: %016lx\n", i, mv2_pmi_val, arch);
+            if (arch != myarch) {
+                mv2_homogeneous_cluster = 0;
+                break;
+            }
+        }
+    }
+
+fn_exit:
+    PRINT_DEBUG(DEBUG_CM_verbose>1, "mv2_homogeneous_cluster = %d\n", mv2_homogeneous_cluster);
+    return mpi_errno;
+
+fn_fail:
+    PRINT_ERROR("ahtype put/commit/get failed\n");
+    goto fn_exit;
 }
 
 /* all ranks provide their epid via PMI put/get */
@@ -673,55 +706,79 @@ fn_fail:
     return MPI_ERR_INTERN;
 }
 
+static int psm_create_uuid(void)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int i, len = sizeof(PSM_UUID_T);
+    char *uuid_str = NULL;
+    unsigned int kvs_hash = 0;
+    
+    uuid_str = MPIU_Malloc(sizeof(char) * (len+1));
+    MPIU_Memset(uuid_str, 0, len+1);
+
+    kvs_hash = psm_hash_str(kvsid);
+    srand(kvs_hash);
+
+    for (i=0; i<len; i++) {
+        uuid_str[i] = psm_uuid[i] = rand() % UCHAR_MAX;
+    }
+    uuid_str[i] = '\0';
+
+    PRINT_DEBUG(DEBUG_CM_verbose, "kvsid: %s, kvs_hash: %u\n", kvsid, kvs_hash);
+
+    MPIU_Free(uuid_str);
+    return mpi_errno;
+}
+
 /* broadcast the uuid to all ranks via PMI put/get */
 static int psm_bcast_uuid(int pg_size, int pg_rank)
 {
-    char *kvs_name;
-    int mpi_errno = MPI_SUCCESS, valen;
-    int kvslen, srclen = sizeof(PSM_UUID_T), dst = WRBUFSZ;
-    char *kvskey;
+    int mpi_errno = MPI_SUCCESS;
+    int srclen = sizeof(PSM_UUID_T);
+    int dstlen = mv2_pmi_max_vallen;
 
-    if(pg_rank == ROOT)
+    if(pg_rank == ROOT) {
         PSM_UUID_GENERATE(psm_uuid);
+    }
 
     if(pg_size == 1)
         return MPI_SUCCESS;
 
-    UPMI_KVS_GET_KEY_LENGTH_MAX(&kvslen);
-    UPMI_KVS_GET_VALUE_LENGTH_MAX(&valen);
-    kvskey = (char *) MPIU_Malloc (kvslen);
-    MPIDI_PG_GetConnKVSname(&kvs_name);
-    snprintf(kvskey, kvslen, MPID_PSM_UUID"_%d_%s", pg_rank, kvs_name);
+    MPIU_Memset(mv2_pmi_key, 0, mv2_pmi_max_keylen);
+    MPIU_Memset(mv2_pmi_val, 0, mv2_pmi_max_vallen);
 
-    PRINT_DEBUG(DEBUG_CM_verbose>0, "key name = %s\n", kvskey);
     if(pg_rank == ROOT) {
-        encode(srclen, (char *)&psm_uuid, dst, scratch);
+        snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "%s", MPID_PSM_UUID);
+        encode(srclen, (char *)&psm_uuid, dstlen, mv2_pmi_val);
+        PRINT_DEBUG(DEBUG_CM_verbose>1, "uuid key: %s, value: %s\n", mv2_pmi_key, mv2_pmi_val);
     } else {
-        strcpy(scratch, "dummy-entry");
+        snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "dummy-key");
+        strcpy(mv2_pmi_val, "dummy-value");
     }
-    
-    if(UPMI_KVS_PUT(kvs_name, kvskey, scratch) != UPMI_SUCCESS) {
+
+    if(UPMI_KVS_PUT(kvsid, mv2_pmi_key, mv2_pmi_val) != UPMI_SUCCESS) {
         MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmiputuuid");
     }
-    if(UPMI_KVS_COMMIT(kvs_name) != UPMI_SUCCESS) {
+    if(UPMI_KVS_COMMIT(kvsid) != UPMI_SUCCESS) {
         MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmicommituuid");
     }
-
     UPMI_BARRIER();
+
     if(pg_rank != ROOT) {
-        snprintf(kvskey, kvslen, MPID_PSM_UUID"_0_%s", kvs_name);
-        if(UPMI_KVS_GET(kvs_name, kvskey, scratch, WRBUFSZ) != UPMI_SUCCESS) {
+        snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "%s", MPID_PSM_UUID);
+        if(UPMI_KVS_GET(kvsid, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen) != UPMI_SUCCESS) {
             MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmigetuuid");
         }
-        strcat(scratch, "==");
-        srclen = strlen(scratch);
-        if(decode(srclen, scratch, sizeof(PSM_UUID_T), (char *)&psm_uuid)) {
+
+        PRINT_DEBUG(DEBUG_CM_verbose>1, "uuid key: %s, value: %s\n", mv2_pmi_key, mv2_pmi_val);
+        strcat(mv2_pmi_val, "==");
+        srclen = strlen(mv2_pmi_val);
+        if(decode(srclen, mv2_pmi_val, sizeof(PSM_UUID_T), (char *)&psm_uuid)) {
             fprintf(stderr, "base-64 decode failed of UUID\n");
             goto fn_fail;
         }
     }
 
-    MPIU_Free(kvskey);
     return MPI_SUCCESS;
 
 fn_fail:
@@ -748,6 +805,9 @@ static void psm_read_user_params(void)
     if((flag = getenv("MV2_PSM_YIELD_COUNT")) != NULL) {
         ipath_progress_yield_count = atoi(flag);
     }
+    if ((flag = getenv("MV2_PSM_BCAST_UUID")) != NULL) {
+        mv2_psm_bcast_uuid = !!atoi(flag);
+    }
     if ((flag = getenv("MV2_SHOW_ENV_INFO")) != NULL) {
         g_mv2_show_env_info = atoi(flag);
     }
@@ -772,6 +832,8 @@ static void psm_other_init(MPIDI_PG_t *pg)
 {
     MPIDI_VC_t *vc;
     int i;
+    char *flag;
+    uint32_t value = 0;
 
     for(i = 0; i < MPIDI_PG_Get_size(pg); i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
@@ -783,13 +845,51 @@ static void psm_other_init(MPIDI_PG_t *pg)
         vc->rndvRecv_fn = NULL;
     }
 
-    PSM_MQ_GETOPT(psmdev_cw.mq, PSM_MQ_RNDV_IPATH_SZ,
-                &ipath_rndv_thresh);
-    PSM_MQ_GETOPT(psmdev_cw.mq, PSM_MQ_RNDV_SHM_SZ,
-                &i);
-    if(i < ipath_rndv_thresh)
-        ipath_rndv_thresh = i;
-    PRINT_DEBUG(DEBUG_CM_verbose>0, "blocking threshold %d\n", ipath_rndv_thresh);
+    if ((flag = getenv("MV2_IBA_EAGER_THRESHOLD")) != NULL) {
+        mv2_hfi_rndv_thresh = user_val_to_bytes(flag, "MV2_IBA_EAGER_THRESHOLD");
+    } else {
+        /* Check if default PSM2 threshold is higher and if so, use it */
+        PSM_MQ_GETOPT(psmdev_cw.mq, PSM_MQ_RNDV_IPATH_SZ, &value);
+        if (value > mv2_hfi_rndv_thresh) {
+            mv2_hfi_rndv_thresh = value;
+        }
+    }
+    /* Set the value of HFI rendezvous threshold */
+    PSM_MQ_SETOPT(psmdev_cw.mq, PSM_MQ_RNDV_IPATH_SZ, &mv2_hfi_rndv_thresh);
+    /* Validate that the desired values were set */
+    PSM_MQ_GETOPT(psmdev_cw.mq, PSM_MQ_RNDV_IPATH_SZ, &value);
+    if (value != mv2_hfi_rndv_thresh) {
+        PRINT_ERROR("Specified HFI rendezvous threshold was not set correctly by PSM.\n");
+        PRINT_ERROR("Requested: %d, Set: %d\n", mv2_hfi_rndv_thresh, value);
+    }
+
+    if ((flag = getenv("MV2_SMP_EAGERSIZE")) != NULL) {
+        mv2_shm_rndv_thresh = user_val_to_bytes(flag, "MV2_SMP_EAGERSIZE");
+    } else {
+        /* Check if default PSM2 threshold is higher and if so, use it */
+        PSM_MQ_GETOPT(psmdev_cw.mq, PSM_MQ_RNDV_SHM_SZ, &value);
+        if (value > mv2_shm_rndv_thresh) {
+            mv2_shm_rndv_thresh = value;
+        }
+    }
+    /* Set the value of SHM rendezvous threshold */
+    PSM_MQ_SETOPT(psmdev_cw.mq, PSM_MQ_RNDV_SHM_SZ, &mv2_shm_rndv_thresh);
+    /* Validate that the desired values were set */
+    PSM_MQ_GETOPT(psmdev_cw.mq, PSM_MQ_RNDV_SHM_SZ, &value);
+    if (value != mv2_shm_rndv_thresh) {
+        PRINT_ERROR("Specified SHM rendezvous threshold was not set correctly by PSM\n");
+        PRINT_ERROR("Requested: %d, Set: %d\n", mv2_shm_rndv_thresh, value);
+    }
+
+    /* Select the smaller threshold */
+    if (mv2_shm_rndv_thresh < mv2_hfi_rndv_thresh) {
+        ipath_rndv_thresh = mv2_shm_rndv_thresh;
+    } else {
+        ipath_rndv_thresh = mv2_hfi_rndv_thresh;
+    }
+    PRINT_DEBUG(DEBUG_CM_verbose>0,
+            "hfi threshold: %d, shm threshold: %d, blocking threshold %d\n",
+            mv2_hfi_rndv_thresh, mv2_shm_rndv_thresh, ipath_rndv_thresh);
 
     psm_queue_init();
     psm_init_vbuf_lock();
@@ -926,6 +1026,18 @@ static int decode(unsigned s_len, char *src, unsigned d_len, char *dst)
         }
     }
     return 0;
+}
+
+/* djb2 hash function */
+static unsigned int psm_hash_str(char *str)
+{
+    unsigned int hash = 5381;
+    int c;
+
+    while (c = *str++)
+        hash = ((hash << 5) + hash) + c;
+
+    return hash;
 }
 
 int mv2_allocate_pmi_keyval(void)

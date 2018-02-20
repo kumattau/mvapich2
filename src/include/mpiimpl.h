@@ -12,7 +12,7 @@
  * excludes the implied warranties of merchantability, fitness for a
  * particular purpose and non-infringement.
  */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -4081,6 +4081,9 @@ int MPIR_Scatter_MV2(const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                  int root, MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag );
 int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvcnts, 
                               MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag);
+int MPIR_Reduce_scatter_block_MV2(const void *sendbuf, void *recvbuf,
+                                int recvcount, MPI_Datatype datatype,
+                                MPI_Op op, MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag);
 int MPIR_Scan_MV2(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
               MPI_Op op, MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag);
 int MPIR_Exscan_MV2(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,

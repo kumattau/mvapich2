@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -97,9 +97,6 @@ int MPIDI_CH3_Finalize()
         mpi_errno = MPIDI_CH3I_SMP_finalize();
         if(mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
-
-    /* Deallocate hwloc topology and remove corresponding files */
-    smpi_destroy_hwloc_topology();
 
     /* Deallocate PMI Key Value Pair */
     mv2_free_pmi_keyval();

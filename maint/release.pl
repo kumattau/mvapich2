@@ -193,7 +193,7 @@ system("rm -f ${root}/$logfile");
 print("===> Exporting code from git... ");
 run_cmd("rm -rf ${expdir}");
 run_cmd("mkdir -p ${expdir}");
-run_cmd("git archive ${branch} --prefix='${prefix}-${version}/' | tar -x -C $tdir");
+run_cmd("git archive --remote=${git_repo} --prefix='${prefix}-${version}/' --format=tar ${branch} | tar -x -C $tdir");
 print("done\n");
 
 print("===> Create release date and version information... ");

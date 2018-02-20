@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -24,6 +24,10 @@
 #endif
 #if defined(HAVE_UNISTD_H)
 #include <unistd.h>
+#endif
+
+#if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
+extern void mv2_update_cvars();
 #endif
 
 /* FIXME: This does not belong here */
@@ -370,22 +374,34 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     MPIDI_CH3_Win_fns_init(&MPIDI_CH3U_Win_fns);
     MPIDI_CH3_Win_hooks_init(&MPIDI_CH3U_Win_hooks);
 
+#if defined(CHANNEL_PSM)
+    /* CPU affinity must be set before opening PSM contexts */
+    if (MPIDI_CH3I_set_affinity(pg, pg_rank) != MPI_SUCCESS) {
+        MPIR_ERR_POP(mpi_errno);
+    }
+#endif /* defined(CHANNEL_PSM)*/
+
     /*
      * Let the channel perform any necessary initialization
      * The channel init should assume that PMI_Init has been called and that
      * the basic information about the job has been extracted from PMI (e.g.,
      * the size and rank of this process, and the process group id)
      */
+#if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
+    mv2_update_cvars();
+#endif
     mpi_errno = MPIDI_CH3_Init(has_parent, pg, pg_rank);
     if (mpi_errno != MPI_SUCCESS) {
 	MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
 
-#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+#if defined(CHANNEL_MRAIL)
+    /* For mrail, CPU affinity is set later because of dependency on 
+     * SMP and HCA aware process mapping */
     if (MPIDI_CH3I_set_affinity(pg, pg_rank) != MPI_SUCCESS) {
         MPIR_ERR_POP(mpi_errno);
     }
-#endif /*defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)*/
+#endif /* defined(CHANNEL_MRAIL) */
 
     /* setup receive queue statistics */
     mpi_errno = MPIDI_CH3U_Recvq_init();
@@ -599,7 +615,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
     mpi_errno = MPIDI_RMA_init();
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-
+    
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_INIT);
     return mpi_errno;
@@ -622,6 +638,8 @@ int MPID_InitCompleted( void )
     if (show_cpu_binding) {
         mv2_show_cpu_affinity(show_cpu_binding);
     }
+    /* Unlink hwloc topology file */
+    mpi_errno = smpi_unlink_hwloc_topology_file();
 #endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
 #if defined(CHANNEL_MRAIL)
     int show_hca_binding = 0;

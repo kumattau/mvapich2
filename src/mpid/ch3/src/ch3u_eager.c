@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -938,7 +938,7 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     /* If the completion counter is 0, that means that the communicator to
      * which this message is being sent has been revoked and we shouldn't
      * bother finishing this. */
-    if (!found && MPID_cc_get(rreq->cc) == 0) {
+    if (unlikely(!found && MPID_cc_get(rreq->cc) == 0)) {
         *rreqp = NULL;
         goto fn_fail;
     }
@@ -990,40 +990,36 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         if (mpi_errno != MPI_SUCCESS) {
             MPIR_ERR_POP(mpi_errno);
         }
-	*rreqp = NULL;
-    }
-    else {
-	if (found) {
-	    mpi_errno = MPIDI_CH3U_Receive_data_found( rreq, data_buf,
-                                                       &data_len, &complete );
-	}
-	else {
-	    mpi_errno = MPIDI_CH3U_Receive_data_unexpected( rreq, data_buf,
-                                                            &data_len, &complete );
-	}
-
-	if (mpi_errno != MPI_SUCCESS) {
-	    MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**ch3|postrecv",
-			     "**ch3|postrecv %s", "MPIDI_CH3_PKT_EAGER_SEND");
-	}
+        *rreqp = NULL;
+    } else {
+        if (found) {
+            mpi_errno = MPIDI_CH3U_Receive_data_found( rreq, data_buf,
+                    &data_len, &complete );
+        } else {
+            mpi_errno = MPIDI_CH3U_Receive_data_unexpected( rreq, data_buf,
+                    &data_len, &complete );
+        }
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**ch3|postrecv",
+                    "**ch3|postrecv %s", "MPIDI_CH3_PKT_EAGER_SEND");
+        }
 
         /* return the number of bytes processed in this function */
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    if (rdma_enable_cuda && rdma_cuda_smp_ipc && eager_pkt->in_cuda_region == 1
-         && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
-        if (0 == cur_t) {
-            ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail = data_len;
-        } else {
-            ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail += data_len;
+        if (rdma_enable_cuda && rdma_cuda_smp_ipc && eager_pkt->in_cuda_region == 1
+                && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+            if (0 == cur_t) {
+                ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail = data_len;
+            } else {
+                ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail += data_len;
+            }
+            data_len = 0;
         }
-        data_len = 0;
-    }
 #endif
         *buflen = sizeof(MPIDI_CH3_Pkt_t) + data_len;
 
-        if (complete) 
-        {
+        if (complete) {
 #if defined(_ENABLE_CUDA_)
             if (rdma_enable_cuda && 
                     rreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_unpack_cudabuf) {
@@ -1041,9 +1037,7 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
                 }
             }
             *rreqp = NULL;
-        }
-        else
-        {
+        } else {
             *rreqp = rreq;
         }
     }

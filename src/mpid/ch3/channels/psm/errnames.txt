@@ -5,6 +5,9 @@
 **epid_getfailed: kvs get of epid failed
 **epid_putcommit: kvs commit of epid failed
 **epid_putfailed: kvs put of epid failed
+**ahtype_getfailed: kvs get of ahtype failed
+**ahtype_putcommit: kvs commit of ahtype failed
+**ahtype_putfailed: kvs put of ahtype failed
 **pmicommituuid: uuid kvs commit failed
 **pmigetuuid: uuid kvs get failed
 **pmiputuuid: uuid kvs put failed

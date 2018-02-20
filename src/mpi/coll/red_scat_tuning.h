@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -72,6 +72,20 @@ extern int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
                                          MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
+                                         void *recvbuf,
+                                         const int *recvcnts,
+                                         MPI_Datatype datatype,
+                                         MPI_Op op,
+                                         MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
+
+extern int MPIR_Reduce_scatter_ring(const void *sendbuf,
+                                         void *recvbuf,
+                                         const int *recvcnts,
+                                         MPI_Datatype datatype,
+                                         MPI_Op op,
+                                         MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
+
+extern int MPIR_Reduce_scatter_ring_2lvl(const void *sendbuf,
                                          void *recvbuf,
                                          const int *recvcnts,
                                          MPI_Datatype datatype,

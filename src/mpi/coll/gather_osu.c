@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,34 @@
 #include "mpiimpl.h"
 #include "datatype.h"
 #include "gather_tuning.h"
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_pt2pt);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_direct);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_direct_blk);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_two_level_direct);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_limic_scheme_pt_pt);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_limic_scheme_pt_linear);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_limic_scheme_linear_pt);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_limic_scheme_linear_linear);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_limic_scheme_single_leader);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_intra_node_limic);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_direct_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_direct_blk_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_two_level_direct_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_direct_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_direct_blk_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_two_level_direct_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_direct_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_direct_blk_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_two_level_direct_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_direct_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_direct_blk_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_two_level_direct_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_count_recv);
 
 static void *tmp_buf=NULL;
 #define TEMP_BUF_HAS_DATA (1)
@@ -63,6 +91,8 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
     MPI_Status *starray;
     MPIU_CHKLMEM_DECL(2);
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_gather_direct, 1);
+
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
 
@@ -97,6 +127,7 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
                                                recvcnt, recvtype);
                 }
             } else {
+                MPIR_PVAR_INC(gather, direct, recv, recvcnt, recvtype);
                 mpi_errno = MPIC_Irecv(((char *) recvbuf +
                                            i * recvcnt * extent),
                                           recvcnt, recvtype, i,
@@ -137,9 +168,11 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
         if (sendcnt) {
             comm_size = comm_ptr->local_size;
             if (sendbuf != MPI_IN_PLACE) {
+                MPIR_PVAR_INC(gather, direct, send, sendcnt, sendtype);
                 mpi_errno = MPIC_Send(sendbuf, sendcnt, sendtype, root,
                                          MPIR_GATHER_TAG, comm_ptr, errflag);
             } else {
+                MPIR_PVAR_INC(gather, direct, send, sendcnt, sendtype);
                 mpi_errno = MPIC_Send(recvbuf, sendcnt, sendtype, root,
                                          MPIR_GATHER_TAG, comm_ptr, errflag);
             }
@@ -177,6 +210,8 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
     MPI_Aint extent = 0;        /* Datatype extent */
     int i = 0;
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_gather_direct_blk, 1);
+
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
 
@@ -204,6 +239,7 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                 }
             } else {
+                MPIR_PVAR_INC(gather, direct_blk, recv, recvcnt, recvtype);
                 mpi_errno = MPIC_Recv(((char *) recvbuf +
                                            i * recvcnt * extent),
                                           recvcnt, recvtype, i,
@@ -226,9 +262,11 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
         if (sendcnt) {
             comm_size = comm_ptr->local_size;
             if (sendbuf != MPI_IN_PLACE) {
+                MPIR_PVAR_INC(gather, direct_blk, send, sendcnt, sendtype);
                 mpi_errno = MPIC_Send(sendbuf, sendcnt, sendtype, root,
                                          MPIR_GATHER_TAG, comm_ptr, errflag);
             } else {
+                MPIR_PVAR_INC(gather, direct_blk, send, sendcnt, sendtype);
                 mpi_errno = MPIC_Send(recvbuf, sendcnt, sendtype, root,
                                          MPIR_GATHER_TAG, comm_ptr, errflag);
             }
@@ -283,6 +321,7 @@ int MPIR_pt_pt_intra_gather(const void *sendbuf, int sendcnt, MPI_Datatype sendt
     MPI_Aint recvtype_extent = 0;  /* Datatype extent */
     MPI_Aint true_lb, sendtype_true_extent, recvtype_true_extent;
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_gather_pt2pt, 1);
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_shmem_coll_calls, 1);
 
     if (sendtype != MPI_DATATYPE_NULL) {
@@ -347,6 +386,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
     MPI_Comm shmem_comm, leader_comm;
     MPID_Comm *shmem_commptr, *leader_commptr = NULL;
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_gather_two_level_direct, 1);
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
 
@@ -605,6 +645,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
     }
     if ((local_rank == 0) && (root != rank)
         && (leader_of_root == rank)) {
+        MPIR_PVAR_INC(gather, two_level_direct, send, nbytes * comm_size, MPI_BYTE);
         mpi_errno = MPIC_Send(leader_gather_buf,
                                  nbytes * comm_size, MPI_BYTE,
                                  root, MPIR_GATHER_TAG, comm_ptr, errflag);
@@ -620,6 +661,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
     if (rank == root && local_rank != 0) {
         /* The root of the gather operation is not the node leader. Receive
          y* data from the node leader */
+        MPIR_PVAR_INC(gather, two_level_direct, recv, recvcnt * comm_size, recvtype);
         mpi_errno = MPIC_Recv(recvbuf, recvcnt * comm_size, recvtype,
                                  leader_of_root, MPIR_GATHER_TAG, comm_ptr,
                                  &status, errflag);
@@ -673,6 +715,7 @@ static int MPIR_Limic_Gather_Scheme_PT_PT(
     MPID_Comm *shmem_commptr;
     MPID_Comm *intra_sock_commptr = NULL, *intra_node_leader_commptr=NULL;
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_gather_limic_scheme_pt_pt, 1);
     rank = comm_ptr->rank;
 
     if (((rank == root) && (recvcnt == 0)) ||
@@ -907,6 +950,7 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
     MPI_Aint sendtype_size = 0;
     MPIU_CHKLMEM_DECL(1);
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_gather_limic_scheme_pt_linear, 1);
     rank = comm_ptr->rank;
 
     if (((rank == root) && (recvcnt == 0)) ||
@@ -1156,6 +1200,7 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_PT(
     MPID_Comm *shmem_commptr;
     MPID_Comm *intra_sock_commptr = NULL, *intra_node_leader_commptr=NULL;
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_gather_limic_scheme_linear_pt, 1);
     rank = comm_ptr->rank;
 
     if (((rank == root) && (recvcnt == 0)) ||
@@ -1305,6 +1350,7 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
     MPI_Aint position = 0;
     MPIU_CHKLMEM_DECL(1);
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_gather_limic_scheme_linear_linear, 1);
     rank = comm_ptr->rank;
 
     if (((rank == root) && (recvcnt == 0)) ||
@@ -1472,6 +1518,7 @@ static int MPIR_Limic_Gather_Scheme_SINGLE_LEADER(
     MPI_Aint position = 0;
     MPIU_CHKLMEM_DECL(1); 
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_gather_limic_scheme_single_leader, 1);
     rank = comm_ptr->rank;
 
     if (((rank == root) && (recvcnt == 0)) ||
@@ -1578,6 +1625,7 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
     MPI_Comm shmem_comm;
     MPID_Comm *shmem_commptr;
     
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_gather_intra_node_limic, 1);
     /* extract the rank,size information for the intra-node
      * communicator */
 	shmem_comm = comm_ptr->dev.ch.shmem_comm;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -252,6 +252,7 @@ extern int mcast_skip_loopback;
 #endif
 extern int mv2_enable_progress_affinity;
 extern int mv2_use_eager_fast_send;
+extern int mv2_rdma_fast_path_preallocate_buffers;
 
 extern int rdma_default_async_thread_stack_size;
 
@@ -386,7 +387,7 @@ typedef enum _mv2_rail_sharing_policies {
     ADAPTIVE_STRIPING,
     FIXED_MAPPING,
     PARTIAL_ADAPTIVE,
-    BEST_ADAPTIVE,
+    BEST_ADAPTIVE
 } mv2_rail_sharing_policies;
 
 /* This is to allow users to specify rail mapping at run time */
@@ -456,6 +457,7 @@ typedef enum mv2_env_param_id {
     MV2_PATH_SL_QUERY,
     MV2_USE_QOS,
     /* collectives */
+    MV2_USE_MCAST,
     MV2_ALLGATHER_BRUCK_THRESHOLD,
     MV2_ALLGATHER_RD_THRESHOLD,
     MV2_ALLGATHER_REVERSE_RANKING,
@@ -520,6 +522,8 @@ typedef enum mv2_env_param_id {
     MV2_CKPT_SESSIONID,
     MV2_CKPT_USE_AGGREGATION,
     /*start up */
+    MV2_FORCE_HCA_TYPE,
+    MV2_FORCE_ARCH_TYPE,
     MV2_CM_MAX_SPIN_COUNT,
     MV2_CM_RECV_BUFFERS,
     MV2_CM_SEND_DEPTH,
@@ -560,6 +564,7 @@ typedef enum mv2_env_param_id {
     MV2_HOMOGENEOUS_CLUSTER,
     MV2_UNIVERSE_SIZE,
     /* pt-pt */
+    MV2_NUM_CQES_PER_POLL,
     MV2_COALESCE_THRESHOLD,
     MV2_DREG_CACHE_LIMIT,
     MV2_IBA_EAGER_THRESHOLD,
@@ -774,9 +779,21 @@ void mv2_show_runlog_info(int level);
 void rdma_set_rdma_fast_path_params(int num_proc);
 const char *mv2_ibv_mtu_enum_to_string(enum ibv_mtu mtu);
 uint16_t mv2_ibv_mtu_enum_to_value(enum ibv_mtu mtu);
+extern int rdma_get_rail_sharing_policy(char *value);
 
 mv2_arch_hca_type MV2_get_arch_hca_type();
 
 
 extern int dreg_max_use_count;
 #endif /* _RDMA_PARAM_H */
+
+/* default values of CVARs */
+#define USE_MCAST_DEFAULT_FLAG           0
+#define DEFAULT_NUM_PORTS                1
+#define DEFAULT_NUM_QP_PER_PORT          1
+#define DEFAULT_COALESCE_THRESHOLD       6
+#define DEFAULT_USE_COALESCE             0
+#define DEFAULT_SPIN_COUNT               5000
+#define MAX_NUM_CQES_PER_POLL            96
+#define MIN_NUM_CQES_PER_POLL            1
+

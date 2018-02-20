@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,6 +20,8 @@
 #include "coll_shmem.h"
 #include <unistd.h>
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_exscan_algo);
+
 #undef FUNCNAME
 #define FUNCNAME MPIR_Exscan_MV2
 #undef FCNAME
@@ -34,6 +36,9 @@ int MPIR_Exscan_MV2(
     MPIR_Errflag_t *errflag )
 {
     int mpi_errno = MPI_SUCCESS;
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_exscan_algo, 1);
+
 #ifdef _ENABLE_CUDA_
     int recv_mem_type = 0;
     int send_mem_type = 0;

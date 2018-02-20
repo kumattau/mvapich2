@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -124,7 +124,8 @@ enum mv2_allreduce_tuning
     ALLREDUCE_MCAST_2LEVEL,
     ALLREDUCE_MCAST_RSA,
     ALLREDUCE_SHMEM_REDUCE,
-    ALLREDUCE_P2P_REDUCE
+    ALLREDUCE_P2P_REDUCE,
+    ALLREDUCE_RED_SCAT_ALLGA_COLL
 };
 
 enum mv2_scatter_tuning 
@@ -141,7 +142,14 @@ enum mv2_allgather_tuning
     ALLGATHER_RD_ALLGATHER_COMM = 1,
     ALLGATHER_RD,
     ALLGATHER_BRUCK,
-    ALLGATHER_RING
+    ALLGATHER_RING,
+	ALLGATHER_DIRECT,
+	ALLGATHER_DIRECTSPREAD,
+	ALLGATHER_GATHER_BCAST,
+	ALLGATHER_2LVL_NONBLOCKED,
+	ALLGATHER_2LVL_RING_NONBLOCKED,
+	ALLGATHER_2LVL_DIRECT,
+	ALLGATHER_2LVL_RING
 };
 
 enum mv2_alltoall_tuning 

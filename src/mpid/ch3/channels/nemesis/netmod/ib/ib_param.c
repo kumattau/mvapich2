@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -95,7 +95,7 @@ int           rdma_iwarp_use_multiple_cq = 1;
 /* Force to use rendezvous if extended sendq size exceeds this value */
 int           rdma_rndv_ext_sendq_size = 5;
 /* Whether coalescing of messages should be attempted */
-int           rdma_use_coalesce = 0;
+int           rdma_use_coalesce = DEFAULT_USE_COALESCE;
 
 int           mv2_show_env_info = 0;
 
@@ -103,7 +103,7 @@ int           mv2_show_env_info = 0;
  * the message can be coalesced with other messages (and
  * will not be sent until a previous message completes)
  */
-int           rdma_coalesce_threshold = 6;
+int           rdma_coalesce_threshold = DEFAULT_COALESCE_THRESHOLD;
 
 /* max (total) number of vbufs to allocate, after which process
  * terminates with a fatal error.
@@ -158,7 +158,7 @@ unsigned long rdma_dreg_cache_limit = 0;
 
 /* Blocking mode progress */
 int rdma_use_blocking = 0;
-unsigned long rdma_blocking_spin_count_threshold = 5000;
+unsigned long rdma_blocking_spin_count_threshold = DEFAULT_SPIN_COUNT;
 
 /* The total size of each vbuf. Used to be the eager threshold, but
  * it can be smaller, so that each eager message will span over few

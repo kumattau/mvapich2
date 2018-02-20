@@ -46,6 +46,7 @@ int MPL_env2range(const char *envName, int *lowPtr, int *highPtr)
 int MPL_env2int(const char *envName, int *val)
 {
     const char *val_ptr;
+    int factor = 1;
 
     val_ptr = getenv(envName);
     if (val_ptr) {
@@ -62,11 +63,24 @@ int MPL_env2int(const char *envName, int *val)
             p++;
         while (*p && isdigit(*p))
             value = 10 * value + (*p++ - '0');
+        while (*p && isalpha(*p)) {
+            if (*p == 'k' || *p == 'K') {
+                factor = 1<<10;
+            } else if (*p == 'm' || *p == 'M') {
+                factor = 1<<20;
+            } else if (*p == 'g' || *p == 'G') {
+                factor = 1<<30;
+            } else {
+                MPL_error_printf("Invalid character %c in %s\n", *p, envName);
+                return -1;
+            }
+            value = 10 * value + (*p++ - '0');
+        }
         if (*p) {
             MPL_error_printf("Invalid character %c in %s\n", *p, envName);
             return -1;
         }
-        *val = sign * value;
+        *val = sign * value * factor;
         return 1;
     }
     return 0;

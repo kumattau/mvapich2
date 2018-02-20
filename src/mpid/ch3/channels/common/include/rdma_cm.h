@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,7 +26,9 @@
 #include <pthread.h>
 #include <rdma/rdma_cma.h>
 #include <infiniband/verbs.h>
+#ifdef _MULTI_SUBNET_SUPPORT_
 #include <infiniband/ib.h>
+#endif /*_MULTI_SUBNET_SUPPORT_*/
 #include "rdma_impl.h"
 
 extern int g_num_smp_peers;

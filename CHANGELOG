@@ -3,6 +3,45 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.3rc1 (02/19/2018)
+ 
+* Features and Enhancements (since 2.3b):
+    - Enhanced performance for Allreduce, Reduce_scatter_block, Allgather,
+      Allgatherv through new algorithms
+        - Thanks to Danielle Sikich and Adam Moody @ LLNL for the patch
+    - Enhance support for MPI_T PVARs and CVARs
+    - Improved job startup time for OFA-IB-CH3, PSM-CH3, and PSM2-CH3
+    - Support to automatically detect IP address of IB/RoCE interfaces when
+      RDMA_CM is enabled without relying on mv2.conf file
+    - Enhance HCA detection to handle cases where node has both IB and RoCE HCAs
+    - Automatically detect and use maximum supported MTU by the HCA
+    - Added logic to detect heterogeneous CPU/HFI configurations in PSM-CH3 and
+      PSM2-CH3 channels
+        - Thanks to Matias Cabral@Intel for the report
+    - Enhanced intra-node and inter-node tuning for PSM-CH3 and PSM2-CH3
+      channels
+    - Enhanced HFI selection logic for systems with multiple Omni-Path HFIs
+    - Enhanced tuning and architecture detection for OpenPOWER, Intel Skylake
+      and Cavium ARM (ThunderX) systems
+    - Added 'SPREAD', 'BUNCH', and 'SCATTER' binding options for hybrid CPU
+      binding policy
+    - Rename MV2_THREADS_BINDING_POLICY to MV2_HYBRID_BINDING_POLICY
+    - Added support for MV2_SHOW_CPU_BINDING to display number of OMP threads
+    - Update to hwloc version 1.11.9
+ 
+* Bug Fixes (since 2.3b):
+    - Fix issue with RDMA_CM in multi-rail scenario
+    - Fix issues in nullpscw RMA test.
+    - Fix issue with reduce and allreduce algorithms for large message sizes
+    - Fix hang issue in hydra when no SLURM environment is present
+        - Thanks to Vaibhav Sundriyal for the report 
+    - Fix issue to test Fortran KIND with FFLAGS
+        - Thanks to Rob Latham@mcs.anl.gov for the patch
+    - Fix issue in parsing environment variables
+    - Fix issue in displaying process to HCA binding
+    - Enhance CPU binding logic to handle vendor specific core mappings
+    - Fix compilation warnings and memory leaks
+
 MVAPICH2 2.3b (08/10/2017)
 
 * Features and Enhancements (since 2.3a):
@@ -11,7 +50,7 @@ MVAPICH2 2.3b (08/10/2017)
     - Improve performance for MPI-3 RMA operations
     - Introduce support for Cavium ARM (ThunderX) systems
     - Improve support for process to core mapping on many-core systems
-        - New enviroment variable MV2_THREADS_BINDING_POLICY for
+        - New environment variable MV2_THREADS_BINDING_POLICY for
           multi-threaded MPI and MPI+OpenMP applications
         - Support `linear' and `compact' placement of threads
         - Warn user if oversubcription of core is detected

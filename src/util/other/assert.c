@@ -6,6 +6,7 @@
  */
 
 #include "mpiimpl.h"
+#include "upmi.h"
 #  define MPIU_ASSERT_FMT_MSG_MAX_SIZE 2048
 
 
@@ -19,14 +20,17 @@
 
 int MPIR_Assert_fail(const char *cond, const char *file_name, int line_num)
 {
-    MPL_VG_PRINTF_BACKTRACE("Assertion failed in file %s at line %d: %s\n",
-                            file_name, line_num, cond);
-    MPL_internal_error_printf("Assertion failed in file %s at line %d: %s\n",
-                               file_name, line_num, cond);
+    int rank;
+    UPMI_GET_RANK(&rank);
+
+    MPL_VG_PRINTF_BACKTRACE("[rank %d] Assertion failed in file %s at line %d: %s\n",
+                            rank, file_name, line_num, cond);
+    MPL_internal_error_printf("[rank %d] Assertion failed in file %s at line %d: %s\n",
+                            rank, file_name, line_num, cond);
     MPIU_DBG_MSG_FMT(ALL, TERSE,
                      (MPIU_DBG_FDEST,
-                      "Assertion failed in file %s at line %d: %s",
-                      file_name, line_num, cond));
+                      "[rank %d] Assertion failed in file %s at line %d: %s",
+                      rank, file_name, line_num, cond));
     MPID_Abort(NULL, MPI_SUCCESS, 1, NULL);
     return MPI_ERR_INTERN; /* never get here, abort should kill us */
 }
@@ -35,22 +39,24 @@ int MPIR_Assert_fail_fmt(const char *cond, const char *file_name, int line_num, 
 {
     char msg[MPIU_ASSERT_FMT_MSG_MAX_SIZE] = {'\0'};
     va_list vl;
+    int rank;
+    UPMI_GET_RANK(&rank);
 
     va_start(vl,fmt);
     vsnprintf(msg, sizeof(msg), fmt, vl); /* don't check rc, can't handle it anyway */
 
-    MPL_VG_PRINTF_BACKTRACE("Assertion failed in file %s at line %d: %s\n",
-                            file_name, line_num, cond);
+    MPL_VG_PRINTF_BACKTRACE("[rank %d] Assertion failed in file %s at line %d: %s\n",
+                            rank, file_name, line_num, cond);
     MPL_VG_PRINTF_BACKTRACE("%s\n", msg);
 
-    MPL_internal_error_printf("Assertion failed in file %s at line %d: %s\n",
-                               file_name, line_num, cond);
-    MPL_internal_error_printf("%s\n", msg);
+    MPL_internal_error_printf("[rank %d] Assertion failed in file %s at line %d: %s\n",
+                               rank, file_name, line_num, cond);
+    MPL_internal_error_printf("rank %s\n", msg);
 
     MPIU_DBG_MSG_FMT(ALL, TERSE,
                      (MPIU_DBG_FDEST,
-                      "Assertion failed in file %s at line %d: %s",
-                      file_name, line_num, cond));
+                      "[rank %d] Assertion failed in file %s at line %d: %s",
+                      rank, file_name, line_num, cond));
     MPIU_DBG_MSG_FMT(ALL, TERSE, (MPIU_DBG_FDEST,"%s",msg));
 
     MPID_Abort(NULL, MPI_SUCCESS, 1, NULL);

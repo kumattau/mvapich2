@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -43,8 +43,11 @@ typedef struct {
     MPI_Comm     allgather_comm;
     int*    leader_map;
     int*    leader_rank;
-    int*    node_sizes;
+    int*    node_sizes;		 /* number of processes on each node */
+    int*    node_disps;      /* displacements into rank_list for each node */
     int*    allgather_new_ranks;
+    int*    rank_list;       /* list of ranks, ordered by node id, then shmem rank on each node */
+    int     rank_list_index; /* index of this process in the rank_list array */
     int     is_uniform;
     int     is_blocked;
     int     shmem_comm_rank;
@@ -58,6 +61,9 @@ typedef struct {
                                 with mcast and bcast */
     int     shmem_coll_count;
     int     allgather_coll_count;
+    int     allreduce_coll_count;
+    int     bcast_coll_count;
+    int     scatter_coll_count;
     void    *shmem_info; /* intra node shmem info */
 #if defined(_SMP_LIMIC_)    
     MPI_Comm     intra_sock_comm;

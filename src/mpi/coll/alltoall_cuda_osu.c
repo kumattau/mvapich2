@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,6 +25,14 @@ typedef enum _send_stat_ {
 cudaEvent_t *send_events = NULL, *recv_event = NULL;
 int send_events_count = 0;
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_cuda_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_cuda_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_cuda_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_cuda_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_cuda_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_cuda_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_cuda_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_cuda_count_recv);
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Alltoall_CUDA_cleanup
@@ -244,6 +252,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
             dst = (rank + j + i) % comm_size;
             disp = j*recvcount*recvtype_extent;
 
+            MPIR_PVAR_INC(alltoall_cuda, intra, recv, recvcount, recvtype);
             mpi_errno = MPIC_Irecv((char *) recv_buf[bufs_recvd]->buf +
                     disp,
                     recvcount, recvtype, dst,
@@ -277,6 +286,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
                     dst = (rank - j - (i * sblock) + comm_size) % comm_size;
                     disp = (procs_in_block - j - 1)*sendcount*sendtype_extent;
 
+                    MPIR_PVAR_INC(alltoall_cuda, intra, send, sendcount, sendtype);
                     mpi_errno = MPIC_Isend((char *) send_buf[i]->buf +
                         disp,
                         sendcount, sendtype, dst,

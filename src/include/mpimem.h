@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -516,7 +516,7 @@ void MPIU_Basename(char *path, char **basename);
    the checks fail. */
 #define MPIU_MEM_CHECK_MEMCPY(dst_,src_,len_)                                                                   \
     do {                                                                                                        \
-        if (len_) {                                                                                             \
+        if (len_ > 0) {                                                                                             \
             MPIU_Assert((dst_) != NULL);                                                                        \
             MPIU_Assert((src_) != NULL);                                                                        \
             MPL_VG_CHECK_MEM_IS_ADDRESSABLE((dst_),(len_));                                                     \

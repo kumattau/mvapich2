@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1585,6 +1585,10 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
     vbuf *v;
     MPIDI_VC_t *save_vc = vc_ptr;
 
+    while(winptr->put_get_list[winptr->put_get_list_tail].status == BUSY) {
+        winptr->put_get_list_tail = (winptr->put_get_list_tail + 1 ) % rdma_default_put_get_list_size;
+    }
+
     index = winptr->put_get_list_tail;
     winptr->put_get_list[index].op_type     = SIGNAL_FOR_PUT;
     winptr->put_get_list[index].mem_entry   = dreg_tmp;
@@ -1595,6 +1599,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
                     rdma_default_put_get_list_size;
     winptr->put_get_list[index].completion = 0;
     winptr->put_get_list[index].target_rank = target;
+    winptr->put_get_list[index].status      = BUSY;
 
     if (rail_select == STRIPE) { /* stripe the message across rails */
         /*post data in chunks of mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize as long as the 
@@ -1724,7 +1729,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
         v->list = (void *)(&(winptr->put_get_list[index]));
         v->vc = (void *)vc_ptr;
 
-        ++winptr->put_get_list[index].completion;
+        ++(winptr->put_get_list[index].completion);
         ++(winptr->put_get_list_size);
         ++(winptr->rma_issued);
         ++(winptr->put_get_list_size_per_process[target]);
@@ -1799,6 +1804,10 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
      vbuf *v;
      MPIDI_VC_t *save_vc = vc_ptr;
 
+     while(winptr->put_get_list[winptr->put_get_list_tail].status == BUSY) {
+         winptr->put_get_list_tail = (winptr->put_get_list_tail + 1 ) % rdma_default_put_get_list_size;
+     }
+
      index = winptr->put_get_list_tail;
      if(size <= rdma_eagersize_1sc){    
          winptr->put_get_list[index].origin_addr = local_buf[0];
@@ -1816,6 +1825,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
                                    rdma_default_put_get_list_size;
      winptr->put_get_list[index].completion = 0;
      winptr->put_get_list[index].target_rank = target;
+     winptr->put_get_list[index].status      = BUSY;
 
      if (rail_select == STRIPE) { /*stripe across the rails*/
         /*post data in chunks of mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize as long as the 
@@ -1998,6 +2008,7 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
                     --(list_win_ptr->put_get_list_size);
                     --(list_win_ptr->rma_issued);
                     --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
+                    list_entry->status = FREE;
                     break;
                 }
             case (SIGNAL_FOR_GET):
@@ -2021,6 +2032,7 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
                     --(list_win_ptr->put_get_list_size);
                     --(list_win_ptr->rma_issued);
                     --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
+                    list_entry->status = FREE;
                     break;
                 }
             case (SIGNAL_FOR_COMPARE_AND_SWAP):
@@ -2281,6 +2293,7 @@ int iba_compare_and_swap(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_
     GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
     if (NULL == v)
         MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+
     index = win_ptr->put_get_list_tail;
     win_ptr->put_get_list[index].op_type        = SIGNAL_FOR_COMPARE_AND_SWAP;
     win_ptr->put_get_list[index].win_ptr        = win_ptr;
@@ -2291,6 +2304,8 @@ int iba_compare_and_swap(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_
                 % rdma_default_put_get_list_size;
     win_ptr->put_get_list[index].completion = 0;
     win_ptr->put_get_list[index].target_rank = rma_op->target_rank;
+
+
     ++(win_ptr->put_get_list[index].completion);
     ++(win_ptr->put_get_list_size);
     ++(win_ptr->rma_issued);
@@ -2351,6 +2366,7 @@ int iba_fetch_and_add(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr, MPIDI_msg_sz_t 
         % rdma_default_put_get_list_size;
     win_ptr->put_get_list[index].completion     = 0;
     win_ptr->put_get_list[index].target_rank    = rma_op->target_rank;
+    
 
     ++(win_ptr->put_get_list[index].completion);
     ++(win_ptr->put_get_list_size);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,8 @@ enum {
     RED_SCAT_BASIC = 1,
     RED_SCAT_REC_HALF,
     RED_SCAT_PAIRWISE,
+    RED_SCAT_RING,
+    RED_SCAT_RING_2LVL,
 };
 
 int mv2_size_red_scat_tuning_table = 0;
@@ -34,11 +36,12 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
         mv2_red_scat_tuning_table mv2_tmp_red_scat_thresholds_table[] = {
             {
                 12,
-                3,
+                4,
                 {
                     {0, 256, &MPIR_Reduce_Scatter_Basic_MV2},
                     {256, 8192, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {8192, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {8192, 65536, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
@@ -47,7 +50,7 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 {
                     {0, 64, &MPIR_Reduce_Scatter_Basic_MV2},
                     {64, 65536, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {65536, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
@@ -56,7 +59,7 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 {
                     {0, 64, &MPIR_Reduce_Scatter_Basic_MV2},
                     {64, 131072, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {131072, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {131072, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
@@ -65,23 +68,25 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 {
                     {0, 128, &MPIR_Reduce_Scatter_Basic_MV2},
                     {128, 262144, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {262144, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {262144, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
                 192,
-                2,
+                3,
                 {
                     {0, 128, &MPIR_Reduce_Scatter_Basic_MV2},
-                    {128, -1, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {128, 65536, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
                 384,
-                2,
+                3,
                 {
                     {0, 128, &MPIR_Reduce_Scatter_Basic_MV2},
-                    {128, -1, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {128, 65536, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
         }; 
@@ -99,7 +104,7 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 {
                     {0, 64, &MPIR_Reduce_Scatter_Basic_MV2},
                     {64, 65536, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {65536, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
@@ -108,7 +113,7 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 {
                     {0, 64, &MPIR_Reduce_Scatter_Basic_MV2},
                     {64, 131072, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {131072, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {131072, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
@@ -117,31 +122,34 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 {
                     {0, 1024, &MPIR_Reduce_Scatter_Basic_MV2},
                     {1024, 262144, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {262144, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {262144, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
                 128,
-                2,
+                3,
                 {
                     {0, 128, &MPIR_Reduce_Scatter_Basic_MV2},
-                    {128, -1, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {128, 65536, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
                 256,
-                2,
+                3,
                 {
                     {0, 128, &MPIR_Reduce_Scatter_Basic_MV2},
-                    {128, -1, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {128, 65536, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
                 512,
-                2,
+                3,
                 {
                     {0, 256, &MPIR_Reduce_Scatter_Basic_MV2},
-                    {256, -1, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {256, 65536, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
 
@@ -160,42 +168,47 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 {
                     {0, 8, &MPIR_Reduce_Scatter_Basic_MV2},
                     {8, 32768, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {32768, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {32768, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
                 64,
-                1,
+                2,
                 {
-                    {0, -1, &MPIR_Reduce_Scatter_Basic_MV2},
+                    {0, 65536, &MPIR_Reduce_Scatter_Basic_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
                 128,
-                1,
+                2,
                 {
-                    {0, -1, &MPIR_Reduce_Scatter_Basic_MV2},
+                    {0, 65536, &MPIR_Reduce_Scatter_Basic_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
                 256,
-                1,
+                2,
                 {
-                    {0, -1, &MPIR_Reduce_Scatter_Basic_MV2},
+                    {0, 65536, &MPIR_Reduce_Scatter_Basic_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
                 512,
-                1,
+                2,
                 {
-                    {0, -1, &MPIR_Reduce_Scatter_Basic_MV2},
+                    {0, 65536, &MPIR_Reduce_Scatter_Basic_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
                 1024,
-                1,
+                2,
                 {
-                    {0, -1, &MPIR_Reduce_Scatter_Basic_MV2},
+                    {0, 65536, &MPIR_Reduce_Scatter_Basic_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
         }; 
@@ -212,11 +225,12 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
         mv2_red_scat_tuning_table mv2_tmp_red_scat_thresholds_table[] = {
             {
                 8,
-                3,
+                4,
                 {
                     {0, 256, &MPIR_Reduce_Scatter_Basic_MV2},
                     {256, 16384, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {16384, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {16384, 65536, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
@@ -225,7 +239,7 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 {
                     {0, 64, &MPIR_Reduce_Scatter_Basic_MV2},
                     {64, 65536, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {65536, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
@@ -234,7 +248,7 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 {
                     {0, 64, &MPIR_Reduce_Scatter_Basic_MV2},
                     {64, 131072, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {131072, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {131072, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
@@ -243,7 +257,7 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 {
                     {0, 1024, &MPIR_Reduce_Scatter_Basic_MV2},
                     {1024, 262144, &MPIR_Reduce_scatter_Rec_Halving_MV2},
-                    {262144, -1, &MPIR_Reduce_scatter_Pair_Wise_MV2},
+                    {262144, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
@@ -251,7 +265,8 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 2,
                 {
                     {0, 128, &MPIR_Reduce_Scatter_Basic_MV2},
-                    {128, -1, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {128, 65536, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
@@ -259,7 +274,8 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 2,
                 {
                     {0, 128, &MPIR_Reduce_Scatter_Basic_MV2},
-                    {128, -1, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {128, 65536, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
             {
@@ -267,7 +283,8 @@ int MV2_set_red_scat_tuning_table(int heterogeneity)
                 2,
                 {
                     {0, 256, &MPIR_Reduce_Scatter_Basic_MV2},
-                    {256, -1, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {256, 65536, &MPIR_Reduce_scatter_Rec_Halving_MV2},
+                    {65536, -1, &MPIR_Reduce_scatter_ring_2lvl},
                 },
             },
         };
@@ -330,6 +347,14 @@ int MV2_internode_Red_scat_is_define(char *mv2_user_red_scat_inter)
             mv2_tmp_red_scat_thresholds_table[0].inter_leader[0].MV2_pt_Red_scat_function =
                 &MPIR_Reduce_scatter_Pair_Wise_MV2;
             break;
+        case RED_SCAT_RING:
+            mv2_tmp_red_scat_thresholds_table[0].inter_leader[0].MV2_pt_Red_scat_function =
+                &MPIR_Reduce_scatter_ring;
+            break;
+        case RED_SCAT_RING_2LVL:
+            mv2_tmp_red_scat_thresholds_table[0].inter_leader[0].MV2_pt_Red_scat_function =
+                &MPIR_Reduce_scatter_ring_2lvl;
+            break;
         default:
             mv2_tmp_red_scat_thresholds_table[0].inter_leader[0].MV2_pt_Red_scat_function =
                 &MPIR_Reduce_Scatter_Basic_MV2;
@@ -376,6 +401,14 @@ int MV2_internode_Red_scat_is_define(char *mv2_user_red_scat_inter)
             case RED_SCAT_PAIRWISE:
                 mv2_tmp_red_scat_thresholds_table[0].inter_leader[i].MV2_pt_Red_scat_function =
                     &MPIR_Reduce_scatter_Pair_Wise_MV2;
+                break;
+            case RED_SCAT_RING:
+                mv2_tmp_red_scat_thresholds_table[0].inter_leader[i].MV2_pt_Red_scat_function =
+                    &MPIR_Reduce_scatter_ring;
+                break;
+            case RED_SCAT_RING_2LVL:
+                mv2_tmp_red_scat_thresholds_table[0].inter_leader[i].MV2_pt_Red_scat_function =
+                    &MPIR_Reduce_scatter_ring_2lvl;
                 break;
             default:
                 mv2_tmp_red_scat_thresholds_table[0].inter_leader[i].MV2_pt_Red_scat_function =

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -71,6 +71,77 @@ int MRAILI_Send_select_rail(MPIDI_VC_t * vc)
     }
 }
 
+void *mv2_vbuf_ctrl_buf = NULL;
+void *mv2_vbuf_rdma_buf = NULL;
+dreg_entry *mv2_rdma_fp_dreg = NULL;
+int mv2_rdma_fp_prealloc_buf_index = 0;
+
+int mv2_preallocate_rdma_fp_bufs()
+{
+    int mpi_errno = MPI_SUCCESS;
+    int pagesize = getpagesize();
+
+    /* allocate vbuf struct buffers */
+    if(MPIU_Memalign((void **) &mv2_vbuf_ctrl_buf, 64, (sizeof(struct vbuf) *
+                    rdma_polling_set_limit * num_rdma_buffer))) {
+        PRINT_ERROR("malloc failed: vbuf control struct\n");
+        goto fn_fail;
+    }
+    MPIU_Memset(mv2_vbuf_ctrl_buf, 0, (sizeof(struct vbuf) *
+                rdma_polling_set_limit * num_rdma_buffer));
+
+    /* allocate vbuf RDMA buffers */
+    if(MPIU_Memalign((void **)&mv2_vbuf_rdma_buf, pagesize,
+                (rdma_fp_buffer_size * rdma_polling_set_limit * num_rdma_buffer))) {
+        PRINT_ERROR("malloc failed: vbuf DMA buffers\n");
+        goto fn_fail;
+    }
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
+        ibv_cuda_register(mv2_vbuf_rdma_buf, (rdma_fp_buffer_size *
+                            rdma_polling_set_limit * num_rdma_buffer));
+    }
+#endif
+    MPIU_Memset(mv2_vbuf_rdma_buf, 0, (rdma_fp_buffer_size *
+                rdma_polling_set_limit * num_rdma_buffer));
+
+    mv2_rdma_fp_dreg = dreg_register(mv2_vbuf_rdma_buf, (rdma_fp_buffer_size *
+                                    rdma_polling_set_limit * num_rdma_buffer));
+    if (mv2_rdma_fp_dreg == NULL) {
+        PRINT_ERROR("Dreg register for vbuf DMA buffers\n");
+        goto fn_fail;
+    }
+
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    if (mv2_vbuf_ctrl_buf) {
+        MPIU_Memalign_Free(mv2_vbuf_ctrl_buf);
+    }
+    if (mv2_vbuf_rdma_buf) {
+        MPIU_Memalign_Free(mv2_vbuf_rdma_buf);
+    }
+    mpi_errno = MPI_ERR_OTHER;
+    goto fn_exit;
+}
+
+int mv2_free_prealloc_rdma_fp_bufs()
+{
+    if (mv2_vbuf_ctrl_buf) {
+        MPIU_Memalign_Free(mv2_vbuf_ctrl_buf);
+        mv2_vbuf_ctrl_buf = NULL;
+    }
+    if (mv2_vbuf_rdma_buf) {
+        dreg_unregister(mv2_rdma_fp_dreg);
+        mv2_rdma_fp_dreg = NULL;
+        MPIU_Memalign_Free(mv2_vbuf_rdma_buf);
+        mv2_vbuf_rdma_buf = NULL;
+    }
+
+    return MPI_SUCCESS;
+}
+
 #undef FUNCNAME
 #define FUNCNAME vbuf_fast_rdma_alloc
 #undef FCNAME
@@ -92,6 +163,19 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 
     if (num_rdma_buffer) {
 
+    if (mv2_rdma_fast_path_preallocate_buffers &&
+        (mv2_rdma_fp_prealloc_buf_index < rdma_polling_set_limit)) {
+        int ctrl_buf_offset = (sizeof(struct vbuf) * num_rdma_buffer) * mv2_rdma_fp_prealloc_buf_index;
+        int data_buf_offset = (num_rdma_buffer * rdma_fp_buffer_size) * mv2_rdma_fp_prealloc_buf_index;
+
+        vbuf_ctrl_buf = (void*) mv2_vbuf_ctrl_buf + ctrl_buf_offset;
+        vbuf_rdma_buf = (void*) mv2_vbuf_rdma_buf + data_buf_offset;
+
+        for (i = 0 ; i < rdma_num_hcas; i++) {
+            mem_handle[i] = mv2_rdma_fp_dreg->memhandle[i];
+        }
+        mv2_rdma_fp_prealloc_buf_index++;
+    } else {
 	/* allocate vbuf struct buffers */
         if(MPIU_Memalign((void **) &vbuf_ctrl_buf, 64,
             sizeof(struct vbuf) * num_rdma_buffer)) {
@@ -127,6 +211,7 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
                 goto fn_fail;
             }
         }
+    }
 
         /* Connect the DMA buffer to the vbufs */
         for (i = 0; i < num_rdma_buffer; i++) {
@@ -173,11 +258,13 @@ fn_exit:
     MPIDI_FUNC_EXIT(MPID_GEN2_VBUF_FAST_RDMA_ALLOC);
     return mpi_errno;
 fn_fail:
-    if (vbuf_rdma_buf) {
-        MPIU_Memalign_Free(vbuf_rdma_buf);
-    }
-    if (vbuf_ctrl_buf) {
-        MPIU_Memalign_Free(vbuf_ctrl_buf);
+    if (!mv2_rdma_fast_path_preallocate_buffers) {
+        if (vbuf_rdma_buf) {
+            MPIU_Memalign_Free(vbuf_rdma_buf);
+        }
+        if (vbuf_ctrl_buf) {
+            MPIU_Memalign_Free(vbuf_ctrl_buf);
+        }
     }
     mpi_errno = -1;
     goto fn_exit;

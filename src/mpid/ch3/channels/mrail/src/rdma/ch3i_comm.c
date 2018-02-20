@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -94,6 +94,7 @@ int MPIDI_CH3I_comm_create (MPID_Comm *comm)
         comm->coll_fns->Reduce = MPIR_Reduce_MV2; 
         comm->coll_fns->Allreduce = MPIR_Allreduce_MV2;
         comm->coll_fns->Reduce_scatter = MPIR_Reduce_scatter_MV2;
+        comm->coll_fns->Reduce_scatter_block = MPIR_Reduce_scatter_block_MV2;
         comm->coll_fns->Scan = MPIR_Scan_MV2;
         comm->coll_fns->Exscan = MPIR_Exscan_MV2;
 

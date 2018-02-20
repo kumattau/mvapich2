@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -97,6 +97,12 @@ extern int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
 
 /* flat p2p reduce-scatter-allgather allreduce */
 extern int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
+                             void *recvbuf,
+                             int count,
+                             MPI_Datatype datatype,
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
+
+extern int MPIR_Allreduce_pt2pt_reduce_scatter_allgather_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,

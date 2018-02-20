@@ -1,9 +1,9 @@
 REM
-REM  Copyright © 2012-2015 Inria.  All rights reserved.
+REM  Copyright © 2012-2017 Inria.  All rights reserved.
 REM  See COPYING in top-level directory.
 REM
 
-set PATH=%PATH%;C:\Builds\MSYS-20111123\msys\bin
+set PATH=%PATH%;C:\msys64\bin;C:\msys64\usr\bin
 
 REM  remove everything but the last 10 builds
 sh -c "rm -rf $(ls | grep -v ^hwloc- | grep -v ^job-) || true"
@@ -23,6 +23,9 @@ C:\Windows\Microsoft.NET\Framework\v4.0.30319\MSBuild hwloc.sln /p:Configuration
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 x64\Release\lstopo-no-graphics.exe
+if %errorlevel% neq 0 exit /b %errorlevel%
+
+x64\Release\hwloc-info.exe --support
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 cd ..\..\..

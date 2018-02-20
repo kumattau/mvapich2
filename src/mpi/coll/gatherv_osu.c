@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,18 @@
 #include "mpiimpl.h"
 #include "datatype.h"
 #include "coll_shmem.h"
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gatherv_algo);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gatherv_default_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gatherv_default_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gatherv_default_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gatherv_default_count_recv);
+                                                             
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gatherv_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gatherv_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gatherv_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gatherv_count_recv);
 
 /*Ditto MPICH code except for a few changes*/
 #undef FUNCNAME
@@ -45,6 +57,7 @@ int MPIR_Gatherv_MV2 (
     MPI_Status *starray;
     MPIU_CHKLMEM_DECL(2);
     
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_gatherv_algo, 1);
     rank = comm_ptr->rank;
     
     /* check if multiple threads are calling this collective function */
@@ -78,6 +91,7 @@ int MPIR_Gatherv_MV2 (
                     }
                 }
                 else {
+                    MPIR_PVAR_INC(gatherv, default, recv, recvcounts[i], recvtype);
                     mpi_errno = MPIC_Irecv(((char *)recvbuf+displs[i]*extent),
                                               recvcounts[i], recvtype, i,
                                               MPIR_GATHERV_TAG, comm_ptr,
@@ -115,6 +129,7 @@ int MPIR_Gatherv_MV2 (
             comm_size = comm_ptr->local_size;
 
             if (comm_size >= mv2_gatherv_ssend_threshold) {
+                MPIR_PVAR_INC(gatherv, default, send, sendcount, sendtype);                
                 mpi_errno = MPIC_Ssend(sendbuf, sendcount, sendtype, root,
                                           MPIR_GATHERV_TAG, comm_ptr, errflag);
                 if (mpi_errno) {
@@ -125,6 +140,7 @@ int MPIR_Gatherv_MV2 (
                 }
             }
             else {
+                MPIR_PVAR_INC(gatherv, default, send, sendcount, sendtype);                
                 mpi_errno = MPIC_Send(sendbuf, sendcount, sendtype, root,
                                          MPIR_GATHERV_TAG, comm_ptr, errflag);
                 if (mpi_errno) {

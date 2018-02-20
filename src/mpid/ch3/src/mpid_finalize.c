@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,10 +20,17 @@
 #include "upmi.h"
 #endif
 
+#if defined (CHANNEL_PSM) || defined(CHANNEL_MRAIL)
+#include "hwloc_bind.h"
+#endif
+
 #ifdef ENABLE_SCR
 #include "scr.h"
 #endif
 
+#if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
+extern void free_cvar_handles();
+#endif
 
 /* FIXME: This routine needs to be factored into finalize actions per module,
    In addition, we should consider registering callbacks for those actions
@@ -111,6 +118,11 @@ int MPID_Finalize(void)
       *    request, we need to to search the pending send queue and
       *    cancel it, in which case an error shouldn't be generated.
       */
+#if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
+    mv2_free_cvar_handles();
+    mv2_free_hca_handle();
+    mv2_free_arch_handle();
+#endif 
 
 #ifdef _ENABLE_CUDA_
     if (rdma_enable_cuda) {
@@ -161,6 +173,11 @@ int MPID_Finalize(void)
        CH3_Finalize routine should call it */
     mpi_errno = MPIDI_CH3_Finalize();
     if (mpi_errno) { MPIR_ERR_POP(mpi_errno); }
+
+#if defined (CHANNEL_PSM) || defined(CHANNEL_MRAIL)
+    /* Deallocate hwloc topology and remove corresponding files */
+    smpi_destroy_hwloc_topology();
+#endif
 
     /* Tell the process group code that we're done with the process groups.
        This will notify PMI (with UPMI_FINALIZE) if necessary.  It

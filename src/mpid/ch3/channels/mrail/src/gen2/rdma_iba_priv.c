@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -173,10 +173,6 @@ static int check_attrs(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                        struct ibv_device_attr *dev_attr, int user_set)
 {
     int ret = 0;
-    int user_set_rc_mtu = 0;
-#if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
-    int user_set_ud_mtu = 0;
-#endif /* #if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)*/
 #ifdef _ENABLE_XRC_
     if (USE_XRC && !(dev_attr->device_cap_flags & IBV_DEVICE_XRC)) {
         fprintf(stderr, "HCA does not support XRC. Disable MV2_USE_XRC.\n");
@@ -184,32 +180,15 @@ static int check_attrs(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     }
 #endif /* _ENABLE_XRC_ */
     /* Set RC MTU */
-    if (rdma_default_mtu == 0) {
+    if (rdma_default_mtu == IBV_MTU_1024) {
         /* Set default value for MTU */
-        if (MV2_HCA_MLX_PCI_EX_DDR == proc->hca_type) {
-            rdma_default_mtu = IBV_MTU_2048;
-        } else if (MV2_HCA_MLX_CX_QDR == proc->hca_type) {
-            rdma_default_mtu = IBV_MTU_2048;
-        } else if (MV2_HCA_MLX_CX_FDR == proc->hca_type) {
-            rdma_default_mtu = IBV_MTU_2048;
-        } else if (MV2_HCA_MLX_CX_EDR == proc->hca_type) {
-            rdma_default_mtu = IBV_MTU_2048;
-        } else if (MV2_HCA_INTEL_HFI1 == proc->hca_type) {
-            rdma_default_mtu = IBV_MTU_4096;
-        } else {
-            rdma_default_mtu = IBV_MTU_1024;
-        }
+        rdma_default_mtu = port_attr->active_mtu;
     } else {
-        user_set_rc_mtu = 1;
-    }
-    if ((port_attr->active_mtu < rdma_default_mtu)
+        if ((port_attr->active_mtu < rdma_default_mtu)
 #ifdef _ENABLE_UD_
-        && !rdma_enable_only_ud
+                && !rdma_enable_only_ud
 #endif
-        ) {
-        if (!user_set_rc_mtu) {
-            rdma_default_mtu = port_attr->active_mtu;
-        } else {
+           ) {
             MPL_usage_printf(
                     "MV2_DEFAULT_MTU is set to %s, but maximum the HCA supports is %s.\n"
                     "Please reset MV2_DEFAULT_MTU to a value <= %s\n",
@@ -221,20 +200,15 @@ static int check_attrs(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     }
 #if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
     /* Set UD MTU */
-    if (rdma_default_ud_mtu == 0) {
-        rdma_default_ud_mtu = MV2_DEFAULT_UD_MTU;
-    } else {
-        user_set_ud_mtu = 1;
-    }
     int max_mtu = mv2_ibv_mtu_enum_to_value(port_attr->active_mtu);
-    if (max_mtu < rdma_default_ud_mtu
+    if (rdma_default_ud_mtu == 0) {
+        rdma_default_ud_mtu = max_mtu;
+    } else {
+        if (max_mtu < rdma_default_ud_mtu
 #if defined(_ENABLE_UD_)
-        && rdma_enable_hybrid
+                && rdma_enable_hybrid
 #endif /* #if defined(_ENABLE_UD_) */
-        ) {
-        if (!user_set_ud_mtu) {
-            rdma_default_ud_mtu = mv2_ibv_mtu_enum_to_value(port_attr->active_mtu);
-        } else {
+           ) {
             MPL_usage_printf(
                     "MV2_UD_MTU is set to %d, but maximum the HCA supports is %d.\n"
                     "Please reset MV2_UD_MTU to a value <= %d\n", rdma_default_ud_mtu,
@@ -343,27 +317,12 @@ int rdma_find_active_port(struct ibv_context *context,
 
     for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; ++j) {
         if ((!ibv_query_port(context, j, &port_attr)) && port_attr.state == IBV_PORT_ACTIVE) {
-            if (likely(port_attr.lid || use_iboeth)) {
-                DEBUG_PRINT("Active port number = %d, state = %s, lid = %d\r\n",
-                            j,
-                            (port_attr.state ==
-                             IBV_PORT_ACTIVE) ? "Active" : "Not Active",
-                            port_attr.lid);
-                return j;
-            } else {
-			    if (NULL == ib_dev) {
-			        return ERROR;
-			    } else {
-			        dev_name = ibv_get_device_name(ib_dev);
-			    }
-
-                if (!strncmp(dev_name, "cxgb", 4)) {
-                /* Chelsio RNIC's don't get LID's as they're not IB devices.
-                 * So dont do this check for them. LID on RoCE will be zero.
-                 */
-                    return j;
-                }
-            }
+            /* port_attr.lid && !use_iboeth -> This is an IB device as it has
+             * LID and user has not specified to use RoCE mode.
+             * !port_attr.lid && use_iboeth -> This is a RoCE device as it does
+             * not have a LID and uer has specified to use RoCE mode.
+             */
+            return j;
         }
     }
 
@@ -580,6 +539,7 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     int i = 0, j = 0;
     int num_devices = 0;
     int num_usable_hcas = 0;
+    int first_attempt_to_bind_failed = 0;
     int mpi_errno = MPI_SUCCESS;
     struct ibv_device *ib_dev = NULL;
     struct ibv_device **dev_list = NULL;
@@ -617,6 +577,7 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     num_usable_hcas = num_devices;
 #endif /*RDMA_CM*/
 
+retry_hca_open:
     for (i = 0; i < num_devices; i++) {
 #ifdef RDMA_CM
         if (rdma_skip_network_card(network_type, dev_list[i])) {
@@ -625,7 +586,8 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         }
 #endif /*RDMA_CM*/
 
-        if (rdma_multirail_usage_policy == MV2_MRAIL_BINDING) {
+        if ((rdma_multirail_usage_policy == MV2_MRAIL_BINDING) &&
+            (!first_attempt_to_bind_failed)) {
             /* Bind a process to a HCA */
             if (mrail_use_default_mapping) {
                 mrail_user_defined_p2r_mapping =
@@ -685,6 +647,8 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                                       rdma_num_hcas);
         }
 
+        PRINT_DEBUG(DEBUG_INIT_verbose, "HCA %d/%d = %s\n", rdma_num_hcas+1,
+                    rdma_num_req_hcas, proc->ib_dev[rdma_num_hcas]->name);
         rdma_num_hcas++;
         if ((rdma_multirail_usage_policy == MV2_MRAIL_BINDING) ||
             (rdma_num_req_hcas == rdma_num_hcas)) {
@@ -695,6 +659,10 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
     if (unlikely(rdma_num_hcas == 0)) {
+        if (!first_attempt_to_bind_failed) {
+            first_attempt_to_bind_failed = 1;
+            goto retry_hca_open;
+        }
         MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
                                   "**fail", "%s %d",
                                   "No active HCAs found on the system!!!",
@@ -758,8 +726,7 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
             for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; j++) {
                 if ((!ibv_query_port(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i],
                                      j, &port_attr)) &&
-                    (port_attr.state == IBV_PORT_ACTIVE) &&
-                    (port_attr.lid || (!port_attr.lid && use_iboeth))) {
+                    (port_attr.state == IBV_PORT_ACTIVE)) {
 
                     if (ibv_query_gid
                             (mv2_MPIDI_CH3I_RDMA_Process.nic_context[i], j, rdma_default_gid_index,
@@ -796,7 +763,6 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
         } else {
             if (ibv_query_port(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i],
                                rdma_default_port, &port_attr)
-                || (!port_attr.lid && !use_iboeth)
                 || (port_attr.state != IBV_PORT_ACTIVE)) {
                 MPIR_ERR_SETFATALANDJUMP2(mpi_errno,
                                           MPI_ERR_INTERN,
@@ -928,41 +894,40 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 
     MPIU_Memset(&gids, 0, sizeof(gids));
 
-#ifdef RDMA_CM
-    if (!proc->use_rdma_cm) {
-#endif
-        /* step 1: open hca, create ptags  and create cqs */
-        for (i = 0; i < rdma_num_hcas; i++) {
-            if (ibv_query_device(proc->nic_context[i], &dev_attr)) {
-                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                          "**fail %s",
-                                          "Error getting HCA attributes");
-            }
-            /* Identify the maximum number of atomic operations supported by the HCA */
-            rdma_supported_max_rdma_dst_ops   = dev_attr.max_qp_rd_atom;
-            rdma_supported_max_qp_ous_rd_atom = dev_attr.max_qp_rd_atom;
+    /* step 1: open hca, create ptags  and create cqs */
+    for (i = 0; i < rdma_num_hcas; i++) {
+        if (ibv_query_device(proc->nic_context[i], &dev_attr)) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                      "**fail %s",
+                                      "Error getting HCA attributes");
+        }
+        /* Identify the maximum number of atomic operations supported by the HCA */
+        rdma_supported_max_rdma_dst_ops   = dev_attr.max_qp_rd_atom;
+        rdma_supported_max_qp_ous_rd_atom = dev_attr.max_qp_rd_atom;
 
-            if ((dev_attr.atomic_cap == IBV_ATOMIC_HCA) || (dev_attr.atomic_cap == IBV_ATOMIC_GLOB)) {
-                g_atomics_support = 1;
-            }
+        if ((dev_attr.atomic_cap == IBV_ATOMIC_HCA) || (dev_attr.atomic_cap == IBV_ATOMIC_GLOB)) {
+            g_atomics_support = 1;
+        }
 #ifdef ATOMIC_HCA_REPLY_BE
-            else if (dev_attr.atomic_cap == ATOMIC_HCA_REPLY_BE) {
-                g_atomics_support = 1;
-                g_atomics_support_be = 1;
-            }
+        else if (dev_attr.atomic_cap == ATOMIC_HCA_REPLY_BE) {
+            g_atomics_support = 1;
+            g_atomics_support_be = 1;
+        }
 #endif
-            else {
-                g_atomics_support = 0;
-            }
+        else {
+            g_atomics_support = 0;
+        }
 
+#ifdef RDMA_CM
+        if (!proc->use_rdma_cm) {
+#endif
             /* detecting active ports */
             if (rdma_default_port < 0 || rdma_num_ports > 1) {
                 k = 0;
                 for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; j++) {
                     if ((!ibv_query_port
                          (mv2_MPIDI_CH3I_RDMA_Process.nic_context[i], j,
-                          &port_attr)) && (port_attr.state == IBV_PORT_ACTIVE)
-                        && (port_attr.lid || (!port_attr.lid && use_iboeth))) {
+                          &port_attr)) && (port_attr.state == IBV_PORT_ACTIVE)) {
 
                         if (ibv_query_gid
                                 (mv2_MPIDI_CH3I_RDMA_Process.nic_context[i], j,
@@ -1002,7 +967,6 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
             } else {
                 if (ibv_query_port(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i],
                                    rdma_default_port, &port_attr)
-                    || (!port_attr.lid && !use_iboeth)
                     || (port_attr.state != IBV_PORT_ACTIVE)) {
                     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                                               "**portquery", "**portquery %d",
@@ -1075,9 +1039,13 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
             if (proc->has_srq) {
                 proc->srq_hndl[i] = create_srq(proc, i);
             }
-        }
 #ifdef RDMA_CM
-    } else if (proc->hca_type == MV2_HCA_MLX_CX_CONNIB) {
+        }
+#endif /* RDMA_CM */
+     }
+
+#ifdef RDMA_CM
+    if (proc->hca_type == MV2_HCA_MLX_CX_CONNIB) {
         g_atomics_support = 0;
     }
 #endif /* RDMA_CM */
@@ -1306,6 +1274,12 @@ rdma_iba_allocate_memory(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
         }
     }
 #endif /* _ENABLE_UD_ */
+    /* See if we need to pre-allocate buffers for RDMA Fast Path */
+    if (mv2_rdma_fast_path_preallocate_buffers) {
+        if ((ret = mv2_preallocate_rdma_fp_bufs(mv2_MPIDI_CH3I_RDMA_Process.ptag))) {
+            return ret;
+        }
+    }
     /* Post the buffers for the SRQ */
     if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
         int hca_num = 0;
@@ -1445,9 +1419,8 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
             qp_attr.ah_attr.port_num = vc->mrail.rails[rail_index].port;
             if (use_iboeth) {
                 qp_attr.ah_attr.grh.dgid = info->gid[i][rail_index];
-            } else {
-                qp_attr.ah_attr.dlid = info->lid[i][rail_index];
             }
+            qp_attr.ah_attr.dlid = info->lid[i][rail_index];
 
             /* If HSAM is enabled, include the source path bits and change
              * the destination LID accordingly */
@@ -1541,7 +1514,7 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
         }
     }
 
-    DEBUG_PRINT("Done enabling connections\n");
+    PRINT_DEBUG(DEBUG_INIT_verbose, "Done enabling connections\n");
     return 0;
 }
 
@@ -1905,10 +1878,9 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
         if (use_iboeth) {
             vc->mrail.rails[rail_index].gid =
                 mv2_MPIDI_CH3I_RDMA_Process.gids[hca_index][port_index];
-        } else {
-            vc->mrail.rails[rail_index].lid =
-                mv2_MPIDI_CH3I_RDMA_Process.lids[hca_index][port_index];
         }
+        vc->mrail.rails[rail_index].lid =
+            mv2_MPIDI_CH3I_RDMA_Process.lids[hca_index][port_index];
         vc->mrail.rails[rail_index].cq_hndl =
             mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_index];
         vc->mrail.rails[rail_index].send_cq_hndl = NULL;
@@ -2095,14 +2067,13 @@ int cm_qp_move_to_rtr(MPIDI_VC_t * vc, uint16_t * lids, union ibv_gid *gids,
             qp_attr.ah_attr.grh.hop_limit = 1;
             qp_attr.ah_attr.grh.traffic_class = 0;
             qp_attr.ah_attr.is_global = 1;
-            qp_attr.ah_attr.dlid = 0;
             qp_attr.path_mtu = IBV_MTU_1024;
             qp_attr.ah_attr.grh.dgid = gids[rail_index];
         } else {
-            qp_attr.ah_attr.dlid = lids[rail_index];
             qp_attr.ah_attr.is_global = 0;
             qp_attr.path_mtu = rdma_default_mtu;
         }
+        qp_attr.ah_attr.dlid = lids[rail_index];
 
 #ifdef _ENABLE_XRC_
         if (USE_XRC && !is_rqp && !is_dpm) {

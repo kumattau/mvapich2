@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -65,7 +65,7 @@ MPID_Request * create_request(void * hdr, MPIDI_msg_sz_t hdr_sz,
     MPIU_Memcpy(sreq->dev.pending_pkt, (char *)hdr + nb, hdr_sz - nb);
     sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)((char *)sreq->dev.pending_pkt);
 #else
-    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) hdr;
+    MPIU_Memcpy(&sreq->dev.pending_pkt, hdr, sizeof(MPIDI_CH3_Pkt_t));
     sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)((char *) &sreq->dev.pending_pkt + nb);
 #endif
     sreq->ch.reqtype = REQUEST_NORMAL;

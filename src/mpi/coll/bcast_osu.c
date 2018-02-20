@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,6 +32,55 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_internode);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_intranode);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_mcast_internode);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_pipelined);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_binomial_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_for_bcast_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_doubling_allgather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_ring_allgather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_ring_allgather_shm_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_internode_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_intranode_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_mcast_internode_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_pipelined_zcpy_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_tune_inter_node_helper_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_inter_node_helper_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_binomial_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_for_bcast_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_doubling_allgather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_ring_allgather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_ring_allgather_shm_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_internode_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_intranode_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_mcast_internode_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_pipelined_zcpy_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_tune_inter_node_helper_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_inter_node_helper_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_binomial_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_for_bcast_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_doubling_allgather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_ring_allgather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_ring_allgather_shm_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_internode_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_intranode_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_mcast_internode_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_pipelined_zcpy_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_tune_inter_node_helper_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_inter_node_helper_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_binomial_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_for_bcast_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_doubling_allgather_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_ring_allgather_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_ring_allgather_shm_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_internode_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_intranode_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_mcast_internode_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_pipelined_zcpy_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_tune_inter_node_helper_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_inter_node_helper_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_count_recv);
 
 /* A binomial tree broadcast algorithm.  Good for short messages, 
    Cost = lgp.alpha + n.lgp.beta */
@@ -147,13 +196,19 @@ int MPIR_Bcast_binomial_MV2(void *buffer,
             if (src < 0)
                 src += comm_size;
             if (!is_contig || !is_homogeneous)
+            {
+                MPIR_PVAR_INC(bcast, binomial, recv, nbytes, MPI_BYTE);
                 mpi_errno = MPIC_Recv(tmp_buf, nbytes, MPI_BYTE, src,
                                          MPIR_BCAST_TAG, comm_ptr,
                                          MPI_STATUS_IGNORE, errflag);
+            }
             else
+            {
+                MPIR_PVAR_INC(bcast, binomial, recv, count, datatype);
                 mpi_errno = MPIC_Recv(buffer, count, datatype, src,
                                          MPIR_BCAST_TAG, comm_ptr,
                                          MPI_STATUS_IGNORE, errflag);
+            }
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
@@ -183,11 +238,17 @@ int MPIR_Bcast_binomial_MV2(void *buffer,
             if (dst >= comm_size)
                 dst -= comm_size;
             if (!is_contig || !is_homogeneous)
+            {
+                MPIR_PVAR_INC(bcast, binomial, send, nbytes, MPI_BYTE);
                 mpi_errno = MPIC_Send(tmp_buf, nbytes, MPI_BYTE, dst,
                                          MPIR_BCAST_TAG, comm_ptr, errflag);
+            }
             else
+            {
+                MPIR_PVAR_INC(bcast, binomial, send,  count, datatype);
                 mpi_errno = MPIC_Send(buffer, count, datatype, dst,
                                          MPIR_BCAST_TAG, comm_ptr, errflag);
+            }
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
@@ -284,7 +345,8 @@ static int scatter_for_bcast_MV2(void *buffer ATTRIBUTE((unused)),
             if (recv_size <= 0) {
                 curr_size = 0;  /* this process doesn't receive any data
                                    because of uneven division */
-            } else {
+            } else {                
+                MPIR_PVAR_INC(bcast, scatter_for_bcast, recv,  recv_size, MPI_BYTE);
                 mpi_errno = MPIC_Recv(((char *) tmp_buf +
                                           relative_rank * scatter_size),
                                          recv_size, MPI_BYTE, src,
@@ -319,6 +381,7 @@ static int scatter_for_bcast_MV2(void *buffer ATTRIBUTE((unused)),
                 dst = rank + mask;
                 if (dst >= comm_size)
                     dst -= comm_size;
+                MPIR_PVAR_INC(bcast, scatter_for_bcast, send, send_size, MPI_BYTE);
                 mpi_errno = MPIC_Send(((char *) tmp_buf +
                                           scatter_size * (relative_rank +
                                                           mask)), send_size,
@@ -492,6 +555,8 @@ int MPIR_Bcast_scatter_doubling_allgather_MV2(void *buffer,
         recv_offset = dst_tree_root * scatter_size;
 
         if (relative_dst < comm_size) {
+            MPIR_PVAR_INC(bcast, scatter_doubling_allgather, send, curr_size, MPI_BYTE);
+            MPIR_PVAR_INC(bcast, scatter_doubling_allgather, recv, (nbytes - recv_offset < 0 ? 0 : nbytes - recv_offset), MPI_BYTE);			
             mpi_errno = MPIC_Sendrecv(((char *) tmp_buf + send_offset),
                                          curr_size, MPI_BYTE, dst,
                                          MPIR_BCAST_TAG,
@@ -557,6 +622,7 @@ int MPIR_Bcast_scatter_doubling_allgather_MV2(void *buffer,
                     (relative_rank < tree_root + nprocs_completed)
                     && (relative_dst >= tree_root + nprocs_completed)) {
 
+                    MPIR_PVAR_INC(bcast, scatter_doubling_allgather, send, recv_size, MPI_BYTE);
                     mpi_errno = MPIC_Send(((char *) tmp_buf + offset),
                                              recv_size, MPI_BYTE, dst,
                                              MPIR_BCAST_TAG, comm_ptr, errflag);
@@ -575,6 +641,7 @@ int MPIR_Bcast_scatter_doubling_allgather_MV2(void *buffer,
                 else if ((relative_dst < relative_rank) &&
                          (relative_dst < tree_root + nprocs_completed) &&
                          (relative_rank >= tree_root + nprocs_completed)) {
+                    MPIR_PVAR_INC(bcast, scatter_doubling_allgather, recv, nbytes - offset, MPI_BYTE);
                     mpi_errno = MPIC_Recv(((char *) tmp_buf + offset),
                                              nbytes - offset,
                                              MPI_BYTE, dst, MPIR_BCAST_TAG,
@@ -752,6 +819,8 @@ int MPIR_Bcast_scatter_ring_allgather_MV2(void *buffer,
     j = rank;
     jnext = left;
     for (i = 1; i < comm_size; i++) {
+        MPIR_PVAR_INC(bcast, scatter_ring_allgather, send, recvcnts[(j - root + comm_size) % comm_size], MPI_BYTE);
+        MPIR_PVAR_INC(bcast, scatter_ring_allgather, recv, recvcnts[(jnext - root + comm_size) % comm_size], MPI_BYTE);
         mpi_errno =
             MPIC_Sendrecv((char *) tmp_buf +
                              displs[(j - root + comm_size) % comm_size],
@@ -907,12 +976,14 @@ int MPIR_Bcast_scatter_ring_allgather_shm_MV2(void *buffer,
         }
        
         /* one chunk is moving along the allgather ring, node-leaders are involved*/
+        MPIR_PVAR_INC(bcast, scatter_ring_allgather_shm, recv, recvcnts[(jnext - root + comm_size) % comm_size], MPI_BYTE);
         MPIC_Irecv((char *) buffer +
                    displs[(jnext - root + comm_size) % comm_size],
                    recvcnts[(jnext - root + comm_size) % comm_size],
                    MPI_BYTE, left, MPIR_BCAST_TAG,
                    leader_commptr, &request[0]);
 
+        MPIR_PVAR_INC(bcast, scatter_ring_allgather_shm, send, recvcnts[(j - root + comm_size) % comm_size], MPI_BYTE);
         MPIC_Isend((char *) buffer +
                    displs[(j - root + comm_size) % comm_size], 
                    recvcnts[(j - root + comm_size) % comm_size], 
@@ -942,13 +1013,14 @@ int MPIR_Bcast_scatter_ring_allgather_shm_MV2(void *buffer,
          * inside the node
         */
         for (i = 2; i < comm_size; i++) {
-
+            MPIR_PVAR_INC(bcast, scatter_ring_allgather_shm, recv, recvcnts[(jnext - root + comm_size) % comm_size], MPI_BYTE);
             MPIC_Irecv((char *) buffer +
                         displs[(jnext - root + comm_size) % comm_size], 
                         recvcnts[(jnext - root + comm_size) % comm_size], 
                         MPI_BYTE, left, MPIR_BCAST_TAG,
                         leader_commptr, &request[0]);
 
+            MPIR_PVAR_INC(bcast, scatter_ring_allgather_shm, send, recvcnts[(j - root + comm_size) % comm_size], MPI_BYTE);
             MPIC_Isend((char *) buffer +
                         displs[(j - root + comm_size) % comm_size], 
                         recvcnts[(j - root + comm_size) % comm_size], 
@@ -1200,6 +1272,7 @@ int MPIR_Knomial_Bcast_inter_node_MV2(void *buffer,
                         src -= comm_size;
                     }
 
+                    MPIR_PVAR_INC(bcast, knomial_internode, recv, count, datatype);
                     mpi_errno = MPIC_Recv(buffer, count, datatype, src,
                                              MPIR_BCAST_TAG, leader_commptr,
                                              MPI_STATUS_IGNORE, errflag);
@@ -1224,6 +1297,7 @@ int MPIR_Knomial_Bcast_inter_node_MV2(void *buffer,
                         if (dst >= comm_size) {
                             dst -= comm_size;
                         }
+                        MPIR_PVAR_INC(bcast, knomial_internode, send, count, datatype);
                         mpi_errno = MPIC_Isend(buffer, count, datatype, dst,
                                                   MPIR_BCAST_TAG, leader_commptr,
                                                   &reqarray[reqs++], errflag);
@@ -1331,6 +1405,7 @@ int MPIR_Knomial_Bcast_intra_node_MV2(void *buffer,
                     src -= local_size;
                 }
 
+                MPIR_PVAR_INC(bcast, knomial_intranode, recv, count, datatype);
                 mpi_errno = MPIC_Recv(buffer, count, datatype, src,
                                          MPIR_BCAST_TAG, comm_ptr,
                                          MPI_STATUS_IGNORE, errflag);
@@ -1354,6 +1429,7 @@ int MPIR_Knomial_Bcast_intra_node_MV2(void *buffer,
                     if (dst >= local_size) {
                         dst -= local_size;
                     }
+                    MPIR_PVAR_INC(bcast, knomial_intranode, send, count, datatype);
                     mpi_errno = MPIC_Isend(buffer, count, datatype, dst,
                                               MPIR_BCAST_TAG, comm_ptr,
                                               &reqarray[reqs++], errflag);
@@ -1772,6 +1848,7 @@ int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
     * is because we are re-using the communication tree 
     * that we have already set up */
     if(rank == root && rank != 0) {
+        MPIR_PVAR_INC(bcast, pipelined_zcpy, send, bcast_segment_count, MPI_BYTE);
         mpi_errno = MPIC_Isend( (char *) buffer +
                                bcast_curr_count, bcast_segment_count, 
                                MPI_BYTE, new_root, 
@@ -1783,6 +1860,7 @@ int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
     }
 
     if(rank == 0 && rank != root) {
+        MPIR_PVAR_INC(bcast, pipelined_zcpy, recv, bcast_segment_count, MPI_BYTE);
         mpi_errno = MPIC_Irecv((char *) buffer + 
                               bcast_curr_count, bcast_segment_count, 
                               MPI_BYTE, root, MPIR_BCAST_TAG, comm_ptr, &prev_request);
@@ -1797,7 +1875,8 @@ int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
         if(rank == root && rank != 0) {
             int bcast_next_segment_count=0; 
             bcast_next_segment_count = MIN(rem_count - bcast_segment_count, bcast_segment_count);
-            if(bcast_curr_count + bcast_segment_count < nbytes) { 
+            if(bcast_curr_count + bcast_segment_count < nbytes) {
+                MPIR_PVAR_INC(bcast, pipelined_zcpy, send, bcast_next_segment_count, MPI_BYTE);
                 mpi_errno = MPIC_Isend( (char *) buffer +
                                        bcast_curr_count + bcast_segment_count, 
                                        bcast_next_segment_count, 
@@ -1814,6 +1893,7 @@ int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
             int bcast_next_segment_count=0; 
             bcast_next_segment_count = MIN(rem_count - bcast_segment_count, bcast_segment_count);
             if(bcast_curr_count + bcast_segment_count < nbytes) { 
+                MPIR_PVAR_INC(bcast, pipelined_zcpy, recv, bcast_next_segment_count, MPI_BYTE);
                 mpi_errno = MPIC_Irecv((char *) buffer + 
                                       bcast_curr_count + bcast_segment_count, 
                                       bcast_next_segment_count, 
@@ -1909,6 +1989,7 @@ static int MPIR_Bcast_tune_inter_node_helper_MV2(void *buffer,
 
     if (local_size > 1) {
         if ((local_rank == 0) && (root != rank) && (leader_root == global_rank)) {
+            MPIR_PVAR_INC(bcast, tune_inter_node_helper, recv, count, datatype);
             mpi_errno = MPIC_Recv(buffer, count, datatype, root,
                                      MPIR_BCAST_TAG, comm_ptr, MPI_STATUS_IGNORE, errflag);
             if (mpi_errno) {
@@ -1919,6 +2000,7 @@ static int MPIR_Bcast_tune_inter_node_helper_MV2(void *buffer,
             }
         }
         if ((local_rank != 0) && (root == rank)) {
+            MPIR_PVAR_INC(bcast, tune_inter_node_helper, send, count, datatype);
             mpi_errno = MPIC_Send(buffer, count, datatype,
                                      leader_of_root, MPIR_BCAST_TAG, comm_ptr, errflag);
             if (mpi_errno) {
@@ -2025,6 +2107,7 @@ static int MPIR_Bcast_inter_node_helper_MV2(void *buffer,
 
     if (local_size > 1) {
         if ((local_rank == 0) && (root != rank) && (leader_root == global_rank)) {
+            MPIR_PVAR_INC(bcast, inter_node_helper, recv, count, datatype);
             mpi_errno = MPIC_Recv(buffer, count, datatype, root,
                                      MPIR_BCAST_TAG, comm_ptr, MPI_STATUS_IGNORE, errflag);
             if (mpi_errno) {
@@ -2035,6 +2118,7 @@ static int MPIR_Bcast_inter_node_helper_MV2(void *buffer,
             }
         }
         if ((local_rank != 0) && (root == rank)) {
+            MPIR_PVAR_INC(bcast, inter_node_helper, send, count, datatype);
             mpi_errno = MPIC_Send(buffer, count, datatype,
                                      leader_of_root, MPIR_BCAST_TAG, comm_ptr, errflag);
             if (mpi_errno) {
@@ -2422,6 +2506,21 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
             conf_index = 0;
             goto conf_check_end;
         }
+        if (likely(mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
+            /* for small messages, force shmem + zcpy pipeline */
+#if defined CHANNEL_MRAIL_GEN2
+            MV2_Bcast_function = MPIR_Pipelined_Bcast_Zcpy_MV2;
+            MV2_Bcast_intra_node_function = MPIR_Knomial_Bcast_intra_node_MV2;
+#elif defined CHANNEL_PSM 
+            MV2_Bcast_function = MPIR_Bcast_binomial_MV2; 
+            MV2_Bcast_intra_node_function = MPIR_Shmem_Bcast_MV2;
+#endif
+            two_level_bcast = 1;
+            zcpy_knomial_factor = 8;
+            mv2_inter_node_knomial_factor = 8;
+            bcast_segment_size = 8192;
+            goto skip_tuning_tables;
+        }
         do {
             if (local_size == mv2_bcast_indexed_table_ppn_conf[i]) {
                 conf_index = i;
@@ -2566,6 +2665,7 @@ conf_check_end:
         mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].is_two_level_bcast[inter_node_algo_index];
 #endif
 
+skip_tuning_tables:
 #if defined CHANNEL_MRAIL_GEN2
     if (mv2_enable_zcpy_bcast == 0) { 
         MV2_Bcast_intra_node_function = &MPIR_Shmem_Bcast_MV2;

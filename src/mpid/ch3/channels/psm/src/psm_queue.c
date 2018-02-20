@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -344,7 +344,7 @@ PSM_ERROR_T psm_probe(int src, int tag, int context, MPI_Status *stat)
         rtag = 0;
         rtagsel = MQ_TAGSEL_ALL;
         if(unlikely(src == MPI_ANY_SOURCE))
-            rtagsel = MQ_TAGSEL_ANY_SOURCE;
+            rtagsel = rtagsel & MQ_TAGSEL_ANY_SOURCE;
         if(unlikely(tag == MPI_ANY_TAG))
             rtagsel = rtagsel & MQ_TAGSEL_ANY_TAG;
     #endif

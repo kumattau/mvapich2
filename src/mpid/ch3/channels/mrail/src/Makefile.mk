@@ -1,7 +1,7 @@
 ## -*- Mode: Makefile; -*-
 ## vim: set ft=automake :
 ##
-## Copyright (c) 2001-2014, The Ohio State University. All rights
+## Copyright (c) 2001-2017, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -80,7 +80,8 @@ mpi_core_sources	+=					\
     src/mpid/ch3/channels/mrail/src/gen2/ibv_cuda_util.c		\
     src/mpid/ch3/channels/mrail/src/gen2/ibv_cuda_event.c		\
     src/mpid/ch3/channels/mrail/src/gen2/ibv_cuda_ipc.c			\
-    src/mpid/ch3/channels/common/src/mcast/ibv_mcast.c	
+    src/mpid/ch3/channels/common/src/mcast/ibv_mcast.c			\
+	src/mpid/ch3/channels/mrail/src/gen2/mv2_mpit_cvars.c
 
 endif
 

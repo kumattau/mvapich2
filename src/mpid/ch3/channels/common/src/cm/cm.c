@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -338,7 +338,7 @@ static inline struct ibv_ah *cm_create_ah(struct ibv_pd *pd, uint32_t lid,
         ah_attr.grh.hop_limit = 1;
         ah_attr.grh.traffic_class = 0;
         ah_attr.is_global = 1;
-        ah_attr.dlid = 0;
+        ah_attr.dlid = lid;
         ah_attr.grh.dgid = gid;
     } else {
         ah_attr.is_global = 0;

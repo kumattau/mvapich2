@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -48,6 +48,7 @@
 #define MPIDI_CH3I_READ_STATE_READING 1
 
 #define MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD           64
+#define MPIDI_CH3I_RDMA_CM_DEFAULT_ON_DEMAND_THRESHOLD      512
 #define MPIDI_CH3I_CM_DEFAULT_IWARP_ON_DEMAND_THRESHOLD     16
 #define MPIDI_CH3I_RDMA_CM_DEFAULT_BASE_LISTEN_PORT         12000
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,7 @@ enum {
     ALLGATHERV_REC = 1,
     ALLGATHERV_BRUCK,
     ALLGATHERV_RING,
+    ALLGATHERV_CYCLIC,
 };
 
 int mv2_size_allgatherv_tuning_table = 0;
@@ -500,6 +501,10 @@ int MV2_internode_Allgatherv_is_define(char *mv2_user_allgatherv_inter)
             mv2_tmp_allgatherv_thresholds_table[0].inter_leader[0].MV2_pt_Allgatherv_function =
                 &MPIR_Allgatherv_Ring_MV2;
             break;
+        case ALLGATHERV_CYCLIC:
+            mv2_tmp_allgatherv_thresholds_table[0].inter_leader[0].MV2_pt_Allgatherv_function =
+                &MPIR_Allgatherv_Ring_Cyclic_MV2;
+            break;
         default:
             mv2_tmp_allgatherv_thresholds_table[0].inter_leader[0].MV2_pt_Allgatherv_function =
                 &MPIR_Allgatherv_Bruck_MV2;
@@ -546,6 +551,10 @@ int MV2_internode_Allgatherv_is_define(char *mv2_user_allgatherv_inter)
                 case ALLGATHERV_RING:
                     mv2_tmp_allgatherv_thresholds_table[0].inter_leader[i].MV2_pt_Allgatherv_function =
                         &MPIR_Allgatherv_Ring_MV2;
+                    break;
+                case ALLGATHERV_CYCLIC:
+                    mv2_tmp_allgatherv_thresholds_table[0].inter_leader[i].MV2_pt_Allgatherv_function =
+                        &MPIR_Allgatherv_Ring_Cyclic_MV2;
                     break;
                 default:
                     mv2_tmp_allgatherv_thresholds_table[0].inter_leader[i].MV2_pt_Allgatherv_function =

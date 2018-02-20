@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -27,6 +27,8 @@
 
 extern int mv2_shmem_coll_num_procs;
 extern int mv2_shmem_coll_num_comm;
+extern int mv2_gather_status_alignment;
+extern int mv2_bcast_status_alignment;
 extern int mv2_max_limic_comms;
 volatile int *child_complete_bcast;   /* use for initial synchro */
 volatile int *child_complete_gather;   /* use for initial synchro */
@@ -38,26 +40,39 @@ volatile int *shmem_coll_block_status;
 volatile int *limic_progress;
 #endif
 
-#define SHMEM_COLL_NUM_SYNC_ARRAY 5
+#define SHMEM_COLL_NUM_SYNC_ARRAY 4
 #define SHMEM_COLL_STATUS_ARRAY_SIZE (sizeof(int)*mv2_g_shmem_coll_blocks) 
-#define SHMEM_COLL_SYNC_ARRAY_SIZE (sizeof(int) * mv2_shmem_coll_num_procs * mv2_shmem_coll_num_comm)
+#define SHMEM_COLL_SYNC_ARRAY_SIZE (mv2_gather_status_alignment * sizeof(int) * mv2_shmem_coll_num_procs * mv2_shmem_coll_num_comm)
+#define SHMEM_BCAST_SYNC_ARRAY_SIZE (mv2_bcast_status_alignment * sizeof(int) * mv2_shmem_coll_num_procs * mv2_shmem_coll_num_comm)
 #if defined(_SMP_LIMIC_)
 /*since the number of processes would be same, be it shared mem or limic, we use
  * the same variable for no. of processes as in shemem case*/
-#define LIMIC_COLL_SYNC_ARRAY_SIZE (sizeof(int) * mv2_shmem_coll_num_procs * mv2_max_limic_comms)
+#define LIMIC_COLL_SYNC_ARRAY_SIZE (mv2_gather_status_alignment * sizeof(int) * mv2_shmem_coll_num_procs * mv2_max_limic_comms)
 #else
 #define LIMIC_COLL_SYNC_ARRAY_SIZE 0
 #endif
 
-#define SHMEM_COLL_SYNC_SET(p, r, c) (*(p + ((mv2_shmem_coll_num_procs * r) + (c))) = 1)
-#define SHMEM_COLL_SYNC_CLR(p, r, c) (*(p + ((mv2_shmem_coll_num_procs * r) + (c))) = 0)
+#define SHMEM_BCAST_SYNC_SET(p, r, c) (*(p + (mv2_bcast_status_alignment * ((mv2_shmem_coll_num_procs * r) + (c)))) = 1)
+#define SHMEM_BCAST_SYNC_SET_ONE_SHOT(p, r) \
+    MPIUI_Memset((p + ((mv2_shmem_coll_num_procs * r))), 1, sizeof(int) * mv2_shmem_coll_num_procs);         
+            
+#define SHMEM_BCAST_SYNC_CLR(p, r, c) (*(p + (mv2_bcast_status_alignment * ((mv2_shmem_coll_num_procs * r) + (c)))) = 0)
+#define SHMEM_BCAST_SYNC_CLR_ONE_SHOT(p, r) \
+    MPIUI_Memset((p + ((mv2_shmem_coll_num_procs * r))), 0, sizeof(int) * mv2_shmem_coll_num_procs);         
+#define SHMEM_COLL_SYNC_SET(p, r, c) (*(p + (mv2_gather_status_alignment * ((mv2_shmem_coll_num_procs * r) + (c)))) = 1)
+#define SHMEM_COLL_SYNC_CLR(p, r, c) (*(p + (mv2_gather_status_alignment * ((mv2_shmem_coll_num_procs * r) + (c)))) = 0)
 
 #define SHMEM_COLL_BLOCK_STATUS_CLR(p, c) (*(p + (c)) = 0)
 #define SHMEM_COLL_BLOCK_STATUS_SET(p, c) (*(p + (c)) = 1)
 #define SHMEM_COLL_BLOCK_STATUS_INUSE(p, c) (*(p + (c)) == 1)
 
-#define SHMEM_COLL_SYNC_ISSET(p, r, c) (*(p + ((mv2_shmem_coll_num_procs * r) + (c))) == 1)
-#define SHMEM_COLL_SYNC_ISCLR(p, r, c) (*(p + ((mv2_shmem_coll_num_procs * r) + (c))) == 0)
+#define SHMEM_BCAST_SYNC_ISSET(p, r, c) (*(p + (mv2_bcast_status_alignment * ((mv2_shmem_coll_num_procs * r) + (c)))) == 1)
+#define SHMEM_BCAST_SYNC_ISSET_ONE_SHOT(p, r, c) (*((char*)(p + ((mv2_shmem_coll_num_procs * r) + (c)))) == '1')
+#define SHMEM_BCAST_SYNC_ISCLR(p, r, c) (*(p + (mv2_bcast_status_alignment * ((mv2_shmem_coll_num_procs * r) + (c)))) == 0)
+#define SHMEM_BCAST_SYNC_ISCLR_ONE_SHOT(p, r, c) (*((char*)(p + ((mv2_shmem_coll_num_procs * r) + (c)))) == '0')
+
+#define SHMEM_COLL_SYNC_ISSET(p, r, c) (*(p + (mv2_gather_status_alignment * ((mv2_shmem_coll_num_procs * r) + (c)))) == 1)
+#define SHMEM_COLL_SYNC_ISCLR(p, r, c) (*(p + (mv2_gather_status_alignment * ((mv2_shmem_coll_num_procs * r) + (c)))) == 0)
 
 /* the shared area itself */
 typedef struct {
@@ -80,7 +95,8 @@ typedef struct {
 
 #define SHMEM_COLL_BUF_SIZE (mv2_g_shmem_coll_blocks * 2 * SHMEM_COLL_BLOCK_SIZE +  \
         sizeof(shmem_coll_region) + (SHMEM_COLL_NUM_SYNC_ARRAY * SHMEM_COLL_SYNC_ARRAY_SIZE) + \
-        SHMEM_COLL_STATUS_ARRAY_SIZE + LIMIC_COLL_SYNC_ARRAY_SIZE)
+        SHMEM_COLL_STATUS_ARRAY_SIZE + LIMIC_COLL_SYNC_ARRAY_SIZE + \
+        SHMEM_BCAST_SYNC_ARRAY_SIZE)
 
 shmem_coll_region *shmem_coll;
 

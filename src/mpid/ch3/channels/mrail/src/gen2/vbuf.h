@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -231,6 +231,8 @@ void dump_vbuf(char* msg, vbuf* v);
 #endif /* defined(DEBUG) */
 
 void mv2_print_vbuf_usage_usage();
+int mv2_preallocate_rdma_fp_bufs();
+int mv2_free_prealloc_rdma_fp_bufs();
 int init_vbuf_lock(void);
 void release_vbuf(vbuf* v);
 /*

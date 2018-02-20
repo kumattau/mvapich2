@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,6 +22,15 @@ int (*MV2_Iscatter_function) (const void *sendbuf, int sendcount, MPI_Datatype s
 int (*MV2_Iscatter_intra_node_function) (const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                              void *recvbuf, int recvcount, MPI_Datatype recvtype,
                              int root, MPID_Comm *comm_ptr, MPID_Sched_t s) = NULL;
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iscatter_binomial_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iscatter_binomial_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iscatter_binomial_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iscatter_binomial_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iscatter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iscatter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iscatter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iscatter_count_recv);
 
 /* This function is the same as MPIR_Iscatter_intra but has been
    renamed for convenience */
@@ -343,6 +352,7 @@ int MPIR_Iscatter_binomial(const void *sendbuf, int sendcount, MPI_Datatype send
                 src = rank - mask;
                 if (src < 0) src += comm_size;
 
+                MPIR_PVAR_INC(iscatter, binomial, recv, tmp_buf_size, MPI_BYTE);
                 mpi_errno = MPIC_Recv(tmp_buf, tmp_buf_size, MPI_BYTE, src,
                                          MPIR_SCATTER_TAG, comm_ptr, &status, errflag);
                 if (mpi_errno) {
@@ -373,6 +383,7 @@ int MPIR_Iscatter_binomial(const void *sendbuf, int sendcount, MPI_Datatype send
 
                 send_subtree_cnt = curr_cnt - nbytes * mask;
                 /* mask is also the size of this process's subtree */
+                MPIR_PVAR_INC(iscatter, binomial, send, send_subtree_cnt, MPI_BYTE);
                 mpi_errno = MPIC_Send(((char *)tmp_buf + nbytes*mask),
                                          send_subtree_cnt, MPI_BYTE, dst,
                                          MPIR_SCATTER_TAG, comm_ptr, errflag);
@@ -539,10 +550,10 @@ int MPIR_Iscatter_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     if (comm_ptr->comm_kind == MPID_INTRACOMM) {    
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
         mpi_errno = MPIR_Iscatter_intra_MV2(sendbuf, sendcount, sendtype, recvbuf,
-					    recvcount, recvtype, root, comm_ptr, s);
+                        recvcount, recvtype, root, comm_ptr, s);
 #else
         mpi_errno = MPIR_Iscatter_intra(sendbuf, sendcount, sendtype, recvbuf,
-	  			        recvcount, recvtype, root, comm_ptr, s);
+                          recvcount, recvtype, root, comm_ptr, s);
 #endif                          /*#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
     }
     else {

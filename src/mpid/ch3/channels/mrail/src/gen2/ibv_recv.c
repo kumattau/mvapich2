@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -614,26 +614,34 @@ int MPIDI_CH3I_MRAILI_Recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
 
         DEBUG_PRINT("RDMA FP setup failed. clean up recv buffers\n ");
     
-        /* de-regster the recv buffers */
-	    for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-	        if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
-		        ret = deregister_memory(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
-                if (ret) {
-		            MPL_error_printf("Failed to deregister mr (%d)\n", ret);
-                } else {
-                    vc->mrail.rfp.RDMA_recv_buf_mr[hca_index] = NULL;
+        if (!mv2_rdma_fast_path_preallocate_buffers) {
+            /* de-regster the recv buffers */
+            for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+                if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
+                    ret = deregister_memory(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+                    if (ret) {
+                        MPL_error_printf("Failed to deregister mr (%d)\n", ret);
+                    } else {
+                        vc->mrail.rfp.RDMA_recv_buf_mr[hca_index] = NULL;
+                    }
                 }
-	        }
-	    }
-        /* deallocate recv RDMA buffers */
-	    if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
-	        MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
-            vc->mrail.rfp.RDMA_recv_buf_DMA = NULL;
-        }
+            }
+            /* deallocate recv RDMA buffers */
+            if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
+                vc->mrail.rfp.RDMA_recv_buf_DMA = NULL;
+            }
 
-        /* deallocate vbuf struct buffers */
-	    if (vc->mrail.rfp.RDMA_recv_buf) {
-	        MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
+            /* deallocate vbuf struct buffers */
+            if (vc->mrail.rfp.RDMA_recv_buf) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
+                vc->mrail.rfp.RDMA_recv_buf = NULL;
+            }
+        } else {
+            for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+                vc->mrail.rfp.RDMA_recv_buf_mr[hca_index] = NULL;
+            }
+            vc->mrail.rfp.RDMA_recv_buf_DMA = NULL;
             vc->mrail.rfp.RDMA_recv_buf = NULL;
         }
         

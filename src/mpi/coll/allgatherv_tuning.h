@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,12 +29,15 @@
  * recursive doubling: MV2_INTER_ALLGATHERV_TUNING=1 
  * bruck:              MV2_INTER_ALLGATHERV_TUNING=2
  * ring:               MV2_INTER_ALLGATHERV_TUNING=3
+ * ring_cyclic:        MV2_INTER_ALLGATHERV_TUNING=4
  * Regular expression example:
  *   MV2_INTER_ALLGATHERV_TUNING=2:0-1024,1:1024-8192,3:8192-+
  *   meaning: use bruck for 0 byte to 1024 bytes
  *            use recursive doubling for 1024 byte to 8192 bytes
  *            use ring since 8192 bytes
  */
+
+char *mv2_user_allgatherv_inter;
 
 typedef struct {
     int min;
@@ -84,6 +87,15 @@ extern int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
                                     const int *displs,
                                     MPI_Datatype recvtype,
                                     MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
+
+extern int MPIR_Allgatherv_Ring_Cyclic_MV2(const void *sendbuf,
+                             int sendcount,
+                             MPI_Datatype sendtype,
+                             void *recvbuf,
+                             const int *recvcounts,
+                             const int *displs,
+                             MPI_Datatype recvtype,
+                             MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 /* Architecture detection tuning */
 int MV2_set_allgatherv_tuning_table(int heterogeneity);

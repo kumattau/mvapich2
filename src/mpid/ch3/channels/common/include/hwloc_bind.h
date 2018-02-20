@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -79,6 +79,7 @@ int MPIDI_CH3I_set_affinity(struct MPIDI_PG * pg, int pg_rank);
 extern hwloc_topology_t topology;
 int smpi_load_hwloc_topology(void);
 int smpi_destroy_hwloc_topology(void);
+int smpi_unlink_hwloc_topology_file(void);
 #else
 static hwloc_topology_t topology = NULL;
 static inline int smpi_load_hwloc_topology(void)
@@ -86,6 +87,7 @@ static inline int smpi_load_hwloc_topology(void)
     if (!topology) {
         hwloc_topology_init(&topology);
         hwloc_topology_set_flags(topology, HWLOC_TOPOLOGY_FLAG_IO_DEVICES);
+        hwloc_topology_set_flags(topology, HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM);
         hwloc_topology_load(topology);
     }
 }

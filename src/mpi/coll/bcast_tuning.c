@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -560,7 +560,26 @@ int MV2_set_bcast_tuning_table(int heterogeneity)
       MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 28, 6, GEN2_CMA__RI2__28PPN)
       MV2_COLL_TUNING_FINISH_TABLE (bcast)
     }
-
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+				    MV2_ARCH_ARM_CAVIUM_V8, MV2_HCA_MLX_CX_FDR) && !heterogeneity) {
+      /* ARM system at Hartree Center */
+      MV2_COLL_TUNING_START_TABLE  (bcast, 5)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 1,  2, GEN2_CMA__ARM_CAVIUM_V8_MLX_CX_FDR__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 4,  3, GEN2_CMA__ARM_CAVIUM_V8_MLX_CX_FDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 8,  3, GEN2_CMA__ARM_CAVIUM_V8_MLX_CX_FDR__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 16,  3, GEN2_CMA__ARM_CAVIUM_V8_MLX_CX_FDR__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 24,  3, GEN2_CMA__ARM_CAVIUM_V8_MLX_CX_FDR__24PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (bcast)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+				    MV2_ARCH_IBM_POWER8, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+      /* Ray Table */
+      MV2_COLL_TUNING_START_TABLE  (bcast, 3)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 2,  5, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 4,  5, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 8,  4, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__8PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (bcast)
+    }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 			     MV2_ARCH_INTEL_XEON_E5630_8, MV2_HCA_MLX_CX_QDR) && !heterogeneity) {
       /*RI Table*/
@@ -1068,49 +1087,29 @@ int MV2_set_bcast_tuning_table(int heterogeneity)
       MV2_COLL_TUNING_ADD_CONF     (bcast, 64, 4, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__64PPN)
       MV2_COLL_TUNING_FINISH_TABLE (bcast)
     }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+			     MV2_ARCH_INTEL_PLATINUM_8160_2S_48, MV2_HCA_INTEL_HFI1) && !heterogeneity) {
+      /* TACC-Skylake Table */
+      MV2_COLL_TUNING_START_TABLE  (bcast, 7)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 1,  4, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 2,  5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 4,  5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 8,  5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 16, 5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 24, 5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__24PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 48, 5, PSM__INTEL_PLATINUM_8160_2S_48_INTEL_HFI_100__48PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (bcast)
+    }
     else {
-      /*Sierra Table*/
-      mv2_bcast_indexed_num_ppn_conf = 2;
-      mv2_bcast_indexed_thresholds_table
-	= MPIU_Malloc(sizeof(mv2_bcast_indexed_tuning_table *)
-		      * mv2_bcast_indexed_num_ppn_conf);
-      table_ptrs = MPIU_Malloc(sizeof(mv2_bcast_indexed_tuning_table *)
-			       * mv2_bcast_indexed_num_ppn_conf);
-      mv2_size_bcast_indexed_tuning_table = MPIU_Malloc(sizeof(int) *
-							mv2_bcast_indexed_num_ppn_conf);
-      mv2_bcast_indexed_table_ppn_conf = MPIU_Malloc(mv2_bcast_indexed_num_ppn_conf * sizeof(int));
-      
-      mv2_bcast_indexed_table_ppn_conf[0] = 1;
-      mv2_size_bcast_indexed_tuning_table[0] = 5;
-      mv2_bcast_indexed_tuning_table mv2_tmp_bcast_indexed_thresholds_table_1ppn[] =
-	PSM__INTEL_XEON_X5650_12__MV2_HCA_QLGIC_QIB__1PPN;
-      table_ptrs[0] = mv2_tmp_bcast_indexed_thresholds_table_1ppn;
-      
-      mv2_bcast_indexed_table_ppn_conf[1] = 12;
-      mv2_size_bcast_indexed_tuning_table[1] = 6;
-      mv2_bcast_indexed_tuning_table mv2_tmp_bcast_indexed_thresholds_table_32ppn[] =
-	PSM__INTEL_XEON_X5650_12__MV2_HCA_QLGIC_QIB__12PPN;
-      table_ptrs[1] = mv2_tmp_bcast_indexed_thresholds_table_32ppn;
-      
-      agg_table_sum = 0;
-      for (i = 0; i < mv2_bcast_indexed_num_ppn_conf; i++) {
-	agg_table_sum += mv2_size_bcast_indexed_tuning_table[i];
-      }
-      mv2_bcast_indexed_thresholds_table[0] =
-	MPIU_Malloc(agg_table_sum * sizeof (mv2_bcast_indexed_tuning_table));
-      MPIU_Memcpy(mv2_bcast_indexed_thresholds_table[0], table_ptrs[0],
-		  (sizeof(mv2_bcast_indexed_tuning_table)
-		   * mv2_size_bcast_indexed_tuning_table[0]));
-      for (i = 1; i < mv2_bcast_indexed_num_ppn_conf; i++) {
-	mv2_bcast_indexed_thresholds_table[i] =
-	  mv2_bcast_indexed_thresholds_table[i - 1]
-	  + mv2_size_bcast_indexed_tuning_table[i - 1];
-	MPIU_Memcpy(mv2_bcast_indexed_thresholds_table[i], table_ptrs[i],
-		    (sizeof(mv2_bcast_indexed_tuning_table)
-		     * mv2_size_bcast_indexed_tuning_table[i]));
-      }
-      MPIU_Free(table_ptrs);
-      return 0;
+      /*default psm table: Bridges Table*/
+      MV2_COLL_TUNING_START_TABLE  (bcast, 6)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 1,  4, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 2,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 4,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 8,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 16,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 28,  5, PSM__INTEL_XEON_E5_2695_V3_2S_28_INTEL_HFI_100__28PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (bcast)
     }
 #else
     {

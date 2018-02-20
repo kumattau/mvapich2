@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -824,36 +824,38 @@ int MPIDI_CH3I_RDMA_finalize(void)
             continue;
         }
 
-        for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-            if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
-                err = ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
-                if (err)
-                    MPL_error_printf("Failed to deregister mr (%d)\n", err);
+        if (!mv2_rdma_fast_path_preallocate_buffers) {
+            for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+                if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
+                    err = ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
+                    if (err)
+                        MPL_error_printf("Failed to deregister mr (%d)\n", err);
+                }
+                if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
+                    err = ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+                    if (err)
+                        MPL_error_printf("Failed to deregister mr (%d)\n", err);
+                }
             }
-            if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
-                err = ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
-                if (err)
-                    MPL_error_printf("Failed to deregister mr (%d)\n", err);
-            }
-        }
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
-            ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
-            ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
-        }
+            if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
+                ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
+                ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
+            }
 #endif
 
-        if (vc->mrail.rfp.RDMA_send_buf_DMA) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
-        }
-        if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
-        }
-        if (vc->mrail.rfp.RDMA_send_buf) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf);
-        }
-        if (vc->mrail.rfp.RDMA_recv_buf) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
+            if (vc->mrail.rfp.RDMA_send_buf_DMA) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
+            }
+            if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
+            }
+            if (vc->mrail.rfp.RDMA_send_buf) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf);
+            }
+            if (vc->mrail.rfp.RDMA_recv_buf) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
+            }
         }
     }
 
@@ -950,6 +952,7 @@ int MPIDI_CH3I_RDMA_finalize(void)
         deallocate_vbufs(i);
     }
 
+    mv2_free_prealloc_rdma_fp_bufs();
     deallocate_vbuf_region();
 
     win_elem_t * curr_ptr, *tmp;
@@ -1991,22 +1994,39 @@ int MPIDI_CH3I_CM_Finalize(void)
             continue;
         }
 
-        for (hca_index = 0; hca_index < rdma_num_hcas; ++hca_index) {
-            if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
-                ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
-            }
+        if (!mv2_rdma_fast_path_preallocate_buffers) {
+            for (hca_index = 0; hca_index < rdma_num_hcas; ++hca_index) {
+                if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
+                    ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
+                }
 
-            if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
-                ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+                if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
+                    ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+                }
             }
-        }
 
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
-            ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
-            ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
-        }
+            if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
+                ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
+                ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
+            }
 #endif
+            if (vc->mrail.rfp.RDMA_send_buf_DMA) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
+            }
+
+            if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
+            }
+
+            if (vc->mrail.rfp.RDMA_send_buf) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf);
+            }
+
+            if (vc->mrail.rfp.RDMA_recv_buf) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
+            }
+        }
 
         for (rail_index = 0; rail_index < vc->mrail.num_rails; ++rail_index) {
 #ifdef _ENABLE_XRC_
@@ -2037,22 +2057,6 @@ int MPIDI_CH3I_CM_Finalize(void)
                     ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
                 }
             }
-        }
-
-        if (vc->mrail.rfp.RDMA_send_buf_DMA) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
-        }
-
-        if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
-        }
-
-        if (vc->mrail.rfp.RDMA_send_buf) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf);
-        }
-
-        if (vc->mrail.rfp.RDMA_recv_buf) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
         }
     }
 
@@ -2124,6 +2128,7 @@ int MPIDI_CH3I_CM_Finalize(void)
         deallocate_vbufs(i);
     }
 
+    mv2_free_prealloc_rdma_fp_bufs();
     deallocate_vbuf_region();
     dreg_finalize();
 
@@ -2363,37 +2368,39 @@ int MPIDI_CH3I_RDMA_CM_Finalize(void)
             continue;
         }
 
-        for (hca_index = 0; hca_index < rdma_num_hcas; ++hca_index) {
-            if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
-                ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
-            }
+        if (!mv2_rdma_fast_path_preallocate_buffers) {
+            for (hca_index = 0; hca_index < rdma_num_hcas; ++hca_index) {
+                if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
+                    ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
+                }
 
-            if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
-                ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+                if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
+                    ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+                }
             }
-        }
 
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
-            ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
-            ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
-        }
+            if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
+                ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
+                ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
+            }
 #endif
 
-        if (vc->mrail.rfp.RDMA_send_buf_DMA) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
-        }
+            if (vc->mrail.rfp.RDMA_send_buf_DMA) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
+            }
 
-        if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
-        }
+            if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
+            }
 
-        if (vc->mrail.rfp.RDMA_send_buf) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf);
-        }
+            if (vc->mrail.rfp.RDMA_send_buf) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_send_buf);
+            }
 
-        if (vc->mrail.rfp.RDMA_recv_buf) {
-            MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
+            if (vc->mrail.rfp.RDMA_recv_buf) {
+                MPIU_Memalign_Free(vc->mrail.rfp.RDMA_recv_buf);
+            }
         }
     }
 

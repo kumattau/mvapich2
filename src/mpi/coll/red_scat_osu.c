@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,6 +22,37 @@
 #include "red_scat_tuning.h"
 #include <unistd.h>
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_noncomm);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_basic);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_rec_halving);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_pairwise);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_non_comm);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_noncomm_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_basic_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_rec_halving_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_pairwise_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_non_comm_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_noncomm_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_basic_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_rec_halving_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_pairwise_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_non_comm_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_noncomm_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_basic_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_rec_halving_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_pairwise_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_non_comm_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_noncomm_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_basic_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_rec_halving_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_pairwise_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_non_comm_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_count_recv);
+                               
 int (*MV2_Red_scat_function)(const void *sendbuf,
                              void *recvbuf,
                              const int *recvcnts,
@@ -107,6 +138,7 @@ static int MPIR_Reduce_scatter_noncomm_MV2(const void *sendbuf,
 #endif
 	MPIU_CHKLMEM_DECL(3);
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_scatter_noncomm, 1);
 
 	MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
 
@@ -187,6 +219,8 @@ static int MPIR_Reduce_scatter_noncomm_MV2(const void *sendbuf,
 			send_offset += size;
 		}
 
+		MPIR_PVAR_INC(reduce_scatter, noncomm, send, size, datatype);
+		MPIR_PVAR_INC(reduce_scatter, noncomm, recv, size, datatype);
 		mpi_errno = MPIC_Sendrecv(outgoing_data + send_offset * true_extent,
 									 size, datatype, peer,
 									 MPIR_REDUCE_SCATTER_TAG,
@@ -258,6 +292,8 @@ int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
 	int root = 0, use_scatterv = 0;
 	MPIU_CHKLMEM_DECL(1);
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_scatter_basic, 1);
+
 	rank = comm_ptr->rank;
 	size = comm_ptr->local_size;
 
@@ -277,18 +313,17 @@ int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
 										datatype, op, root, comm_ptr, errflag);
 		}
 	} else {
-		if (root == rank) {
-			/* Allocate temporary receive buffer on root to ensure that
-			 *                rbuf is big enough */
-			MPI_Aint true_lb, true_extent, extent;
-			MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
-			MPID_Datatype_get_extent_macro(datatype, extent);
+        /* Allocate temporary receive buffer on root to ensure that
+         *                rbuf is big enough */
+        MPI_Aint true_lb, true_extent, extent;
+        MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+        MPID_Datatype_get_extent_macro(datatype, extent);
 
-			MPIU_CHKLMEM_MALLOC(tmprbuf_free, void *, total_count *
-								(MPIR_MAX(extent, true_extent)),
-								mpi_errno, "receive buffer");
-			tmprbuf = (void *) ((char *) tmprbuf_free - true_lb);
-		}
+        MPIU_CHKLMEM_MALLOC(tmprbuf_free, void *, total_count *
+                (MPIR_MAX(extent, true_extent)),
+                mpi_errno, "receive buffer");
+        tmprbuf = (void *) ((char *) tmprbuf_free - true_lb);
+
 		mpi_errno = MPIR_Reduce_MV2(sendbuf, tmprbuf, total_count,
 									datatype, op, root, comm_ptr, errflag);
 	}
@@ -305,10 +340,22 @@ int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
 
 	if (use_scatterv == 0) {
         /* Use regular Scatter when possible */ 
-		mpi_errno = MPIR_Scatter_MV2(tmprbuf, recvcnts[0], datatype,
-									 recvbuf, recvcnts[0], datatype,
-									 root, comm_ptr, errflag);
-		if (MPI_SUCCESS != mpi_errno) {
+        if (sendbuf != MPI_IN_PLACE) {
+            mpi_errno = MPIR_Scatter_MV2(tmprbuf, recvcnts[0], datatype,
+                                         recvbuf, recvcnts[0], datatype,
+                                         root, comm_ptr, errflag);
+        } else {
+            if (root == rank) {
+                mpi_errno = MPIR_Scatter_MV2(tmprbuf, recvcnts[0], datatype,
+                                             MPI_IN_PLACE, recvcnts[0], datatype,
+                                             root, comm_ptr, errflag);
+            } else {
+                mpi_errno = MPIR_Scatter_MV2(NULL, recvcnts[0], datatype,
+                                             recvbuf, recvcnts[0], datatype,
+                                             root, comm_ptr, errflag);
+            }
+      }
+        if (MPI_SUCCESS != mpi_errno) {
 			return mpi_errno;
 		}
 	} else {
@@ -318,9 +365,22 @@ int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
 		for (i = 1; i < size; i++) {
 			displs[i] = displs[i - 1] + recvcnts[i - 1];
 		}
-		mpi_errno = MPIR_Scatterv(tmprbuf, recvcnts, displs, datatype,
-								  recvbuf, recvcnts[rank], datatype,
-								  root, comm_ptr, errflag);
+        if (sendbuf != MPI_IN_PLACE) {
+            mpi_errno = MPIR_Scatterv(tmprbuf, recvcnts, displs, datatype,
+                                      recvbuf, recvcnts[rank], datatype,
+                                      root, comm_ptr, errflag);
+        } else {
+
+            if (root == rank) {
+                mpi_errno = MPIR_Scatterv(tmprbuf, recvcnts, displs, datatype,
+                                             MPI_IN_PLACE, recvcnts[rank], datatype,
+                                             root, comm_ptr, errflag);
+            } else {
+                mpi_errno = MPIR_Scatterv(NULL, recvcnts, displs, datatype, 
+                                             recvbuf, recvcnts[rank], datatype,
+                                             root, comm_ptr, errflag);
+            }
+        }
 		if (MPI_SUCCESS != mpi_errno) {
 			return mpi_errno;
 		}
@@ -365,6 +425,8 @@ int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 	int is_cxx_uop = 0;
 #endif
 	MPIU_CHKLMEM_DECL(5);
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_scatter_rec_halving, 1);
 
 	comm_size = comm_ptr->local_size;
 	rank = comm_ptr->rank;
@@ -453,6 +515,7 @@ int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 
 	if (rank < 2 * rem) {
 		if (rank % 2 == 0) {	/* even */
+			MPIR_PVAR_INC(reduce_scatter, rec_halving, send, total_count, datatype);
 			mpi_errno = MPIC_Send(tmp_results, total_count,
 									 datatype, rank + 1,
 									 MPIR_REDUCE_SCATTER_TAG, comm_ptr, errflag);
@@ -468,6 +531,7 @@ int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 			   doubling */
 			newrank = -1;
 		} else {				/* odd */
+			MPIR_PVAR_INC(reduce_scatter, rec_halving, recv, total_count, datatype);
 			mpi_errno = MPIC_Recv(tmp_recvbuf, total_count,
 									 datatype, rank - 1,
 									 MPIR_REDUCE_SCATTER_TAG, comm_ptr,
@@ -547,6 +611,9 @@ int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 			}
 			/* Send data from tmp_results. Recv into tmp_recvbuf */
 			if ((send_cnt != 0) && (recv_cnt != 0))
+			{
+				MPIR_PVAR_INC(reduce_scatter, rec_halving, send, send_cnt, datatype);
+				MPIR_PVAR_INC(reduce_scatter, rec_halving, recv, recv_cnt, datatype);
 				mpi_errno = MPIC_Sendrecv((char *) tmp_results +
 											 newdisps[send_idx] * extent,
 											 send_cnt, datatype,
@@ -556,18 +623,25 @@ int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 											 recv_cnt, datatype, dst,
 											 MPIR_REDUCE_SCATTER_TAG, comm_ptr,
 											 MPI_STATUS_IGNORE, errflag);
+			}
 			else if ((send_cnt == 0) && (recv_cnt != 0))
+			{
+				MPIR_PVAR_INC(reduce_scatter, rec_halving, recv, recv_cnt, datatype);
 				mpi_errno = MPIC_Irecv((char *) tmp_recvbuf +
 										  newdisps[recv_idx] * extent,
 										  recv_cnt, datatype, dst,
 										  MPIR_REDUCE_SCATTER_TAG, comm_ptr,
 										  &request);
+			}
 			else if ((recv_cnt == 0) && (send_cnt != 0))
+			{
+				MPIR_PVAR_INC(reduce_scatter, rec_halving, send, send_cnt, datatype);
 				mpi_errno = MPIC_Send((char *) tmp_results +
 										 newdisps[send_idx] * extent,
 										 send_cnt, datatype,
 										 dst, MPIR_REDUCE_SCATTER_TAG,
 										 comm_ptr, errflag);
+			}
 
 			if (mpi_errno) {
 				/* for communication errors, just record the error but continue */
@@ -628,6 +702,7 @@ int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 	if (rank < 2 * rem) {
 		if (rank % 2) {			/* odd */
 			if (recvcnts[rank - 1]) {
+				MPIR_PVAR_INC(reduce_scatter, rec_halving, send, recvcnts[rank - 1], datatype);
 				mpi_errno = MPIC_Send((char *) tmp_results +
 										 disps[rank - 1] * extent,
 										 recvcnts[rank - 1], datatype, rank - 1,
@@ -642,6 +717,7 @@ int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 			}
 		} else {				/* even */
 			if (recvcnts[rank]) {
+				MPIR_PVAR_INC(reduce_scatter, rec_halving, recv, recvcnts[rank], datatype);
 				mpi_errno = MPIC_Recv(recvbuf, recvcnts[rank],
 										 datatype, rank + 1,
 										 MPIR_REDUCE_SCATTER_TAG, comm_ptr,
@@ -700,6 +776,8 @@ int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 	int is_cxx_uop = 0;
 #endif
 	MPIU_CHKLMEM_DECL(5);
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_scatter_pairwise, 1);
 
 	comm_size = comm_ptr->local_size;
 	rank = comm_ptr->rank;
@@ -779,6 +857,9 @@ int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 		/* send the data that dst needs. recv data that this process
 		   needs from src into tmp_recvbuf */
 		if (sendbuf != MPI_IN_PLACE)
+		{
+			MPIR_PVAR_INC(reduce_scatter, pairwise, send, recvcnts[dst], datatype);
+			MPIR_PVAR_INC(reduce_scatter, pairwise, recv, recvcnts[rank], datatype);
 			mpi_errno =
 				MPIC_Sendrecv(((char *) sendbuf + disps[dst] * extent),
 								 recvcnts[dst], datatype, dst,
@@ -786,7 +867,11 @@ int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 								 recvcnts[rank], datatype, src,
 								 MPIR_REDUCE_SCATTER_TAG, comm_ptr,
 								 MPI_STATUS_IGNORE, errflag);
+		}
 		else
+		{
+			MPIR_PVAR_INC(reduce_scatter, pairwise, send, recvcnts[dst], datatype);
+			MPIR_PVAR_INC(reduce_scatter, pairwise, recv, recvcnts[rank], datatype);
 			mpi_errno =
 				MPIC_Sendrecv(((char *) recvbuf + disps[dst] * extent),
 								 recvcnts[dst], datatype, dst,
@@ -794,7 +879,7 @@ int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 								 recvcnts[rank], datatype, src,
 								 MPIR_REDUCE_SCATTER_TAG, comm_ptr,
 								 MPI_STATUS_IGNORE, errflag);
-
+		}
 		if (mpi_errno) {
 			/* for communication errors, just record the error but continue */
 			*errflag = MPIR_ERR_GET_CLASS(mpi_errno);
@@ -903,6 +988,333 @@ int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 }
 
 #undef FUNCNAME
+#define FUNCNAME MPIR_Reduce_scatter_ring
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Reduce_scatter_ring(const void* sendbuf, void* recvbuf,
+    const int *recvcnts, MPI_Datatype datatype,
+    MPI_Op op, MPID_Comm *comm_ptr,
+    MPIR_Errflag_t *errflag)
+{
+    int mpi_errno     = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    int comm_size     = comm_ptr->local_size;
+    int rank          = comm_ptr->rank;
+
+    MPIU_CHKLMEM_DECL(3);
+
+    /* get extent */
+    MPI_Aint extent;
+    MPID_Datatype_get_extent_macro(datatype, extent);
+
+    /* get true extent and lower bound of datatype */
+    MPI_Aint true_extent, true_lb;
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+
+    /* compute size of temporary buffers */
+    size_t mpi_buf_size = 1024 * 1024;
+    if (mpi_buf_size < true_extent) {
+        /* ensure we allocate a temporary buffer
+         * big enough to hold at least one element */
+        mpi_buf_size = (size_t) true_extent;
+    }
+
+    /* allocate buffers to work with */
+    void* tmp_sendbuf;
+    void* tmp_recvbuf;
+    MPIU_CHKLMEM_MALLOC(tmp_sendbuf, char *, mpi_buf_size, mpi_errno, "tmp_sendbuf");
+    MPIU_CHKLMEM_MALLOC(tmp_recvbuf, char *, mpi_buf_size, mpi_errno, "tmp_recvbuf");
+
+    /* adjust pointers for lower bounds */
+    tmp_sendbuf -= true_lb;
+    tmp_recvbuf -= true_lb;
+
+    /* compute left and right neighbors */
+    int rank_left  = (rank - 1 + comm_size) % comm_size;
+    int rank_right = (rank + 1 + comm_size) % comm_size;
+
+    /* Reduce_scatter */
+    MPID_Request *request[2];
+    MPI_Status    status[2];
+
+    const void* input_buf = sendbuf;
+    void* output_buf = recvbuf;
+
+    /* if the caller gave us MPI_IN_PLACE, pull the input data from the
+     * receive buffer instead of the senf buffer.  We do not bother copying
+     * the input data to a temporary buffer, because it will have been
+     * read by the time we overwrite it with the result. */
+    if (sendbuf == MPI_IN_PLACE) {
+        input_buf = recvbuf;
+    }
+
+    /* allocate memory for displacement array */
+    int *displs       = NULL;
+    MPIU_CHKLMEM_MALLOC(displs, int*, comm_size * sizeof(int), mpi_errno, "displs");
+
+    /* total count of data for each rank */
+    int total_count       = 0;
+    int max_recv_count    = 0;
+    int i;
+    for (i = 0; i < comm_size; i++) {
+        displs[i] = total_count;
+        total_count += recvcnts[i];
+
+        if (recvcnts[i] > max_recv_count) {
+            max_recv_count = recvcnts[i];
+        }
+    }
+
+    /* max number of elements a rank will receive */
+    size_t max_elem_per_rank = (size_t) max_recv_count;
+
+    /* compute number of whole elements that can fit in the buffer */
+    size_t elem_per_buffer = mpi_buf_size / true_extent;
+
+    /* process data in chunks of size elem_per_buffer */
+    size_t nread = 0;
+    while (nread < max_elem_per_rank) {
+        /* keep track of send and recv counts left to process */
+        /* execute a lap through the ring */
+        int dist;
+        for(dist = comm_size-1; dist >= 0; dist--) {
+            /* compute rank of process whose data we're sending and rank
+             * of process whose data we're receiving in this step */
+            int send_rank = (rank + dist) % comm_size;
+            int recv_rank = (rank + (dist - 1)) % comm_size;
+
+            /* compute offset into input buffer to pull data for this chunk */
+            unsigned long elem_offset = displs[send_rank] + nread;
+            const char* buf = (const char*)input_buf + elem_offset * extent;
+
+            /* compute the number of elements we're sending and receiving */
+            int send_count = recvcnts[send_rank] - nread;
+            int recv_count = recvcnts[recv_rank] - nread;
+
+            if (send_count < 0) send_count = 0;
+            if (recv_count < 0) recv_count = 0;
+
+            if (send_count > elem_per_buffer) send_count = elem_per_buffer;
+            if (recv_count > elem_per_buffer) recv_count = elem_per_buffer;
+
+            /* copy next set of bytes for this chunk from input buffer into sendbuf */
+            MPIR_Localcopy(buf, send_count, datatype,
+                    tmp_sendbuf, send_count, datatype);
+
+            /* merge the blocks via reduce operation */
+            if (dist < comm_size-1) {
+                MPIR_Reduce_local_impl(tmp_recvbuf, tmp_sendbuf, send_count, datatype, op);
+            }
+
+            if (dist > 0) {
+                /* exchange data with neighbors */
+                MPIC_Irecv(tmp_recvbuf, recv_count, datatype, rank_left,  0, comm_ptr,
+                        &request[0]);
+                MPIC_Isend(tmp_sendbuf, send_count, datatype, rank_right, 0, comm_ptr,
+                        &request[1], errflag);
+                MPIC_Waitall(2, request, status, errflag);
+            } else {
+                /* write the result to the ouput buffer */
+                char* buf = output_buf + nread * extent;
+                MPIR_Localcopy(tmp_sendbuf, send_count, datatype,
+                        buf, send_count, datatype);
+            }
+        }
+
+        /* assume we send the max buffer count in each step,
+         * this means that nread may exceed the max value,
+         * but that will end the loop */
+        nread += elem_per_buffer;
+    }
+
+    /* bump pointers back to start of buffers for free calls */
+    tmp_sendbuf += true_lb;
+    tmp_recvbuf += true_lb;
+
+fn_exit:
+    MPIU_CHKLMEM_FREEALL();
+    /* --BEGIN ERROR HANDLING-- */
+    if (mpi_errno_ret)
+        mpi_errno = mpi_errno_ret;
+    else if (*errflag != MPIR_ERR_NONE)
+        MPIR_ERR_SET(mpi_errno, *errflag, "**coll_fail");
+    /* --END ERROR HANDLING-- */
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Reduce_scatter_ring_2lvl
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Reduce_scatter_ring_2lvl(const void* sendbuf, void* recvbuf,
+        const int *recvcnts, MPI_Datatype datatype,
+        MPI_Op op, MPID_Comm *comm_ptr,
+        MPIR_Errflag_t *errflag)
+{
+    int mpi_errno     = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    int comm_size     = comm_ptr->local_size;
+    int rank          = comm_ptr->rank;
+
+    if (comm_ptr->dev.ch.rank_list == NULL) {
+        return MPIR_Reduce_scatter_ring(
+                            sendbuf, recvbuf, recvcnts, datatype,
+                            op, comm_ptr, errflag);
+    }
+
+    MPIU_CHKLMEM_DECL(3);
+
+    /* get extent */
+    MPI_Aint extent;
+    MPID_Datatype_get_extent_macro(datatype, extent);
+
+    /* get true extent and lower bound of datatype */
+    MPI_Aint true_extent, true_lb;
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+
+    /* compute size of temporary buffers */
+    size_t mpi_buf_size = 1024 * 1024;
+    if (mpi_buf_size < true_extent) {
+        /* ensure we allocate a temporary buffer
+         * big enough to hold at least one element */
+        mpi_buf_size = (size_t) true_extent;
+    }
+
+    /* allocate buffers to work with */
+    void* tmp_sendbuf;
+    void* tmp_recvbuf;
+    MPIU_CHKLMEM_MALLOC(tmp_sendbuf, char *, mpi_buf_size, mpi_errno, "tmp_sendbuf");
+    MPIU_CHKLMEM_MALLOC(tmp_recvbuf, char *, mpi_buf_size, mpi_errno, "tmp_recvbuf");
+
+    /* adjust pointers for lower bounds */
+    tmp_sendbuf -= true_lb;
+    tmp_recvbuf -= true_lb;
+
+    /* lookup our index in the rank list */
+    int rank_index = comm_ptr->dev.ch.rank_list_index;
+
+    /* compute the left and right neighbor ranks in the rank_list */
+    int index_left  = (comm_size + rank_index - 1) % comm_size;
+    int index_right = (comm_size + rank_index + 1) % comm_size;
+    int rank_left   = comm_ptr->dev.ch.rank_list[index_left];
+    int rank_right  = comm_ptr->dev.ch.rank_list[index_right];
+
+    /* Reduce_scatter */
+    MPID_Request *request[2];
+    MPI_Status    status[2];
+
+    const void* input_buf = sendbuf;
+    void* output_buf = recvbuf;
+
+    /* if the caller gave us MPI_IN_PLACE, pull the input data from the
+     * receive buffer instead of the senf buffer.  We do not bother copying
+     * the input data to a temporary buffer, because it will have been
+     * read by the time we overwrite it with the result. */
+    if (sendbuf == MPI_IN_PLACE) {
+        input_buf = recvbuf;
+    }
+
+    /* allocate memory for displacement array */
+    int *displs       = NULL;
+    MPIU_CHKLMEM_MALLOC(displs, int*, comm_size * sizeof(int), mpi_errno, "displs");
+
+    /* total count of data for each rank */
+    int total_count       = 0;
+    int max_recv_count    = 0;
+    int i;
+    for (i = 0; i < comm_size; i++) {
+        displs[i] = total_count;
+        total_count += recvcnts[i];
+
+        if (recvcnts[i] > max_recv_count) {
+            max_recv_count = recvcnts[i];
+        }
+    }
+
+    /* max number of elements a rank will receive */
+    size_t max_elem_per_rank = (size_t) max_recv_count;
+
+    /* compute number of whole elements that can fit in the buffer */
+    size_t elem_per_buffer = mpi_buf_size / true_extent;
+
+    /* process data in chunks of size elem_per_buffer */
+    size_t nread = 0;
+    while (nread < max_elem_per_rank) {
+        /* keep track of send and recv counts left to process */
+        /* execute a lap through the ring */
+        int dist;
+        for(dist = comm_size-1; dist >= 0; dist--) {
+            /* compute rank of process whose data we're sending and rank
+             * of process whose data we're receiving in this step */
+            int send_index = (rank_index + dist) % comm_size;
+            int recv_index = (rank_index + (dist - 1)) % comm_size;
+            int send_rank  = comm_ptr->dev.ch.rank_list[send_index];
+            int recv_rank  = comm_ptr->dev.ch.rank_list[recv_index];
+
+            /* compute offset into input buffer to pull data for this chunk */
+            unsigned long elem_offset = displs[send_rank] + nread;
+            const char* buf = (const char*)input_buf + elem_offset * extent;
+
+            /* compute the number of elements we're sending and receiving */
+            int send_count = recvcnts[send_rank] - nread;
+            int recv_count = recvcnts[recv_rank] - nread;
+
+            if (send_count < 0) send_count = 0;
+            if (recv_count < 0) recv_count = 0;
+
+            if (send_count > elem_per_buffer) send_count = elem_per_buffer;
+            if (recv_count > elem_per_buffer) recv_count = elem_per_buffer;
+
+            /* copy next set of bytes for this chunk from input buffer into sendbuf */
+            MPIR_Localcopy(buf, send_count, datatype,
+                    tmp_sendbuf, send_count, datatype);
+
+            /* merge the blocks via reduce operation */
+            if (dist < comm_size-1) {
+                MPIR_Reduce_local_impl(tmp_recvbuf, tmp_sendbuf, send_count, datatype, op);
+            }
+
+            if (dist > 0) {
+                /* exchange data with neighbors */
+                MPIC_Irecv(tmp_recvbuf, recv_count, datatype, rank_left,  0, comm_ptr,
+                        &request[0]);
+                MPIC_Isend(tmp_sendbuf, send_count, datatype, rank_right, 0, comm_ptr,
+                        &request[1], errflag);
+                MPIC_Waitall(2, request, status, errflag);
+            } else {
+                /* write the result to the ouput buffer */
+                char* buf = output_buf + nread * extent;
+                MPIR_Localcopy(tmp_sendbuf, send_count, datatype,
+                        buf, send_count, datatype);
+            }
+        }
+
+        /* assume we send the max buffer count in each step,
+         * this means that nread may exceed the max value,
+         * but that will end the loop */
+        nread += elem_per_buffer;
+    }
+
+    /* bump pointers back to start of buffers for free calls */
+    tmp_sendbuf += true_lb;
+    tmp_recvbuf += true_lb;
+
+fn_exit:
+    MPIU_CHKLMEM_FREEALL();
+    /* --BEGIN ERROR HANDLING-- */
+    if (mpi_errno_ret)
+        mpi_errno = mpi_errno_ret;
+    else if (*errflag != MPIR_ERR_NONE)
+        MPIR_ERR_SET(mpi_errno, *errflag, "**coll_fail");
+    /* --END ERROR HANDLING-- */
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+ 
+#undef FUNCNAME
 #define FUNCNAME MPIR_Reduce_scatter_non_comm_MV2
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
@@ -931,6 +1343,8 @@ static int MPIR_Reduce_scatter_non_comm_MV2(const void *sendbuf,
 	int is_cxx_uop = 0;
 #endif
 	MPIU_CHKLMEM_DECL(5);
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_scatter_non_comm, 1);
 
 	comm_size = comm_ptr->local_size;
 	rank = comm_ptr->rank;
@@ -1110,7 +1524,9 @@ static int MPIR_Reduce_scatter_non_comm_MV2(const void *sendbuf,
 					/* tmp_results contains data to be sent in each step. Data is
 					   received in tmp_recvbuf and then accumulated into
 					   tmp_results. accumulation is done later below.   */
-
+					
+					MPIR_PVAR_INC(reduce_scatter, non_comm, send, 1, sendtype);
+					MPIR_PVAR_INC(reduce_scatter, non_comm, recv, 1, recvtype);
 					mpi_errno = MPIC_Sendrecv(tmp_results, 1, sendtype, dst,
 												 MPIR_REDUCE_SCATTER_TAG,
 												 tmp_recvbuf, 1, recvtype, dst,
@@ -1161,6 +1577,7 @@ static int MPIR_Reduce_scatter_non_comm_MV2(const void *sendbuf,
 							(rank < tree_root + nprocs_completed)
 							&& (dst >= tree_root + nprocs_completed)) {
 							/* send the current result */
+							MPIR_PVAR_INC(reduce_scatter, non_comm, send, 1, recvtype);
 							mpi_errno = MPIC_Send(tmp_recvbuf, 1, recvtype,
 													 dst,
 													 MPIR_REDUCE_SCATTER_TAG,
@@ -1178,6 +1595,7 @@ static int MPIR_Reduce_scatter_non_comm_MV2(const void *sendbuf,
 						else if ((dst < rank) &&
 								 (dst < tree_root + nprocs_completed) &&
 								 (rank >= tree_root + nprocs_completed)) {
+							MPIR_PVAR_INC(reduce_scatter, non_comm, recv, 1, recvtype);
 							mpi_errno =
 								MPIC_Recv(tmp_recvbuf, 1, recvtype, dst,
 											 MPIR_REDUCE_SCATTER_TAG, comm_ptr,

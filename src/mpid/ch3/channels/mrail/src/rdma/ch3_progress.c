@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -71,6 +71,8 @@ static int handle_read_individual(MPIDI_VC_t * vc,
         vbuf * buffer, int *header_type);
 
 static int cm_handle_pending_send();
+
+extern int MPIDI_CH3_PktHandler_Init_MV2();
 
 extern volatile int *rdma_cm_iwarp_msg_count;
 extern volatile int *rdma_cm_connect_count;
@@ -825,6 +827,8 @@ int MPIDI_CH3I_Progress_init()
         progress_hooks[i].func_ptr = NULL;
         progress_hooks[i].active = FALSE;
     }
+
+    MPIDI_CH3_PktHandler_Init_MV2();
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PROGRESS_INIT);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PROGRESS_INIT);
