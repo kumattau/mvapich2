@@ -3836,9 +3836,14 @@ int MPID_Comm_get_lpid(MPID_Comm *comm_ptr, int idx, int * lpid_ptr, MPIU_BOOL i
 #define MPIR_BCAST_LONG_MSG           524288
 #define MPIR_BCAST_MIN_PROCS          8
 
-#define MPIR_ALLTOALL_THROTTLE        4  /* max no. of irecvs/isends posted at a 
-time in some alltoall algorithms. Setting it to 0 causes all irecvs/isends to be 
+/* max no. of irecvs/isends posted at a 
+time in some alltoall algorithms. Setting
+it to 0 causes all irecvs/isends to be
 posted at once. */
+#define MPIR_ALLTOALL_THROTTLE        32
+#define MPIR_ALLTOALL_INTRA_THROTTLE  32
+#define MPIR_ALLTOALL_LARGE_MSG_THROTTLE  4
+#define MV2_ALLTOALL_LARGE_MSG        64*1024
 
 #ifdef _OSU_MVAPICH_
 #   define MPIR_ALLTOALL_SHORT_MSG         2048
@@ -3950,6 +3955,8 @@ struct coll_runtime {
     int alltoall_small_msg; 
     int alltoall_medium_msg; 
     int alltoall_throttle_factor;
+    int alltoall_intra_throttle_factor;
+    int alltoall_large_msg_throttle_factor;
 };
 #endif /* _OSU_MVAPICH_ */
 
@@ -3992,11 +3999,11 @@ int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
                              int dest, int sendtag,
                              int source, int recvtag,
                              MPID_Comm *comm_ptr, MPI_Status *status, MPIR_Errflag_t *errflag);
-int MPIC_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Isend(const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
                   MPID_Comm *comm_ptr, MPID_Request **request, MPIR_Errflag_t *errflag);
-int MPIC_Issend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Issend(const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
                   MPID_Comm *comm_ptr, MPID_Request **request, MPIR_Errflag_t *errflag);
-int MPIC_Irecv(void *buf, int count, MPI_Datatype datatype, int source,
+int MPIC_Irecv(void *buf, MPI_Aint count, MPI_Datatype datatype, int source,
                   int tag, MPID_Comm *comm_ptr, MPID_Request **request);
 int MPIC_Waitall(int numreq, MPID_Request *requests[], MPI_Status statuses[], MPIR_Errflag_t *errflag);
 

@@ -25,7 +25,6 @@ int MPIX_Comm_agree(MPI_Comm comm, int *flag) __attribute__((weak,alias("PMPIX_C
 #ifndef MPICH_MPI_FROM_PMPI
 #undef MPIX_Comm_agree
 #define MPIX_Comm_agree PMPIX_Comm_agree
-#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Comm_agree
@@ -106,6 +105,8 @@ int MPIR_Comm_agree(MPID_Comm *comm_ptr, int *flag)
     goto fn_exit;
 }
 
+#endif /* !defined(MPICH_MPI_FROM_PMPI) */
+
 #undef FUNCNAME
 #define FUNCNAME MPIX_Comm_agree
 #undef FCNAME
@@ -114,12 +115,12 @@ int MPIR_Comm_agree(MPID_Comm *comm_ptr, int *flag)
 MPIX_Comm_agree - Performs agreement operation on comm
 
 Input Parameters:
-+ comm - communicator (handle)
+. comm - communicator (handle)
 
 Output Parameters:
 . newcomm - new communicator (handle)
 
-.N Threadsafe
+.N ThreadSafe
 
 .N Fortran
 

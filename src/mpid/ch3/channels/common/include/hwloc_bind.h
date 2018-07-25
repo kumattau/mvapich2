@@ -28,6 +28,7 @@ typedef struct {
 typedef enum {
     POLICY_BUNCH,
     POLICY_SCATTER,
+    POLICY_HYBRID,
 } policy_type_t;
 
 typedef enum {

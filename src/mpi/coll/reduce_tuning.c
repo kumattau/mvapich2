@@ -554,12 +554,12 @@ force_default_tables:
       MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 1,  5, GEN2_CMA__RI2__1PPN)
       MV2_COLL_TUNING_ADD_CONF     (reduce, 2,  5, GEN2__RI2__2PPN)
       MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 2,  5, GEN2_CMA__RI2__2PPN)
-      MV2_COLL_TUNING_ADD_CONF     (reduce, 4,  1, GEN2__RI2__4PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 4,  1, GEN2_CMA__RI2__4PPN)
-      MV2_COLL_TUNING_ADD_CONF     (reduce, 8,  4, GEN2__RI2__8PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 8,  4, GEN2_CMA__RI2__8PPN)
-      MV2_COLL_TUNING_ADD_CONF     (reduce, 16, 4, GEN2__RI2__16PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 16, 4, GEN2_CMA__RI2__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 4,  5, GEN2__RI2__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 4,  5, GEN2_CMA__RI2__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 8,  5, GEN2__RI2__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 8,  5, GEN2_CMA__RI2__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 16, 5, GEN2__RI2__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 16, 5, GEN2_CMA__RI2__16PPN)
       MV2_COLL_TUNING_ADD_CONF     (reduce, 28, 6, GEN2__RI2__28PPN)
       MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 28, 6, GEN2_CMA__RI2__28PPN)
       MV2_COLL_TUNING_FINISH_TABLE (reduce)
@@ -585,6 +585,31 @@ force_default_tables:
       MV2_COLL_TUNING_ADD_CONF     (reduce, 2,  5, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__2PPN)
       MV2_COLL_TUNING_ADD_CONF     (reduce, 4,  2, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__4PPN)
       MV2_COLL_TUNING_ADD_CONF     (reduce, 8,  2, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__8PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (reduce)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+				    MV2_ARCH_IBM_POWER9, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+      /* Sierra Table: Use table for Ray temporarily */
+      int pg_size = MPIDI_PG_Get_size(MPIDI_Process.my_pg);
+      if (pg_size > 64) goto force_default_tables;
+
+      MV2_COLL_TUNING_START_TABLE  (reduce, 8)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 1,  4, GEN2__IBM_POWER9_MLX_CX_EDR__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 1,  4, GEN2_CMA__IBM_POWER9_MLX_CX_EDR__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 2,  5, GEN2__IBM_POWER9_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 2,  5, GEN2_CMA__IBM_POWER9_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 4,  5, GEN2__IBM_POWER9_MLX_CX_EDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 4,  5, GEN2_CMA__IBM_POWER9_MLX_CX_EDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 8,  5, GEN2__IBM_POWER9_MLX_CX_EDR__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 8,  5, GEN2_CMA__IBM_POWER9_MLX_CX_EDR__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 16, 5, GEN2__IBM_POWER9_MLX_CX_EDR__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 16, 5, GEN2_CMA__IBM_POWER9_MLX_CX_EDR__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 22, 5, GEN2__IBM_POWER9_MLX_CX_EDR__22PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 22, 5, GEN2_CMA__IBM_POWER9_MLX_CX_EDR__22PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 32, 5, GEN2__IBM_POWER9_MLX_CX_EDR__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 32, 5, GEN2_CMA__IBM_POWER9_MLX_CX_EDR__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 44, 5, GEN2__IBM_POWER9_MLX_CX_EDR__44PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 44, 5, GEN2_CMA__IBM_POWER9_MLX_CX_EDR__44PPN)
       MV2_COLL_TUNING_FINISH_TABLE (reduce)
     }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
@@ -1184,6 +1209,19 @@ force_default_tables:
       MV2_COLL_TUNING_ADD_CONF     (reduce, 16, 5, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__16PPN)
       MV2_COLL_TUNING_ADD_CONF     (reduce, 32, 5, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__32PPN)
       MV2_COLL_TUNING_ADD_CONF     (reduce, 64, 4, PSM__INTEL_XEON_PHI_7250_68_INTEL_HFI_100__64PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (reduce)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                             MV2_ARCH_INTEL_PLATINUM_8170_2S_52, MV2_HCA_INTEL_HFI1) && !heterogeneity) {
+      /* Diamond-Skylake Table */
+      MV2_COLL_TUNING_START_TABLE  (reduce, 7)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 1,  3, PSM__INTEL_PLATINUM_8170_2S_52_INTEL_HFI_100__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 2,  4, PSM__INTEL_PLATINUM_8170_2S_52_INTEL_HFI_100__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 4,  4, PSM__INTEL_PLATINUM_8170_2S_52_INTEL_HFI_100__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 8,  4, PSM__INTEL_PLATINUM_8170_2S_52_INTEL_HFI_100__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 16, 4, PSM__INTEL_PLATINUM_8170_2S_52_INTEL_HFI_100__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 26, 4, PSM__INTEL_PLATINUM_8170_2S_52_INTEL_HFI_100__26PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 52, 4, PSM__INTEL_PLATINUM_8170_2S_52_INTEL_HFI_100__52PPN)
       MV2_COLL_TUNING_FINISH_TABLE (reduce)
     }
     else {
@@ -2619,6 +2657,15 @@ int MV2_intranode_Reduce_is_define(char *mv2_user_reduce_intra)
 {
     int i = 0;
     int nb_element = count_sep(mv2_user_reduce_intra) + 1;
+
+    /* It is possible that tuning table is not allocated yet.
+     * E.g., user only forces intra-node algorithm
+     * In such case, inter-node algorithm should be selected automatically based
+     * on the architecture detection in the function above */
+    mv2_size_reduce_tuning_table = 1;
+    if (mv2_reduce_thresholds_table == NULL)
+        mv2_reduce_thresholds_table = MPIU_Malloc(mv2_size_reduce_tuning_table *
+                                                    sizeof (mv2_reduce_tuning_table));
 
     if (nb_element == 1) {
         mv2_reduce_thresholds_table[0].size_intra_table = 1;

@@ -370,13 +370,18 @@ int hindexed_unpack_cudabuf(void *src, MPL_IOV *iov, MPID_Datatype *dtp, int siz
 }
 #endif
 
-int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), 
-                    MPID_Request *req, int *complete ATTRIBUTE((unused)), void* stream)
+int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *complete)
+{
+    return MPIDI_CH3_ReqHandler_pack_cudabuf_stream(vc, rreq, complete, NULL);
+}
+
+int MPIDI_CH3_ReqHandler_pack_cudabuf_stream(
+        MPIDI_VC_t *vc ATTRIBUTE((unused)), 
+        MPID_Request *req, int *complete ATTRIBUTE((unused)), void* stream)
 {
     MPI_Aint last;
     int iov_n;
     MPL_IOV iov[MPL_IOV_LIMIT];
-    int kernel_pack = 0;
     cudaStream_t stream_passed = 0;
 
     if (stream != NULL) { 
@@ -404,7 +409,6 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
                                           iov[0].MPL_IOV_LEN,
                                           req->dev.segment_size / iov[0].MPL_IOV_LEN, 
                                           stream_passed);
-                kernel_pack = 1;
             } else
 #endif
             {
@@ -418,7 +422,6 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
 			MPID_Datatype *dtptr = req->dev.datatype_ptr;
             int struct_size = sizeof(MPID_Datatype_contents);
             int types_size  = dtptr->contents->nr_types * sizeof(MPI_Datatype);
-            int ints_size   = dtptr->contents->nr_ints  * sizeof(int);
             int *arr_ints = (int *) ((char *)dtptr->contents + struct_size + types_size);
 			MPI_Aint base_addr;
 			int subarr_dims = arr_ints[1];
@@ -466,7 +469,6 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
              
             if (return_hindexed_pack == SUCCESS_PACKUNPACK_OPT) {
                 last = req->dev.segment_size;
-                kernel_pack = 1;
             } else if (return_hindexed_pack == FAILURE_PACKUNPACK_OPT) {
                 MPIU_IOV_pack_cuda(req->dev.tmpbuf, iov, iov_n,
                     req->dev.segment_first, stream_passed);
@@ -489,12 +491,18 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
     return MPI_SUCCESS;
 }
 
-int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID_Request *req, int *complete, void *stream)
+int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc, MPID_Request *req, int *complete)
+{
+    return MPIDI_CH3_ReqHandler_unpack_cudabuf_stream(vc, req, complete, NULL);
+}
+
+int MPIDI_CH3_ReqHandler_unpack_cudabuf_stream(
+        MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID_Request *req,
+        int *complete, void *stream)
 {
     MPI_Aint last;
     int iov_n, bytes_copied;
     MPL_IOV iov[MPL_IOV_LIMIT];
-    int kernel_unpack = 0;
     cudaStream_t stream_passed = 0;
 
     if (stream != NULL) {
@@ -524,7 +532,6 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
                                           iov[0].MPL_IOV_LEN,
                                           req->dev.segment_size / iov[0].MPL_IOV_LEN,
                                           stream_passed);
-                kernel_unpack = 1;
             } else
 #endif
             {
@@ -538,7 +545,6 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
 			MPID_Datatype *dtptr = req->dev.datatype_ptr;
             int struct_size = sizeof(MPID_Datatype_contents);
             int types_size  = dtptr->contents->nr_types * sizeof(MPI_Datatype);
-            int ints_size   = dtptr->contents->nr_ints  * sizeof(int);
             int *arr_ints = (int *) ((char *)dtptr->contents + struct_size + types_size);
 			MPI_Aint base_addr;
 			int subarr_dims = arr_ints[1];
@@ -587,7 +593,6 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
 
             if (return_hindexed_unpack == SUCCESS_PACKUNPACK_OPT) {
                 last = bytes_copied = req->dev.segment_size;
-                kernel_unpack = 1;
             } else if (return_hindexed_unpack == FAILURE_PACKUNPACK_OPT) {
                 MPIU_IOV_unpack_cuda(req->dev.tmpbuf, iov, iov_n,
                     req->dev.segment_first, &bytes_copied, stream_passed);
@@ -627,7 +632,6 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     int segment_size;
     int sbuf_isdev = 0;
     int sbuf_isdev_check = 0;
-    int kernel_pack = 0;
 
     /* allocate temp device pack buffer */
     if (!is_device_buffer(streambuf)) {
@@ -668,7 +672,6 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
                                           iov[0].MPL_IOV_LEN,
                                           segment_size / iov[0].MPL_IOV_LEN,
                                           stream_kernel);
-                kernel_pack = 1;
             } else
 #endif
             {
@@ -685,7 +688,6 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
 
             if (return_hindexed_pack == SUCCESS_PACKUNPACK_OPT) {
                 segment_last = *lastp;
-                kernel_pack = 1;
             } else if (return_hindexed_pack == FAILURE_PACKUNPACK_OPT) {
                 MPIU_IOV_pack_cuda((char *)tmpbuf, iov, iov_n, 
                             buff_off, stream_kernel);
@@ -704,7 +706,7 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
         
     } while (segment_last != *lastp);
 
-    /* This is just a pack function. synchronize for kernel to complete before the following copyn */
+    /* This is just a pack function. synchronize for kernel to complete before the following copy */
     CUDA_CHECK(cudaStreamSynchronize(stream_kernel));
 
     /* copy to device pack buffer to host pack buffer */
@@ -728,7 +730,6 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     int segment_size;
     int rbuf_isdev = 0;
     int rbuf_isdev_check = 0;
-    int kernel_unpack = 0;
 
     /* allocate temp device unpack buffer */
     if (!is_device_buffer(inbuf)) {
@@ -771,7 +772,6 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
                                           iov[0].MPL_IOV_LEN,
                                           segment_size / iov[0].MPL_IOV_LEN,
                                           stream_kernel);
-                kernel_unpack = 1;
             } else
 #endif
             {
@@ -790,7 +790,6 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
             if (return_hindexed_unpack == SUCCESS_PACKUNPACK_OPT) {
                 segment_last = *lastp;
                 bytes_unpacked = segment_last - segment_first;
-                kernel_unpack = 1;
             } else if (return_hindexed_unpack == FAILURE_PACKUNPACK_OPT) {
                 MPIU_IOV_unpack_cuda(tmpbuf, iov, iov_n, buff_off, 
                     &bytes_unpacked, stream_kernel);
@@ -1148,14 +1147,14 @@ void cuda_init (MPIDI_PG_t * pg)
                     if (device[my_rank] == device[i]) { 
                         vc->smp.can_access_peer = CUDA_IPC_ENABLED;
                     } else {
-                        cudaerr = cudaDeviceCanAccessPeer(&vc->smp.can_access_peer, device[my_rank], device[i]);
+                        cudaerr = cudaDeviceCanAccessPeer((int*)&vc->smp.can_access_peer, device[my_rank], device[i]);
                         if (cudaerr != cudaSuccess) {
                             ibv_error_abort(GEN_EXIT_ERR,"cudaDeviceCanAccessPeer failed");
                         }
                         vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
                     }
                 }else{
-                    cudaerr = cudaDeviceCanAccessPeer(&vc->smp.can_access_peer, device[my_rank], device[i]);
+                    cudaerr = cudaDeviceCanAccessPeer((int*)&vc->smp.can_access_peer, device[my_rank], device[i]);
                         if (cudaerr != cudaSuccess) {
                             ibv_error_abort(GEN_EXIT_ERR,"cudaDeviceCanAccessPeer failed");
                         }
@@ -1217,7 +1216,7 @@ void cuda_preinit (MPIDI_PG_t * pg)
 #endif
 
     cuda_err = cudaGetDeviceCount(&dev_count);
-    if (cuda_err == CUDA_SUCCESS && dev_count > 0) {
+    if (cuda_err == cudaSuccess && dev_count > 0) {
         can_use_cuda = 1; 
     }
 
@@ -1235,6 +1234,9 @@ void cuda_preinit (MPIDI_PG_t * pg)
         mpi_errno = MPIR_Allreduce_impl (&cudaipc_init, &cudaipc_init_global, 1,
                             MPI_INT, MPI_SUM, comm_world, &errflag);
 
+        if (mpi_errno != MPI_SUCCESS) {
+            ibv_error_abort (GEN_EXIT_ERR, "MPIR_Allreduce_impl returned error");
+        }    
     
         if (cudaipc_init) {
             /*set can_access_peer to pre-setup value*/
@@ -1310,33 +1312,28 @@ void cuda_init_dynamic (MPIDI_PG_t * pg)
 
 void cuda_cleanup()
 {
-    CUcontext active_context = NULL; 
     int mpi_errno = MPI_SUCCESS;
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
-    /*check if three is an active context, or else skip cleaup, 
-     *the application might have called destroyed the context before finalize */
-    CU_CHECK(cuCtxGetCurrent(&active_context));
-    if (active_context == NULL) {
-    /*when using CUDA IPC, if some of the processes have context initialized, they use a global synchronization to
-     *to make sure all processes that mapped its memory have unmapped it. Processes where there is no context have to 
-     * participate in the synchronization*/
+    /* Global Barrier - All processes must participate even if no active
+     * contexts exist. Otherwise it will lead to a hang in case of some
+     * processes calling Finalize without making CUDA calls */
+
     /*TODO: this synchronization can be made local to the node*/
 #if defined(HAVE_CUDA_IPC)
-        if (rdma_cuda_ipc && cudaipc_init_global && cudaipc_stage_buffered) {
-            MPIR_Barrier_impl(MPIR_Process.comm_world, &errflag);
-            if (MPI_SUCCESS != mpi_errno) {
-                ibv_error_abort (GEN_EXIT_ERR, "MPI_Barrier failed in cuda_cleanup \n");
-            }
+    if (rdma_cuda_ipc && cudaipc_stage_buffered) {
+        MPIR_Barrier_impl(MPIR_Process.comm_world, &errflag);
+        if (MPI_SUCCESS != mpi_errno) {
+            ibv_error_abort (GEN_EXIT_ERR, "MPI_Barrier failed in cuda_cleanup \n");
         }
-#endif
     }
+#endif
 
     deallocate_cuda_events();
     deallocate_cuda_rndv_streams();
 
 #if defined(HAVE_CUDA_IPC)
-    if (rdma_cuda_ipc && cudaipc_init_global) {
+    if (rdma_cuda_ipc) {
         cudaipc_finalize();
     }
 

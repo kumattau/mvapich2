@@ -187,6 +187,15 @@ void psm_iput_rndv(int dest, void *buf, MPIDI_msg_sz_t buflen, int tag, int src,
     rndvreq = psm_create_req();
     rndvreq->kind = MPID_REQUEST_SEND;
     rndvreq->psm_flags |= PSM_RNDVSEND_REQ;
+    /* FIXME: this is not an efficient way
+     *        however, if we use 'buf', which is from rptr's pack buffer,
+     *        it causes memory leak or data corruption */
+    if (NULL != (*rptr) && (*rptr)->psm_flags & PSM_1SIDED_NON_CONTIG_REQ) {
+        rndvreq->pkbuf = MPIU_Malloc(buflen);
+        MPIU_Memcpy(rndvreq->pkbuf, buf, buflen);
+        buf = rndvreq->pkbuf;
+        rndvreq->psm_flags |= (PSM_1SIDED_NON_CONTIG_REQ | PSM_PACK_BUF_FREE);
+    }
     *rptr = rndvreq;
     PRINT_DEBUG(DEBUG_1SC_verbose>1, "rndv send len %zu tag %d dest %d I-am %d\n", buflen, tag, dest, src);
   
@@ -505,7 +514,7 @@ int psm_1sided_getaccumpkt(MPIDI_CH3_Pkt_get_accum_t *pkt, MPL_IOV *iov, int iov
         }
         resp_req->savedreq = orig_resp_req;
 
-        resp_req->from_rank = rank;
+        resp_req->from_rank = pkt->target_rank; /* provide rank in the RMA window (may be the same as global rank) */
         resp_req->request_completed_cb = MPIDI_CH3_Req_handler_rma_op_complete;
         resp_req->dev.source_win_handle = pkt->source_win_handle;
         resp_req->dev.rma_target_ptr = pkt->target_ptr;
@@ -727,6 +736,11 @@ int psm_1sided_getresppkt(MPIDI_CH3_Pkt_get_resp_t *pkt, MPL_IOV *iov, int iov_n
                                    pkt->rndv_tag, pkt->mapped_srank);
 
     }
+    /* Keep track of pack buffer */
+    if ((req->psm_flags & PSM_1SIDED_NON_CONTIG_REQ) && iov[iov_n-1].MPL_IOV_BUF != req->pkbuf) {
+        req->psm_flags |= PSM_PACK_BUF_FREE;
+        req->pkbuf = iov[iov_n-1].MPL_IOV_BUF;
+    }
 
     if(unlikely(psmerr != PSM_OK)) {
         MPIR_ERR_SET(mpi_errno, MPI_ERR_INTERN, "**fail");
@@ -785,7 +799,7 @@ int psm_1sided_getresppkt(MPIDI_CH3_Pkt_get_resp_t *pkt, MPL_IOV *iov, int iov_n
 } while(0)  
 
 #define _SECTION(TP)                                            \
-    PRINT_DEBUG(DEBUG_1SC_verbose>1, "Section handles"#TP"\n"); \
+    PRINT_DEBUG(DEBUG_1SC_verbose>1, "Section handles "#TP"\n"); \
     do_##TP:                                                  
 
 int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
@@ -846,7 +860,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
             GET_VC(vc, putpkt->target_win_handle, putpkt->source_rank);
             vc->ch.recv_active = req;
             PRINT_DEBUG(DEBUG_1SC_verbose>1, "put packet from %d\n", vc->pg_rank);
-            psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+            psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
             goto end;
         } else {                /* large put */
             MPID_Request *nreq = NULL;
@@ -858,7 +872,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
             GET_VC(vc, putpkt->target_win_handle, putpkt->source_rank);
             vc->ch.recv_active = req;
             PRINT_DEBUG(DEBUG_1SC_verbose>1, "large put packet from %d\n", vc->pg_rank);
-            psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+            psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
             psm_1sc_putacc_rndvrecv(req, inlen, &nreq, putpkt->addr,
                             putpkt->rndv_tag, putpkt->mapped_srank,
                             putpkt->rndv_len, vc);
@@ -875,7 +889,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         GET_VC(vc, getpkt->target_win_handle, getpkt->source_rank);
         vc->ch.recv_active = req;
         PRINT_DEBUG(DEBUG_1SC_verbose>1, "get packet from %d\n", vc->pg_rank);
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
         goto end;
     }
 
@@ -887,7 +901,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         vc->ch.recv_active = req;
         req->dev.target_win_handle = resppkt->source_win_handle;
         req->dev.source_win_handle = resppkt->target_win_handle;
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
         goto end;
     }
 
@@ -899,7 +913,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
             GET_VC(vc, acpkt->target_win_handle, acpkt->source_rank);
             vc->ch.recv_active = req;
             PRINT_DEBUG(DEBUG_1SC_verbose>1, "accum packet from %d\n", vc->pg_rank);
-            psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+            psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
             goto end;           /* large accumulate */
         } else if(!acpkt->stream_mode){
             MPID_Request *nreq = NULL;
@@ -911,7 +925,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
             GET_VC(vc, acpkt->target_win_handle, acpkt->source_rank);
             req->psm_flags |= PSM_RNDV_ACCUM_REQ;
             vc->ch.recv_active = req;
-            psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+            psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
             nreq = vc->ch.recv_active;
 
             nreq = psm_1sc_putacc_rndvrecv(req, inlen, &nreq, 
@@ -932,7 +946,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
             GET_VC(vc, acpkt->target_win_handle, acpkt->source_rank);
             req->psm_flags |= PSM_RNDV_ACCUM_REQ;
             vc->ch.recv_active = req;
-            psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+            psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
             nreq = vc->ch.recv_active;
 
             if(MPIR_DATATYPE_IS_PREDEFINED(nreq->dev.datatype)) {
@@ -960,7 +974,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
             GET_VC(vc, acpkt->target_win_handle, acpkt->source_rank);
             vc->ch.recv_active = req;
             PRINT_DEBUG(DEBUG_1SC_verbose>1, "get accum packet from %d\n", vc->pg_rank);
-            psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+            psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
             goto end;           /* large accumulate */
         } else if (!acpkt->stream_mode) {
             MPID_Request *nreq = NULL;
@@ -972,7 +986,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
             GET_VC(vc, acpkt->target_win_handle, acpkt->source_rank);
             req->psm_flags |= PSM_RNDV_ACCUM_REQ;
             vc->ch.recv_active = req;
-            psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+            psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
 
             nreq = vc->ch.recv_active;
             nreq = psm_1sc_putacc_rndvrecv(req, inlen, &nreq,
@@ -996,7 +1010,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
             GET_VC(vc, acpkt->target_win_handle, acpkt->source_rank);
             req->psm_flags |= PSM_RNDV_ACCUM_REQ;
             vc->ch.recv_active = req;
-            psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+            psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
 
             nreq = vc->ch.recv_active;
 
@@ -1026,7 +1040,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         GET_VC(vc, acpkt->target_win_handle, acpkt->source_rank);
         vc->ch.recv_active = req;
         PRINT_DEBUG(DEBUG_1SC_verbose>1, "get accum packet from %d\n", vc->pg_rank);
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
 
         goto end;          
     }
@@ -1038,7 +1052,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         GET_VC(vc, foppkt->target_win_handle, foppkt->source_rank);
         vc->ch.recv_active = req;
         PRINT_DEBUG(DEBUG_1SC_verbose>1, "fop packet from %d\n", vc->pg_rank);
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
         goto end;           
     }
 
@@ -1047,7 +1061,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         _SECTION(FOP_RESP_IMMED);
         temp_req = req;
         PRINT_DEBUG(DEBUG_1SC_verbose>1, "fop resp packet from %d\n", vc->pg_rank);
-        psm_pkthndl[pkt->type](NULL, pkt, &msg, &temp_req);
+        psm_pkthndl[pkt->type](NULL, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &temp_req);
         goto end;           
     }
 
@@ -1057,7 +1071,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         GET_VC(vc, caspkt->target_win_handle, caspkt->source_rank);
         vc->ch.recv_active = req;
         PRINT_DEBUG(DEBUG_1SC_verbose>1, "cas packet from %d\n", vc->pg_rank);
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
         goto end;           
     }
 
@@ -1065,7 +1079,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         _SECTION(CAS_RESP_IMMED);
         temp_req = req;
         PRINT_DEBUG(DEBUG_1SC_verbose>1, "cas resp packet from %d\n", vc->pg_rank);
-        psm_pkthndl[pkt->type](NULL, pkt, &msg, &temp_req);
+        psm_pkthndl[pkt->type](NULL, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &temp_req);
         goto end;           
     }
 
@@ -1075,7 +1089,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         MPIDI_CH3_Pkt_lock_t *lockpkt = (MPIDI_CH3_Pkt_lock_t *) pkt;
         GET_VC(vc, lockpkt->target_win_handle, lockpkt->source_rank);
         vc->ch.recv_active = req;
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
         PRINT_DEBUG(DEBUG_1SC_verbose>1, "lock request from [%d]\n", vc->pg_rank);
         goto end;
     }
@@ -1086,7 +1100,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         MPIDI_CH3_Pkt_unlock_t *unlockpkt = (MPIDI_CH3_Pkt_unlock_t *) pkt;
         GET_VC(vc, unlockpkt->target_win_handle, unlockpkt->source_rank);
         vc->ch.recv_active = req;
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
         PRINT_DEBUG(DEBUG_1SC_verbose>1, "ulock request from [%d]\n", vc->pg_rank);
         goto end;
     }
@@ -1100,7 +1114,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
             GET_VC(vc, flushpkt->target_win_handle, flushpkt->target_rank);
         }
         temp_req = req;
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &temp_req);
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &temp_req);
         PRINT_DEBUG(DEBUG_1SC_verbose>1, "flush request from [%d]\n", vc->pg_rank);
         goto end;
     }
@@ -1113,7 +1127,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         MPID_Win *win_ptr;
         MPID_Win_get_ptr(grpkt->source_win_handle, win_ptr);
         MPIDI_Comm_get_vc(win_ptr->comm_ptr, grpkt->target_rank, &vc);
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
         PRINT_DEBUG(DEBUG_1SC_verbose>1, "granted lock\n");
         goto end;
     }
@@ -1126,7 +1140,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         MPID_Win *win_ptr;
         MPID_Win_get_ptr(grpkt->source_win_handle, win_ptr);
         MPIDI_Comm_get_vc(win_ptr->comm_ptr, grpkt->target_rank, &vc);
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
         PRINT_DEBUG(DEBUG_1SC_verbose>1, "ack packet\n");
         goto end;
     }
@@ -1137,7 +1151,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         MPID_Win *win_ptr;
         MPID_Win_get_ptr(grpkt->source_win_handle, win_ptr);
         MPIDI_Comm_get_vc(win_ptr->comm_ptr, grpkt->target_rank, &vc);
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
         goto end;
     }
     /* handle lock_op_ack */
@@ -1147,7 +1161,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
         MPID_Win *win_ptr;
         MPID_Win_get_ptr(grpkt->source_win_handle, win_ptr);
         MPIDI_Comm_get_vc(win_ptr->comm_ptr, grpkt->target_rank, &vc);
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
         goto end;
     }
 errpkt:    
@@ -1199,10 +1213,11 @@ int psm_complete_rndvrecv(MPID_Request *req, MPIDI_msg_sz_t inlen)
                     req->pkbuf, req->pksz, treq->dev.user_buf, inlen);
             /* treq had dataloop et al free it now */
             MPID_Request_complete(treq);
+            req->psm_flags |= PSM_PACK_BUF_FREE;
         }
         putreq->psm_flags |= PSM_RNDVPUT_COMPLETED;
         win_ptr->outstanding_rma--;
-        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        psm_pkthndl[pkt->type](vc, pkt, (((char*)(pkt))+sizeof(MPIDI_CH3_Pkt_t)), &msg, &(vc->ch.recv_active));
     } else if(req->psm_flags & PSM_RNDVRECV_ACCUM_REQ) {
         MPIDI_CH3_Pkt_accum_t *acpkt;
         acpkt = (MPIDI_CH3_Pkt_accum_t *) pkt;
@@ -1211,6 +1226,7 @@ int psm_complete_rndvrecv(MPID_Request *req, MPIDI_msg_sz_t inlen)
         vc->ch.recv_active = req;
         if(req->psm_flags & PSM_RNDVRECV_NC_REQ) {
             MPIU_Memcpy(req->dev.user_buf, req->pkbuf, inlen);
+            req->psm_flags |= PSM_PACK_BUF_FREE;
         }
         req->psm_flags |= PSM_RNDVPUT_COMPLETED;
         win_ptr->outstanding_rma--;
@@ -1222,11 +1238,16 @@ int psm_complete_rndvrecv(MPID_Request *req, MPIDI_msg_sz_t inlen)
         MPIDI_Comm_get_vc(win_ptr->comm_ptr, acpkt->source_rank, &vc);
         vc->ch.recv_active = req;
         if(req->psm_flags & PSM_RNDVRECV_NC_REQ) {
-            /* we've received it to a pack-buf. Unpack it now */
+            /* Copy the received data to the user_buf, it will be unpacked later */
+            MPIU_Memcpy(req->dev.user_buf, req->pkbuf, inlen);
+            req->psm_flags |= PSM_PACK_BUF_FREE;
+            /* Copy the datatype info. if we use different req to perform RNDV transfer */
             MPID_Request *treq = req->pending_req;
-            psm_do_unpack(treq->dev.user_count, treq->dev.datatype, NULL,
-                    req->pkbuf, req->pksz, treq->dev.user_buf, inlen);
-            MPID_Request_complete(treq);
+            if (unlikely(treq != req)) {
+                req->dev.user_count = treq->dev.user_count;
+                req->dev.datatype = treq->dev.datatype;
+                req->dev.datatype_ptr = treq->dev.datatype_ptr;
+            }
         }
         req->psm_flags |= PSM_RNDVPUT_COMPLETED;
         win_ptr->outstanding_rma--;
@@ -1353,6 +1374,7 @@ static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *putreq, MPIDI_msg_sz_
         useraddr = psm_gen_packbuf(req, preq);
         rndv_len = req->pksz;
         req->psm_flags |= PSM_RNDVRECV_NC_REQ;
+        req->psm_flags |= PSM_1SIDED_NON_CONTIG_REQ;
         /* we need the datatype info. keep the req pending */
         req->pending_req = preq;
     }

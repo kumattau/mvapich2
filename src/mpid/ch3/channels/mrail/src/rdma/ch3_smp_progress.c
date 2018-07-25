@@ -536,7 +536,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
             sizeof(MPIDI_CH3_Pkt_eager_send_t);
         if ((mpi_errno = MPIDI_CH3_PktHandler_EagerSend_Contig(
                         vc,
-                        pkt,
+                        pkt, ((char *)pkt + MPIDI_CH3U_PKT_SIZE(pkt)),
                         &buflen,
                         &vc->smp.recv_active)) != MPI_SUCCESS)
         {
@@ -715,7 +715,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
 
         if ((mpi_errno = MPIDI_CH3U_Handle_recv_pkt(
                         vc,
-                        pkt,
+                        pkt, ((char *)pkt + MPIDI_CH3U_PKT_SIZE(pkt)),
                         &buflen,
                         &vc->smp.recv_active)) != MPI_SUCCESS)
         {
@@ -2604,9 +2604,6 @@ int MPIDI_CH3I_SMP_finalize()
 #define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3I_CUDA_SMP_cuda_init(MPIDI_PG_t *pg)
 {
-    int id, local_id;
-    MPIDI_VC_t *vc = NULL;
-
     if (!cuda_initialized) { 
         return;
     }
@@ -2628,7 +2625,7 @@ void MPIDI_CH3I_CUDA_SMP_cuda_init(MPIDI_PG_t *pg)
 #define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3I_CUDA_SMP_cuda_finalize(MPIDI_PG_t *pg)
 {
-    int i, local_id;
+    int i;
     MPIDI_VC_t *vc = NULL;
 
     if (!cuda_initialized) {
@@ -3610,16 +3607,15 @@ int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
                     cur_h = 0;
                     contig_avail = cur_t;
                     if (cuStreamWaitEvent(0, loop_event_local[vc->pg_rank], 0) != CUDA_SUCCESS) {
-                        PRINT_ERROR("Error in cuStreamWaitEvent\n");
-                        exit(EXIT_FAILURE);
+                        smp_error_abort(SMP_EXIT_ERR,"Error in cuStreamWaitEvent\n");
                     }
                 }
             }
 
             if(contig_avail < data_sz) {
-                return;
                 /* Not advancing header. Probably can be used for another
                    request in the queue?*/
+                goto fn_fail;
             }
         }
     }
@@ -4180,11 +4176,13 @@ int MPIDI_CH3I_SMP_do_cma_read(const MPL_IOV * iov,
                         "**fail", "**fail %s",
                         "CMA: (MPIDI_CH3I_SMP_do_cma_read) process_vm_readv fail");
 
+            MPIU_Assert(cerr == MV2_CMA_MSG_LIMIT);
             local_iovec[iov_off].iov_base += MV2_CMA_MSG_LIMIT;
             local_iovec[iov_off].iov_len = iov_len - MV2_CMA_MSG_LIMIT;
             received_bytes += MV2_CMA_MSG_LIMIT;
             cma_total_bytes -= MV2_CMA_MSG_LIMIT;
             msglen -= MV2_CMA_MSG_LIMIT;
+            iov_len -= MV2_CMA_MSG_LIMIT;
 
             c_header->remote[0].iov_len -= MV2_CMA_MSG_LIMIT;
             c_header->remote[0].iov_base += MV2_CMA_MSG_LIMIT;
@@ -4198,6 +4196,7 @@ int MPIDI_CH3I_SMP_do_cma_read(const MPL_IOV * iov,
                         "**fail", "**fail %s",
                         "CMA: (MPIDI_CH3I_SMP_do_cma_read) process_vm_readv fail");
 
+            MPIU_Assert(cerr == msglen);
             received_bytes += msglen;
             cma_total_bytes -= msglen;
 
@@ -4211,6 +4210,7 @@ int MPIDI_CH3I_SMP_do_cma_read(const MPL_IOV * iov,
                         "**fail", "**fail %s",
                         "CMA: (MPIDI_CH3I_SMP_do_cma_read) process_vm_readv fail");
 
+            MPIU_Assert(cerr == iov_len);
             received_bytes += iov_len;
             cma_total_bytes -= iov_len;
             msglen -= iov_len;
@@ -4231,6 +4231,7 @@ int MPIDI_CH3I_SMP_do_cma_read(const MPL_IOV * iov,
                         "**fail", "**fail %s",
                         "CMA: (MPIDI_CH3I_SMP_do_cma_read) process_vm_readv fail");
 
+            MPIU_Assert(cerr == msglen);
             received_bytes += msglen;
             cma_total_bytes -= msglen;
         }
@@ -5513,7 +5514,7 @@ void MPIDI_CH3I_SMP_send_comp(void *header,
 
     ptr_head = (volatile void *) ((unsigned long) ptr_flag + sizeof(int));
     ptr = (volatile void *) ((unsigned long) ptr_flag + sizeof(int)*2);
-    MPIU_Memcpy((void *)ptr, &pkt, pkt_sz);
+    MPIU_Memcpy((void *)ptr, (const void *)&pkt, pkt_sz);
 
     ptr = (volatile void *) ((unsigned long) ptr + pkt_sz);
     smpi_complete_send(vc->smp.local_nodes, pkt_sz, pkt_sz, ptr, ptr_head, ptr_flag);

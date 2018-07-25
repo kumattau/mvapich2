@@ -58,7 +58,7 @@ int MPIR_Sharp_Iallreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
         is_contig = dtp->is_contig;
     }
 
-    dt_size = mv2_get_sharp_datatype(datatype);
+    mv2_get_sharp_datatype(datatype, &dt_size);
     reduce_spec.dtype = dt_size->sharp_data_type;
 
     if (reduce_spec.dtype == SHARP_DTYPE_NULL) {

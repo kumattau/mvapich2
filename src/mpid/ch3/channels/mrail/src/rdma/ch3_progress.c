@@ -54,8 +54,8 @@ do {                                                          \
 }
 
 #define MAX_PROGRESS_HOOKS 4
-long int mv2_num_posted_send;
-long int mv2_unexp_msg_recv;
+long int mv2_num_posted_send = 0;
+long int mv2_unexp_msg_recv  = 0;
 
 typedef int (*progress_func_ptr_t) (int* made_progress);
 
@@ -329,10 +329,20 @@ handle_recv_pkt:
                 }
 #endif /* defined(RDMA_CM) */
                 else {
-                    /* Control should not reach here */
-                    PRINT_ERROR("vc_ptr->state = %s, vc_ptr->ch.state = %d\n",
+                    /* The RDMA_CM or the on_demand_cm thread can potentially
+                     * change the state in parallel */
+                    if ((MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+#if defined(RDMA_CM)
+                        || (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM)
+#endif /* defined(RDMA_CM) */
+                       ) {
+                        goto handle_recv_pkt;
+                    } else {
+                        /* Control should not reach here */
+                        PRINT_ERROR("vc_ptr->state = %s, vc_ptr->ch.state = %d\n",
                                 MPIDI_VC_GetStateString(vc_ptr->state), vc_ptr->ch.state);
-                    MPIU_Assert(0);
+                        MPIU_Assert(0);
+                    }
                 }
             }
 #ifdef _ENABLE_UD_
@@ -845,6 +855,10 @@ int MPIDI_CH3I_Progress_finalize()
 
     MPIDI_CH3I_progress_completion_count = 0;
     mv2_read_progress_pending_vc = NULL;
+
+    PRINT_DEBUG(DEBUG_SHM_verbose>1, 
+            "mv2_num_posted_send: %ld, mv2_posted_recvq_length: %ld, mv2_unexp_msg_recv: %ld\n",
+            mv2_num_posted_send, mv2_posted_recvq_length, mv2_unexp_msg_recv);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PROGRESS_FINALIZE);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PROGRESS_FINALIZE);
@@ -1426,6 +1440,10 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
                 }
                 MPIDI_CH3I_Process.new_conn_complete = 1;
                 PRINT_DEBUG(DEBUG_CM_verbose>0, "NOOP Received, RDMA CM is setting the proper status on the client side for multirail.\n");
+                if (mv2_use_eager_fast_send &&
+                    !(SMP_INIT && (vc->smp.local_nodes >= 0))) {
+                    vc->eager_fast_fn = mv2_eager_fast_send;
+                }
             }
 
             if ((vc->ch.state == MPIDI_CH3I_VC_STATE_IWARP_SRV_WAITING)
@@ -1519,7 +1537,7 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
     /* Step two, load request according to the header content */
     if ((mpi_errno = MPIDI_CH3U_Handle_recv_pkt(
         vc,
-        (void*) header,
+        (void*) header, ((char *)header + MPIDI_CH3U_PKT_SIZE(header)),
         &buflen,
         &vc->ch.recv_active)) != MPI_SUCCESS)
     {

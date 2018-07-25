@@ -66,7 +66,7 @@ static int my_sigusr1_count = 0;
 MPIDI_CH3I_shm_sendq_t MPIDI_CH3I_shm_sendq = {NULL, NULL};
 struct MPID_Request *MPIDI_CH3I_shm_active_send = NULL;
 
-static int pkt_NETMOD_handler(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, MPIDI_msg_sz_t *buflen, MPID_Request **rreqp);
+static int pkt_NETMOD_handler(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, void *data, MPIDI_msg_sz_t *buflen, MPID_Request **rreqp);
 static int shm_connection_terminated(MPIDI_VC_t * vc);
 static int check_terminating_vcs(void);
 
@@ -523,11 +523,16 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
                 if (in_fbox)
                 {
                     MPIDI_CH3I_VC *vc_ch;
-                    MPIDI_msg_sz_t buflen = payload_len;
+                    MPIDI_msg_sz_t buflen;
 
                     /* This packet must be the first packet of a new message */
                     MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, "Recv pkt from fbox");
                     MPIU_Assert(payload_len >= sizeof (MPIDI_CH3_Pkt_t));
+
+                    /* deduct packet header */
+                    payload_len -= sizeof(MPIDI_CH3_Pkt_t);
+                    cell_buf += sizeof(MPIDI_CH3_Pkt_t);
+                    buflen = payload_len;
 
                     MPIDI_PG_Get_vc_set_active(MPIDI_Process.my_pg, MPID_NEM_FBOX_SOURCE(cell), &vc);
 		   
@@ -538,7 +543,7 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
                     /* invalid pkt data will result in unpredictable behavior */
                     MPIU_Assert(pkt->type >= 0 && pkt->type < MPIDI_CH3_PKT_END_ALL);
 
-                    mpi_errno = pktArray[pkt->type](vc, pkt, &buflen, &rreq);
+                    mpi_errno = pktArray[pkt->type](vc, pkt, cell_buf, &buflen, &rreq);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
                     if (!rreq)
@@ -551,6 +556,8 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
                     vc_ch->recv_active = rreq;
                     cell_buf    += buflen;
                     payload_len -= buflen;
+
+                    MPIU_Assert(payload_len >= 0);
 
                     mpi_errno = MPID_nem_handle_pkt(vc, cell_buf, payload_len);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -749,18 +756,38 @@ int MPID_nem_handle_pkt(MPIDI_VC_t *vc, char *buf, MPIDI_msg_sz_t buflen)
             /* handle fast-path first: received a new whole message */
             do
             {
-                MPIDI_msg_sz_t len = buflen;
+                MPIDI_msg_sz_t len;
                 MPIDI_CH3_Pkt_t *pkt = (MPIDI_CH3_Pkt_t *)buf;
+#ifdef NEEDS_STRICT_ALIGNMENT
+                MPIDI_CH3_Pkt_t aligned_buf;
+#endif
 
                 MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, "received new message");
+
+#ifdef NEEDS_STRICT_ALIGNMENT
+                /* Copy packet header to temporary buffer to ensure aligned access.
+                 * Note that we intentionally perform the extra copy on all platforms
+                 * that require strict alignment without checking whether the original
+                 * buffer is aligned. This is because we cannot find a good way to
+                 * get correct alignment for general structure on all platforms. */
+                MPIR_Memcpy(&aligned_buf, buf, sizeof(MPIDI_CH3_Pkt_t));
+                pkt = &aligned_buf;
+#endif
+                /* deduct packet header */
+                buflen -= sizeof(MPIDI_CH3_Pkt_t);
+                buf += sizeof(MPIDI_CH3_Pkt_t);
+                len = buflen;
 
                 /* invalid pkt data will result in unpredictable behavior */
                 MPIU_Assert(pkt->type >= 0 && pkt->type < MPIDI_CH3_PKT_END_ALL);
 
-                mpi_errno = pktArray[pkt->type](vc, pkt, &len, &rreq);
+                mpi_errno = pktArray[pkt->type](vc, pkt, buf, &len, &rreq);
                 if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                 buflen -= len;
                 buf    += len;
+
+                MPIU_Assert(buflen >= 0);
+
                 MPIU_DBG_STMT(CH3_CHANNEL, VERBOSE, if (!rreq) MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, "...completed immediately"));
             }
             while (!rreq && buflen >= sizeof(MPIDI_CH3_Pkt_t));
@@ -782,8 +809,11 @@ int MPID_nem_handle_pkt(MPIDI_VC_t *vc, char *buf, MPIDI_msg_sz_t buflen)
         {
             /* collect header fragments in vc's pending_pkt */
             MPIDI_msg_sz_t copylen;
-            MPIDI_msg_sz_t pktlen;
+            MPIDI_msg_sz_t datalen = 0;
             MPIDI_CH3_Pkt_t *pkt = (MPIDI_CH3_Pkt_t *)vc_ch->pending_pkt;
+
+            /* pending_pkt is allocated by malloc which guarantees the allocated
+             * space is suitably aligned for storage of any type of object. */
 
             MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, "received header fragment");
 
@@ -805,10 +835,9 @@ int MPID_nem_handle_pkt(MPIDI_VC_t *vc, char *buf, MPIDI_msg_sz_t buflen)
             /* invalid pkt data will result in unpredictable behavior */
             MPIU_Assert(pkt->type >= 0 && pkt->type < MPIDI_CH3_PKT_END_ALL);
 
-            pktlen = sizeof(MPIDI_CH3_Pkt_t);
-            mpi_errno = pktArray[pkt->type](vc, pkt, &pktlen, &rreq);
+            mpi_errno = pktArray[pkt->type](vc, pkt, NULL, &datalen, &rreq);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-            MPIU_Assert(pktlen == sizeof(MPIDI_CH3_Pkt_t));
+            MPIU_Assert(datalen == 0);
 
             vc_ch->pending_pkt_len = 0;
 
@@ -824,6 +853,7 @@ int MPID_nem_handle_pkt(MPIDI_VC_t *vc, char *buf, MPIDI_msg_sz_t buflen)
         /* copy data into user buffer described by iov in rreq */
         MPIU_Assert(rreq);
         MPIU_Assert(rreq->dev.iov_count > 0 && rreq->dev.iov[rreq->dev.iov_offset].MPL_IOV_LEN > 0);
+        MPIU_Assert(buflen >= 0);
 
         MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, "    copying into user buffer from IOV");
 
@@ -1191,7 +1221,7 @@ int MPIDI_CH3I_Complete_sendq_with_error(MPIDI_VC_t * vc)
 #define FUNCNAME pkt_NETMOD_handler
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-static int pkt_NETMOD_handler(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, MPIDI_msg_sz_t *buflen, MPID_Request **rreqp)
+static int pkt_NETMOD_handler(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, void *data, MPIDI_msg_sz_t *buflen, MPID_Request **rreqp)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_nem_pkt_netmod_t * const netmod_pkt = (MPID_nem_pkt_netmod_t *)pkt;
@@ -1202,7 +1232,7 @@ static int pkt_NETMOD_handler(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, MPIDI_msg_sz
 
     MPIU_Assert_fmt_msg(vc_ch->pkt_handler && netmod_pkt->subtype < vc_ch->num_pkt_handlers, ("no handler defined for netmod-local packet"));
 
-    mpi_errno = vc_ch->pkt_handler[netmod_pkt->subtype](vc, pkt, buflen, rreqp);
+    mpi_errno = vc_ch->pkt_handler[netmod_pkt->subtype](vc, pkt, data, buflen, rreqp);
 
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_PKT_NETMOD_HANDLER);

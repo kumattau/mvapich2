@@ -282,6 +282,7 @@ double do_compute_and_probe(double seconds, MPI_Request *request);
 void free_host_arrays();
 
 #ifdef _ENABLE_CUDA_KERNEL_
+extern void call_kernel(float a, float *d_x, float *d_y, int N, cudaStream_t *stream);
 void free_device_arrays();
 #endif
 
@@ -335,20 +336,19 @@ extern CUcontext cuContext;
 #define MIN_NUM_THREADS 1
 #define MAX_NUM_THREADS 128
 
-#define WINDOW_SIZES {8, 16, 32, 64, 128}
-#define WINDOW_SIZES_COUNT   (5)
+#define WINDOW_SIZES {1, 2, 4, 8, 16, 32, 64, 128}
+#define WINDOW_SIZES_COUNT   (8)
 
 void usage_mbw_mr();
 int allocate_memory_pt2pt (char **sbuf, char **rbuf, int rank);
 void print_header_pt2pt (int rank, int type);
 void free_memory (void *sbuf, void *rbuf, int rank);
 void print_header(int rank, int full);
-void allocate_memory_one_sided(int, char *, char *, char **, char **,
-                     char **win_base, int, enum WINDOW, MPI_Win *);
+void allocate_memory_one_sided(int, char **, char **,
+                            char **, size_t, enum WINDOW, MPI_Win *);
 void free_memory_one_sided (void *, void *, MPI_Win, int);
-void allocate_atomic_memory(int, char *, char *, char *,
-                            char *, char **, char **, char **, char **,
-                            char **win_base, int, enum WINDOW, MPI_Win *);
+void allocate_atomic_memory(int, char **, char **, char **, char **,
+                            char **, size_t, enum WINDOW, MPI_Win *);
 void free_atomic_memory (void *, void *, void *, void *, MPI_Win, int);
 void usage_one_sided (char const *);
 void print_header_one_sided (int, enum WINDOW, enum SYNC);

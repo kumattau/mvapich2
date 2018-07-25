@@ -38,6 +38,7 @@ MTEST_THREAD_RETURN_TYPE run_test_send(void *arg)
     /* Create the buf just once to avoid finding races in malloc instead
      * of the MPI library */
     buf = (int *) malloc(MAX_CNT * sizeof(int));
+    MTEST_VG_MEM_INIT(buf, MAX_CNT * sizeof(int));
     MTestPrintfMsg(1, "buf address %p (size %d)\n", buf, MAX_CNT * sizeof(int));
     MPI_Comm_size(MPI_COMM_WORLD, &wsize);
     if (wsize >= MAX_NTHREAD)
@@ -83,6 +84,7 @@ void run_test_recv(void)
 
     for (cnt = 1; cnt < MAX_CNT; cnt = 2 * cnt) {
         buf = (int *) malloc(cnt * sizeof(int));
+        MTEST_VG_MEM_INIT(buf, cnt * sizeof(int));
         t = MPI_Wtime();
         for (j = 0; j < MAX_LOOP; j++)
             MPI_Recv(buf, cnt, MPI_INT, 0, cnt, MPI_COMM_WORLD, &status);
@@ -112,23 +114,23 @@ int main(int argc, char **argv)
     if (nprocs > MAX_NTHREAD)
         nprocs = MAX_NTHREAD;
 
-    err = MTest_thread_barrier_init();
-    if (err) {
-        fprintf(stderr, "Could not create thread barrier\n");
-        MPI_Abort(MPI_COMM_WORLD, 1);
-    }
     MPI_Barrier(MPI_COMM_WORLD);
     if (rank == 0) {
+        err = MTest_thread_barrier_init();
+        if (err) {
+            fprintf(stderr, "Could not create thread barrier\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
         nthreads = nprocs - 1;
         for (i = 1; i < nprocs; i++)
             MTest_Start_thread(run_test_send, (void *) (long) i);
 
         MTest_Join_threads();
+        MTest_thread_barrier_free();
     }
     else if (rank < MAX_NTHREAD) {
         run_test_recv();
     }
-    MTest_thread_barrier_free();
 
     MTest_Finalize(errs);
 

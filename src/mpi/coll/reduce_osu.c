@@ -404,14 +404,14 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
 
     /* If I'm not the root, then my recvbuf may not be valid, therefore
        I have to allocate a temporary one */
-    if (rank != root) {
+    if (rank != root && sendbuf != MPI_IN_PLACE) {
         MPIU_CHKLMEM_MALLOC(recvbuf, void *,
                             count * (MPIR_MAX(extent, true_extent)),
                             mpi_errno, "receive buffer");
         recvbuf = (void *) ((char *) recvbuf - true_lb);
     }
 
-    if ((rank != root) || (sendbuf != MPI_IN_PLACE)) {
+    if (sendbuf != MPI_IN_PLACE) {
         mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf,
                                    count, datatype);
         if (mpi_errno) {
@@ -1015,14 +1015,14 @@ int MPIR_Reduce_knomial_MV2 (
     /* should be buf+{this}? */
     MPIU_Ensure_Aint_fits_in_pointer(count * MPIR_MAX(extent, true_extent));
 
-    if (rank != root) {
+    if (rank != root && sendbuf != MPI_IN_PLACE) {
         MPIU_CHKLMEM_MALLOC(recvbuf, void *,
                 count*(MPIR_MAX(extent,true_extent)),
                 mpi_errno, "receive buffer");
         recvbuf = (void *)((char*)recvbuf - true_lb);
     }
 
-    if ((rank != root) || (sendbuf != MPI_IN_PLACE)) {
+    if (sendbuf != MPI_IN_PLACE) {
         mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf,
                 count, datatype);
         if (mpi_errno) { MPIR_ERR_POP(mpi_errno); }
@@ -1707,6 +1707,7 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
     int last_inter;
     int last_intra;
     int lp2ltn; // largest power of 2 less than n
+    int lp2ltn_min;
     int is_commutative, pof2;
     MPID_Op *op_ptr;
     int comm_size = 0;
@@ -1831,12 +1832,13 @@ conf_check_end:
     }
     else {
 	/* Comm size in between smallest and largest configuration: find closest match */
+    lp2ltn_min = pow(2, (int)log2(table_min_comm_size));
 	if (comm_ptr->dev.ch.is_pof2) {
-	    comm_size_index = log2( comm_size / table_min_comm_size );
+	    comm_size_index = log2( comm_size / lp2ltn_min );
 	}
 	else {
 	    lp2ltn = pow(2, (int)log2(comm_size));
-	    comm_size_index = (lp2ltn < table_min_comm_size) ? 0 : log2( lp2ltn / table_min_comm_size );
+        comm_size_index = (lp2ltn < lp2ltn_min) ? 0 : log2( lp2ltn / lp2ltn_min );
 	}
     }
 

@@ -160,13 +160,13 @@ void * recv_thread(void *arg) {
     thread_id = (thread_tag_t *)arg;
     val = thread_id->id;
 
-    if (posix_memalign((void**)&s_buf, align_size, MYBUFSIZE)) {
+    if (posix_memalign((void**)&s_buf, align_size, options.max_message_size)) {
         fprintf(stderr, "Error allocating host memory\n");
         *ret = '1';
         return ret;
     }
 
-    if (posix_memalign((void**)&r_buf, align_size, MYBUFSIZE)) {
+    if (posix_memalign((void**)&r_buf, align_size, options.max_message_size)) {
         fprintf(stderr, "Error allocating host memory\n");
         *ret = '1';
         return ret;
@@ -230,13 +230,13 @@ void * send_thread(void *arg) {
 
     val = thread_id->id;
 
-    if (posix_memalign((void**)&s_buf, align_size, MYBUFSIZE)) {
+    if (posix_memalign((void**)&s_buf, align_size, options.max_message_size)) {
         fprintf(stderr, "Error allocating host memory\n");
         *ret = '1';
         return ret;
     }
 
-    if (posix_memalign((void**)&r_buf, align_size, MYBUFSIZE)) {
+    if (posix_memalign((void**)&r_buf, align_size, options.max_message_size)) {
         fprintf(stderr, "Error allocating host memory\n");
         *ret = '1';
         return ret;

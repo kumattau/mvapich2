@@ -34,6 +34,10 @@ static inline int immed_copy(void *src, void *dest, size_t len)
     case 1:
         *(uint8_t *) dest = *(uint8_t *) src;
         break;
+#ifndef NEEDS_STRICT_ALIGNMENT
+        /* Following copy is unsafe on platforms that require strict
+         * alignment (e.g., SPARC). Because the buffers may not be aligned
+         * for data type access except char. */
     case 2:
         *(uint16_t *) dest = *(uint16_t *) src;
         break;
@@ -43,6 +47,7 @@ static inline int immed_copy(void *src, void *dest, size_t len)
     case 8:
         *(uint64_t *) dest = *(uint64_t *) src;
         break;
+#endif
     default:
         MPIU_Memcpy(dest, (void *) src, len);
     }
@@ -117,6 +122,7 @@ static int init_accum_ext_pkt(MPIDI_CH3_Pkt_flags_t flags,
         _total_sz = _ext_hdr_sz + target_dtp->dataloop_size;
 
         _ext_hdr_ptr = (MPIDI_CH3_Ext_pkt_accum_stream_derived_t *) MPIU_Malloc(_total_sz);
+        MPL_VG_MEM_INIT(_ext_hdr_ptr, _total_sz);
         if (_ext_hdr_ptr == NULL) {
             MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                  "**nomem %s", "MPIDI_CH3_Ext_pkt_accum_stream_derived_t");
@@ -135,6 +141,7 @@ static int init_accum_ext_pkt(MPIDI_CH3_Pkt_flags_t flags,
         _total_sz = sizeof(MPIDI_CH3_Ext_pkt_accum_stream_t);
 
         _ext_hdr_ptr = (MPIDI_CH3_Ext_pkt_accum_stream_t *) MPIU_Malloc(_total_sz);
+        MPL_VG_MEM_INIT(_ext_hdr_ptr, _total_sz);
         if (_ext_hdr_ptr == NULL) {
             MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                  "**nomem %s", "MPIDI_CH3_Ext_pkt_accum_stream_t");
@@ -152,6 +159,7 @@ static int init_accum_ext_pkt(MPIDI_CH3_Pkt_flags_t flags,
         _total_sz = _ext_hdr_sz + target_dtp->dataloop_size;
 
         _ext_hdr_ptr = (MPIDI_CH3_Ext_pkt_accum_derived_t *) MPIU_Malloc(_total_sz);
+        MPL_VG_MEM_INIT(_ext_hdr_ptr, _total_sz);
         if (_ext_hdr_ptr == NULL) {
             MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                  "**nomem %s", "MPIDI_CH3_Ext_pkt_accum_derived_t");
@@ -227,6 +235,9 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
     MPI_Aint dt_true_lb;
     MPIDI_CH3_Pkt_flags_t flags;
     int is_empty_origin = FALSE;
+#if defined(CHANNEL_PSM)
+    int is_replace_op = FALSE;
+#endif
     int mpi_errno = MPI_SUCCESS;
 #if defined(CHANNEL_MRAIL)
     MPIDI_msg_sz_t total_length;
@@ -243,6 +254,18 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
         if (op == MPI_NO_OP)
             is_empty_origin = TRUE;
     }
+#if defined(CHANNEL_PSM)
+    /* MPI_REPLACE is a unique operation for RMA Accumulate, and
+     * it is not commutative. So we need to make sure the origin data
+     * be sent in the order */
+    /* Similar logic in MRAIL channel is handled in MPIDI_CH3_iStartRmaRndv */
+    if ((rma_op->pkt).type == MPIDI_CH3_PKT_ACCUMULATE || (rma_op->pkt).type == MPIDI_CH3_PKT_GET_ACCUM) {
+        MPI_Op op;
+        MPIDI_CH3_PKT_RMA_GET_OP(rma_op->pkt, op, mpi_errno);
+        if (op == MPI_REPLACE)
+            is_replace_op = TRUE;
+    }
+#endif
 
     /* Judge if target datatype is derived datatype. */
     MPIDI_CH3_PKT_RMA_GET_TARGET_DATATYPE(rma_op->pkt, target_datatype, mpi_errno);
@@ -367,6 +390,10 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
             MPID_THREAD_CS_EXIT(POBJ, vc->pobj_mutex);
             MPIR_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
         }
+#if defined(CHANNEL_PSM)
+        /* For non-streamed op, it is always the last stream unit */
+        req->last_stream_unit = 1;
+#endif
 
         if (origin_dtp != NULL) {
             if (req == NULL) {
@@ -531,11 +558,11 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
     else {
         /* origin data is non-contiguous */
 #if defined (CHANNEL_PSM)
+        req->psm_flags |= PSM_1SIDED_NON_CONTIG_REQ;
         mpi_errno=  psm_do_pack(rma_op->origin_count, rma_op->origin_datatype,
                 rma_op->comm_ptr, req, rma_op->origin_addr, stream_offset,
                 stream_offset + stream_size, PACK_RMA_STREAM);
         if(mpi_errno) MPIR_ERR_POP(mpi_errno);
-
 
         iov[iovcnt].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)(req->dev.ext_hdr_ptr);
         iov[iovcnt].MPL_IOV_LEN = req->dev.ext_hdr_sz;
@@ -544,6 +571,12 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
         iov[iovcnt].MPL_IOV_LEN = req->pksz;
         iovcnt++;
 
+        MPI_Aint type_size;
+        MPID_Datatype_get_size_macro(rma_op->origin_datatype, type_size);
+        if ((type_size * rma_op->origin_count) == (stream_offset + stream_size)) {
+            req->last_stream_unit = 1;
+        }
+
         MPID_THREAD_CS_ENTER(POBJ, vc->pobj_mutex);
         mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, iovcnt, &req);
         MPID_THREAD_CS_EXIT(POBJ, vc->pobj_mutex);
@@ -551,9 +584,6 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
         if(mpi_errno != MPI_SUCCESS) {
             MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
         }
-
-        if (target_dtp)
-            MPID_Datatype_release(target_dtp);
 
         goto fn_exit;
 #endif
@@ -675,6 +705,15 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
     }
 
   fn_exit:
+#if defined(CHANNEL_PSM)
+    /* For MPI_REPLACE operation, in order to ensure the order,
+     * we make sure the RNDV data has been sent before progressing further. */
+    if (is_replace_op == TRUE && req->psm_flags & PSM_RNDVSEND_REQ
+            && req->last_stream_unit == 1) {
+        while (!(req->psm_flags & PSM_COMPQ_PENDING))
+            MPID_Progress_poke();
+    }
+#endif
     /* release the target datatype */
     if (target_dtp)
         MPID_Datatype_release(target_dtp);
@@ -759,6 +798,7 @@ static int issue_put_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
              * TODO: support extended header array */
             ext_hdr_sz = sizeof(MPIDI_CH3_Ext_pkt_put_derived_t) + target_dtp_ptr->dataloop_size;
             ext_hdr_ptr = MPIU_Malloc(ext_hdr_sz);
+            MPL_VG_MEM_INIT(ext_hdr_ptr, ext_hdr_sz);
             if (!ext_hdr_ptr) {
                 MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                      "**nomem %s", "MPIDI_CH3_Ext_pkt_put_derived_t");
@@ -1406,6 +1446,7 @@ static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
          * TODO: support extended header array */
         ext_hdr_sz = sizeof(MPIDI_CH3_Ext_pkt_get_derived_t) + dtp->dataloop_size;
         ext_hdr_ptr = MPIU_Malloc(ext_hdr_sz);
+        MPL_VG_MEM_INIT(ext_hdr_ptr, ext_hdr_sz);
         if (!ext_hdr_ptr) {
             MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                  "**nomem %s", "MPIDI_CH3_Ext_pkt_get_derived_t");
@@ -1433,19 +1474,18 @@ static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
             get_pkt->rndv_mode = 1;
             get_pkt->rndv_tag = psm_get_rndvtag();
 
-            int origin_tsz, target_tsz;
+            MPIDI_msg_sz_t origin_tsz, target_tsz;
+            /* Calculate target size and setting rndv_len accordingly */
+            MPID_Datatype_get_size_macro(target_datatype, target_tsz);
+            get_pkt->rndv_len = target_tsz * get_pkt->count;
+
             /* origin is contiguous */
             if(MPIR_DATATYPE_IS_PREDEFINED(rma_op->origin_datatype)) {
                 MPID_Datatype_get_size_macro(rma_op->origin_datatype,
                         origin_tsz);
-                MPID_Datatype_get_size_macro(target_datatype,
-                        target_tsz);
-                assert((origin_tsz*rma_op->origin_count) ==
-                        (target_tsz*get_pkt->count));
-                get_pkt->rndv_len = target_tsz * get_pkt->count;
+                MPIU_Assert((origin_tsz*rma_op->origin_count) ==
+                            (target_tsz*get_pkt->count));
             } else { /* origin is non-contiguous */
-                MPI_Pack_size(get_pkt->count, target_datatype,
-                        MPI_COMM_SELF, &(get_pkt->rndv_len));
                 curr_req->dev.real_user_buf = curr_req->dev.user_buf;
                 curr_req->dev.user_buf = MPIU_Malloc(get_pkt->rndv_len);
                 curr_req->psm_flags |= PSM_RNDVRECV_GET_PACKED;

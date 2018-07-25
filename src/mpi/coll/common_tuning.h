@@ -160,4 +160,11 @@ enum mv2_alltoall_tuning
     ALLTOALL_PAIRWISE_MV2,
     ALLTOALL_INPLACE_MV2
 };
+
+enum mv2_alltoallv_tuning
+{
+    ALLTOALLV_INTRA_SCATTER_MV2,
+    ALLTOALLV_INTRA_MV2,
+    ALLTOALLV_MV2
+};
 #endif

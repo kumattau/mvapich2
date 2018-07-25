@@ -978,7 +978,6 @@ int MPIR_Allgatherv_Ring_Cyclic_MV2(const void *sendbuf,
     int soffset, roffset;
     int torecv, tosend, min;
     int sendnow, recvnow;
-    int sindex, rindex;
 
     if (sendbuf != MPI_IN_PLACE) {
         /* First, load the "local" version in the recvbuf. */

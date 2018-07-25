@@ -689,7 +689,7 @@ int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
 #define FUNCNAME MPIC_Isend
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIC_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Isend(const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
                   MPID_Comm *comm_ptr, MPID_Request **request_ptr, MPIR_Errflag_t *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -730,7 +730,7 @@ int MPIC_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
 #define FUNCNAME MPIC_Issend
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIC_Issend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Issend(const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
                   MPID_Comm *comm_ptr, MPID_Request **request_ptr, MPIR_Errflag_t *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -771,7 +771,7 @@ int MPIC_Issend(const void *buf, int count, MPI_Datatype datatype, int dest, int
 #define FUNCNAME MPIC_Irecv
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIC_Irecv(void *buf, int count, MPI_Datatype datatype, int source,
+int MPIC_Irecv(void *buf, MPI_Aint count, MPI_Datatype datatype, int source,
                   int tag, MPID_Comm *comm_ptr, MPID_Request **request_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -831,6 +831,7 @@ int MPIC_Waitall(int numreq, MPID_Request *requests[], MPI_Status statuses[], MP
         to check for the error bit in the tag below, we should initialize all
         tag fields here. */
         status_array[i].MPI_TAG = 0;
+        status_array[i].MPI_SOURCE = MPI_PROC_NULL;
 
         /* Convert the MPID_Request objects to MPI_Request objects */
         request_ptrs[i] = requests[i]->handle;

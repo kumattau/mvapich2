@@ -229,14 +229,13 @@ int MPIDI_CH3_EagerSyncAck( MPIDI_VC_t *vc, MPID_Request *rreq )
 #define FUNCNAME MPIDI_CH3_PktHandler_EagerSyncSend
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIDI_CH3_PktHandler_EagerSyncSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
+int MPIDI_CH3_PktHandler_EagerSyncSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, void *data,
 					MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
     MPIDI_CH3_Pkt_eager_send_t * es_pkt = &pkt->eager_send;
     MPID_Request * rreq;
     int found;
     int complete;
-    char *data_buf;
     MPIDI_msg_sz_t data_len;
     int mpi_errno = MPI_SUCCESS;
     
@@ -269,7 +268,6 @@ int MPIDI_CH3_PktHandler_EagerSyncSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 
     data_len = ((*buflen - sizeof(MPIDI_CH3_Pkt_t) >= rreq->dev.recv_data_sz)
                 ? rreq->dev.recv_data_sz : *buflen - sizeof(MPIDI_CH3_Pkt_t));
-    data_buf = (char *)pkt + sizeof(MPIDI_CH3_Pkt_t);
     
     if (found)
     {
@@ -278,7 +276,8 @@ int MPIDI_CH3_PktHandler_EagerSyncSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	MPID_Request * esa_req;
 
 	if (rreq->dev.recv_data_sz == 0) {
-            *buflen = sizeof(MPIDI_CH3_Pkt_t);
+            *buflen = 0;
+            MPIDI_CH3U_Append_pkt_size();
             mpi_errno = MPID_Request_complete(rreq);
             if (mpi_errno != MPI_SUCCESS) {
                 MPIR_ERR_POP(mpi_errno);
@@ -286,14 +285,15 @@ int MPIDI_CH3_PktHandler_EagerSyncSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	    *rreqp = NULL;
 	}
 	else {
-	    mpi_errno = MPIDI_CH3U_Receive_data_found( rreq, data_buf,
+	    mpi_errno = MPIDI_CH3U_Receive_data_found( rreq, data,
                                                        &data_len, &complete );
 	    if (mpi_errno != MPI_SUCCESS) {
 		MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**ch3|postrecv",
 		    "**ch3|postrecv %s", "MPIDI_CH3_PKT_EAGER_SYNC_SEND");
 	    }
 
-            *buflen = sizeof(MPIDI_CH3_Pkt_t) + data_len;
+            *buflen = data_len;
+            MPIDI_CH3U_Append_pkt_size();
 
             if (complete) 
             {
@@ -327,7 +327,8 @@ int MPIDI_CH3_PktHandler_EagerSyncSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     else
     {
 	if (rreq->dev.recv_data_sz == 0) {
-            *buflen = sizeof(MPIDI_CH3_Pkt_t);
+            *buflen = 0;
+            MPIDI_CH3U_Append_pkt_size();
             mpi_errno = MPID_Request_complete(rreq);
             if (mpi_errno != MPI_SUCCESS) {
                 MPIR_ERR_POP(mpi_errno);
@@ -335,14 +336,15 @@ int MPIDI_CH3_PktHandler_EagerSyncSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	    *rreqp = NULL;
 	}
 	else {
-	    mpi_errno = MPIDI_CH3U_Receive_data_unexpected( rreq, data_buf,
+	    mpi_errno = MPIDI_CH3U_Receive_data_unexpected( rreq, data,
                                                             &data_len, &complete );
 	    if (mpi_errno != MPI_SUCCESS) {
 		MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**ch3|postrecv",
 		    "**ch3|postrecv %s", "MPIDI_CH3_PKT_EAGER_SYNC_SEND");
 	    }
 
-            *buflen = sizeof(MPIDI_CH3_Pkt_t) + data_len;
+            *buflen = data_len;
+            MPIDI_CH3U_Append_pkt_size();
 
             if (complete) 
             {
@@ -367,7 +369,7 @@ int MPIDI_CH3_PktHandler_EagerSyncSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #define FUNCNAME MPIDI_CH3_PktHandler_EagerSyncAck
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIDI_CH3_PktHandler_EagerSyncAck( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
+int MPIDI_CH3_PktHandler_EagerSyncAck( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, void *data ATTRIBUTE((unused)),
 				       MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
     MPIDI_CH3_Pkt_eager_sync_ack_t * esa_pkt = &pkt->eager_sync_ack;
@@ -387,7 +389,8 @@ int MPIDI_CH3_PktHandler_EagerSyncAck( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         MPIR_ERR_POP(mpi_errno);
     }
     
-    *buflen = sizeof(MPIDI_CH3_Pkt_t);
+    *buflen = 0;
+    MPIDI_CH3U_Append_pkt_size();
     *rreqp = NULL;
 
  fn_exit:

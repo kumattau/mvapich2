@@ -35,7 +35,6 @@ cudaEvent_t cuda_nbstream_sync_event = 0;
 
 void allocate_cuda_rndv_streams()
 {
-    cudaError_t result;
     if (rdma_cuda_nonblocking_streams) {
         CUDA_CHECK(cudaStreamCreateWithFlags(&stream_d2h, cudaStreamNonBlocking));
         CUDA_CHECK(cudaStreamCreateWithFlags(&stream_h2d, cudaStreamNonBlocking));

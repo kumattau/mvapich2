@@ -101,6 +101,7 @@ extern int mv2_use_slot_shmem_coll;
 #define MV2_STR_PHYSICAL     "physical"
 #define MV2_STR_MODEL_NAME   "model name"
 #define MV2_STR_POWER8_ID    "POWER8"
+#define MV2_STR_POWER9_ID    "POWER9"
 #define MV2_STR_CAVIUM_ID    "0x43"
 #define MV2_ARM_CAVIUM_V8_MODEL 8
 
@@ -119,6 +120,8 @@ extern int mv2_use_slot_shmem_coll;
 #define INTEL_E5_2670_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2670 v3 @ 2.30GHz"
 #define INTEL_E5_2695_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2695 v3 @ 2.30GHz"
 #define INTEL_E5_2695_V4_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2695 v4 @ 2.10GHz"
+
+#define INTEL_PLATINUM_GENERIC_MODEL_NAME  "Intel(R) Xeon(R) Platinum"
 #define INTEL_PLATINUM_8160_MODEL_NAME "Intel(R) Xeon(R) Platinum 8160 CPU @ 2.10GHz"
 #define INTEL_PLATINUM_8170_MODEL_NAME "Intel(R) Xeon(R) Platinum 8170 CPU @ 2.10GHz"
 
@@ -160,8 +163,11 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28,"MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28"},
     {MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36,"MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36"},
     {MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28,"MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28"},
-    {MV2_ARCH_INTEL_PLATINUM_8160_2S_48, "MV2_ARCH_INTEL_PLATINUM_8160_2S_48"},
-    {MV2_ARCH_INTEL_PLATINUM_8170_2S_52, "MV2_ARCH_INTEL_PLATINUM_8170_2S_52"},
+
+    /* Skylake Architectures */
+    {MV2_ARCH_INTEL_PLATINUM_GENERIC,      "MV2_ARCH_INTEL_PLATINUM_GENERIC"},
+    {MV2_ARCH_INTEL_PLATINUM_8160_2S_48,   "MV2_ARCH_INTEL_PLATINUM_8160_2S_48"},
+    {MV2_ARCH_INTEL_PLATINUM_8170_2S_52,   "MV2_ARCH_INTEL_PLATINUM_8170_2S_52"},
 
     /* KNL Architectures */
     {MV2_ARCH_INTEL_KNL_GENERIC,    "MV2_ARCH_INTEL_KNL_GENERIC"},
@@ -182,6 +188,7 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     /* IBM Architectures */
     {MV2_ARCH_IBM_PPC,              "MV2_ARCH_IBM_PPC"},
     {MV2_ARCH_IBM_POWER8,           "MV2_ARCH_IBM_POWER8"},
+    {MV2_ARCH_IBM_POWER9,           "MV2_ARCH_IBM_POWER9"},
 
     /* ARM Architectures */
     {MV2_ARCH_ARM_CAVIUM_V8,           "MV2_ARCH_ARM_CAVIUM_V8"},
@@ -344,17 +351,10 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
                     arch_type = MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32;
                 }
             }
-        } else if(48 == num_cpus){
-            if(INTEL_PLATINUM_8160_MODEL == g_mv2_cpu_model) {
-                if(NULL != strstr(model_name, INTEL_PLATINUM_8160_MODEL_NAME)) {
-                    arch_type = MV2_ARCH_INTEL_PLATINUM_8160_2S_48;
-                }
-            }
-        } else if(52 == num_cpus){
-            if(INTEL_PLATINUM_8170_MODEL == g_mv2_cpu_model) {
-                if(NULL != strstr(model_name, INTEL_PLATINUM_8170_MODEL_NAME)) {
-                    arch_type = MV2_ARCH_INTEL_PLATINUM_8170_2S_52;
-                }
+        } else if(48 == num_cpus || 52 == num_cpus){
+            // Map 8160 and 8170 (Diamond) Skylake cpus to 8170
+            if(NULL != strstr(model_name, INTEL_PLATINUM_GENERIC_MODEL_NAME)) {
+	        arch_type = MV2_ARCH_INTEL_PLATINUM_8170_2S_52;
             }
         }  else if(36 == num_cpus || 72 == num_cpus){
             if(NULL != strstr(model_name, INTEL_E5_2695_V4_MODEL_NAME)) {
@@ -457,6 +457,11 @@ mv2_arch_type mv2_get_arch_type()
                     tmp = strtok(NULL, MV2_STR_WS);
                     if (! strncmp(tmp, MV2_STR_POWER8_ID, strlen(MV2_STR_POWER8_ID))) {
                         g_mv2_cpu_family_type = MV2_CPU_FAMILY_POWER;
+                	arch_type = MV2_ARCH_IBM_POWER8;
+                        continue;
+                    } else if (! strncmp(tmp, MV2_STR_POWER9_ID, strlen(MV2_STR_POWER9_ID))) {
+                        g_mv2_cpu_family_type = MV2_CPU_FAMILY_POWER;
+                	arch_type = MV2_ARCH_IBM_POWER9;
                         continue;
                     }
                 }
@@ -519,12 +524,9 @@ mv2_arch_type mv2_get_arch_type()
                     }
                 }
             } else if(MV2_CPU_FAMILY_POWER == g_mv2_cpu_family_type) {
-                arch_type = MV2_ARCH_IBM_POWER8;
-                /* Note: Slotted-shmem collectives are already disabled 
-                 * for POWER architecture and runtime variable has no
-                 * effect. Further, disable zeroy copy broadcast 
-                 * algorithm as well for POWER8 architecture. 
-                 * */
+                /* Note: Disable slot-shmem collectives for POWER architectures
+                 * Further, disable zeroy copy broadcast algorithm as well. */
+                mv2_use_slot_shmem_coll = 0;
                 mv2_enable_zcpy_bcast = 0;
             } else if(MV2_CPU_FAMILY_ARM == g_mv2_cpu_family_type) { 
                 arch_type = MV2_ARCH_ARM_CAVIUM_V8;

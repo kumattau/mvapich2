@@ -838,6 +838,7 @@ EOF])
     # CUDA support
     hwloc_have_cuda=no
     hwloc_have_cudart=no
+    AC_LANG_PUSH([C++])
     if test "x$enable_cuda" != "xno"; then
       AC_CHECK_HEADERS([cuda.h], [
         AC_MSG_CHECKING(if CUDA_VERSION >= 3020)
@@ -872,7 +873,7 @@ EOF])
           ])
         ])
       ])
-
+      AC_LANG_POP([C++])
       AS_IF([test "$enable_cuda" = "yes" -a "$hwloc_have_cudart" = "no"],
             [AC_MSG_WARN([Specified --enable-cuda switch, but could not])
              AC_MSG_WARN([find appropriate support])

@@ -1156,7 +1156,6 @@ int MPIR_Reduce_scatter_ring_2lvl(const void* sendbuf, void* recvbuf,
     int mpi_errno     = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int comm_size     = comm_ptr->local_size;
-    int rank          = comm_ptr->rank;
 
     if (comm_ptr->dev.ch.rank_list == NULL) {
         return MPIR_Reduce_scatter_ring(
@@ -1792,12 +1791,34 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
     }
 
     if (rdma_enable_cuda && recv_mem_type) {
-        recv_host_buf = (char*) MPIU_Malloc(recvcnts[rank]*type_size);
+        /* recvbuf will be treated as sendbuf if sendbuf is MPI_IN_PLACE */
+        if (sendbuf == MPI_IN_PLACE) {
+            recv_host_buf = (char*) MPIU_Malloc(stride);
+            MPIU_Memcpy_CUDA((void *)recv_host_buf,
+                                (void *)recvbuf,
+                                stride,
+                                cudaMemcpyDeviceToHost);
+        } else {
+            recv_host_buf = (char*) MPIU_Malloc(recvcnts[rank]*type_size);
+        }
         recvbuf = recv_host_buf;
     }
 #endif
 
 	if (is_commutative) {
+
+        if (mv2_red_scat_thresholds_table[0].numproc != 1 &&
+                ((comm_ptr->dev.ch.allgather_comm_ok != 0 &&
+                  comm_ptr->dev.ch.is_blocked == 0 &&
+                  mv2_redscat_cyclic_algo_threshold <= nbytes) ||
+                 mv2_red_scat_ring_algo_threshold <= nbytes)) {
+            /* make sure that user has not forced any algorithm and 
+             * then for large messages, use ring algorithm. Also, for cyclic
+             * hostfile, use ring  */
+            mpi_errno =  MPIR_Reduce_scatter_ring_2lvl(sendbuf, recvbuf, recvcnts,
+                    datatype, op, comm_ptr, errflag);
+            goto fn_exit;
+        }
 
         /* Search for the corresponding system size inside the tuning table */
         while ((range < (mv2_size_red_scat_tuning_table - 1)) &&

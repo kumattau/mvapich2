@@ -4,7 +4,7 @@ AC_PREREQ(2.63)
 #     See COPYRIGHT in top-level directory.
 #
 
-# Copyright (c) 2001-2017, The Ohio State University. All rights
+# Copyright (c) 2001-2018, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -255,7 +255,7 @@ echo "Running on system: `uname -a`"
 dnl Definitions will be placed in this file rather than in the DEFS variable
 AC_CONFIG_HEADER(src/include/mpichconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -478,7 +478,7 @@ AC_ARG_ENABLE(fast,
 ],,enable_fast=yes)
 
 AC_ARG_ENABLE(interlib-deps,
-	[AC_HELP_STRING([--interlib-deps - Enable interlibrary dependencies])],,enable_interlib_deps=yes)
+	[AC_HELP_STRING([--enable-interlib-deps - Enable interlibrary dependencies])],,enable_interlib_deps=yes)
 
 AC_ARG_ENABLE(check-compiler-flags,
 	AC_HELP_STRING([--enable-check-compiler-flags], [enable the checks for all compiler
@@ -1372,7 +1372,7 @@ AC_ARG_WITH([mpl-prefix],
                             [use the MPL library installed in DIR,
                              rather than the one included in src/mpl.  Pass
                              "embedded" to force usage of the MPL source
-                             distributed with MPICH2.])],
+                             distributed with MPICH.])],
             [],dnl action-if-given
             [with_mpl_prefix=embedded]) dnl action-if-not-given
 mplsrcdir=""
@@ -1389,6 +1389,7 @@ if test "$with_mpl_prefix" = "embedded" ; then
     PAC_APPEND_FLAG([-I${use_top_srcdir}/src/mpl/include], [CPPFLAGS])
 
     mplsrcdir="${master_top_builddir}/src/mpl"
+    mpllibdir="-L${master_top_builddir}/src/mpl"
     mpllib="src/mpl/lib${MPLLIBNAME}.la"
 else
     # The user specified an already-installed MPL; just sanity check, don't
@@ -2429,7 +2430,7 @@ if test "$enable_fc" = "yes" ; then
 fi
 AM_CONDITIONAL([BUILD_F08_BINDING], [test "$f08_works" = "yes"])
 
-if test -n "$f08_works" ; then
+if test "$f08_works" = "yes" ; then
     status_f08_works=1
     bindings="$bindings f08"
 else
@@ -3217,6 +3218,11 @@ if test "$pac_cv_pointers_have_int_alignment" != "yes" ; then
    AC_MSG_RESULT([pointer])
 else
    AC_MSG_RESULT([int or better])
+fi
+
+# Require strict alignment memory access for alignment-sensitive platform (e.g., SPARC)
+if test "$host_cpu" = "sparc" ; then
+    AC_DEFINE(NEEDS_STRICT_ALIGNMENT,1,[Define if strict alignment memory access is required])
 fi
 
 # There are further alignment checks after we test for int64_t etc. below.
@@ -5019,8 +5025,14 @@ pac_cv_hrtime_works=yes,pac_cv_hrtime_works=no)])
 	# hrtime_t to int64_t works, and even more ambitious
 	# would check whether long or long long was 64 bits (or even
 	# better, the sizeof hrtime_t).  
+
+	# AC_CHECK_FUNCS has false positive when checking whether gethrtime is
+	# available on Solaris with strict configuration. We must use
+	# AC_CHECK_DECL to confirm it.
+	AC_CHECK_DECL(gethrtime)
     fi
     if test "$ac_cv_func_gethrtime" = "yes" -a \
+            "$ac_cv_has_decl_gethrtime" = "yes" -a \
             "$pac_cv_hrtime_works" = "yes" ; then
         timer_type=gethrtime
     elif test "$ac_cv_func_clock_gettime" = "yes" -a \

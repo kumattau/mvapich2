@@ -527,9 +527,15 @@ int MPIR_Alltoall_Scatter_dest_MV2(
     int dst, rank;
     MPID_Request **reqarray;
     MPI_Status *starray;
+    int sendtype_size, nbytes;
+
+
     
     if (recvcount == 0) return MPI_SUCCESS;
     
+    MPID_Datatype_get_size_macro(sendtype, sendtype_size);
+    nbytes = sendtype_size * sendcount;
+
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
     
@@ -556,12 +562,21 @@ int MPIR_Alltoall_Scatter_dest_MV2(
     int ii, ss, bblock;
     
     MPIU_CHKLMEM_DECL(2);
-        
-    bblock = mv2_coll_param.alltoall_throttle_factor;
-    
-    if (bblock >= comm_size) bblock = comm_size;
+      
+
     /* If throttle_factor is n, each process posts n pairs of isend/irecv
      in each iteration. */
+    if (MPIDI_Process.my_pg->ch.num_local_processes >= comm_size) {
+        bblock = mv2_coll_param.alltoall_intra_throttle_factor;
+    } else {
+        if (nbytes < MV2_ALLTOALL_LARGE_MSG) {
+            bblock = mv2_coll_param.alltoall_throttle_factor;
+        } else {
+            bblock = mv2_coll_param.alltoall_large_msg_throttle_factor; 
+        }
+    }
+
+    if (bblock >= comm_size) bblock = comm_size;
     
     /* FIXME: This should use the memory macros (there are storage
      leaks here if there is an error, for example) */
@@ -751,6 +766,7 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
     int table_max_inter_size = 0;
     int last_inter;
     int lp2ltn; // largest power of 2 less than n
+    int lp2ltn_min;
     MPI_Comm shmem_comm;
     MPID_Comm *shmem_commptr=NULL;
     comm_size = comm_ptr->local_size;
@@ -824,12 +840,13 @@ conf_check_end:
     }
     else {
 	/* Comm size in between smallest and largest configuration: find closest match */
+    lp2ltn_min = pow(2, (int)log2(table_min_comm_size));
 	if (comm_ptr->dev.ch.is_pof2) {
-	    comm_size_index = log2( comm_size / table_min_comm_size );
+	    comm_size_index = log2( comm_size / lp2ltn_min );
 	}
 	else {
 	    lp2ltn = pow(2, (int)log2(comm_size));
-	    comm_size_index = (lp2ltn < table_min_comm_size) ? 0 : log2( lp2ltn / table_min_comm_size );
+        comm_size_index = (lp2ltn < lp2ltn_min) ? 0 : log2( lp2ltn / lp2ltn_min );
 	}
     }
 

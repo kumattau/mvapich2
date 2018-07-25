@@ -25,6 +25,7 @@ int main(int argc, char *argv[])
     set_benchmark_name("osu_bibw");
     
     po_ret = process_options(argc, argv);
+    window_size = options.window_size;
 
     if (PO_OKAY == po_ret && NONE != options.accel) {
         if (init_accel()) {
@@ -102,7 +103,6 @@ int main(int argc, char *argv[])
         if(size > LARGE_MESSAGE_SIZE) {
             options.iterations = options.iterations_large;
             options.skip = options.skip_large;
-            window_size = options.window_size_large;
         }
 
         if(myid == 0) {

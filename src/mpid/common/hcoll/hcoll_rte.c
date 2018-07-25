@@ -1,6 +1,11 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
+/*
+ *  (C) 2014 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+
 #include "hcoll.h"
 #include "hcoll/api/hcoll_dte.h"
-#include <assert.h>
 
 static int recv_nb(dte_data_representation_t data,
                    uint32_t count,
@@ -23,8 +28,6 @@ static int ec_handle_compare(rte_ec_handle_t handle_1,
 static int get_ec_handles(int num_ec,
                           int *ec_indexes, rte_grp_handle_t, rte_ec_handle_t * ec_handles);
 
-static int get_my_ec(rte_grp_handle_t, rte_ec_handle_t * ec_handle);
-
 static int group_size(rte_grp_handle_t group);
 static int my_rank(rte_grp_handle_t grp_h);
 static int ec_on_local_node(rte_ec_handle_t ec, rte_grp_handle_t group);
@@ -46,6 +49,7 @@ static int world_rank(rte_grp_handle_t grp_h, rte_ec_handle_t ec);
 static void progress(void)
 {
     int ret;
+    int made_progress;
 
     if (0 == world_comm_destroying) {
         MPID_Progress_test();
@@ -54,8 +58,8 @@ static void progress(void)
         /* FIXME: The hcoll library needs to be updated to return
          * error codes.  The progress function pointer right now
          * expects that the function returns void. */
-        ret = hcoll_do_progress();
-        assert(ret == MPI_SUCCESS);
+        ret = hcoll_do_progress(&made_progress);
+        MPIU_Assert(ret == MPI_SUCCESS);
     }
 }
 
@@ -288,25 +292,10 @@ static int get_ec_handles(int num_ec,
     comm = (MPID_Comm *) grp_h;
     for (i = 0; i < num_ec; i++) {
         ec_handles[i].rank = ec_indexes[i];
-        ec_handles[i].handle = (void *) (comm->vcrt->vcr_table[ec_indexes[i]]);
+        ec_handles[i].handle = (void *) (comm->dev.vcrt->vcr_table[ec_indexes[i]]);
     }
     return HCOLL_SUCCESS;
 }
-
-#undef FUNCNAME
-#define FUNCNAME get_my_ec
-#undef FCNAME
-#define FCNAME MPL_QUOTE(FUNCNAME)
-static int get_my_ec(rte_grp_handle_t grp_h, rte_ec_handle_t * ec_handle)
-{
-    MPID_Comm *comm;
-    comm = (MPID_Comm *) grp_h;
-    int my_rank = MPIR_Comm_rank(comm);
-    ec_handle->handle = (void *) (comm->vcrt->vcr_table[my_rank]);
-    ec_handle->rank = my_rank;
-    return HCOLL_SUCCESS;
-}
-
 
 #undef FUNCNAME
 #define FUNCNAME group_size
@@ -381,6 +370,7 @@ static void *get_coll_handle(void)
 {
     MPID_Request *req;
     req = MPID_Request_create();
+    MPIR_Request_add_ref(req);
     req->kind = MPID_COLL_REQUEST;
     return (void *) req;
 }
@@ -430,5 +420,5 @@ static void coll_handle_complete(void *handle)
 #define FCNAME MPL_QUOTE(FUNCNAME)
 static int world_rank(rte_grp_handle_t grp_h, rte_ec_handle_t ec)
 {
-    return (MPIR_Process.comm_world->rank);
+    return ((struct MPIDI_VC *)ec.handle)->pg_rank;
 }

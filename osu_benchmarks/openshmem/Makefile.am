@@ -12,6 +12,12 @@ AM_CFLAGS = -I../util
 
 UTILITIES = ../util/osu_util.c osu_util.h
 
+if EMBEDDED_BUILD
+     AM_CPPFLAGS = -I$(top_builddir)/../src/include \
+                  -I${top_srcdir}/util \
+                  -I${top_srcdir}/../src/include
+endif
+
 osu_oshm_get_SOURCES = osu_oshm_get.c $(UTILITIES)
 osu_oshm_put_SOURCES = osu_oshm_put.c $(UTILITIES)
 osu_oshm_put_mr_SOURCES = osu_oshm_put_mr.c $(UTILITIES)

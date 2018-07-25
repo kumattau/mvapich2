@@ -1,7 +1,7 @@
 AUTOMAKE_OPTIONS = subdir-objects
 
 NVCC = nvcc
-NVCFLAGS = -cuda -maxrregcount 32
+NVCFLAGS = -cuda -maxrregcount 32 -ccbin $(CXX)
 SUFFIXES = .cu .cpp
 .cu.cpp:
 	$(NVCC) $(NVCFLAGS) $(INCLUDES) $(CPPFLAGS) --output-file $@ $<
@@ -26,7 +26,7 @@ osu_reduce_SOURCES = osu_reduce.c $(UTILITIES)
 osu_allreduce_SOURCES = osu_allreduce.c $(UTILITIES)
 osu_bcast_SOURCES = osu_bcast.c $(UTILITIES)
 osu_alltoall_SOURCES = osu_alltoall.c $(UTILITIES)
-osu_alltoallv_SOURCES = osu_alltoall.c $(UTILITIES)
+osu_alltoallv_SOURCES = osu_alltoallv.c $(UTILITIES)
 osu_ialltoall_SOURCES = osu_ialltoall.c $(UTILITIES)
 osu_ialltoallv_SOURCES = osu_ialltoallv.c $(UTILITIES)
 osu_ialltoallw_SOURCES = osu_ialltoallw.c $(UTILITIES)
@@ -44,6 +44,7 @@ osu_iscatterv_SOURCES = osu_iscatterv.c $(UTILITIES)
 if EMBEDDED_BUILD
     AM_LDFLAGS =
     AM_CPPFLAGS = -I$(top_builddir)/../src/include \
+          -I${top_srcdir}/util \
 		  -I${top_srcdir}/../src/include
 if BUILD_PROFILING_LIB
     AM_LDFLAGS += $(top_builddir)/../lib/lib@PMPILIBNAME@.la

@@ -1932,7 +1932,7 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
             if (pglist->data[k].npids > max_npids)
                 max_npids = pglist->data[k].npids;
         }
-        record_sz = (MAX_HOST_LEN+2) + (max_npids+1)*MAX_PID_LEN;
+        record_sz = (MAX_HOST_LEN+2) + (max_npids * pglist->npgs)*MAX_PID_LEN;
         host_list = (char*)malloc(record_sz * sizeof(char));
         if (!host_list)
             goto allocation_error;

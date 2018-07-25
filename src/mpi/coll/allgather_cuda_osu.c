@@ -59,8 +59,8 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
     MPI_Status status;
     int page_size = 0;
     int result, max_size;
-    MPID_Request recv_req;
-    MPID_Request send_req;
+    MPID_Request *recv_req;
+    MPID_Request *send_req;
     cudaError_t cudaerr;
 
     if (((sendcount == 0) && (sendbuf != MPI_IN_PLACE)) || (recvcount == 0)) {

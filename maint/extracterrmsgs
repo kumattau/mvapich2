@@ -2,7 +2,7 @@
 # (Tested with -w; 10/5/04)
 # 
 # Find the parse.sub routine.
-my $maintdir = "maint";
+my $maintdir = "./maint";
 my $rootdir  = ".";
 if ( ! -s "maint/parse.sub" ) {
     my $program = $0;
@@ -580,6 +580,8 @@ sub ReadErrnamesFile {
 	    else
 	    {
 		print STDERR "Warning: attempt to redefine $name.  Duplicate ignored.\n";
+		print STDERR "Previously defined at $longnamesDefined{$name} with value \"$longnames{$name}\"\n";
+		print STDERR "Redefined at $sourcefile:$linecount with value \"$repl\"\n";
 	    }
 	}
     }

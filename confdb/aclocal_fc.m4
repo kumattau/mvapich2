@@ -439,7 +439,7 @@ AC_COMPILE_IFELSE([],[
 #      module tests do not always use the module output flag.  See
 #      FC_MODULE_EXT , where this is determined.
 #   f95 -YMOD_OUT_DIR=${dir}   ## the Absoft fortran compiler
-#   lf95 -Am -mod ${dir}       ## the Lahey/Fujitsu fortran compiler
+#   lf95 -M ${dir}             ## the Lahey/Fujitsu fortran compiler
 #   f90 -moddir=${dir}         ## the Sun f90 compiler
 #   g95 -fmod=${dir}
 #
@@ -448,7 +448,7 @@ AC_COMPILE_IFELSE([],[
 # users to use.  Alternatively they can use an older version of MPICH.
 
 pac_cv_fc_module_outflag=
-for mod_flag in '-J' '-J ' '-qmoddir=' '-module ' '-YMOD_OUT_DIR=' '-mdir ' '-moddir=' '-fmod=' ; do
+for mod_flag in '-J' '-J ' '-qmoddir=' '-module ' '-YMOD_OUT_DIR=' '-mdir ' '-moddir=' '-fmod=' '-M '; do
     rm -f conftestdir/NONEXISTENT conftestdir/*
     PAC_PUSH_FLAG([FCFLAGS])
     FCFLAGS="$FCFLAGS ${mod_flag}conftestdir"
@@ -1175,6 +1175,14 @@ INTERFACE
     END FUNCTION FOO
 END INTERFACE
 
+! Test assumed-rank + asynchronous
+INTERFACE TEST_ASSUMED_RANK_ASYNC
+    SUBROUTINE TEST_ASSUMED_RANK_ASYNC_IMPL(BUF)
+        IMPLICIT NONE
+        TYPE(*), DIMENSION(..), ASYNCHRONOUS :: BUF
+    END SUBROUTINE TEST_ASSUMED_RANK_ASYNC_IMPL
+END INTERFACE TEST_ASSUMED_RANK_ASYNC
+
 CONTAINS
 
 ! Test TS 29113 asychronous attribute and optional
@@ -1203,16 +1211,18 @@ END MODULE
 
 !==============================================
 PROGRAM MAIN
-USE :: F08TS_MODULE, ONLY : FOO
+USE :: F08TS_MODULE, ONLY : FOO, TEST_ASSUMED_RANK_ASYNC
 IMPLICIT NONE
 
 INTEGER, DIMENSION(4,4) :: A, B
 INTEGER, DIMENSION(2,2) :: C
 INTEGER                 :: ERRCODE
+INTEGER, DIMENSION(10), ASYNCHRONOUS :: IAR
 
 ! Test contiguous and non-contiguous array section passing
 ! and linkage with C code
 ERRCODE = FOO(A(1:4:2, :), B(:, 2:4:2), C)
+CALL TEST_ASSUMED_RANK_ASYNC(IAR(2:7))
 
 END PROGRAM
     ])],[],[f08_works=no])

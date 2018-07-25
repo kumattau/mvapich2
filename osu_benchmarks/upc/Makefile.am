@@ -10,6 +10,12 @@ AM_CFLAGS = -I../util
 
 UTILITIES = ../util/osu_util.c osu_util.h
 
+if EMBEDDED_BUILD
+     AM_CPPFLAGS = -I$(top_builddir)/../src/include \
+                  -I${top_srcdir}/util \
+                  -I${top_srcdir}/../src/include
+endif
+
 osu_upc_all_barrier_SOURCES = osu_upc_all_barrier.c $(UTILITIES)
 osu_upc_all_broadcast_SOURCES = osu_upc_all_broadcast.c $(UTILITIES)
 osu_upc_all_exchange_SOURCES = osu_upc_all_exchange.c $(UTILITIES)

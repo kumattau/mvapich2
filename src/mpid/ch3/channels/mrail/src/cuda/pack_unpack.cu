@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2017, The Ohio State University. All rights
+/* Copyright (c) 2001-2018, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -259,8 +259,6 @@ extern "C" void pack_subarray( void *dst, void *src, int dim, int nx, int ny, in
     int BLOCK_SIZE_Y = 8;
     int BLOCK_SIZE_Z = 16;
     int BLOCK_THREAD_SIZE = 1024;
-    int logbase = 1;
-    int ratio = 0;
 
     if ( rdma_cuda_subarr_thread_xdim != 0 && !(rdma_cuda_subarr_thread_xdim & (rdma_cuda_subarr_thread_xdim-1)) ){
         BLOCK_SIZE_X = rdma_cuda_subarr_thread_xdim;

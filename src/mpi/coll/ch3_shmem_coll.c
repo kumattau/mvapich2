@@ -33,6 +33,8 @@
 #include <string.h>
 #include "upmi.h"
 
+#include "mv2_utils.h"
+
 #include <sched.h>
 
 #ifdef MAC_OSX
@@ -49,6 +51,7 @@
 #include "gather_tuning.h"
 #include "bcast_tuning.h"
 #include "alltoall_tuning.h"
+#include "alltoallv_tuning.h"
 #include "scatter_tuning.h"
 #include "allreduce_tuning.h"
 #include "reduce_tuning.h"
@@ -119,6 +122,16 @@ cvars:
       description : >-
         This CVAR selects proper collective algorithm for alltoall operation.
 
+    - name        : ALLTOALLV_COLLECTIVE_ALGORITHM
+      category    : CH3
+      type        : int
+      default     : -1
+      class       : none
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        This CVAR selects proper collective algorithm for alltoallv operation.
+
     - name        : BCAST_COLLECTIVE_ALGORITHM
       category    : CH3
       type        : int
@@ -156,6 +169,7 @@ MPI_T_cvar_handle mv2_gather_coll_algo_handle = NULL;
 MPI_T_cvar_handle mv2_allgather_coll_algo_handle = NULL;
 MPI_T_cvar_handle mv2_allreduce_coll_algo_handle = NULL;
 MPI_T_cvar_handle mv2_alltoall_coll_algo_handle = NULL;
+MPI_T_cvar_handle mv2_alltoallv_coll_algo_handle = NULL;
 MPI_T_cvar_handle mv2_bcast_coll_algo_handle = NULL;
 MPI_T_cvar_handle mv2_reduce_coll_algo_handle = NULL;
 MPI_T_cvar_handle mv2_scatter_coll_algo_handle = NULL;
@@ -188,17 +202,19 @@ int mv2_mmap_coll_once = 0;
 int mv2_unlink_call_once = 0;
 int finalize_coll_comm = 0;
 
-int mv2_shmem_coll_size = 0;
+size_t  mv2_shmem_coll_size = 0;
 char *mv2_shmem_coll_file = NULL;
 
 static char mv2_hostname[SHMEM_COLL_HOSTNAME_LEN];
 static int mv2_my_rank;
 
-int mv2_g_shmem_coll_blocks = 8;
+int mv2_g_shmem_coll_blocks = MV2_SHMEM_COLL_BLOCKS;
+
 #if defined(_SMP_LIMIC_)
 int mv2_max_limic_comms = LIMIC_COLL_NUM_COMM;
 #endif                          /*#if defined(_SMP_LIMIC_) */
-int mv2_g_shmem_coll_max_msg_size = (1 << 17);
+
+int mv2_g_shmem_coll_max_msg_size = MV2_SHMEM_MAX_MSG_SIZE;
 
 int mv2_tuning_table[COLL_COUNT][COLL_SIZE] = { {2048, 1024, 512},
 {-1, -1, -1},
@@ -255,6 +271,7 @@ int mv2_use_old_bcast = 0;
 int mv2_use_old_allgather = 0;
 int mv2_use_old_alltoall = 0;
 int mv2_alltoall_inplace_old = 0;
+int mv2_use_scatter_dest_alltoallv = 0;
 int mv2_use_old_scatter = 0;
 int mv2_use_old_allreduce = 0;
 int mv2_use_old_reduce = 0;
@@ -289,6 +306,7 @@ int mv2_use_indexed_reduce_tuning = 1;
 int mv2_use_indexed_allreduce_tuning = 1;
 int mv2_use_indexed_allgather_tuning = 1;
 int mv2_use_indexed_alltoall_tuning = 1;
+int mv2_use_indexed_alltoallv_tuning = 1;
 
 /* Runtime threshold for gather */
 int mv2_user_gather_switch_point = 0;
@@ -306,6 +324,9 @@ char *mv2_user_ialltoall_intra = NULL;
 char *mv2_user_ialltoall_inter = NULL;
 int ialltoall_segment_size = 8192;
 int mv2_enable_ialltoall = 1;
+
+/* runtime flag for alltoallv tuning  */
+char *mv2_user_alltoallv = NULL;
 
 /* runtime flag for alltoallv tuning  */
 char *mv2_user_ialltoallv_intra = NULL;
@@ -392,6 +413,16 @@ int mv2_user_allgatherv_switch_point = 0;
 int mv2_bcast_short_msg = MPIR_BCAST_SHORT_MSG;
 int mv2_bcast_large_msg = MPIR_BCAST_LARGE_MSG;
 
+/* after these threshold, force ring algorithm */
+int mv2_allreduce_red_scat_allgather_algo_threshold = 524288;
+int mv2_allgather_ring_algo_threshold = 131072;
+int mv2_allgather_cyclic_algo_threshold = 1024;
+int mv2_allreduce_cyclic_algo_threshold = 32768;
+int mv2_redscat_cyclic_algo_threshold = 1024;
+int mv2_red_scat_ring_algo_threshold = 131072;
+
+int mv2_alltoallv_intermediate_wait_threshold = 256*1024;
+
 int mv2_red_scat_short_msg = MPIR_RED_SCAT_SHORT_MSG;
 int mv2_red_scat_long_msg = MPIR_RED_SCAT_LONG_MSG;
 
@@ -418,7 +449,7 @@ int mv2_bitonic_comm_split_threshold = MV2_DEFAULT_BITONIC_COMM_SPLIT_THRESHOLD;
 int mv2_shm_window_size = 128;
 int mv2_shm_reduce_tree_degree = 4; 
 int mv2_shm_slot_len = 8192;
-#if defined(_powerpc_) || defined(_ppc_) || defined(_PPC_) || defined(_powerpc64_) || defined(_ppc64_)
+#if defined(__powerpc__) || defined(__ppc__) || defined(__PPC__) || defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__) || defined(__aarch64__)
 int mv2_use_slot_shmem_coll = 0;
 #else
 int mv2_use_slot_shmem_coll = 1;
@@ -446,6 +477,8 @@ struct coll_runtime mv2_coll_param = { MPIR_ALLGATHER_SHORT_MSG,
     MPIR_ALLTOALL_SHORT_MSG,
     MPIR_ALLTOALL_MEDIUM_MSG,
     MPIR_ALLTOALL_THROTTLE,
+    MPIR_ALLTOALL_INTRA_THROTTLE,
+    MPIR_ALLTOALL_LARGE_MSG_THROTTLE,
 };
 
 #if defined(CKPT)
@@ -493,12 +526,26 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_shmem_coll_calls);
 int MV2_collectives_arch_init(int heterogeneity)
 {
     int mpi_errno = MPI_SUCCESS;
+
+#if defined(CHANNEL_PSM)
+    /* tune the shmem size based on different architecture */
+    if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+             MV2_ARCH_INTEL_XEON_PHI_7250, MV2_HCA_INTEL_HFI1) && !heterogeneity) {
+        /* TACC KNL */
+        if (MPIDI_Process.my_pg->ch.num_local_processes <= 64) {
+            mv2_g_shmem_coll_max_msg_size = 2*1024*1024;
+            mv2_g_shmem_coll_blocks       = 7;
+        }
+    }
+#endif
+
     MV2_Read_env_vars();
     
     if (mv2_use_osu_collectives) {
       MV2_set_gather_tuning_table(heterogeneity);
       MV2_set_bcast_tuning_table(heterogeneity);
       MV2_set_alltoall_tuning_table(heterogeneity);
+      MV2_set_alltoallv_tuning_table(heterogeneity);
       MV2_set_scatter_tuning_table(heterogeneity);
       MV2_set_allreduce_tuning_table(heterogeneity);
       MV2_set_reduce_tuning_table(heterogeneity);
@@ -543,6 +590,10 @@ int MV2_collectives_arch_init(int heterogeneity)
             MPIR_ERR_POP(mpi_errno);
         }
         mpi_errno = mv2_set_alltoall_collective_algorithm();
+        if(mpi_errno != MPI_SUCCESS){
+            MPIR_ERR_POP(mpi_errno);
+        }
+        mpi_errno = mv2_set_alltoallv_collective_algorithm();
         if(mpi_errno != MPI_SUCCESS){
             MPIR_ERR_POP(mpi_errno);
         }
@@ -820,6 +871,11 @@ static int tuning_runtime_init()
     if (mv2_user_alltoall != NULL ) {
         MV2_Alltoall_is_define(mv2_user_alltoall);
     }
+
+    /* If MV2_ALLTOALLV_TUNING is define  */
+    if (mv2_user_alltoallv != NULL ) {
+        MV2_Alltoallv_is_define(mv2_user_alltoallv);
+    }
     return 0;
 }
 
@@ -829,6 +885,7 @@ void MV2_collectives_arch_finalize()
         MV2_cleanup_gather_tuning_table();
         MV2_cleanup_bcast_tuning_table();
         MV2_cleanup_alltoall_tuning_table();
+        MV2_cleanup_alltoallv_tuning_table();
         MV2_cleanup_scatter_tuning_table();
         MV2_cleanup_allreduce_tuning_table();
         MV2_cleanup_reduce_tuning_table();
@@ -879,6 +936,10 @@ void MV2_collectives_arch_finalize()
         if (mv2_alltoall_coll_algo_handle) {
             MPIU_Free(mv2_alltoall_coll_algo_handle);
             mv2_alltoall_coll_algo_handle = NULL;
+        }
+        if (mv2_alltoallv_coll_algo_handle) {
+            MPIU_Free(mv2_alltoallv_coll_algo_handle);
+            mv2_alltoallv_coll_algo_handle = NULL;
         }
     }
 }
@@ -1105,7 +1166,7 @@ int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
 #define FSIZE_LIMIT 2147483640 /* 2G - c */
         {
             char *buf = (char *) MPIU_Calloc(file_size + 1, sizeof (char));
-            size_t written_bytes, remaining_bytes, transfer_size;
+            size_t remaining_bytes, transfer_size;
             size_t transferred = 0, offset = 0;
  
             /* if filesize exceeds 2G limit, then split it up in multiple chunks
@@ -1114,7 +1175,7 @@ int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
             remaining_bytes = file_size;
             while (remaining_bytes > 0) {
                 transfer_size = (remaining_bytes > FSIZE_LIMIT) ? FSIZE_LIMIT : remaining_bytes;
-                written_bytes = write(*fd, buf+offset, transfer_size);
+                write(*fd, buf+offset, transfer_size);
                 remaining_bytes -= transfer_size;
                 transferred += transfer_size;
  
@@ -1204,6 +1265,7 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
     /* Find out the size of the region to create */
     mv2_shmem_coll_size = SHMEM_ALIGN(SHMEM_COLL_BUF_SIZE + getpagesize())
                                 + SHMEM_CACHE_LINE_SIZE;
+
     /* Call helper function to create shmem region */
     mpi_errno = MPIDI_CH3I_SHMEM_Helper_fn(pg, local_id, &mv2_shmem_coll_file,
                                 "ib_shmem_coll", &mv2_shmem_coll_obj.fd,
@@ -1998,6 +2060,14 @@ void MV2_Read_env_vars(void)
             mv2_use_indexed_alltoall_tuning = 0;
         }
     }
+
+    if ((value = getenv("MV2_USE_INDEXED_ALLTOALLV_TUNING")) != NULL) {
+        if (atoi(value) == 1) {
+            mv2_use_indexed_alltoallv_tuning = 1;
+        } else {
+            mv2_use_indexed_alltoallv_tuning = 0;
+        }
+    }
     
     if ((value = getenv("MV2_IBCAST_ENABLE")) != NULL) {
         mv2_enable_ibcast = atoi(value);
@@ -2283,6 +2353,9 @@ void MV2_Read_env_vars(void)
         else
             mv2_alltoall_inplace_old = 0;
     }
+    if ((value = getenv("MV2_USE_SCATTER_DEST_ALLTOALLV")) != NULL) {
+        mv2_use_scatter_dest_alltoallv = !!atoi(value);
+    }
     if ((value = getenv("MV2_USE_TWO_LEVEL_GATHER")) != NULL) {
         flag = (int) atoi(value);
         if (flag > 0)
@@ -2334,8 +2407,12 @@ void MV2_Read_env_vars(void)
         flag = (int) atoi(value);
         if (flag <= 1) {
             mv2_coll_param.alltoall_throttle_factor = 1;
+            mv2_coll_param.alltoall_intra_throttle_factor = 1;
+            mv2_coll_param.alltoall_large_msg_throttle_factor = 1;
         } else {
             mv2_coll_param.alltoall_throttle_factor = flag;
+            mv2_coll_param.alltoall_intra_throttle_factor = flag;
+            mv2_coll_param.alltoall_large_msg_throttle_factor = flag;
         }
     }
     if ((value = getenv("MV2_ALLTOALL_MEDIUM_MSG")) != NULL) {
@@ -2416,7 +2493,10 @@ void MV2_Read_env_vars(void)
         mv2_user_alltoall = value;
         mv2_tune_parameter = 1;
     }
-
+    if ((value = getenv("MV2_ALLTOALLV_TUNING")) != NULL) {
+        mv2_user_alltoallv = value;
+        mv2_tune_parameter = 1;
+    }
     if ((value = getenv("MV2_INTRA_SCATTER_TUNING")) != NULL) {
         mv2_user_scatter_intra = value;
         mv2_tune_parameter = 1;
@@ -2628,6 +2708,62 @@ void MV2_Read_env_vars(void)
 	}
     }
 
+    if ((value = getenv("MV2_ALLREDUCE_RED_SCAT_ALLGATHER_ALGO_THRESHOLD")) != NULL) {
+        mv2_allreduce_red_scat_allgather_algo_threshold =
+            user_val_to_bytes(value, "MV2_ALLREDUCE_RED_SCAT_ALLGATHER_ALGO_THRESHOLD");
+
+        if (mv2_allreduce_red_scat_allgather_algo_threshold < 0)
+            mv2_allreduce_red_scat_allgather_algo_threshold = 0;
+    }
+
+    if ((value = getenv("MV2_ALLGATHER_RING_ALGO_THRESHOLD")) != NULL) {
+
+        mv2_allgather_ring_algo_threshold = user_val_to_bytes(value, "MV2_ALLGATHER_RING_ALGO_THRESHOLD");
+
+        if (mv2_allgather_ring_algo_threshold < 0)
+            mv2_allgather_ring_algo_threshold = 0;
+    }
+
+    if ((value = getenv("MV2_ALLTOALLV_INTERMEDIATE_WAIT_THRESHOLD")) != NULL) {
+
+        mv2_alltoallv_intermediate_wait_threshold = user_val_to_bytes(value, "MV2_ALLTOALLV_INTERMEDIATE_WAIT_THRESHOLD");
+
+        if (mv2_alltoallv_intermediate_wait_threshold < 0)
+            mv2_alltoallv_intermediate_wait_threshold = 1024*1024;
+    }
+
+    if ((value = getenv("MV2_ALLGATHER_CYCLIC_ALGO_THRESHOLD")) != NULL) {
+
+        mv2_allgather_cyclic_algo_threshold = user_val_to_bytes(value, "MV2_ALLGATHER_CYCLIC_ALGO_THRESHOLD");
+
+        if (mv2_allgather_cyclic_algo_threshold < 0)
+            mv2_allgather_cyclic_algo_threshold = 0;
+    }
+
+    if ((value = getenv("MV2_ALLREDUCE_CYCLIC_ALGO_THRESHOLD")) != NULL) {
+
+        mv2_allreduce_cyclic_algo_threshold = user_val_to_bytes(value, "MV2_ALLREDUCE_CYCLIC_ALGO_THRESHOLD");
+
+        if (mv2_allreduce_cyclic_algo_threshold < 0)
+            mv2_allreduce_cyclic_algo_threshold = 0;
+    }
+
+    if ((value = getenv("MV2_REDSCAT_CYCLIC_ALGO_THRESHOLD")) != NULL) {
+
+        mv2_redscat_cyclic_algo_threshold = user_val_to_bytes(value, "MV2_REDSCAT_CYCLIC_ALGO_THRESHOLD");
+        
+        if (mv2_redscat_cyclic_algo_threshold < 0)
+            mv2_redscat_cyclic_algo_threshold = 0;
+    }
+
+    if ((value = getenv("MV2_RED_SCAT_RING_ALGO_THRESHOLD")) != NULL) {
+
+        mv2_red_scat_ring_algo_threshold = user_val_to_bytes(value, "MV2_RED_SCAT_RING_ALGO_THRESHOLD");
+
+        if (mv2_red_scat_ring_algo_threshold < 0)
+            mv2_red_scat_ring_algo_threshold = 0;
+    }
+
     if ((value = getenv("MV2_RED_SCAT_SHORT_MSG")) != NULL) {
         flag = (int) atoi(value);
         if (flag > 0)
@@ -2694,8 +2830,8 @@ void MV2_Read_env_vars(void)
         mv2_shm_slot_len = atoi(value);
     }
     if ((value = getenv("MV2_USE_SLOT_SHMEM_COLL")) != NULL) {
-#if defined(_powerpc_) || defined(_ppc_) || defined(_PPC_) || defined(_powerpc64_) || defined(_ppc64_)
-        /* ignore mv2_use_slot_shmem_coll for PowerPC */
+#if defined(__powerpc__) || defined(__ppc__) || defined(__PPC__) || defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__) || defined(__aarch64__)
+        /* ignore mv2_use_slot_shmem_coll for PowerPC and ARM */
 #else
         mv2_use_slot_shmem_coll = atoi(value);
 #endif
@@ -4992,7 +5128,6 @@ int mv2_set_reduce_collective_algorithm()
     int mpi_errno = MPI_SUCCESS;
     int cvar_index = 0;
     int count = 0;
-    char temp [4];
     int read_value = 0;
 
     /* Get CVAR index by name */
@@ -5442,3 +5577,78 @@ fn_fail:
 fn_exit:
     return mpi_errno;
 }
+
+
+int mv2_set_alltoallv_collective_algorithm()
+{
+    int mpi_errno = MPI_SUCCESS;
+    int cvar_index = 0;
+    int count = 0;
+    int read_value = 0;
+
+    //Get CVAR index by name
+    MPIR_CVAR_GET_INDEX_impl(MPIR_CVAR_ALLTOALLV_COLLECTIVE_ALGORITHM,
+                             cvar_index);
+    if (cvar_index < 0) {
+        mpi_errno = MPI_ERR_INTERN;
+        goto fn_fail;
+    }
+    // Allocate CVAR handle
+    mpi_errno = MPIR_T_cvar_handle_alloc_impl(cvar_index, NULL,
+                     &mv2_alltoallv_coll_algo_handle, &count);
+    if (mpi_errno != MPI_SUCCESS) {
+        goto fn_fail;
+    }
+    // Read value of CVAR
+    mpi_errno = MPIR_T_cvar_read_impl(mv2_alltoallv_coll_algo_handle,
+                                       (void*)&read_value);
+    if (mpi_errno != MPI_SUCCESS) {
+        goto fn_fail;
+    }
+    // The user did not set any value for the CVAR. Exit.
+    if (read_value < 0) {
+        goto fn_exit;
+    }
+    // Check if environment variable and CVAR has been set at the same time
+    if (read_value != -1 &&
+       (getenv("MV2_ALLTOALLV_TUNING") != NULL)) {
+        PRINT_INFO(MPIDI_Process.my_pg_rank == 0, "User has set environment "
+            "variables and CVAR for choosing collective algorithm for "
+            "MPI_Alltoallv. This is a conflict. Please use one of them.\n");
+        mpi_errno = MPI_ERR_INTERN;
+        MPIR_ERR_POP(mpi_errno);
+    }
+    // Check if value for CVAR is valid
+    if (read_value < 0 || read_value > MV2_MAX_NUM_ALLTOALLV_FUNCS ) {
+        PRINT_INFO(MPIDI_Process.my_pg_rank == 0 , "\nSelected value of CVAR:"
+            " MPIR_CVAR_ALLTOALLV_COLLECTIVE_ALGORITHM is out of range; valid"
+            "values are natural numbers less than %d (entered value is %d)\n",
+            MV2_MAX_NUM_ALLTOALLV_FUNCS, read_value);
+        mpi_errno = MPI_ERR_INTERN;
+        MPIR_ERR_POP(mpi_errno);
+    }
+    // Choose algorithm based on CVAR
+    switch(read_value){
+        case MV2_INTRA_SCATTER_ALLTOALLV:
+            mv2_user_alltoallv = MV2_ALLTOALLV_INTRA_SCATTER_MV2;
+            mv2_tune_parameter = 1;
+            break;
+        case MV2_INTRA_ALLTOALLV:
+            mv2_user_alltoallv = MV2_ALLTOALLV_INTRA_MV2;
+            mv2_tune_parameter = 1;
+            break;
+        default:
+            PRINT_INFO(MPIDI_Process.my_pg_rank == 0, "\nSelected value of "
+                "CVAR MPIR_CVAR_ALLTOALLV_COLLECTIVE_ALGORITHM is not valid. "
+                " Valid values are natural numbers less than %d\n",
+                MV2_MAX_NUM_ALLTOALLV_FUNCS);
+            mpi_errno = MPI_ERR_INTERN;
+            MPIR_ERR_POP(mpi_errno);
+            break;
+    }
+
+fn_fail:
+fn_exit:
+    return mpi_errno;
+}
+

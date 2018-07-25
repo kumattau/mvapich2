@@ -104,7 +104,7 @@ static int psm_mq_init_barrier(PSM_MQ_T mq, int rank, int ranks, PSM_EPADDR_T* a
             uint64_t rtagsel = MQ_TAGSEL_ALL;
         #endif
 
-        MAKE_PSM_SELECTOR(rtag, 0, 0, src+1);
+        MAKE_PSM_SELECTOR(rtag, 0, 0, (src+1));
 
         PSM_MQ_REQ_T request;
 
@@ -120,7 +120,7 @@ static int psm_mq_init_barrier(PSM_MQ_T mq, int rank, int ranks, PSM_EPADDR_T* a
             uint64_t stag;
         #endif
 
-        MAKE_PSM_SELECTOR(stag, 0, 0, rank+1);
+        MAKE_PSM_SELECTOR(stag, 0, 0, (rank+1));
 
         tmp_rc = PSM_SEND(mq, addrs[dst], MQ_FLAGS_NONE, stag, NULL, 0);
         if (tmp_rc != PSM_OK) {
@@ -188,6 +188,12 @@ void mv2_print_env_info(void)
             mv2_get_cpu_model());
     fprintf(stderr, "\tHCA NAME                       : %s\n",
             mv2_get_hca_name(hca_type));
+    fprintf(stderr, "\tHeterogeneity                  : %s\n",
+            (!mv2_homogeneous_cluster) ? "YES" : "NO");
+    fprintf(stderr, "\tSMP Eagersize                  : %d\n",
+            mv2_shm_rndv_thresh);
+    fprintf(stderr, "\tHFI Eagersize                  : %d\n",
+            mv2_hfi_rndv_thresh);
     fprintf(stderr,
             "---------------------------------------------------------------------\n");
     fprintf(stderr,
@@ -247,7 +253,6 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     int verno_major, verno_minor;
     int pg_size, mpi_errno;
     int heterogeneity, i; 
-    PSM_EPID_T myid;
     PSM_ERROR_T err;
     struct PSM_EP_OPEN_OPTS psm_opts;
 
@@ -257,6 +262,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     pg_size = MPIDI_PG_Get_size(pg);
     MPIU_Assert(pg_rank < pg_size);
     MPIDI_PG_GetConnKVSname(&kvsid);
+    psmdev_cw.pg_rank = pg_rank;
     psmdev_cw.pg_size = pg_size;
     verno_major = PSM_VERNO_MAJOR;
     verno_minor = PSM_VERNO_MINOR;
@@ -382,7 +388,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
                         mv2_psm_ep_open_retry_count, mv2_psm_ep_open_retry_secs);
             sleep(mv2_psm_ep_open_retry_secs);
         }
-        err = PSM_EP_OPEN(psm_uuid, &psm_opts, &psmdev_cw.ep, &myid);
+        err = PSM_EP_OPEN(psm_uuid, &psm_opts, &psmdev_cw.ep, &psmdev_cw.epid);
         attempts++;
     } while ((err != PSM_OK) && (attempts <= mv2_psm_ep_open_retry_count));
     if (err != PSM_OK) {
@@ -391,7 +397,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
         MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**psmepopen");
     }
 
-    mpi_errno = psm_start_epid_exchange(myid, pg_size, pg_rank);
+    mpi_errno = psm_start_epid_exchange(psmdev_cw.epid, pg_size, pg_rank);
     if(mpi_errno != MPI_SUCCESS) {
         goto fn_fail;
     }
@@ -400,7 +406,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     if(psmdev_cw.epaddrs == NULL) {
         MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_NO_MEM, "**psmnomem");
     }
-    memset(psmdev_cw.epaddrs, 0, pg_size * sizeof(PSM_EPADDR_T));
+    MPIU_Memset(psmdev_cw.epaddrs, 0, pg_size * sizeof(PSM_EPADDR_T));
 
     if((err = PSM_MQ_INIT(psmdev_cw.ep, PSM_MQ_ORDERMASK_ALL, NULL, 0,
                 &psmdev_cw.mq)) != PSM_OK) {
@@ -543,6 +549,11 @@ static int psm_detect_heterogeneity(mv2_arch_hca_type myarch, int pg_size, int p
         goto fn_exit;
     }
 
+    if (pg_size == 1) {
+        mv2_homogeneous_cluster = 1;
+        goto fn_exit;
+    }
+
     PRINT_DEBUG(DEBUG_CM_verbose>1, "my arch_hca_type = %016lx\n", myarch);
     MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_ahkey_%d", pg_rank);
     MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen, "%016lx", myarch);
@@ -587,7 +598,11 @@ fn_fail:
 /* all ranks provide their epid via PMI put/get */
 static int psm_start_epid_exchange(PSM_EPID_T myid, int pg_size, int pg_rank)
 {
-    int i, mpi_errno = MPI_SUCCESS;
+    int mpi_errno = MPI_SUCCESS;
+
+    if (pg_size == 1) {
+        goto fn_exit;
+    }
 
     PRINT_DEBUG(DEBUG_CM_verbose>1, "[%d] my epid = %lu\n", pg_rank, myid);
     MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey_%d", pg_rank);
@@ -633,12 +648,16 @@ int psm_connect_peer(int peer)
 
     PRINT_DEBUG(DEBUG_CM_verbose>0, "Connecting to peer %d\n", peer);
 
-    MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey_%d", peer);
-    if(UPMI_KVS_GET(kvsid, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen) != UPMI_SUCCESS) {
-        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_getfailed");
+    if (unlikely(psmdev_cw.pg_rank == peer)) {
+        epidlist[0] = psmdev_cw.epid;
+    } else {
+        MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey_%d", peer);
+        if(UPMI_KVS_GET(kvsid, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen) != UPMI_SUCCESS) {
+            MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_getfailed");
+        }
+        PRINT_DEBUG(DEBUG_CM_verbose>1, "peer: %d, got epid: %s\n", peer, mv2_pmi_val);
+        sscanf(mv2_pmi_val, "%lu", &epidlist[0]);
     }
-    PRINT_DEBUG(DEBUG_CM_verbose>1, "peer: %d, got epid: %s\n", peer, mv2_pmi_val);
-    sscanf(mv2_pmi_val, "%lu", &epidlist[0]);
 
     if((err = PSM_EP_CONNECT(psmdev_cw.ep, 1, epidlist, NULL, errs,
                 &psmdev_cw.epaddrs[peer], TIMEOUT * SEC_IN_NS)) != PSM_OK) {
@@ -663,8 +682,12 @@ static int psm_connect_alltoall(PSM_EPADDR_T *addrs, int pg_size, int pg_rank)
 {
     int i;
     int err, mpi_errno = MPI_SUCCESS;
-    PSM_EPID_T *epidlist;
-    PSM_ERROR_T *errlist;
+    PSM_EPID_T *epidlist = NULL;
+    PSM_ERROR_T *errlist = NULL;
+
+    if (pg_size == 1) {
+        goto fn_exit;
+    }
 
     PRINT_DEBUG(DEBUG_CM_verbose>0, "Establishing alltoall connectivity\n");
     epidlist = (PSM_EPID_T*) MPIU_Malloc (pg_size * sizeof(PSM_EPID_T));
@@ -1034,7 +1057,7 @@ static unsigned int psm_hash_str(char *str)
     unsigned int hash = 5381;
     int c;
 
-    while (c = *str++)
+    while ((c = *str++))
         hash = ((hash << 5) + hash) + c;
 
     return hash;

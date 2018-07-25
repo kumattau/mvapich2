@@ -26,7 +26,9 @@
 
 /* vbuf.c taken from mrail and simplified for psm channel - tejus */
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include "mpidimpl.h"
 

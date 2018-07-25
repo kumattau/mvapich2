@@ -39,7 +39,6 @@ int MPIX_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm) __attribute__((weak,alias
 #ifndef MPICH_MPI_FROM_PMPI
 #undef MPIX_Comm_shrink
 #define MPIX_Comm_shrink PMPIX_Comm_shrink
-#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Comm_shrink
@@ -109,6 +108,8 @@ int MPIR_Comm_shrink(MPID_Comm *comm_ptr, MPID_Comm **newcomm_ptr)
     goto fn_exit;
 }
 
+#endif /* !defined(MPICH_MPI_FROM_PMPI) */
+
 #undef FUNCNAME
 #define FUNCNAME MPIX_Comm_shrink
 #undef FCNAME
@@ -118,12 +119,12 @@ MPIX_Comm_shrink - Creates a new communitor from an existing communicator while
                   excluding failed processes
 
 Input Parameters:
-+ comm - communicator (handle)
+. comm - communicator (handle)
 
 Output Parameters:
 . newcomm - new communicator (handle)
 
-.N Threadsafe
+.N ThreadSafe
 
 .N Fortran
 

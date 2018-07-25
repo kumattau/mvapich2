@@ -12,8 +12,6 @@
 #include <osu_util.h>
 
 double  t_start = 0.0, t_end = 0.0;
-char    sbuf_original[ONESBUFSIZE];
-char    rbuf_original[ONESBUFSIZE];
 char    *sbuf=NULL, *rbuf=NULL;
 
 void print_bibw (int, int, double);
@@ -153,7 +151,7 @@ void run_put_with_fence(int rank, enum WINDOW type)
 
     int window_size = options.window_size_large;
     for (size = options.min_message_size; size <= options.max_message_size; size = size * 2) {
-        allocate_memory_one_sided(rank, sbuf_original, rbuf_original, &sbuf, &rbuf, &rbuf, size*window_size, type, &win);
+        allocate_memory_one_sided(rank, &sbuf, &rbuf, &sbuf, size*window_size, type, &win);
 
 #if MPI_VERSION >= 3
         if (type == WIN_DYNAMIC) {
@@ -214,7 +212,7 @@ void run_put_with_pscw(int rank, enum WINDOW type)
 
     int window_size = options.window_size_large;
     for (size = options.min_message_size; size <= options.max_message_size; size = size * 2) {
-        allocate_memory_one_sided(rank, sbuf_original, rbuf_original, &sbuf, &rbuf, &rbuf, size*window_size, type, &win);
+        allocate_memory_one_sided(rank, &sbuf, &rbuf, &sbuf, size*window_size, type, &win);
 
 #if MPI_VERSION >= 3
         if (type == WIN_DYNAMIC) {

@@ -62,6 +62,9 @@ struct sharp_info {
 };
 typedef struct sharp_info sharp_info_t;
 
+void  mv2_get_sharp_datatype(MPI_Datatype  mpi_datatype, struct
+        sharp_reduce_datatyepe_size ** dt_size_out); 
+enum sharp_reduce_op mv2_get_sharp_reduce_op(MPI_Op mpi_op); 
 int     mv2_sharp_coll_init(sharp_conf_t *sharp_conf, int rank);
 int     mv2_setup_sharp_env(sharp_conf_t *sharp_conf, MPI_Comm comm);
 int     mv2_sharp_coll_comm_init(coll_sharp_module_t *sharp_module);

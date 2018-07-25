@@ -163,7 +163,7 @@
 	{1024, &MPIR_Allreduce_pt2pt_rd_MV2},		\
 	{2048, &MPIR_Allreduce_pt2pt_rd_MV2},		\
 	{4096, &MPIR_Allreduce_pt2pt_rd_MV2},		\
-	{8192, &MPIR_Allreduce_pt2pt_rd_MV2},		\
+	{8192, &MPIR_Allreduce_pt2pt_rs_MV2},		\
 	{16384, &MPIR_Allreduce_pt2pt_rs_MV2},		\
 	{32768, &MPIR_Allreduce_pt2pt_rs_MV2},		\
 	{65536, &MPIR_Allreduce_pt2pt_rs_MV2},		\

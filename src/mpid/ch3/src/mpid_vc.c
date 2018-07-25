@@ -1475,11 +1475,11 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 
     /* Allocate temporary structures.  These would need to be persistent if
        we somehow were able to support dynamic processes via this method. */
-    MPIU_CHKLMEM_MALLOC(node_names, char **, pg->size * sizeof(char*), mpi_errno, "node_names");
-    MPIU_CHKLMEM_MALLOC(node_name_buf, char *, pg->size * key_max_sz * sizeof(char), mpi_errno, "node_name_buf");
+    MPIU_CHKLMEM_MALLOC(node_names, char **, (pg->size+1) * sizeof(char*), mpi_errno, "node_names");
+    MPIU_CHKLMEM_MALLOC(node_name_buf, char *, (pg->size+1) * key_max_sz * sizeof(char), mpi_errno, "node_name_buf");
 
     /* Gather hostnames */
-    for (i = 0; i < pg->size; ++i)
+    for (i = 0; i <= pg->size; ++i)
     {
         node_names[i] = &node_name_buf[i * key_max_sz];
         node_names[i][0] = '\0';
@@ -1493,7 +1493,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         if (i == our_pg_rank)
         {
             /* This is us, no need to perform a get */
-            MPL_snprintf(node_names[g_max_node_id], key_max_sz, "%s", MPIU_hostname);
+            MPL_snprintf(node_names[g_max_node_id+1], key_max_sz, "%s", MPIU_hostname);
         }
         else
         {
@@ -1514,7 +1514,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         if (j == g_max_node_id)
             ++g_max_node_id;
         else
-            node_names[g_max_node_id][0] = '\0';
+            node_names[g_max_node_id+1][0] = '\0';
         pg->vct[i].node_id = j;
     }
 #endif /* !defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM) */

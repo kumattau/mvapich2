@@ -84,7 +84,7 @@ typedef struct polling_set_element {
  ((a & 0xFFFFFFF8) - SMPI_CACHE_LINE_SIZE)
 
                                                                                                                                                
-#elif defined(_IA64_) || defined(__powerpc__) || defined(__ppc__) || defined(__PPC__) || defined(__powerpc64__) || defined(__ppc64__)
+#elif defined(_IA64_) || defined(__powerpc__) || defined(__ppc__) || defined(__PPC__) || defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__)
 
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \

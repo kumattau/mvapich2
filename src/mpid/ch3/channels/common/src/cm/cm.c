@@ -866,7 +866,7 @@ int cm_rcv_qp_create(MPIDI_VC_t * vc, uint32_t * qpn)
                         gids[hca_index][port_index], sizeof(union ibv_gid));
         }
 
-        attr.port_num =
+        attr.port_num = vc->mrail.rails[rail_index].port =
             mv2_MPIDI_CH3I_RDMA_Process.ports[hca_index][port_index];
         set_pkey_index(&attr.pkey_index, hca_index, attr.port_num);
         if (ibv_modify_xrc_rcv_qp
@@ -910,7 +910,7 @@ static int cm_accept(MPIDI_PG_t * pg, cm_msg * msg)
     vc->mrail.num_rails = msg->nrails;
 
     /*Prepare rep msg */
-    MPIU_Memcpy(&msg_send, msg, sizeof(cm_msg));
+    MPIU_Memcpy((void *)&msg_send, msg, sizeof(cm_msg));
 
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
@@ -1030,7 +1030,7 @@ static int cm_accept_and_cancel(MPIDI_PG_t * pg, cm_msg * msg)
     cm_qp_move_to_rtr(vc, msg->lids, msg->gids, msg->qpns, 0, NULL, 0);
 
     /*Prepare rep msg */
-    MPIU_Memcpy(&msg_send, msg, sizeof(cm_msg));
+    MPIU_Memcpy((void *)&msg_send, msg, sizeof(cm_msg));
     for (; i < msg_send.nrails; ++i) {
         msg_send.lids[i] = vc->mrail.rails[i].lid;
         if (use_iboeth) {
@@ -1130,7 +1130,7 @@ static int cm_accept_nopg(MPIDI_VC_t * vc, cm_msg * msg)
     cm_qp_move_to_rtr(vc, msg->lids, msg->gids, msg->qpns, 0, NULL, 1);
 
     /*Prepare rep msg */
-    MPIU_Memcpy(&msg_send, msg, sizeof(cm_msg));
+    MPIU_Memcpy((void *)&msg_send, msg, sizeof(cm_msg));
     for (i = 0; i < msg_send.nrails; ++i) {
         msg_send.lids[i] = vc->mrail.rails[i].lid;
         if (use_iboeth) {
@@ -1413,7 +1413,7 @@ static int cm_handle_msg(cm_msg * msg)
                 VC_SET_ACTIVE(vc);
                 MV2_HYBRID_SET_RC_CONN_INITIATED(vc);
 
-                MPIU_Memcpy(&rep, msg, sizeof(cm_msg));
+                MPIU_Memcpy((void *)&rep, msg, sizeof(cm_msg));
                 rep.vc_addr = (uintptr_t) vc;
                 MPIU_Strncpy(rep.pg_id, MPIDI_Process.my_pg->id,
                              MAX_PG_ID_SIZE);
@@ -2374,7 +2374,7 @@ int MPICM_Finalize_UD()
 
     /*Cancel cm thread */
     msg.msg_type = CM_MSG_TYPE_FIN_SELF;
-    MPIU_Memcpy((char *) cm_ud_send_buf + 40, &msg, sizeof(cm_msg));
+    MPIU_Memcpy((char *) cm_ud_send_buf + 40, (const void *) &msg, sizeof(cm_msg));
     MPIU_Memset(&list, 0, sizeof(struct ibv_sge));
     list.addr = (uintptr_t) cm_ud_send_buf + 40;
     list.length = sizeof(cm_msg);
@@ -2527,11 +2527,12 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
 #ifdef _ENABLE_XRC_
     if (USE_XRC && VC_XST_ISSET(vc, (XF_SEND_CONNECTING | XF_SEND_IDLE))) {
         goto fn_exit;
-    }
+    } else if (!USE_XRC)
 #endif
-
-    if (vc->ch.state != MPIDI_CH3I_VC_STATE_UNCONNECTED) {
-        goto fn_exit;
+    {
+        if (vc->ch.state != MPIDI_CH3I_VC_STATE_UNCONNECTED) {
+            goto fn_exit;
+        }
     }
 
     if (vc->pg_rank == MPIDI_Process.my_pg_rank &&

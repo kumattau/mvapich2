@@ -820,7 +820,7 @@ static inline void mv2_mcast_send_nack(uint32_t psn, int comm_id, int root)
         }
         MV2_GET_AND_INIT_UD_VBUF(v);
         bcast_info->nack_time = mv2_get_time_us();
-        MPIU_Memcpy(v->pheader, &pkt, sizeof(MPIDI_CH3_Pkt_mcast_nack_t));
+        MPIU_Memcpy(v->pheader, (const void *) &pkt, sizeof(MPIDI_CH3_Pkt_mcast_nack_t));
 
         vbuf_init_mcast_send(v, sizeof(MPIDI_CH3_Pkt_mcast_nack_t), 0, minfo);
         IBV_POST_MCAST_SEND(v, mcast_ctx);

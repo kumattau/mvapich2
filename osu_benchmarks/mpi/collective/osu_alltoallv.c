@@ -126,6 +126,7 @@ int main(int argc, char *argv[])
         for(i = 0; i < options.iterations + options.skip; i++) {
             t_start = MPI_Wtime();
 
+		//if (i == 500) sleep(20);
               MPI_CHECK(MPI_Alltoallv(sendbuf, sendcounts, sdispls, MPI_CHAR, recvbuf, recvcounts, rdispls, MPI_CHAR,
                       MPI_COMM_WORLD));
 

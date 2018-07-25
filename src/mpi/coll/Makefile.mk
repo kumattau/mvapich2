@@ -4,7 +4,7 @@
 ## (C) 2011 by Argonne National Laboratory.
 ##     See COPYRIGHT in top-level directory.
 ##
-## Copyright (c) 2001-2017, The Ohio State University. All rights
+## Copyright (c) 2001-2018, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -99,6 +99,7 @@ mpi_sources +=                     \
     src/mpi/coll/red_scat_block_tuning.c \
     src/mpi/coll/allgatherv_tuning.c\
     src/mpi/coll/alltoall_tuning.c  \
+    src/mpi/coll/alltoallv_tuning.c  \
     src/mpi/coll/allreduce_tuning.c\
     src/mpi/coll/ireduce_tuning.c  \
     src/mpi/coll/ired_scat_tuning.c\

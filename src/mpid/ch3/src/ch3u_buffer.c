@@ -399,10 +399,37 @@ int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, MPI_Aint count,
     {
 	MPIDI_msg_sz_t data_sz;
 	
-	MPIDI_CH3U_Buffer_copy(sreq->dev.user_buf, sreq->dev.user_count,
-			       sreq->dev.datatype, &sreq->status.MPI_ERROR,
-			       buf, count, datatype, &data_sz, 
-			       &rreq->status.MPI_ERROR);
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda && is_device_buffer(sreq->dev.user_buf)) {
+        sreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+    } else {
+        sreq->mrail.cuda_transfer_mode = NONE;
+    }
+
+    if (rdma_enable_cuda && is_device_buffer(rreq->dev.user_buf)) {
+        rreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+    } else {
+        rreq->mrail.cuda_transfer_mode = NONE;
+    }
+
+    if (rdma_enable_cuda &&
+            (DEVICE_TO_DEVICE == sreq->mrail.cuda_transfer_mode ||
+             DEVICE_TO_DEVICE == rreq->mrail.cuda_transfer_mode))
+    {
+        MPIDI_CH3U_Buffer_copy_cuda(
+                sreq->dev.user_buf, sreq->dev.user_count,
+                sreq->dev.datatype, &sreq->status.MPI_ERROR,
+                buf, count, datatype, &data_sz,
+                &rreq->status.MPI_ERROR);
+    } else
+#endif
+    {
+        MPIDI_CH3U_Buffer_copy(
+                sreq->dev.user_buf, sreq->dev.user_count,
+                sreq->dev.datatype, &sreq->status.MPI_ERROR,
+                buf, count, datatype, &data_sz,
+                &rreq->status.MPI_ERROR);
+    }
 	MPIR_STATUS_SET_COUNT(rreq->status, data_sz);
 	mpi_errno = MPID_Request_complete(sreq);
         if (mpi_errno != MPI_SUCCESS) {

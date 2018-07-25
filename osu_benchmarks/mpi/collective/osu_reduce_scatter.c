@@ -68,8 +68,8 @@ int main(int argc, char *argv[])
 
     if (options.max_message_size > options.max_mem_limit) {
         if (rank == 0) {
-            fprintf(stderr, "Warning! Increase the Max Memory Limit to be able to run up to %lld bytes.\n"
-                            "Continuing with max message size of %lld bytes\n", 
+            fprintf(stderr, "Warning! Increase the Max Memory Limit to be able to run up to %ld bytes.\n"
+                            "Continuing with max message size of %ld bytes\n", 
                             options.max_message_size, options.max_mem_limit);
         }
         options.max_message_size = options.max_mem_limit;
@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
     }
     set_buffer(sendbuf, options.accel, 1, bufsize);
 
-    bufsize = sizeof(float)*((options.max_message_size/numprocs + 1)/sizeof(float));
+    bufsize = sizeof(float)*(options.max_message_size/numprocs/sizeof(float)+1);
     if (allocate_memory_coll((void**)&recvbuf, bufsize,
                 options.accel)) {
         fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);

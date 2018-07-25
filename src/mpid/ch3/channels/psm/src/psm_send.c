@@ -11,7 +11,9 @@
  *
  */
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include "psmpriv.h"
 #include "mpidpre.h"
@@ -40,8 +42,13 @@
     steps = buflen / ipath_max_transfer_size;
     balance = buflen % ipath_max_transfer_size;
 
+    PRINT_DEBUG(DEBUG_CHM_verbose>1,
+            "PSM large send, buflen: %llu, max_size: %llu, steps: %d, balance: %d\n",
+           (long long unsigned int)buflen, (long long unsigned int)ipath_max_transfer_size, steps, balance);
+
     /* Sanity check */
     MPIU_Assert(steps > 0);
+    MPIU_Assert(balance >= 0);
 
     /* Get current object reference count and completion count */
     cc_cnt  = *(req->cc_ptr);

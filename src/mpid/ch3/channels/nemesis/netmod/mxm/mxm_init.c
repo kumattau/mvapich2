@@ -1,5 +1,9 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
+ *  (C) 2014 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ *
+ *  Portion of this code were written by Mellanox Technologies, Inc.
  *  (C) 2014 Mellanox Technologies, Inc.
  *
  */
@@ -96,7 +100,8 @@ static MPIDI_Comm_ops_t comm_ops = {
 
     MPID_nem_mxm_probe, /* probe */
     MPID_nem_mxm_iprobe,        /* iprobe */
-    MPID_nem_mxm_improbe        /* improbe */
+    MPID_nem_mxm_improbe,       /* improbe */
+    NULL                        /* imrecv */
 };
 
 

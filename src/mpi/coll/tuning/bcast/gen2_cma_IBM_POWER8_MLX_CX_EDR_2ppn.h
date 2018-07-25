@@ -59,15 +59,12 @@
 	8192,		\
 	4,		\
 	4,		\
-	{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},		\
-	24,		\
+	{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},		\
+	21,		\
 	{		\
 	{1, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
-	{1, &MPIR_Pipelined_Bcast_Zcpy_MV2, 4},		\
-	{1, &MPIR_Pipelined_Bcast_Zcpy_MV2, 4},		\
 	{2, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
 	{4, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
-	{8, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
 	{8, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
 	{16, &MPIR_Pipelined_Bcast_Zcpy_MV2, 4},		\
 	{32, &MPIR_Pipelined_Bcast_Zcpy_MV2, 4},		\
@@ -87,14 +84,11 @@
 	{524288, &MPIR_Bcast_scatter_doubling_allgather_MV2, -1},		\
 	{1048576, &MPIR_Knomial_Bcast_inter_node_wrapper_MV2, -1}		\
 	},		\
-	24,		\
+	21,		\
 	{		\
 	{1, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
-	{1, &MPIR_Knomial_Bcast_intra_node_MV2, 4},		\
-	{1, &MPIR_Knomial_Bcast_intra_node_MV2, 4},		\
 	{2, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
 	{4, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
-	{8, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
 	{8, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
 	{16, &MPIR_Knomial_Bcast_intra_node_MV2, 4},		\
 	{32, &MPIR_Knomial_Bcast_intra_node_MV2, 4},		\
@@ -120,17 +114,13 @@
 	8192,		\
 	4,		\
 	4,		\
-	{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1},		\
-	25,		\
+	{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},		\
+	21,		\
 	{		\
 	{1, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
-	{2, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
-	{2, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
 	{2, &MPIR_Pipelined_Bcast_Zcpy_MV2, 4},		\
 	{4, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
 	{8, &MPIR_Pipelined_Bcast_Zcpy_MV2, 4},		\
-	{16, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
-	{16, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
 	{16, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
 	{32, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
 	{64, &MPIR_Pipelined_Bcast_Zcpy_MV2, 8},		\
@@ -149,16 +139,12 @@
 	{524288, &MPIR_Knomial_Bcast_inter_node_wrapper_MV2, -1},		\
 	{1048576, &MPIR_Knomial_Bcast_inter_node_wrapper_MV2, -1}		\
 	},		\
-	25,		\
+	21,		\
 	{		\
 	{1, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
-	{2, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
-	{2, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
 	{2, &MPIR_Knomial_Bcast_intra_node_MV2, 4},		\
 	{4, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
 	{8, &MPIR_Knomial_Bcast_intra_node_MV2, 4},		\
-	{16, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
-	{16, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
 	{16, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
 	{32, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\
 	{64, &MPIR_Knomial_Bcast_intra_node_MV2, 8},		\

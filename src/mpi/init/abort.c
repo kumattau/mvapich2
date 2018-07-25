@@ -75,8 +75,8 @@ int MPI_Abort(MPI_Comm comm, int errorcode)
     static const char FCNAME[] = "MPI_Abort";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
-    /* FIXME: 100 is arbitrary and may not be long enough */
-    char abort_str[100] = "", comm_name[MPI_MAX_OBJECT_NAME];
+    /* FIXME: 200 is arbitrary and may not be long enough */
+    char abort_str[200] = "", comm_name[MPI_MAX_OBJECT_NAME];
     int len = MPI_MAX_OBJECT_NAME;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_ABORT);
 
@@ -133,7 +133,7 @@ int MPI_Abort(MPI_Comm comm, int errorcode)
     }
     if (!MPIR_CVAR_SUPPRESS_ABORT_MESSAGE)
         /* FIXME: This is not internationalized */
-        MPL_snprintf(abort_str, 100, "application called MPI_Abort(%s, %d) - process %d", comm_name, errorcode, comm_ptr->rank);
+        MPL_snprintf(abort_str, 200, "application called MPI_Abort(%s, %d) - process %d", comm_name, errorcode, comm_ptr->rank);
     mpi_errno = MPID_Abort( comm_ptr, mpi_errno, errorcode, abort_str );
     /* --BEGIN ERROR HANDLING-- */
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;

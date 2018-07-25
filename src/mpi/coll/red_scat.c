@@ -7,6 +7,7 @@
 
 #include "mpiimpl.h"
 #include "collutil.h"
+#include "coll_shmem.h"
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -829,10 +830,13 @@ int MPIR_Reduce_scatter_intra(const void *sendbuf, void *recvbuf, const int recv
 			    mpi_errno = MPIR_Reduce_local_impl( 
                                tmp_recvbuf, tmp_results, blklens[0],
 			       datatype, op); 
+                            if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+
 			    mpi_errno = MPIR_Reduce_local_impl( 
                                ((char *)tmp_recvbuf + dis[1]*extent),
 			       ((char *)tmp_results + dis[1]*extent),
 			       blklens[1], datatype, op); 
+                            if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                         }
                     }
                     else {
@@ -840,10 +844,13 @@ int MPIR_Reduce_scatter_intra(const void *sendbuf, void *recvbuf, const int recv
 			    mpi_errno = MPIR_Reduce_local_impl(
                                    tmp_results, tmp_recvbuf, blklens[0],
                                    datatype, op); 
+                            if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+
 			    mpi_errno = MPIR_Reduce_local_impl(
                                    ((char *)tmp_results + dis[1]*extent),
                                    ((char *)tmp_recvbuf + dis[1]*extent),
                                    blklens[1], datatype, op); 
+                            if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                         }
                         /* copy result back into tmp_results */
                         mpi_errno = MPIR_Localcopy(tmp_recvbuf, 1, recvtype, 
@@ -1204,6 +1211,17 @@ int MPI_Reduce_scatter(const void *sendbuf, void *recvbuf, const int recvcounts[
 
     /* ... end of body of routine ... */
     
+#ifdef _OSU_MVAPICH_
+    if (mv2_use_osu_collectives) {
+        if(comm_ptr->dev.ch.allgather_comm_ok == 0) {
+            mpi_errno = mv2_increment_allgather_coll_counter(comm_ptr);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
+    }
+#endif
+
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_REDUCE_SCATTER);
     MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);

@@ -317,7 +317,6 @@ int MPIR_Allgather_Direct_MV2(
         }
     }
 
-  fn_exit:
     MPIU_CHKLMEM_FREEALL();
   fn_fail:
     return (mpi_errno);
@@ -1073,19 +1072,15 @@ int MPIR_Allgather_gather_bcast_MV2(
     MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
 
-    int comm_size, rank;
+    int comm_size;
     int mpi_errno = MPI_SUCCESS;
-    int mpi_errno_ret = MPI_SUCCESS;
-    MPI_Aint recvtype_extent;
     int gather_bcast_root = -1;
 
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allgather_gather_bcast, 1);
 
     comm_size = comm_ptr->local_size;
-    rank = comm_ptr->rank;
 
     MPIU_Assert(comm_ptr->dev.ch.shmem_coll_ok == 1);
-    MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
 
     //Call gather (Calling mv2 version so that gather is tuned)
     //If IN_PLACE is used, gather is expected to handle it
@@ -1100,7 +1095,7 @@ int MPIR_Allgather_gather_bcast_MV2(
     //gather_bcast_root has all data at this point
 
     //call bcast on the receive buffer
-    mpi_errno = MPIR_Bcast_MV2(recvbuf, recvcount * recvtype_extent * comm_size, recvtype,
+    mpi_errno = MPIR_Bcast_MV2(recvbuf, recvcount * comm_size, recvtype,
 			       gather_bcast_root, comm_ptr, errflag);
     if (mpi_errno) {
 	MPIR_ERR_POP(mpi_errno);
@@ -2231,6 +2226,7 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
     int table_max_inter_size = 0;
     int last_inter;
     int lp2ltn; // largest power of 2 less than n
+    int lp2ltn_min;
     MPI_Comm shmem_comm;
     MPID_Comm *shmem_commptr=NULL;
 
@@ -2333,6 +2329,13 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
             conf_index = 0;
             goto conf_check_end;
         }
+        if ((comm_ptr->dev.ch.allgather_comm_ok != 0) &&
+                (comm_ptr->dev.ch.is_blocked == 0 &&
+                (mv2_allgather_cyclic_algo_threshold <= nbytes ||
+                 mv2_allgather_ring_algo_threshold <= nbytes))) {
+                /* for large messages or nonblocked hostfiles, use ring-allgather algorithm. */
+                return MPIR_2lvl_Allgather_Ring_nonblocked_MV2(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm_ptr, errflag);
+        }
         do {
             if (local_size == mv2_allgather_indexed_table_ppn_conf[i]) {
                 conf_index = i;
@@ -2367,12 +2370,13 @@ conf_check_end:
     }
     else {
 	/* Comm size in between smallest and largest configuration: find closest match */
+    lp2ltn_min = pow(2, (int)log2(table_min_comm_size));
 	if (comm_ptr->dev.ch.is_pof2) {
-	    comm_size_index = log2( comm_size / table_min_comm_size );
+	    comm_size_index = log2( comm_size / lp2ltn_min );
 	}
 	else {
 	    lp2ltn = pow(2, (int)log2(comm_size));
-	    comm_size_index = (lp2ltn < table_min_comm_size) ? 0 : log2( lp2ltn / table_min_comm_size );
+        comm_size_index = (lp2ltn < lp2ltn_min) ? 0 : log2( lp2ltn / lp2ltn_min );
 	}
     }
 

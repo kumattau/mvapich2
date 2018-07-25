@@ -49,7 +49,8 @@ struct MPID_Request;
 
 /* PktHandler function:
    vc  (INPUT) -- vc on which the packet was received
-   pkt (INPUT) -- pointer to packet header at beginning of receive buffer
+   pkt (INPUT) -- pointer to packet header (aligned access).
+   data (INPUT) -- pointer to beginning of data
    buflen (I/O) -- IN: number of bytes received into receive buffer
                    OUT: number of bytes processed by the handler function
    req (OUTPUT) -- NULL, if the whole message has been processed by the handler
@@ -58,7 +59,7 @@ struct MPID_Request;
                    message should be received.
    (This decl needs to come before mpidi_ch3_pre.h)
 */
-typedef int MPIDI_CH3_PktHandler_Fcn(struct MPIDI_VC *vc, union MPIDI_CH3_Pkt *pkt,
+typedef int MPIDI_CH3_PktHandler_Fcn(struct MPIDI_VC *vc, union MPIDI_CH3_Pkt *pkt, void *data,
 				     MPIDI_msg_sz_t *buflen, struct MPID_Request **req );
 
 /* Include definitions from the channel which must exist before items in this 
@@ -318,9 +319,10 @@ struct MPIDI_Win_info_args {
     int no_locks;               /* valid flavor = all */
     int accumulate_ordering;
     int accumulate_ops;
-    int same_size;              /* valid flavor = allocate */
-    int alloc_shared_noncontig; /* valid flavor = allocate shared */
-    int alloc_shm;              /* valid flavor = allocate */
+    int same_size;
+    int same_disp_unit;
+    int alloc_shared_noncontig;
+    int alloc_shm;
 };
 
 struct MPIDI_RMA_op;            /* forward decl from mpidrma.h */
@@ -410,6 +412,7 @@ typedef struct MPIDI_Request {
     struct MPID_Segment *segment_ptr;
     MPIDI_msg_sz_t segment_first;
     MPIDI_msg_sz_t segment_size;
+    MPIDI_msg_sz_t orig_segment_first;
 
     /* Pointer to datatype for reference counting purposes */
     struct MPID_Datatype * datatype_ptr;

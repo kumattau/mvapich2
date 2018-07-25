@@ -1,3 +1,30 @@
+OSU Micro Benchmarks v5.4.3 (07/23/18)
+* Bug Fixes
+    - Fix buffer overflow in osu_reduce_scatter
+        - Thanks to Matias A Cabral @Intel for reporting the issue and patch
+        - Thanks to Gilles Gouaillardet for creating the patch
+    - Fix buffer overflow in one sided tests
+        - Thanks to John Byrne @HPE for reporting this issue
+    - Fix buffer overflow in multi threaded latency test
+    - Fix issues with freeing buffers for one-sided tests
+    - Fix issues with freeing buffers for CUDA-enabled tests
+    - Fix warning messages for benchmarks that do not support CUDA and/or
+      Managed memory
+        - Thanks to Carl Ponder@NVIDIA for reporting this issue
+    - Fix compilation warnings
+
+OSU Micro Benchmarks v5.4.2 (04/30/18)
+* New Features & Enhancements
+    - Add "-W --window-size" option to osu_bw and osu_bibw
+
+* Bug Fixes
+    - Fix issues with out of tree builds
+        - Thanks to Adam Moody @LLNL for reporting the issue
+    - Fix PGI and XLC builds by using the correct generated cpp files
+    - Fix crash with osu_mbw_mr for large messages
+    - Fix minor error in Makefile
+    - Fix compilation warnings
+
 OSU Micro Benchmarks v5.4.1 (02/19/18)
 * New Features & Enhancements
     - Enhanced help messages and runtime parameters

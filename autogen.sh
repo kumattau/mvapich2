@@ -3,7 +3,7 @@
 # (C) 2006 by Argonne National Laboratory.
 #     See COPYRIGHT in top-level directory.
 #
-# Copyright (c) 2001-2017, The Ohio State University. All rights
+# Copyright (c) 2001-2018, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -554,7 +554,7 @@ fi
 
 echo_n "Checking for libtool version... "
 recreate_tmp
-ver=2.4.3
+ver=2.4.4
 cat <<EOF >.tmp/configure.ac
 AC_INIT(testver,1.0)
 AC_CONFIG_AUX_DIR([m4])
@@ -699,7 +699,7 @@ if [ $do_bindings = "yes" ] ; then
 	# Double precision vs. Real*8 option
 	rm -f src/binding/fortran/use_mpi/mpi_base.f90.orig
 	( cd src/binding/fortran/use_mpi && chmod a+x ./buildiface && ./buildiface )
-	( cd src/binding/fortran/use_mpi && ../mpif_h/buildiface -infile=cf90t.h -deffile=cf90tdefs)
+	( cd src/binding/fortran/use_mpi && ../mpif_h/buildiface -infile=cf90t.h -deffile=./cf90tdefs)
 	echo "done"
     fi
     if [ $build_f08 = "yes" ] ; then
@@ -723,7 +723,7 @@ if [ $do_bindings = "yes" ] ; then
     if [ $build_cxx = "yes" ] ; then
 	echo_n "Building C++ interface... "
 	( cd src/binding/cxx && chmod a+x ./buildiface &&
-	  ./buildiface -nosep -initfile=cxx.vlist )
+	  ./buildiface -nosep -initfile=./cxx.vlist )
 	echo "done"
     fi
 fi

@@ -66,6 +66,10 @@ extern cuda_event_t *free_cuda_event_list_head;
 extern cuda_event_t *busy_cuda_event_list_head;
 extern cuda_event_t *busy_cuda_event_list_tail;
 
+typedef struct MPIDI_PG MPIDI_PG_t;
+void cudaipc_allocate_shared_region (MPIDI_PG_t *pg, int num_processes, int my_rank);
+void cudaipc_allocate_ipc_region    (MPIDI_PG_t *pg, int num_processes, int my_rank);
+void cudaipc_share_device_info();
 void allocate_cuda_rndv_streams();
 void deallocate_cuda_rndv_streams();
 

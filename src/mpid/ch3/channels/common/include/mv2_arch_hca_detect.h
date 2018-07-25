@@ -147,6 +147,7 @@ typedef enum {
         MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36,
         MV2_ARCH_INTEL_PLATINUM_8160_2S_48,
         MV2_ARCH_INTEL_PLATINUM_8170_2S_52,
+        MV2_ARCH_INTEL_PLATINUM_GENERIC,
         MV2_ARCH_INTEL_KNL_GENERIC,
         MV2_ARCH_INTEL_XEON_PHI_7210,
         MV2_ARCH_INTEL_XEON_PHI_7230,
@@ -167,6 +168,7 @@ typedef enum {
         MV2_ARCH_IBM_START,
         MV2_ARCH_IBM_PPC,
         MV2_ARCH_IBM_POWER8,
+        MV2_ARCH_IBM_POWER9,
         MV2_ARCH_IBM_END,
 /* ARM Architectures */
         MV2_ARCH_ARM_START,
@@ -234,6 +236,9 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx, struct ibv_device *de
 #else
 mv2_hca_type mv2_get_hca_type(void *dev);
 #endif
+
+/* Get combined architecture + hca type */
+mv2_arch_hca_type MV2_get_arch_hca_type(void);
 
 /* Get number of cpus */
 int mv2_get_num_cpus(void);

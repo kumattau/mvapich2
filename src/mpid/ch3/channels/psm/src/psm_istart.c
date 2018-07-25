@@ -163,7 +163,7 @@ int psm_istartmsg(MPIDI_VC_t *vc, void *upkt, MPIDI_msg_sz_t pkt_sz, MPID_Reques
 {
     MPIDI_CH3_Pkt_t* genpkt = upkt;
     void *buf;
-    int psmerr, src, trank;
+    int psmerr, src, trank = -1;
     MPIDI_msg_sz_t buflen;
     int mpi_errno = MPI_SUCCESS;
 

@@ -15,6 +15,7 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
+#include <strings.h>
 
 #include "mpiimpl.h"
 #include "mpi_init.h"
@@ -60,7 +61,8 @@ cvars:
       verbosity   : MPI_T_VERBOSITY_USER_BASIC
       scope       : MPI_T_SCOPE_ALL_EQ
       description : >-
-        Sets the default thread level to use when using MPI_INIT.
+        Sets the default thread level to use when using MPI_INIT. This variable
+        is case-insensitive.
 
 === END_MPI_T_CVAR_INFO_BLOCK ===
 */
@@ -178,13 +180,13 @@ int MPI_Init( int *argc, char ***argv )
 
     MPIR_T_env_init();
 
-    if (!strcmp(MPIR_CVAR_DEFAULT_THREAD_LEVEL, "MPI_THREAD_MULTIPLE"))
+    if (!strcasecmp(MPIR_CVAR_DEFAULT_THREAD_LEVEL, "MPI_THREAD_MULTIPLE"))
         threadLevel = MPI_THREAD_MULTIPLE;
-    else if (!strcmp(MPIR_CVAR_DEFAULT_THREAD_LEVEL, "MPI_THREAD_SERIALIZED"))
+    else if (!strcasecmp(MPIR_CVAR_DEFAULT_THREAD_LEVEL, "MPI_THREAD_SERIALIZED"))
         threadLevel = MPI_THREAD_SERIALIZED;
-    else if (!strcmp(MPIR_CVAR_DEFAULT_THREAD_LEVEL, "MPI_THREAD_FUNNELED"))
+    else if (!strcasecmp(MPIR_CVAR_DEFAULT_THREAD_LEVEL, "MPI_THREAD_FUNNELED"))
         threadLevel = MPI_THREAD_FUNNELED;
-    else if (!strcmp(MPIR_CVAR_DEFAULT_THREAD_LEVEL, "MPI_THREAD_SINGLE"))
+    else if (!strcasecmp(MPIR_CVAR_DEFAULT_THREAD_LEVEL, "MPI_THREAD_SINGLE"))
         threadLevel = MPI_THREAD_SINGLE;
     else {
         MPL_error_printf("Unrecognized thread level %s\n", MPIR_CVAR_DEFAULT_THREAD_LEVEL);

@@ -1,3 +1,9 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
+/*
+ *  (C) 2014 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+
 #include "hcoll.h"
 
 static int hcoll_initialized = 0;
@@ -226,8 +232,7 @@ int hcoll_comm_destroy(MPID_Comm * comm_ptr, void *param)
 
 int hcoll_do_progress(int *made_progress)
 {
-    if (made_progress)
-        *made_progress = 0;
+    *made_progress = 1;
     hcoll_progress_fn();
 
     return MPI_SUCCESS;

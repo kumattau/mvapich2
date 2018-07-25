@@ -394,7 +394,6 @@ static inline int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     
     /* We have filled the header, it is time to fit in the actual data */
 #ifdef _ENABLE_CUDA_
-    cudaError_t cuda_error = cudaSuccess;
     if (rdma_enable_cuda && n_iov > 1 && is_device_buffer(iov[1].MPL_IOV_BUF)) {
         /* in the case of GPU buffers, there is only one data iov, if data is non-contiguous
          * it should have been packed before this */
@@ -768,15 +767,7 @@ int mv2_eager_fast_send(MPIDI_VC_t* vc, const void *buf,
     /* Copy data */
     ptr = (void*) v->buffer + sizeof(MPIDI_CH3_Pkt_eager_send_t);
 
-#ifdef _ENABLE_CUDA_
-    cudaError_t cuda_error = cudaSuccess;
-    if (rdma_enable_cuda && is_device_buffer(buf)) {
-        MPIU_Memcpy_CUDA(ptr, buf, data_sz, cudaMemcpyDeviceToHost);
-    } else
-#endif
-    {
-         memcpy(ptr, buf, data_sz);
-    }
+    memcpy(ptr, buf, data_sz);
     /* Compute size of pkt */
     len = sizeof(MPIDI_CH3_Pkt_eager_send_t) + data_sz;
 
@@ -978,7 +969,6 @@ int MRAILI_Fill_start_buffer(vbuf * v,
     int i = 0;
     int avail = 0;
 #ifdef _ENABLE_CUDA_
-    cudaError_t cuda_error = cudaSuccess;
     if (rdma_enable_cuda) {
         avail = ((vbuf_pool_t*)v->pool_index)->buf_size - v->content_size;
     } else 

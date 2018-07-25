@@ -42,16 +42,15 @@ int MPIR_Alltoall_CUDA_cleanup ()
 {
     int mpi_errno = MPI_SUCCESS; 
     int i = 0;
-    cudaError_t cudaerr = cudaSuccess;
 
     if (send_events) {
         for(i = 0; i < send_events_count; i++) {
-            cudaEventDestroy(send_events[i]);
+            CUDA_CHECK(cudaEventDestroy(send_events[i]));
         }
         MPIU_Free(send_events); 
     }
     if (recv_event) {
-        cudaEventDestroy(*recv_event); 
+        CUDA_CHECK(cudaEventDestroy(*recv_event));
         MPIU_Free(recv_event); 
     }
 

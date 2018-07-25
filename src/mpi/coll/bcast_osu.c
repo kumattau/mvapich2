@@ -2442,6 +2442,7 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
     int last_inter;
     int last_intra;
     int lp2ltn; // largest power of 2 less than n
+    int lp2ltn_min;
     int is_homogeneous, is_contig;
     MPI_Aint type_size, position;
     void *tmp_buf = NULL;
@@ -2555,12 +2556,13 @@ conf_check_end:
     }
     else {
 	/* Comm size in between smallest and largest configuration: find closest match */
+    lp2ltn_min = pow(2, (int)log2(table_min_comm_size));
 	if (comm_ptr->dev.ch.is_pof2) {
-	    comm_size_index = log2( comm_size / table_min_comm_size );
+	    comm_size_index = log2( comm_size / lp2ltn_min );
 	}
 	else {
 	    lp2ltn = pow(2, (int)log2(comm_size));
-	    comm_size_index = (lp2ltn < table_min_comm_size) ? 0 : log2( lp2ltn / table_min_comm_size );
+        comm_size_index = (lp2ltn < lp2ltn_min) ? 0 : log2( lp2ltn / lp2ltn_min );
 	}
     }
 

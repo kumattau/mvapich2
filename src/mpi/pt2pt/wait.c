@@ -89,6 +89,15 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
 			     poll indefinitely. skip over progress_wait */
 	    }
 
+        /* In a multi-threaded scenario, with tests like
+         * test/mpi/threads/comm/comm_idup, we see a corner case where the
+         * previous call to MPIR_Grequest_progress_poke is completing the
+         * request causing the blocking call 'MPID_Progress_wait' below to get
+         * stuck. This check is to catch this scenario. */
+        if (MPID_Request_is_complete(request_ptr)) {
+            break;
+        }
+
 	    mpi_errno = MPID_Progress_wait(&progress_state);
 	    if (mpi_errno) {
 		/* --BEGIN ERROR HANDLING-- */

@@ -118,6 +118,7 @@ static int PMI_totalview = 0;
 #endif
 static int PMIi_InitIfSingleton(void);
 static int accept_one_connection(int);
+static int cached_singinit_inuse = 0;
 static char cached_singinit_key[PMIU_MAXLINE];
 static char cached_singinit_val[PMIU_MAXLINE];
 static char singinit_kvsname[256];
@@ -426,11 +427,14 @@ int PMI_KVS_Put( const char kvsname[], const char key[], const char value[] )
 
     /* This is a special hack to support singleton initialization */
     if (PMI_initialized == SINGLETON_INIT_BUT_NO_PM) {
+        if (cached_singinit_inuse)
+            return PMI_FAIL;
 	rc = MPIU_Strncpy(cached_singinit_key,key,PMI_keylen_max);
 	if (rc != 0) return PMI_FAIL;
 	rc = MPIU_Strncpy(cached_singinit_val,value,PMI_vallen_max);
 	if (rc != 0) return PMI_FAIL;
-	return 0;
+        cached_singinit_inuse = 1;
+	return PMI_SUCCESS;
     }
     
     rc = MPL_snprintf( buf, PMIU_MAXLINE, 
@@ -667,6 +671,8 @@ int PMI_Spawn_multiple(int count,
                 }
 #endif
 		rc = PMIU_writeline( PMI_fd, buf );
+                if (rc)
+                    return PMI_FAIL;
 		buf[0] = 0;
 
             }
@@ -751,7 +757,10 @@ int PMI_Spawn_multiple(int count,
             write(PMI_fd, &sz, sizeof(uint32_t));
         }
 #endif
-        PMIU_writeline( PMI_fd, buf );
+        rc = PMIU_writeline( PMI_fd, buf );
+	if (rc) {
+	    return PMI_FAIL;
+	}
     }
 
     PMIU_readline( PMI_fd, buf, PMIU_MAXLINE );
@@ -803,7 +812,9 @@ int PMI_Spawn_multiple(int count,
 /* FIXME: This mixes init with get maxes */
 static int PMII_getmaxes( int *kvsname_max, int *keylen_max, int *vallen_max )
 {
-    char buf[PMIU_MAXLINE], cmd[PMIU_MAXLINE], errmsg[PMIU_MAXLINE];
+    char buf[PMIU_MAXLINE];
+    char cmd[PMIU_MAXLINE];
+    char errmsg[3*PMIU_MAXLINE];
     int err, rc;
 
     rc = MPL_snprintf( buf, PMIU_MAXLINE, 
@@ -829,21 +840,22 @@ static int PMII_getmaxes( int *kvsname_max, int *keylen_max, int *vallen_max )
     cmd[0] = 0;
     PMIU_getval( "cmd", cmd, PMIU_MAXLINE );
     if ( strncmp( cmd, "response_to_init", PMIU_MAXLINE ) != 0 ) {
-	MPL_snprintf(errmsg, PMIU_MAXLINE, 
+	MPL_snprintf(errmsg, sizeof(errmsg), 
 		      "got unexpected response to init :%s: (full line = %s)",
 		      cmd, buf  );
 	UPMI_ABORT( -1, errmsg );
     }
     else {
-	char buf1[PMIU_MAXLINE];
-        PMIU_getval( "rc", buf, PMIU_MAXLINE );
-        if ( strncmp( buf, "0", PMIU_MAXLINE ) != 0 ) {
-            PMIU_getval( "pmi_version", buf, PMIU_MAXLINE );
-            PMIU_getval( "pmi_subversion", buf1, PMIU_MAXLINE );
-	    MPL_snprintf(errmsg, PMIU_MAXLINE, 
-			  "pmi_version mismatch; client=%d.%d mgr=%s.%s",
-			  PMI_VERSION, PMI_SUBVERSION, buf, buf1 );
-	    UPMI_ABORT( -1, errmsg );
+        char s1[PMIU_IDSIZE];
+        char s2[PMIU_IDSIZE];
+        PMIU_getval( "rc", s1, PMIU_IDSIZE );
+        if ( strncmp( s1, "0", PMIU_IDSIZE ) != 0 ) {
+            PMIU_getval( "pmi_version",    s1, PMIU_IDSIZE );
+            PMIU_getval( "pmi_subversion", s2, PMIU_IDSIZE );
+            MPL_snprintf(errmsg, sizeof(errmsg), 
+                    "pmi_version mismatch; client=%d.%d mgr=%s.%s",
+                    PMI_VERSION, PMI_SUBVERSION, s1, s2 );
+            UPMI_ABORT( -1, errmsg );
         }
     }
     err = GetResponse( "cmd=get_maxes\n", "maxes", 0 );
@@ -1235,15 +1247,36 @@ static int PMII_singinit(void)
 
     /* Create a socket on which to allow an mpiexec to connect back to
        us */
+    memset(&sin, 0, sizeof(sin));
     sin.sin_family	= AF_INET;
     sin.sin_addr.s_addr	= INADDR_ANY;
     sin.sin_port	= htons(0);    /* anonymous port */
+
     singinit_listen_sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (singinit_listen_sock == -1) {
+        perror("PMII_singinit: socket creation failed");
+        return PMI_FAIL;
+    }
+
     rc = bind(singinit_listen_sock, (struct sockaddr *)&sin ,sizeof(sin));
+    if (rc == -1) {
+        perror("PMII_singinit: socket bind failed");
+        return PMI_FAIL;
+    }
+
     len = sizeof(struct sockaddr_in);
     rc = getsockname( singinit_listen_sock, (struct sockaddr *) &sin, &len ); 
+    if (rc == -1) {
+        perror("PMII_singinit: getsockname failed");
+        return PMI_FAIL;
+    }
+
     MPL_snprintf(port_c, sizeof(port_c), "%d",ntohs(sin.sin_port));
     rc = listen(singinit_listen_sock, 5);
+    if (rc == -1) {
+        perror("PMII_singinit: listen failed");
+        return PMI_FAIL;
+    }
 
     PMIU_printf( PMI_debug_init, "Starting mpiexec with %s\n", port_c );
 

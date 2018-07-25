@@ -403,6 +403,10 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     }
 #endif /* defined(CHANNEL_MRAIL) */
 
+#if !defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM)
+    MPIR_CVAR_ENABLE_SMP_COLLECTIVES = 0;
+#endif
+
     /* setup receive queue statistics */
     mpi_errno = MPIDI_CH3U_Recvq_init();
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -644,7 +648,7 @@ int MPID_InitCompleted( void )
 #if defined(CHANNEL_MRAIL)
     int show_hca_binding = 0;
     MPL_env2int("MV2_SHOW_HCA_BINDING", &show_hca_binding);
-    if (show_hca_binding) {
+    if (show_hca_binding && !SMP_ONLY) {
         mv2_show_hca_affinity(show_hca_binding);
     }
 #endif /* defined(CHANNEL_MRAIL) */

@@ -62,7 +62,7 @@ int MPIR_Reduce_local_impl(const void *inbuf, void *inoutbuf, int count, MPI_Dat
     char *recv_host_buf = NULL;
     char *send_host_buf = NULL;
     char *temp_recvbuf = inoutbuf;
-    char *temp_sendbuf = inbuf;
+    const char *temp_sendbuf = inbuf;
 
     if (rdma_enable_cuda) {
        recv_mem_type = is_device_buffer(inoutbuf);

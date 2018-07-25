@@ -38,18 +38,20 @@
     #define PSM_MQ_RNDV_IPATH_SZ        PSM2_MQ_RNDV_HFI_SZ
     #define PSM_MQ_RNDV_SHM_SZ          PSM2_MQ_RNDV_SHM_SZ
     #define PSM_MQ_FLAG_SENDSYNC        PSM2_MQ_FLAG_SENDSYNC
-    /* Currently PSM2 has a max transfer limit of 4GB */
-    #define DEFAULT_IPATH_MAX_TRANSFER_SIZE (4L*1024*1024*1024 - 256)
-    #define DEFAULT_IPATH_RNDV_THRESH   (128*1024)
-    #define DEFAULT_PSM_HFI_RNDV_THRESH (128*1024)
+    /* PSM2 claims a max transfer limit of 4GB 
+     * Experiments show issues for inter-node messages
+     * Limiting to 2GB for now */
+    #define DEFAULT_IPATH_MAX_TRANSFER_SIZE (2L*1024*1024*1024)
+    #define DEFAULT_IPATH_RNDV_THRESH   (64*1000)
+    #define DEFAULT_PSM_HFI_RNDV_THRESH (64*1000)
     #define DEFAULT_PSM_SHM_RNDV_THRESH (32*1024)
 #elif HAVE_LIBPSM_INFINIPATH
     #include <psm.h>
     #include <psm_mq.h>
     /* Currently PSM has a max transfer limit of 1GB */
     #define DEFAULT_IPATH_MAX_TRANSFER_SIZE (1L*1024*1024*1024)
-    #define DEFAULT_IPATH_RNDV_THRESH   (128*1024)
-    #define DEFAULT_PSM_HFI_RNDV_THRESH (128*1024)
+    #define DEFAULT_IPATH_RNDV_THRESH   (64*1000)
+    #define DEFAULT_PSM_HFI_RNDV_THRESH (64*1000)
     #define DEFAULT_PSM_SHM_RNDV_THRESH (32*1024)
 #endif
 
@@ -239,6 +241,8 @@ struct psmdev_info_t {
     PSM_EP_T        ep;
     PSM_MQ_T        mq;
     PSM_EPADDR_T    *epaddrs;
+    PSM_EPID_T      epid;
+    int             pg_rank;
     int             pg_size;
     uint16_t        cnt[PSM_COUNTERS];
 };

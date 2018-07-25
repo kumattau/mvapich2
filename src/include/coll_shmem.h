@@ -29,6 +29,9 @@
 #define LIMIC_COLL_NUM_COMM  128
 #endif /* #if defined(_SMP_LIMIC_) */ 
 
+#define MV2_SHMEM_MAX_MSG_SIZE 128*1024
+#define MV2_SHMEM_COLL_BLOCKS 8
+
 #define PID_CHAR_LEN 22
 
 #define SHMEM_COLL_HOSTNAME_LEN  (255)
@@ -181,6 +184,7 @@ extern int mv2_use_indexed_reduce_tuning;
 extern int mv2_use_indexed_allreduce_tuning;
 extern int mv2_use_indexed_allgather_tuning;
 extern int mv2_use_indexed_alltoall_tuning;
+extern int mv2_use_indexed_alltoallv_tuning;
 extern int mv2_enable_ibcast;
 extern int mv2_enable_ibarrier;
 extern int mv2_enable_iscatter;
@@ -273,6 +277,16 @@ extern int  mv2_knomial_inter_leader_bcast;
 extern int  mv2_enable_shmem_bcast;
 extern int  mv2_bcast_two_level_system_size; 
 extern int  mv2_alltoall_inplace_old;
+extern int  mv2_use_scatter_dest_alltoallv;
+
+extern int  mv2_allreduce_red_scat_allgather_algo_threshold;
+extern int  mv2_allgather_ring_algo_threshold;
+extern int  mv2_allgather_cyclic_algo_threshold;
+extern int  mv2_redscat_cyclic_algo_threshold;
+extern int  mv2_allreduce_cyclic_algo_threshold;
+extern int  mv2_red_scat_ring_algo_threshold;
+
+extern int mv2_alltoallv_intermediate_wait_threshold; 
 
 extern int mv2_bcast_scatter_ring_overlap;
 extern int mv2_bcast_scatter_ring_overlap_msg_upperbound;
@@ -522,6 +536,7 @@ int mv2_set_reduce_collective_algorithm();
 int mv2_set_allgather_collective_algorithm();
 int mv2_set_allreduce_collective_algorithm();
 int mv2_set_alltoall_collective_algorithm();
+int mv2_set_alltoallv_collective_algorithm();
 
 /* Collective values for gather */
 #define MV2_GATHER_INTRA                    "0"
@@ -584,6 +599,10 @@ int mv2_set_alltoall_collective_algorithm();
 #define MV2_ALLTOALL_SCATTER_DEST_MV2       "2"
 #define MV2_ALLTOALL_PAIRWISE_MV2           "3"
 #define MV2_ALLTOALL_INPLACE_MV2            "4"
+
+/* Collective values for alltoallv  */
+#define MV2_ALLTOALLV_INTRA_SCATTER_MV2     "0"
+#define MV2_ALLTOALLV_INTRA_MV2             "1"
 
 /* Function set for collective algorithm selection */
 enum mv2_gather_coll_funcs
@@ -685,5 +704,12 @@ enum mv2_alltoall_coll_funcs
     MV2_PAIRWISE_ALLTOALL,
     MV2_INPLACE_ALLTOALL,
     MV2_MAX_NUM_ALLTOALL_FUNCS
+};
+
+enum mv2_alltoallv_coll_funcs
+{
+    MV2_INTRA_SCATTER_ALLTOALLV,
+    MV2_INTRA_ALLTOALLV,
+    MV2_MAX_NUM_ALLTOALLV_FUNCS
 };
 #endif  /* _COLL_SHMEM_ */

@@ -92,7 +92,7 @@ int MPIR_Sharp_Allreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
         is_contig = dtp->is_contig;
     }
 
-    dt_size = mv2_get_sharp_datatype(datatype);
+    mv2_get_sharp_datatype(datatype, &dt_size);
     reduce_spec.dtype = dt_size->sharp_data_type;
 
     if (reduce_spec.dtype == SHARP_DTYPE_NULL) {
@@ -2080,7 +2080,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     char *recv_host_buf = NULL;
     char *send_host_buf = NULL;
     char *temp_recvbuf = recvbuf;
-    char *temp_sendbuf = sendbuf;
+    const char *temp_sendbuf = sendbuf;
 
     if (rdma_enable_cuda) {
        recv_mem_type = is_device_buffer(recvbuf);
@@ -2297,6 +2297,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
     int last_inter;
     int last_intra;
     int lp2ltn; // largest power of 2 less than n
+    int lp2ltn_min;
     MPID_Comm *shmem_commptr = NULL;
     MPI_Comm shmem_comm;
     int rank = 0, comm_size = 0;
@@ -2411,6 +2412,16 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
             is_two_level = 1;
             goto skip_tuning_tables;
         }
+
+        if ((comm_ptr->dev.ch.allgather_comm_ok != 0 &&
+              comm_ptr->dev.ch.is_blocked == 0 &&
+              mv2_allreduce_cyclic_algo_threshold <= nbytes) ||
+             mv2_allreduce_red_scat_allgather_algo_threshold <= nbytes) {
+            /* for large messages or cyclic hostfiles for medium messages, use
+             * red-scat-allgather algorithm  */
+            return MPIR_Allreduce_pt2pt_reduce_scatter_allgather_MV2(sendbuf, recvbuf, count,
+                    datatype, op, comm_ptr, errflag);
+        }
         do {
             if (local_size == mv2_allreduce_indexed_table_ppn_conf[i]) {
                 conf_index = i;
@@ -2472,12 +2483,13 @@ conf_check_end:
 	    }
 	    else {
 		/* Comm size in between smallest and largest configuration: find closest match */
+        lp2ltn_min = pow(2, (int)log2(table_min_comm_size));
 		if (comm_ptr->dev.ch.is_pof2) {
-		    comm_size_index = log2( comm_size / table_min_comm_size );
+		    comm_size_index = log2( comm_size / lp2ltn_min );
 		}
 		else {
 		    lp2ltn = pow(2, (int)log2(comm_size));
-		    comm_size_index = (lp2ltn < table_min_comm_size) ? 0 : log2( lp2ltn / table_min_comm_size );
+            comm_size_index = (lp2ltn < lp2ltn_min) ? 0 : log2( lp2ltn / lp2ltn_min );
 		}
 	    }
 	    /* Search for corresponding inter-leader function */
@@ -2653,16 +2665,10 @@ int MPIR_Allreduce_pt2pt_reduce_scatter_allgather_MV2(const void *sendbuf,
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_reduce_scatter_allgather_colls, 1);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
-    int mpi_errno_ret = MPI_SUCCESS;
-    int is_commutative, i, send_cnt, recv_cnt, *cnts, *disps;
+    int i, *cnts, *disps;
     MPI_Aint true_lb, true_extent, extent;
     void *tmp_buf;
-    MPI_User_function *uop;
-    MPID_Op *op_ptr;
     MPIU_THREADPRIV_DECL;
-#ifdef HAVE_CXX_BINDING
-    int is_cxx_uop = 0;
-#endif
     MPIU_CHKLMEM_DECL(3);
 
     if (count == 0) {

@@ -1,3 +1,9 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
+/*
+ *  (C) 2014 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+
 #include <mpi.h>
 #include <stdio.h>
 #include <string.h>
@@ -30,17 +36,12 @@ int main(int argc, char **argv)
     int data_size = DATA_SIZE;
     int i, j, k, nr_errors = 0;
     MPI_Aint disp[BLK_COUNT];
-    int block_lens[BLK_COUNT];
     char *filename = "unnamed.dat";
 
     MPI_Init(&argc, &argv);
     disp[0] = (MPI_Aint) (PAD);
     disp[1] = (MPI_Aint) (data_size * 1 + PAD);
     disp[2] = (MPI_Aint) (data_size * 2 + PAD);
-
-    block_lens[0] = data_size;
-    block_lens[1] = data_size;
-    block_lens[2] = data_size;
 
     data = malloc(data_size);
     verify = malloc(data_size * BLK_COUNT + HEADER + PAD);
@@ -100,5 +101,6 @@ int main(int argc, char **argv)
     MPI_Finalize();
 
     free(data);
+    free(verify);
     return 0;
 }

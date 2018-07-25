@@ -481,6 +481,8 @@ static int send_id_info(const sockconn_t *const sc)
 /*     store ending NULL also */
 /*     FIXME better keep pg_id_len itself as part of MPIDI_Process.my_pg structure to */
 /*     avoid computing the length of string everytime this function is called. */
+
+    MPL_VG_MEM_INIT(&hdr, sizeof(hdr));
     
     hdr.pkt_type = MPIDI_NEM_TCP_SOCKSM_PKT_ID_INFO;
     hdr.datalen = sizeof(MPIDI_nem_tcp_idinfo_t) + pg_id_len;    
@@ -538,6 +540,8 @@ static int send_tmpvc_info(const sockconn_t *const sc)
 /*     store ending NULL also */
 /*     FIXME better keep pg_id_len itself as part of MPIDI_Process.my_pg structure to */
 /*     avoid computing the length of string everytime this function is called. */
+
+    MPL_VG_MEM_INIT(&hdr, sizeof(hdr));
     
     hdr.pkt_type = MPIDI_NEM_TCP_SOCKSM_PKT_TMPVC_INFO;
     hdr.datalen = sizeof(MPIDI_nem_tcp_portinfo_t);
@@ -717,6 +721,8 @@ static int send_cmd_pkt(int fd, MPIDI_nem_tcp_socksm_pkt_type_t pkt_type)
 		pkt_type == MPIDI_NEM_TCP_SOCKSM_PKT_TMPVC_NAK ||
                 pkt_type == MPIDI_NEM_TCP_SOCKSM_PKT_CLOSED);
 
+    MPL_VG_MEM_INIT(&pkt, sizeof(pkt));
+
     pkt.pkt_type = pkt_type;
     pkt.datalen = 0;
 
@@ -800,7 +806,11 @@ int MPID_nem_tcp_connect(struct MPIDI_VC *const vc)
     /* We have an active connection, start polling more often */
     MPID_nem_tcp_skip_polls = MAX_SKIP_POLLS_ACTIVE;
 
-    MPIDI_CHANGE_VC_STATE(vc, ACTIVE);
+    /* only update VC state when it is not being closed.
+     * Note that we still need change state here if the VC is passively
+     * connected (i.e., server in dynamic process connection) */
+    if (vc->state == MPIDI_VC_STATE_INACTIVE)
+        MPIDI_CHANGE_VC_STATE(vc, ACTIVE);
 
     if (vc_tcp->state == MPID_NEM_TCP_VC_STATE_DISCONNECTED) {
         struct sockaddr_in *sock_addr;

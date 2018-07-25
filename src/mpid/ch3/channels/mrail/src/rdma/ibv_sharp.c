@@ -78,7 +78,8 @@ struct sharp_op_type_t sharp_ops [] =
 };
 
 
-struct sharp_reduce_datatyepe_size * mv2_get_sharp_datatype(MPI_Datatype  mpi_datatype) 
+void  mv2_get_sharp_datatype(MPI_Datatype  mpi_datatype, struct
+        sharp_reduce_datatyepe_size ** dt_size_out) 
 {  
     int i = 0;
 
@@ -93,6 +94,9 @@ struct sharp_reduce_datatyepe_size * mv2_get_sharp_datatype(MPI_Datatype  mpi_da
             break;
         }
     }
+
+    *dt_size_out = dt_size;
+
     return dt_size;
 }
 
@@ -112,7 +116,8 @@ int mv2_oob_bcast(void *comm_context, void *buf, int size, int root)
 {
     MPI_Comm comm;
     MPID_Comm *comm_ptr = NULL;
-    int errflag = FALSE, rank;
+    int rank;
+    MPIR_Errflag_t errflag = FALSE;
     int mpi_errno = MPI_SUCCESS;
     
     if (comm_context == NULL) {
@@ -140,7 +145,8 @@ int mv2_oob_barrier(void *comm_context)
 {
     MPI_Comm comm;
     MPID_Comm *comm_ptr = NULL;
-    int rank = 0, errflag = FALSE;
+    int rank = 0;
+    MPIR_Errflag_t errflag = FALSE;
     int mpi_errno = MPI_SUCCESS;
     
     if (comm_context == NULL) {
@@ -168,7 +174,8 @@ int mv2_oob_gather(void *comm_context, int root, void *sbuf, void *rbuf, int len
 {
     MPI_Comm comm;
     MPID_Comm *comm_ptr = NULL;
-    int rank = 0, errflag = FALSE;
+    int rank = 0;
+    MPIR_Errflag_t errflag = FALSE;
     int mpi_errno = MPI_SUCCESS;
     
     if (comm_context == NULL) {
@@ -228,7 +235,7 @@ fn_fail:
 }
 
 
-static char * sharp_get_hca_name_and_port () 
+int sharp_get_hca_name_and_port () 
 {
     int mpi_errno = MPI_SUCCESS;
 #if defined(HAVE_LIBIBVERBS)
@@ -237,7 +244,6 @@ static char * sharp_get_hca_name_and_port ()
     struct ibv_device **dev_list = NULL;
     struct ibv_context *ctx;
     struct ibv_device_attr dev_attr;
-    struct ibv_port_attr port_attr;
     mv2_hca_type hca_type = 0;
 
     dev_list = ibv_get_device_list(&num_devices);
@@ -289,7 +295,7 @@ fn_fail:
 
 static char * sharp_get_kvs_id () 
 {
-    int  i = 0, id = 0;
+    int  i = 0;
     char * id_str = MPIU_Malloc(100);
     MPIU_Memset(id_str, 0, 100);
     char KVSname[100] = {0};
@@ -305,7 +311,6 @@ static char * sharp_get_kvs_id ()
 
 int mv2_setup_sharp_env(sharp_conf_t *sharp_conf, MPI_Comm comm)
 {
-    char * hca_name = NULL;
     char * dev_list = NULL;
     int mpi_errno   = MPI_SUCCESS;
     mv2_sharp_comm = comm;
@@ -397,7 +402,7 @@ char * sharp_create_hostlist(MPI_Comm comm)
     MPI_Comm_size(comm, &size);
     int name_len[size];
     int offsets[size];
-    int errflag = FALSE;
+    MPIR_Errflag_t errflag = FALSE;
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
 

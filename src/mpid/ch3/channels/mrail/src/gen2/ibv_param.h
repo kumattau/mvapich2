@@ -17,6 +17,7 @@
 #include "debug_utils.h"
 #include "mv2_arch_hca_detect.h"
 
+extern int mv2_enable_eager_threshold_reduction;
 #if defined(_SHARP_SUPPORT_)
 extern int mv2_enable_sharp_coll;
 extern int mv2_sharp_port;

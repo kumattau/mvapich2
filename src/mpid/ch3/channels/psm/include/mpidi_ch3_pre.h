@@ -166,6 +166,7 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
 #define PSM_GETACCUM_RNDV_REQ       0x01000000  
 #define PSM_GETACCUM_GET_RNDV_REQ   0x02000000  
 #define PSM_FOPRESP_REQ             0x04000000  
+#define PSM_1SIDED_NON_CONTIG_REQ   0x08000000 /* non-contig 1-sided req */
 
 #define MPIDI_CH3_REQUEST_INIT(__p)  \
         __p->psm_flags = 0;          \

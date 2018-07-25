@@ -330,6 +330,7 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
         MPIDI_ACC_ORDER_WAR | MPIDI_ACC_ORDER_WAW;
     (*win_ptr)->info_args.accumulate_ops = MPIDI_ACC_OPS_SAME_OP_NO_OP;
     (*win_ptr)->info_args.same_size = 0;
+    (*win_ptr)->info_args.same_disp_unit = FALSE;
     (*win_ptr)->info_args.alloc_shared_noncontig = 0;
     (*win_ptr)->info_args.alloc_shm = FALSE;
 #if defined(CHANNEL_MRAIL)
@@ -354,6 +355,10 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     (*win_ptr)->node_comm_size      = 0;
     (*win_ptr)->node_comm_ptr       = NULL;
 #endif
+    if ((*win_ptr)->create_flavor == MPI_WIN_FLAVOR_ALLOCATE ||
+        (*win_ptr)->create_flavor == MPI_WIN_FLAVOR_SHARED) {
+        (*win_ptr)->info_args.alloc_shm = TRUE;
+    }
 
     /* Set info_args on window based on info provided by user */
     mpi_errno = MPID_Win_set_info((*win_ptr), info);

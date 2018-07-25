@@ -3,6 +3,55 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.3 (07/23/2018)
+
+* Features and Enhancements (since 2.3rc2):
+    - Add point-to-point and collective tuning for IBM POWER9 CPUs
+    - Enhanced collective tuning for IBM POWER8, Intel Skylake, Intel KNL, Intel
+      Broadwell architectures
+
+* Bug Fixes (since 2.3rc2):
+    - Fix issues in CH3-TCP/IP channel
+    - Fix build and runtime issues with CUDA support
+    - Fix error when XRC and RoCE were enabled at the same time
+    - Fix issue with XRC connection establishment
+    - Fix for failure at finalize seen on iWARP enabled devices
+    - Fix issue with MPI_IN_PLACE-based communcation in MPI_Reduce and
+      MPI_Reduce_scatter
+    - Fix issue with allocating large number of shared memory based MPI3-RMA
+      windows
+    - Fix failure in mpirun_rsh with large number of nodes
+    - Fix singleton initialization issue with SLURM/PMI2 and PSM/Omni-Path
+        - Thanks to Adam Moody @LLNL for the report
+    - Fix build failure with when enabling GPFS support in ROMIO
+        - Thanks to Doug Johnson @OHTech for the report
+    - Fix issues with architecture detection in PSM-CH3 and PSM2-CH3 channels
+    - Fix failures with CMA read at very large message sizes
+    - Fix faiures with MV2_SHOW_HCA_BINDING on single-node jobs
+    - Fix compilation warnings and memory leaks
+
+MVAPICH2 2.3rc2 (04/30/2018)
+ 
+* Features and Enhancements (since 2.3rc1):
+    - Based on MPICH v3.2.1
+    - Enhanced small message performance for MPI_Alltoallv
+    - Improve performance for host-based transfers when CUDA is enabled
+    - Add architecture detection for IBM POWER9 CPUs
+    - Enhance architecture detection for Intel Skylake CPUs
+    - Enhance MPI initialization to gracefully handle RDMA_CM failures
+    - Improve algorithm selection of several collectives
+    - Enhance detection of number and IP addresses of IB devices
+    - Tested with CLANG v5.0.0
+  
+* Bug Fixes (since 2.3rc1):
+    - Fix issue in autogen step with duplicate error messages
+    - Fix issue with XRC connection establishment
+    - Fix build issue with SLES 15 and Perl 5.26.1
+        - Thanks to Matias A Cabral @Intel for the report and patch
+    - Fix segfault when manually selecting collective algorithms
+    - Fix cleanup of preallocated RDMA_FP regions at RDMA_CM finalize
+    - Fix compilation warnings and memory leaks
+
 MVAPICH2 2.3rc1 (02/19/2018)
  
 * Features and Enhancements (since 2.3b):

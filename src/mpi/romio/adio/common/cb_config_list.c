@@ -202,6 +202,7 @@ int ADIOI_cb_gather_name_array(MPI_Comm comm,
 	
 	procname[0] = ADIOI_Malloc(alloc_size);
 	if (procname[0] == NULL) {
+	    ADIOI_Free(array);
 	    return -1;
 	}
 
@@ -702,7 +703,7 @@ static int get_max_procs(int cb_nodes)
  *
  * Returns a token of types defined at top of this file.
  */
-#if defined(ROMIO_GPFS)
+#if defined(BGQPLATFORM)
 /* On BlueGene, the ',' character shows up in get_processor_name, so we have to
  * use a different delimiter */
 #define COLON ':'

@@ -1,3 +1,9 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
+/*
+ *  (C) 2015 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+
 #include <mpi.h>
 #include <stdio.h>
 
@@ -20,7 +26,7 @@ int main(int argc, char *argv[])
 
     if (master == MPI_COMM_NULL) {
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        MPI_Comm_spawn("./spawn-nullargs", args,        /*MPI_ARGV_NULL, */
+        MPI_Comm_spawn("./spawn-rootargs", args,        /*MPI_ARGV_NULL, */
                        5, MPI_INFO_NULL, 0, MPI_COMM_SELF, &worker, MPI_ERRCODES_IGNORE);
         MPI_Barrier(worker);
         MPI_Comm_disconnect(&worker);

@@ -162,7 +162,7 @@ cvars:
       verbosity   : MPI_T_VERBOSITY_USER_BASIC
       scope       : MPI_T_SCOPE_ALL_EQ
       description : >-
-        This parameter specifies the message size above which we begin the
+        This parameter specifies the message size above which we begin to
         stripe the message across multiple rails (if present).
 
     - name        : RAIL_SHARING_MED_MSG_THRESHOLD
@@ -227,7 +227,7 @@ cvars:
       verbosity   : MPI_T_VERBOSITY_USER_BASIC
       scope       : MPI_T_SCOPE_ALL_EQ
       description : >-
-        The value of this variable can be set to choose diㄦent Rendezvous
+        The value of this variable can be set to choose different rendezvous
         protocols. RPUT (default RDMA-Write) RGET (RDMA Read based), R3
         (send/recv based).
 

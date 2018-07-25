@@ -12,10 +12,6 @@
 #include <osu_util.h>
 
 double  t_start = 0.0, t_end = 0.0;
-char    sbuf_original[MYBUFSIZE];
-char    rbuf_original[MYBUFSIZE];
-char    cbuf_original[MYBUFSIZE];
-char    tbuf_original[MYBUFSIZE];
 uint64_t *sbuf=NULL, *rbuf=NULL, *tbuf=NULL, *cbuf=NULL;
 
 void print_latency (int, int);
@@ -152,10 +148,9 @@ void run_cas_with_flush (int rank, enum WINDOW type)
     MPI_Aint disp = 0;
     MPI_Win     win;
 
-    allocate_atomic_memory(rank, sbuf_original, rbuf_original,
-                tbuf_original, cbuf_original, (char **)&sbuf, 
-                (char **)&rbuf, (char **)&tbuf, (char **) &cbuf, (char **)&rbuf, 
-                options.max_message_size, type, &win);
+    allocate_atomic_memory(rank, (char **)&sbuf, (char **)&rbuf,
+            (char **)&tbuf, (char **) &cbuf, (char **)&rbuf, 
+            options.max_message_size, type, &win);
 
     MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
 
@@ -189,9 +184,8 @@ void run_cas_with_lock_all (int rank, enum WINDOW type)
     MPI_Aint disp = 0;
     MPI_Win     win;
 
-    allocate_atomic_memory(rank, sbuf_original, rbuf_original,
-            tbuf_original, cbuf_original, (char **)&sbuf,                
-            (char **)&rbuf, (char **)&tbuf, (char **) &cbuf, (char **)&rbuf,
+    allocate_atomic_memory(rank, (char **)&sbuf, (char **)&rbuf,
+            (char **)&tbuf, (char **) &cbuf, (char **)&rbuf, 
             options.max_message_size, type, &win);
 
     if(rank == 0) {
@@ -225,10 +219,9 @@ void run_cas_with_flush_local (int rank, enum WINDOW type)
     MPI_Aint disp = 0;
     MPI_Win     win;
 
-    allocate_atomic_memory(rank, sbuf_original, rbuf_original,
-                tbuf_original, cbuf_original, (char **)&sbuf,                
-                (char **)&rbuf, (char **)&tbuf, (char **) &cbuf, (char **)&rbuf,
-                options.max_message_size, type, &win);
+    allocate_atomic_memory(rank, (char **)&sbuf, (char **)&rbuf,
+            (char **)&tbuf, (char **) &cbuf, (char **)&rbuf, 
+            options.max_message_size, type, &win);
 
     MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
 
@@ -263,10 +256,9 @@ void run_cas_with_lock(int rank, enum WINDOW type)
     MPI_Aint disp = 0;
     MPI_Win     win;
 
-    allocate_atomic_memory(rank, sbuf_original, rbuf_original,
-                tbuf_original, cbuf_original, (char **)&sbuf,                
-                (char **)&rbuf, (char **)&tbuf, (char **) &cbuf, (char **)&rbuf,
-                options.max_message_size, type, &win);
+    allocate_atomic_memory(rank, (char **)&sbuf, (char **)&rbuf,
+            (char **)&tbuf, (char **) &cbuf, (char **)&rbuf, 
+            options.max_message_size, type, &win);
 
     if(rank == 0) {
 
@@ -300,10 +292,9 @@ void run_cas_with_fence(int rank, enum WINDOW type)
 
     MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
 
-    allocate_atomic_memory(rank, sbuf_original, rbuf_original,
-                tbuf_original, cbuf_original, (char **)&sbuf,                
-                (char **)&rbuf, (char **)&tbuf, (char **) &cbuf, (char **)&rbuf,
-                options.max_message_size, type, &win);
+    allocate_atomic_memory(rank, (char **)&sbuf, (char **)&rbuf,
+            (char **)&tbuf, (char **) &cbuf, (char **)&rbuf, 
+            options.max_message_size, type, &win);
 
     if (type == WIN_DYNAMIC) {
         disp = disp_remote;
@@ -349,10 +340,9 @@ void run_cas_with_pscw(int rank, enum WINDOW type)
     MPI_Group       comm_group, group;
     MPI_CHECK(MPI_Comm_group(MPI_COMM_WORLD, &comm_group));
 
-    allocate_atomic_memory(rank, sbuf_original, rbuf_original,
-                tbuf_original, cbuf_original, (char **)&sbuf,                
-                (char **)&rbuf, (char **)&tbuf, (char **) &cbuf, (char **)&rbuf,
-                options.max_message_size, type, &win);
+    allocate_atomic_memory(rank, (char **)&sbuf, (char **)&rbuf,
+            (char **)&tbuf, (char **) &cbuf, (char **)&rbuf, 
+            options.max_message_size, type, &win);
 
     if (type == WIN_DYNAMIC) {
         disp = disp_remote;

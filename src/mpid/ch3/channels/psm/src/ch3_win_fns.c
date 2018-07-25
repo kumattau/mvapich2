@@ -61,7 +61,7 @@ int MPIDI_CH3_SHM_Win_shared_query(MPID_Win * win_ptr, int target_rank, MPI_Aint
 
     comm_size = win_ptr->comm_ptr->local_size;
 
-    if (comm_size <= 1) {
+    if (FALSE == win_ptr->shm_allocated || comm_size <= 1) {
         mpi_errno = MPIDI_CH3U_Win_shared_query(win_ptr, target_rank, size, disp_unit, baseptr);
         if (mpi_errno != MPI_SUCCESS) {
             MPIR_ERR_POP(mpi_errno);
@@ -542,7 +542,7 @@ static int MPIDI_CH3I_Win_gather_info(void *base, MPI_Aint size, int disp_unit, 
         /* Unlink mapped files so that they get cleaned up when
          * process exits */
         MPIDI_CH3I_SHMEM_COLL_Unlink();
-        (*win_ptr)->shm_coll_comm_ref == 1;
+        (*win_ptr)->shm_coll_comm_ref = 1;
     } else if ((*win_ptr)->shm_coll_comm_ref > 0) {
         (*win_ptr)->shm_coll_comm_ref++;
     }
@@ -709,7 +709,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     MPI_Aint *node_sizes;
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     int noncontig = FALSE;
-    int comm_rank, comm_size;
+    int comm_size;
     MPIDI_VC_t *vc = NULL;
     MPIU_CHKPMEM_DECL(1);
     MPIU_CHKLMEM_DECL(1);
@@ -718,7 +718,6 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WIN_ALLOCATE_SHM);
 
     comm_size = (*win_ptr)->comm_ptr->local_size;
-    comm_rank = (*win_ptr)->comm_ptr->rank;
 
     if (comm_size <= 1) {
         mpi_errno =
@@ -767,7 +766,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
         /* Unlink mapped files so that they get cleaned up when
          * process exits */
         MPIDI_CH3I_SHMEM_COLL_Unlink();
-        (*win_ptr)->shm_coll_comm_ref == 1;
+        (*win_ptr)->shm_coll_comm_ref = 1;
     } else if ((*win_ptr)->shm_coll_comm_ref > 0) {
         (*win_ptr)->shm_coll_comm_ref++;
     }

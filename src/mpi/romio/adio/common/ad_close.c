@@ -60,7 +60,7 @@ void ADIO_Close(ADIO_File fd, int *error_code)
 	ADIOI_Ftable[fd->fortran_handle] = MPI_FILE_NULL;
     }
 
-    if (fd->hints && fd->hints->ranklist) ADIOI_Free(fd->hints->ranklist);
+    if (fd->hints) ADIOI_Free(fd->hints->ranklist);
     if (fd->hints && fd->hints->cb_config_list) ADIOI_Free(fd->hints->cb_config_list);
 
     /* This BlueGene platform-specific free must be done in the common code
@@ -71,10 +71,8 @@ void ADIO_Close(ADIO_File fd, int *error_code)
      * ADIOI_GPFS_Close and re-open via ADIOI_GPFS_Open are done which results
      * in a double-free - ADIOI_GPFS_Open does not redo the SetInfo...  */
 #ifdef BGQPLATFORM
-    if (fd->hints && fd->hints->fs_hints.bg.bridgelist)
-      ADIOI_Free(fd->hints->fs_hints.bg.bridgelist);
-    if (fd->hints && fd->hints->fs_hints.bg.bridgelistnum)
-      ADIOI_Free(fd->hints->fs_hints.bg.bridgelistnum);
+    if (fd->hints && fd->hints->fs_hints.bg.bridgelist) ADIOI_Free(fd->hints->fs_hints.bg.bridgelist);
+    if (fd->hints && fd->hints->fs_hints.bg.bridgelistnum) ADIOI_Free(fd->hints->fs_hints.bg.bridgelistnum);
 #endif
 
     /* Persistent File Realms */
@@ -95,7 +93,7 @@ void ADIO_Close(ADIO_File fd, int *error_code)
 	ADIOI_Free(fd->file_realm_st_offs);
 	ADIOI_Free(fd->file_realm_types);
     }
-    if (fd->hints) ADIOI_Free(fd->hints);
+    ADIOI_Free(fd->hints);
 
 
 
@@ -113,7 +111,7 @@ void ADIO_Close(ADIO_File fd, int *error_code)
 
     MPI_Info_free(&(fd->info));
 
-    if (fd->io_buf != NULL) ADIOI_Free(fd->io_buf);
+    ADIOI_Free(fd->io_buf);
     ADIOI_OneSidedCleanup(fd);
 
     /* memory for fd is freed in MPI_File_close */

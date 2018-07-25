@@ -312,7 +312,6 @@ int rdma_find_active_port(struct ibv_context *context,
                           struct ibv_device *ib_dev)
 {
     int j = 0;
-    const char *dev_name = NULL;
     struct ibv_port_attr port_attr;
 
     for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; ++j) {
@@ -1072,29 +1071,33 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
         MPIDI_PG_Get_vc(pg, i, &vc);
 
         vc->mrail.num_rails = rdma_num_rails;
-        vc->mrail.rails = MPIU_Malloc
-            (sizeof *vc->mrail.rails * vc->mrail.num_rails);
-
         if (!vc->mrail.rails) {
-            MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
-                                      "**fail", "**fail %s",
-                                      "Failed to allocate resources for "
-                                      "multirails");
-        }
+            vc->mrail.rails = MPIU_Malloc
+                (sizeof *vc->mrail.rails * vc->mrail.num_rails);
 
-        MPIU_Memset(vc->mrail.rails, 0,
+            if (!vc->mrail.rails) {
+                MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
+                        "**fail", "**fail %s",
+                        "Failed to allocate resources for "
+                        "multirails");
+            }
+
+            MPIU_Memset(vc->mrail.rails, 0,
                     (sizeof *vc->mrail.rails * vc->mrail.num_rails));
-
-        vc->mrail.srp.credits = MPIU_Malloc
-            (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails);
-        if (!vc->mrail.srp.credits) {
-            MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
-                                      "**fail", "**fail %s",
-                                      "Failed to allocate resources for "
-                                      "credits array");
         }
-        MPIU_Memset(vc->mrail.srp.credits, 0,
+
+        if (!vc->mrail.srp.credits) {
+            vc->mrail.srp.credits = MPIU_Malloc
+                (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails);
+            if (!vc->mrail.srp.credits) {
+                MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
+                        "**fail", "**fail %s",
+                        "Failed to allocate resources for "
+                        "credits array");
+            }
+            MPIU_Memset(vc->mrail.srp.credits, 0,
                     (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails));
+        }
 
         if (!qp_required(vc, pg_rank, i)) {
             continue;

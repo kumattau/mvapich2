@@ -21,7 +21,6 @@
 #include "ckpoint.h"
 #include "demux.h"
 #include "topo.h"
-#include "hydt_ftb.h"
 
 struct HYD_pmcd_pmip_pmi_handle *HYD_pmcd_pmip_pmi_handle = { 0 };
 
@@ -216,25 +215,15 @@ static HYD_status check_pmi_cmd(char **buf, int *pmi_version, int *repeat)
 
 static HYD_status pmi_cb(int fd, HYD_event_t events, void *userp)
 {
-    char *buf = NULL, *pmi_cmd = NULL, *args[MAX_PMI_ARGS] = { 0 };
+    char *buf = NULL, *pmi_cmd = NULL, **args = NULL;
     int closed, repeat, sent, i = -1, linelen, pid = -1;
     struct HYD_pmcd_hdr hdr;
     struct HYD_pmcd_pmip_pmi_handle *h;
-    char ftb_event_payload[HYDT_FTB_MAX_PAYLOAD_DATA];
     HYD_status status = HYD_SUCCESS;
 
     HYDU_FUNC_ENTER();
 
     HYD_pmcd_init_header(&hdr);
-
-    /* PMI-1 does not tell us how much to read. We read how much ever
-     * we can, parse out full PMI commands from it, and process
-     * them. When we don't have a full PMI command, we store the
-     * rest. */
-    status =
-        HYDU_sock_read(fd, pmi_storage + pmi_storage_len, HYD_TMPBUF_SIZE - pmi_storage_len,
-                       &linelen, &closed, HYDU_SOCK_COMM_NONE);
-    HYDU_ERR_POP(status, "unable to read PMI command\n");
 
     /* Try to find the PMI FD */
     for (i = 0; i < HYD_pmcd_pmip.local.proxy_process_count; i++) {
@@ -243,6 +232,17 @@ static HYD_status pmi_cb(int fd, HYD_event_t events, void *userp)
             break;
         }
     }
+
+ read_cmd:
+    /* PMI-1 does not tell us how much to read. We read how much ever
+     * we can, parse out full PMI commands from it, and process
+     * them. When we don't have a full PMI command, we go back and
+     * read from the same FD until we do. PMI clients (1 and 2) always
+     * send full commands, then wait for response. */
+    status =
+        HYDU_sock_read(fd, pmi_storage + pmi_storage_len, HYD_TMPBUF_SIZE - pmi_storage_len,
+                       &linelen, &closed, HYDU_SOCK_COMM_NONE);
+    HYDU_ERR_POP(status, "unable to read PMI command\n");
 
     if (closed) {
         /* If a PMI application terminates, we clean up the remaining
@@ -256,12 +256,6 @@ static HYD_status pmi_cb(int fd, HYD_event_t events, void *userp)
          * active" (which means that this is an MPI application).
          */
         if (pid != -1 && HYD_pmcd_pmip.downstream.pmi_fd_active[pid]) {
-            MPL_snprintf(ftb_event_payload, HYDT_FTB_MAX_PAYLOAD_DATA,
-                         "pgid:%d rank:%d",
-                         HYD_pmcd_pmip.local.pgid, HYD_pmcd_pmip.downstream.pmi_rank[pid]);
-            status = HYDT_ftb_publish("FTB_MPI_PROCS_DEAD", ftb_event_payload);
-            HYDU_ERR_POP(status, "FTB publish failed\n");
-
             /* If this is not a forced cleanup, store a temporary
              * erroneous exit status. In case the application does not
              * return a non-zero exit status, we will use this. */
@@ -301,6 +295,14 @@ static HYD_status pmi_cb(int fd, HYD_event_t events, void *userp)
         pmi_storage[pmi_storage_len] = 0;
     }
 
+ check_cmd:
+    status = check_pmi_cmd(&buf, &hdr.pmi_version, &repeat);
+    HYDU_ERR_POP(status, "error checking the PMI command\n");
+
+    if (buf == NULL)
+        /* read more to get a full command. */
+        goto read_cmd;
+
     /* We were able to read the PMI command correctly. If we were able
      * to identify what PMI FD this is, activate it. If we were not
      * able to identify the PMI FD, we will activate it when we get
@@ -308,63 +310,65 @@ static HYD_status pmi_cb(int fd, HYD_event_t events, void *userp)
     if (pid != -1 && !HYD_pmcd_pmip.downstream.pmi_fd_active[pid])
         HYD_pmcd_pmip.downstream.pmi_fd_active[pid] = 1;
 
-    do {
-        status = check_pmi_cmd(&buf, &hdr.pmi_version, &repeat);
-        HYDU_ERR_POP(status, "error checking the PMI command\n");
+    if (hdr.pmi_version == 1)
+        HYD_pmcd_pmip_pmi_handle = HYD_pmcd_pmip_pmi_v1;
+    else
+        HYD_pmcd_pmip_pmi_handle = HYD_pmcd_pmip_pmi_v2;
 
-        if (buf == NULL)
-            break;
+    HYDU_MALLOC(args, char **, MAX_PMI_ARGS * sizeof(char *), status);
+    for(i = 0;i < MAX_PMI_ARGS; i++)
+        args[i]= NULL;
 
-        if (hdr.pmi_version == 1)
-            HYD_pmcd_pmip_pmi_handle = HYD_pmcd_pmip_pmi_v1;
-        else
-            HYD_pmcd_pmip_pmi_handle = HYD_pmcd_pmip_pmi_v2;
+    status = HYD_pmcd_pmi_parse_pmi_cmd(buf, hdr.pmi_version, &pmi_cmd, args);
+    HYDU_ERR_POP(status, "unable to parse PMI command\n");
 
-        status = HYD_pmcd_pmi_parse_pmi_cmd(buf, hdr.pmi_version, &pmi_cmd, args);
-        HYDU_ERR_POP(status, "unable to parse PMI command\n");
+    if (HYD_pmcd_pmip.user_global.debug) {
+        HYDU_dump(stdout, "got pmi command (from %d): %s\n", fd, pmi_cmd);
+        HYDU_print_strlist(args);
+    }
 
-        if (HYD_pmcd_pmip.user_global.debug) {
-            HYDU_dump(stdout, "got pmi command (from %d): %s\n", fd, pmi_cmd);
-            HYDU_print_strlist(args);
+    h = HYD_pmcd_pmip_pmi_handle;
+    while (h->handler) {
+        if (!strcmp(pmi_cmd, h->cmd)) {
+            status = h->handler(fd, args);
+            HYDU_ERR_POP(status, "PMI handler returned error\n");
+            goto fn_exit;
         }
+        h++;
+    }
 
-        h = HYD_pmcd_pmip_pmi_handle;
-        while (h->handler) {
-            if (!strcmp(pmi_cmd, h->cmd)) {
-                status = h->handler(fd, args);
-                HYDU_ERR_POP(status, "PMI handler returned error\n");
-                goto fn_exit;
-            }
-            h++;
-        }
+    if (HYD_pmcd_pmip.user_global.debug) {
+        HYDU_dump(stdout, "we don't understand this command %s; forwarding upstream\n",
+                  pmi_cmd);
+    }
 
-        if (HYD_pmcd_pmip.user_global.debug) {
-            HYDU_dump(stdout, "we don't understand this command %s; forwarding upstream\n",
-                      pmi_cmd);
-        }
+    /* We don't understand the command; forward it upstream */
+    hdr.cmd = PMI_CMD;
+    hdr.pid = fd;
+    hdr.buflen = strlen(buf);
+    status =
+        HYDU_sock_write(HYD_pmcd_pmip.upstream.control, &hdr, sizeof(hdr), &sent, &closed,
+                        HYDU_SOCK_COMM_MSGWAIT);
+    HYDU_ERR_POP(status, "unable to send PMI header upstream\n");
+    HYDU_ASSERT(!closed, status);
 
-        /* We don't understand the command; forward it upstream */
-        hdr.cmd = PMI_CMD;
-        hdr.pid = fd;
-        hdr.buflen = strlen(buf);
-        status =
-            HYDU_sock_write(HYD_pmcd_pmip.upstream.control, &hdr, sizeof(hdr), &sent, &closed,
-                            HYDU_SOCK_COMM_MSGWAIT);
-        HYDU_ERR_POP(status, "unable to send PMI header upstream\n");
-        HYDU_ASSERT(!closed, status);
+    status =
+        HYDU_sock_write(HYD_pmcd_pmip.upstream.control, buf, hdr.buflen, &sent, &closed,
+                        HYDU_SOCK_COMM_MSGWAIT);
+    HYDU_ERR_POP(status, "unable to send PMI command upstream\n");
+    HYDU_ASSERT(!closed, status);
 
-        status =
-            HYDU_sock_write(HYD_pmcd_pmip.upstream.control, buf, hdr.buflen, &sent, &closed,
-                            HYDU_SOCK_COMM_MSGWAIT);
-        HYDU_ERR_POP(status, "unable to send PMI command upstream\n");
-        HYDU_ASSERT(!closed, status);
-
-    } while (repeat);
+    if (repeat)
+        /* there are more commands to process. */
+        goto check_cmd;
 
   fn_exit:
     if (pmi_cmd)
         HYDU_FREE(pmi_cmd);
-    HYDU_free_strlist(args);
+    if (args) {
+        HYDU_free_strlist(args);
+        HYDU_free(args);
+    }
     if (buf)
         HYDU_FREE(buf);
     HYDU_FUNC_EXIT();
@@ -376,8 +380,8 @@ static HYD_status pmi_cb(int fd, HYD_event_t events, void *userp)
 
 static HYD_status handle_pmi_response(int fd, struct HYD_pmcd_hdr hdr)
 {
-    int count, closed, sent;
-    char *buf = NULL, *pmi_cmd = NULL, *args[MAX_PMI_INTERNAL_ARGS] = { 0 };
+    int count, closed, sent, i;
+    char *buf = NULL, *pmi_cmd = NULL, **args = NULL;
     struct HYD_pmcd_pmip_pmi_handle *h;
     HYD_status status = HYD_SUCCESS;
 
@@ -390,6 +394,10 @@ static HYD_status handle_pmi_response(int fd, struct HYD_pmcd_hdr hdr)
     HYDU_ASSERT(!closed, status);
 
     buf[hdr.buflen] = 0;
+
+    HYDU_MALLOC(args, char **, MAX_PMI_INTERNAL_ARGS * sizeof(char *), status);
+    for (i = 0; i < MAX_PMI_INTERNAL_ARGS; i++)
+        args[i] = NULL;
 
     status = HYD_pmcd_pmi_parse_pmi_cmd(buf, hdr.pmi_version, &pmi_cmd, args);
     HYDU_ERR_POP(status, "unable to parse PMI command\n");
@@ -421,7 +429,10 @@ static HYD_status handle_pmi_response(int fd, struct HYD_pmcd_hdr hdr)
   fn_exit:
     if (pmi_cmd)
         HYDU_FREE(pmi_cmd);
-    HYDU_free_strlist(args);
+    if (args) {
+        HYDU_free_strlist(args);
+        HYDU_free(args);
+    }
     if (buf)
         HYDU_FREE(buf);
     HYDU_FUNC_EXIT();
@@ -480,7 +491,6 @@ static HYD_status launch_procs(void)
     struct HYD_exec *exec;
     struct HYD_pmcd_hdr hdr;
     int sent, closed, pmi_fds[2] = { HYD_FD_UNSET, HYD_FD_UNSET };
-    char ftb_event_payload[HYDT_FTB_MAX_PAYLOAD_DATA];
     HYD_status status = HYD_SUCCESS;
 
     HYDU_FUNC_ENTER();
@@ -541,10 +551,6 @@ static HYD_status launch_procs(void)
         HYDU_ERR_POP(status, "unable to create env\n");
 
         /* Restart the proxy -- we use the first prefix in the list */
-        MPL_snprintf(ftb_event_payload, HYDT_FTB_MAX_PAYLOAD_DATA, "pgid:%d ranks:%d-%d",
-                     HYD_pmcd_pmip.local.pgid, HYD_pmcd_pmip.downstream.pmi_rank[0],
-                     HYD_pmcd_pmip.downstream.pmi_rank
-                     [HYD_pmcd_pmip.local.proxy_process_count - 1]);
         status = HYDT_ckpoint_restart(HYD_pmcd_pmip.local.pgid, HYD_pmcd_pmip.local.id,
                                       env, HYD_pmcd_pmip.local.proxy_process_count,
                                       HYD_pmcd_pmip.downstream.pmi_rank,
@@ -554,11 +560,8 @@ static HYD_status launch_procs(void)
                                       HYD_pmcd_pmip.downstream.err,
                                       HYD_pmcd_pmip.downstream.pid,
                                       HYD_pmcd_pmip.local.ckpoint_prefix_list[0]);
-        if (status)
-            status = HYDT_ftb_publish("FTB_MPI_PROCS_RESTART_FAIL", ftb_event_payload);
-        else
-            status = HYDT_ftb_publish("FTB_MPI_PROCS_RESTARTED", ftb_event_payload);
-        HYDU_ERR_POP(status, "checkpoint restart FTB publishing failure\n");
+        HYDU_ERR_POP(status, "unable to restart from checkpoint\n");
+
         goto fn_spawn_complete;
     }
 
@@ -897,7 +900,6 @@ HYD_status HYD_pmcd_pmip_control_cmd_cb(int fd, HYD_event_t events, void *userp)
 {
     int cmd_len, closed;
     struct HYD_pmcd_hdr hdr;
-    char ftb_event_payload[HYDT_FTB_MAX_PAYLOAD_DATA];
     char *buf;
     HYD_status status = HYD_SUCCESS;
 
@@ -918,10 +920,6 @@ HYD_status HYD_pmcd_pmip_control_cmd_cb(int fd, HYD_event_t events, void *userp)
     else if (hdr.cmd == CKPOINT) {
         HYDU_dump(stdout, "requesting checkpoint\n");
 
-        MPL_snprintf(ftb_event_payload, HYDT_FTB_MAX_PAYLOAD_DATA, "pgid:%d ranks:%d-%d",
-                     HYD_pmcd_pmip.local.pgid, HYD_pmcd_pmip.downstream.pmi_rank[0],
-                     HYD_pmcd_pmip.downstream.pmi_rank
-                     [HYD_pmcd_pmip.local.proxy_process_count - 1]);
         status = HYDT_ckpoint_checkpoint(HYD_pmcd_pmip.local.pgid, HYD_pmcd_pmip.local.id,
                                          HYD_pmcd_pmip.local.ckpoint_prefix_list[0]);
 

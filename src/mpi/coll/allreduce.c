@@ -907,12 +907,19 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
 
     mpi_errno = MPIR_Allreduce_impl(sendbuf, recvbuf, count, datatype, op, comm_ptr, &errflag);
     if (mpi_errno) goto fn_fail;
+
 #ifdef _OSU_MVAPICH_
     if (mv2_use_osu_collectives) {
         comm_ptr->dev.ch.allreduce_coll_count++;
         mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
         if (mpi_errno) {
             MPIR_ERR_POP(mpi_errno);
+        }
+        if(comm_ptr->dev.ch.allgather_comm_ok == 0) {
+            mpi_errno = mv2_increment_allgather_coll_counter(comm_ptr);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
         }
 #if defined(_SHARP_SUPPORT_)
         if (mv2_enable_sharp_coll &&

@@ -38,6 +38,20 @@
 /* This is the number of ints that can be carried within an RMA packet */
 #define MPIDI_RMA_IMMED_BYTES 8
 
+/* Union for immediate data in RMA packet headers.*/
+typedef union {
+    char payload[MPIDI_RMA_IMMED_BYTES];
+#ifdef NEEDS_STRICT_ALIGNMENT
+    /* Because the data is accessed per predefined type in the packet handler
+     * of accumulate-like operations, we need extra union members to ensure
+     * aligned access.
+     * NOTE: this fix might increase the packet size (long double complex
+     * can be 32bytes), thus we only enable this fix for a few platforms which
+     * are alignment-sensitive.*/
+    MPL_mem_alignment_t alignment;
+#endif
+} MPIDI_CH3_RMA_Immed_u;
+
 /* Union over all types (integer, logical, and multi-language types) that are
    allowed in a CAS operation.  This is used to allocate enough space in the
    packet header for immediate data.  */
@@ -502,16 +516,16 @@ typedef struct MPIDI_CH3_Pkt_cancel_send_resp
         err_ = MPI_SUCCESS;                                             \
         switch((pkt_).type) {                                           \
         case (MPIDI_CH3_PKT_PUT_IMMED):                                 \
-            immed_data_ = (pkt_).put.info.data;                         \
+            immed_data_ = &((pkt_).put.info.data);                      \
             break;                                                      \
         case (MPIDI_CH3_PKT_ACCUMULATE_IMMED):                          \
-            immed_data_ = (pkt_).accum.info.data;                       \
+            immed_data_ = &((pkt_).accum.info.data);                    \
             break;                                                      \
         case (MPIDI_CH3_PKT_GET_ACCUM_IMMED):                           \
-            immed_data_ = (pkt_).get_accum.info.data;                   \
+            immed_data_ = &((pkt_).get_accum.info.data);                \
             break;                                                      \
         case (MPIDI_CH3_PKT_FOP_IMMED):                                 \
-            immed_data_ = (pkt_).fop.info.data;                         \
+            immed_data_ = &((pkt_).fop.info.data);                      \
             break;                                                      \
         case (MPIDI_CH3_PKT_CAS_IMMED):                                 \
             /* Note that here we return pointer of origin data, not     \
@@ -519,13 +533,13 @@ typedef struct MPIDI_CH3_Pkt_cancel_send_resp
             immed_data_ = &((pkt_).cas.origin_data);                    \
             break;                                                      \
         case (MPIDI_CH3_PKT_GET_RESP_IMMED):                            \
-            immed_data_ = (pkt_).get_resp.info.data;                    \
+            immed_data_ = &((pkt_).get_resp.info.data);                 \
             break;                                                      \
         case (MPIDI_CH3_PKT_GET_ACCUM_RESP_IMMED):                      \
-            immed_data_ = (pkt_).get_accum_resp.info.data;              \
+            immed_data_ = &((pkt_).get_accum_resp.info.data);           \
             break;                                                      \
         case (MPIDI_CH3_PKT_FOP_RESP_IMMED):                            \
-            immed_data_ = (pkt_).fop_resp.info.data;                    \
+            immed_data_ = &((pkt_).fop_resp.info.data);                 \
             break;                                                      \
         case (MPIDI_CH3_PKT_CAS_RESP_IMMED):                            \
             immed_data_ = &((pkt_).cas_resp.info.data);                 \
@@ -986,7 +1000,7 @@ typedef struct MPIDI_CH3_Pkt_put
     MPI_Win source_win_handle;
     union {
         int dataloop_size;
-        char data[MPIDI_RMA_IMMED_BYTES];
+        MPIDI_CH3_RMA_Immed_u data;
     } info;
 #if defined (CHANNEL_PSM)
     MPIDI_msg_sz_t rndv_len;
@@ -1074,7 +1088,7 @@ typedef struct MPIDI_CH3_Pkt_get_resp
         /* note that we use struct here in order
          * to consistently access data
          * by "pkt->info.data". */
-        char data[MPIDI_RMA_IMMED_BYTES];
+        MPIDI_CH3_RMA_Immed_u data;
     } info;
 #if defined (CHANNEL_PSM)
     int source_rank;
@@ -1166,7 +1180,7 @@ typedef struct MPIDI_CH3_Pkt_accum
     MPI_Win source_win_handle;
     union {
         int dataloop_size;
-        char data[MPIDI_RMA_IMMED_BYTES];
+        MPIDI_CH3_RMA_Immed_u data;
     } info;
 #if defined (CHANNEL_PSM)
     MPIDI_msg_sz_t rndv_len;
@@ -1199,7 +1213,7 @@ typedef struct MPIDI_CH3_Pkt_get_accum {
     MPI_Win target_win_handle;
     union {
         int dataloop_size;
-        char data[MPIDI_RMA_IMMED_BYTES];
+        MPIDI_CH3_RMA_Immed_u data;
     } info;
 #if defined (CHANNEL_PSM)
     MPIDI_msg_sz_t rndv_len;
@@ -1234,7 +1248,7 @@ typedef struct MPIDI_CH3_Pkt_get_accum_resp
         /* note that we use struct here in order
          * to consistently access data
          * by "pkt->info.data". */
-        char data[MPIDI_RMA_IMMED_BYTES];
+        MPIDI_CH3_RMA_Immed_u data;
     } info;
 #if defined (CHANNEL_PSM)
     int source_rank;
@@ -1315,7 +1329,7 @@ typedef struct MPIDI_CH3_Pkt_fop
         /* note that we use struct here in order
          * to consistently access data
          * by "pkt->info.data". */
-        char data[MPIDI_RMA_IMMED_BYTES];
+        MPIDI_CH3_RMA_Immed_u data;
     } info;
 #if defined (CHANNEL_PSM)
     int source_rank;
@@ -1338,7 +1352,7 @@ typedef struct MPIDI_CH3_Pkt_fop_resp
         /* note that we use struct here in order
          * to consistently access data
          * by "pkt->info.data". */
-        char data[MPIDI_RMA_IMMED_BYTES];
+        MPIDI_CH3_RMA_Immed_u data;
     } info;
     /* followings are used to decrement ack_counter at orign */
     int target_rank;

@@ -38,7 +38,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iscatter_count_recv);
 struct shared_state {
     int sendcount;
     int curr_count;
-    int send_subtree_count;
+    MPI_Aint send_subtree_count;
     int nbytes;
     MPI_Status status;
 };

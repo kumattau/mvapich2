@@ -11,7 +11,9 @@
  *
  */
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include <pthread.h>
 #include "mpiimpl.h"
@@ -48,7 +50,7 @@ void psm_queue_init()
 #define FUNCNAME psm_complete_req
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-void psm_complete_req(MPID_Request *req, PSM_MQ_STATUS_T psmstat)
+int psm_complete_req(MPID_Request *req, PSM_MQ_STATUS_T psmstat)
 {
     int count = 0;
     int mpi_errno = MPI_SUCCESS;
@@ -81,8 +83,11 @@ void psm_complete_req(MPID_Request *req, PSM_MQ_STATUS_T psmstat)
         }
     }
 
+fn_exit:
+    return mpi_errno;
 fn_fail:
     PRINT_DEBUG(DEBUG_1SC_verbose>1, "request error\n");
+    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -143,7 +148,6 @@ int psm_process_completion(MPID_Request *req, PSM_MQ_STATUS_T gblstatus)
 
     /* request is a RNDV receive for a GET */
     if(req->psm_flags & (PSM_RNDVRECV_GET_REQ | PSM_GETACCUM_GET_RNDV_REQ)) {
-        //MPID_Request_complete(req->savedreq);
         mpi_errno = psm_getresp_rndv_complete(req, gblstatus.nbytes);
         goto fn_exit;
     }
@@ -171,7 +175,7 @@ int psm_process_completion(MPID_Request *req, PSM_MQ_STATUS_T gblstatus)
 
     /* request is a RNDV send */
     if(req->psm_flags & PSM_RNDVSEND_REQ) {
-        psm_complete_req(req, gblstatus);
+        mpi_errno = psm_complete_req(req, gblstatus);
         MPID_Request_release(req);
         goto fn_exit;
     }
@@ -191,7 +195,7 @@ int psm_process_completion(MPID_Request *req, PSM_MQ_STATUS_T gblstatus)
         goto fn_exit;
     }
 
-    psm_complete_req(req, gblstatus);
+    mpi_errno = psm_complete_req(req, gblstatus);
     MPID_Request_release(req);
 
 fn_exit:
@@ -247,9 +251,10 @@ int psm_progress_wait(int blocking)
             _psm_progress_exit_;
             req = (MPID_Request *) gblstatus.context;
 #if PSM_VERNO >= PSM_2_1_VERSION
-            PRINT_DEBUG(DEBUG_CHM_verbose>1, "got bytes from %d\n", gblstatus.msg_tag.tag1);
+            PRINT_DEBUG(DEBUG_CHM_verbose>1, "got %llu of %llu bytes from %d\n",
+                    gblstatus.nbytes, gblstatus.msg_length, gblstatus.msg_tag.tag1);
 #else
-            PRINT_DEBUG(DEBUG_CHM_verbose>1, "got bytes from %d\n", (gblstatus.msg_tag & SRC_RANK_MASK));
+            PRINT_DEBUG(DEBUG_CHM_verbose>1, "got bytes from %d\n", (int)(gblstatus.msg_tag & SRC_RANK_MASK));
 #endif
 
             mpi_errno = psm_process_completion(req, gblstatus);
@@ -378,9 +383,9 @@ int psm_no_lock(pthread_spinlock_t *lock)
 #define FCNAME MPL_QUOTE(FUNCNAME)
 void psm_pe_yield()
 {
-    pthread_mutex_unlock(&(MPIR_ThreadInfo.global_mutex));
+    pthread_mutex_unlock((pthread_mutex_t *)&(MPIR_ThreadInfo.global_mutex));
     sched_yield();
-    pthread_mutex_lock(&(MPIR_ThreadInfo.global_mutex));
+    pthread_mutex_lock((pthread_mutex_t *)&(MPIR_ThreadInfo.global_mutex));
 }
 
 #undef FUNCNAME
@@ -413,7 +418,7 @@ void psm_update_mpistatus(MPI_Status *stat, PSM_MQ_STATUS_T psmst, int append)
     if (append) {
         old_nbytes = MPIR_STATUS_GET_COUNT(*stat);
     }
-    MPIR_STATUS_SET_COUNT(*stat, psmst.nbytes + old_nbytes);
+    MPIR_STATUS_SET_COUNT(*stat, (psmst.nbytes + old_nbytes));
 }
 
 /* if PSM_DEBUG is enabled, we will dump some counters */

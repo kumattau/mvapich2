@@ -1,3 +1,12 @@
+/*
+ *  (C) 2015 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ *
+ *  Portions of this code were written by Intel Corporation.
+ *  Copyright (C) 2011-2012 Intel Corporation.  Intel provides this material
+ *  to Argonne National Laboratory subject to Software Grant and Corporate
+ *  Contributor License Agreement dated February 8, 2012.
+ */
 #if (API_SET != API_SET_1) && (API_SET != API_SET_2)
 #error Undefined API SET
 #endif
@@ -42,7 +51,9 @@ int ADD_SUFFIX(MPID_nem_ofi_iprobe_impl)(struct MPIDI_VC *vc,
 
     BEGIN_FUNC(FCNAME);
     if (rreq_ptr) {
-        MPIDI_Request_create_rreq(rreq, mpi_errno, goto fn_exit);
+        MPIDI_CH3I_NM_OFI_RC(MPID_nem_ofi_create_req(&rreq, 1));
+        rreq->kind = MPID_REQUEST_RECV;
+
         *rreq_ptr = rreq;
         rreq->comm = comm;
         rreq->dev.match.parts.rank = source;
@@ -54,6 +65,8 @@ int ADD_SUFFIX(MPID_nem_ofi_iprobe_impl)(struct MPIDI_VC *vc,
         rreq = &rreq_s;
         rreq->dev.OnDataAvail = NULL;
     }
+
+    REQ_OFI(rreq)->pack_buffer    = NULL;
     REQ_OFI(rreq)->event_callback = ADD_SUFFIX(peek_callback);
     REQ_OFI(rreq)->match_state    = PEEK_INIT;
     OFI_ADDR_INIT(source, vc, remote_proc);
@@ -99,7 +112,22 @@ int ADD_SUFFIX(MPID_nem_ofi_iprobe_impl)(struct MPIDI_VC *vc,
 
     while (PEEK_INIT == REQ_OFI(rreq)->match_state)
         MPID_nem_ofi_poll(MPID_BLOCKING_POLL);
-    *status = rreq->status;
+
+    if (PEEK_NOT_FOUND == REQ_OFI(rreq)->match_state) {
+        if (rreq_ptr) {
+            MPID_Request_release(rreq);
+            *rreq_ptr = NULL;
+            *flag = 0;
+        }
+        MPID_nem_ofi_poll(MPID_NONBLOCKING_POLL);
+        goto fn_exit;
+    }
+
+    if (status != MPI_STATUS_IGNORE)
+        *status = rreq->status;
+
+    if (rreq_ptr)
+        MPIR_Request_add_ref(rreq);
     *flag = 1;
     END_FUNC_RC(FCNAME);
 }
@@ -133,7 +161,7 @@ int ADD_SUFFIX(MPID_nem_ofi_improbe)(struct MPIDI_VC *vc,
     int old_error = status->MPI_ERROR;
     int s;
     BEGIN_FUNC(FCNAME);
-    *flag = NORMAL_PEEK;
+    *flag = CLAIM_PEEK;
     s = ADD_SUFFIX(MPID_nem_ofi_iprobe_impl)(vc, source,
                                              tag, comm, context_offset, flag, status, message);
     if (*flag) {

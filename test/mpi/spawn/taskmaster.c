@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
     int provided;
     pthread_t *threads = NULL;
 #else
-    MPI_Comm *child;
+    MPI_Comm *child = NULL;
 #endif /* USE_THREADS */
     int can_spawn, errs = 0;
 
@@ -158,6 +158,9 @@ int main(int argc, char *argv[])
 #ifdef USE_THREADS
     if (threads)
         free(threads);
+#else
+    if (child)
+        free(child);
 #endif
     MPI_Finalize();
 

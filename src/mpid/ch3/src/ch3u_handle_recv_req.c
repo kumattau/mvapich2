@@ -81,10 +81,10 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq, int *comple
         if (rdma_enable_cuda && reqFn == MPIDI_CH3_ReqHandler_unpack_cudabuf) {  
             /*pass stream if using rndv protocol*/ 
             if (rreq->mrail.protocol != 0) {
-                mpi_errno = MPIDI_CH3_ReqHandler_unpack_cudabuf (vc, rreq, 
+                mpi_errno = MPIDI_CH3_ReqHandler_unpack_cudabuf_stream(vc, rreq, 
                         complete, (void *) stream_h2d);
             } else {
-                 mpi_errno = MPIDI_CH3_ReqHandler_unpack_cudabuf (vc, rreq, 
+                 mpi_errno = MPIDI_CH3_ReqHandler_unpack_cudabuf_stream(vc, rreq, 
                         complete, NULL);
             }
         } else 
@@ -492,7 +492,8 @@ int MPIDI_CH3_ReqHandler_GaccumRecvComplete(MPIDI_VC_t * vc, MPID_Request * rreq
     //target_rank is used in origin process to get target structure
     get_accum_resp_pkt->target_rank = win_ptr->comm_ptr->rank;
     get_accum_resp_pkt->source_rank = win_ptr->comm_ptr->rank;
-    get_accum_resp_pkt->mapped_trank = win_ptr->rank_mapping[vc->pg_rank];
+    /* Here 'mapped_trank' should be the global rank of the target */
+    get_accum_resp_pkt->mapped_trank = vc->pg_rank;
     get_accum_resp_pkt->mapped_srank = win_ptr->rank_mapping[win_ptr->comm_ptr->rank];
     get_accum_resp_pkt->source_win_handle = rreq->dev.source_win_handle;
     get_accum_resp_pkt->target_win_handle = rreq->dev.target_win_handle;
@@ -1204,6 +1205,7 @@ int MPIDI_CH3_ReqHandler_GetDerivedDTRecvComplete(MPIDI_VC_t * vc,
         /*If data is contig/non-contig is taken care by 
         psm_do_pack function*/
         MPID_Request tmp;
+        tmp.pkbuf = NULL;
         mpi_errno = psm_do_pack(sreq->dev.user_count, new_dtp->handle, NULL, &tmp, 
                     get_pkt->addr, 0, SEGMENT_IGNORE_LAST, PACK_NON_STREAM);
         if(mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -1213,6 +1215,12 @@ int MPIDI_CH3_ReqHandler_GetDerivedDTRecvComplete(MPIDI_VC_t * vc,
         
         if(get_pkt->rndv_mode) {
             assert(get_pkt->rndv_len == iov[1].MPL_IOV_LEN);
+        }
+        /* Let future send req knows if this is a non-contig req, so it can keep
+         * track of the pack buffer */
+        if (tmp.psm_flags & PSM_PACK_BUF_FREE) {
+            sreq->psm_flags |= PSM_1SIDED_NON_CONTIG_REQ;
+            tmp.pkbuf = NULL;
         }
         mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, 2, &sreq);
         if(mpi_errno != MPI_SUCCESS) {
@@ -1500,7 +1508,7 @@ static inline int perform_put_in_lock_queue(MPID_Win * win_ptr,
 
     if (put_pkt->type == MPIDI_CH3_PKT_PUT_IMMED) {
         /* all data fits in packet header */
-        mpi_errno = MPIR_Localcopy(put_pkt->info.data, put_pkt->count, put_pkt->datatype,
+        mpi_errno = MPIR_Localcopy((void *) &put_pkt->info.data, put_pkt->count, put_pkt->datatype,
                                    put_pkt->addr, put_pkt->count, put_pkt->datatype);
         if (mpi_errno != MPI_SUCCESS)
             MPIR_ERR_POP(mpi_errno);
@@ -1589,7 +1597,7 @@ static inline int perform_get_in_lock_queue(MPID_Win * win_ptr,
     MPID_Datatype_is_contig(get_pkt->datatype, &is_contig);
 
     if (get_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_IMMED_RESP) {
-        void *src = (void *) (get_pkt->addr), *dest = (void *) (get_resp_pkt->info.data);
+        void *src = (void *) (get_pkt->addr), *dest = (void *) &get_resp_pkt->info.data;
         mpi_errno = immed_copy(src, dest, len);
         if (mpi_errno != MPI_SUCCESS)
             MPIR_ERR_POP(mpi_errno);
@@ -1659,9 +1667,9 @@ static inline int perform_acc_in_lock_queue(MPID_Win * win_ptr,
 
     if (acc_pkt->type == MPIDI_CH3_PKT_ACCUMULATE_IMMED) {
         /* All data fits in packet header */
-        mpi_errno = do_accumulate_op(acc_pkt->info.data, acc_pkt->count, acc_pkt->datatype,
-                                     acc_pkt->addr, acc_pkt->count, acc_pkt->datatype,
-                                     0, acc_pkt->op);
+        mpi_errno = do_accumulate_op((void *) &acc_pkt->info.data, acc_pkt->count,
+                                     acc_pkt->datatype, acc_pkt->addr, acc_pkt->count,
+                                     acc_pkt->datatype, 0, acc_pkt->op);
     }
     else {
         MPIU_Assert(acc_pkt->type == MPIDI_CH3_PKT_ACCUMULATE);
@@ -1677,7 +1685,7 @@ static inline int perform_acc_in_lock_queue(MPID_Win * win_ptr,
 
         /* Note: here stream_offset is 0 because when piggybacking LOCK, we must use
          * the first stream unit. */
-        MPIU_Assert(recv_count = (int) recv_count);
+        MPIU_Assert(recv_count == (int) recv_count);
         mpi_errno = do_accumulate_op(target_lock_entry->data, (int) recv_count, acc_pkt->datatype,
                                      acc_pkt->addr, acc_pkt->count, acc_pkt->datatype,
                                      0, acc_pkt->op);
@@ -1766,7 +1774,7 @@ static inline int perform_get_acc_in_lock_queue(MPID_Win * win_ptr,
         /* Copy data from target window to response packet header */
 
         void *src = (void *) (get_accum_pkt->addr), *dest =
-            (void *) (get_accum_resp_pkt->info.data);
+            (void *) &(get_accum_resp_pkt->info.data);
         mpi_errno = immed_copy(src, dest, len);
         if (mpi_errno != MPI_SUCCESS) {
             if (win_ptr->shm_allocated == TRUE)
@@ -1778,7 +1786,7 @@ static inline int perform_get_acc_in_lock_queue(MPID_Win * win_ptr,
 
         /* All data fits in packet header */
         mpi_errno =
-            do_accumulate_op(get_accum_pkt->info.data, get_accum_pkt->count,
+            do_accumulate_op((void *) &get_accum_pkt->info.data, get_accum_pkt->count,
                              get_accum_pkt->datatype, get_accum_pkt->addr, get_accum_pkt->count,
                              get_accum_pkt->datatype, 0, get_accum_pkt->op);
 
@@ -1967,7 +1975,7 @@ static inline int perform_fop_in_lock_queue(MPID_Win * win_ptr,
 
     if (fop_pkt->type == MPIDI_CH3_PKT_FOP_IMMED) {
         /* copy data to resp pkt header */
-        void *src = fop_pkt->addr, *dest = fop_resp_pkt->info.data;
+        void *src = fop_pkt->addr, *dest = (void *) &fop_resp_pkt->info.data;
         mpi_errno = immed_copy(src, dest, type_size);
         if (mpi_errno != MPI_SUCCESS) {
             if (win_ptr->shm_allocated == TRUE)
@@ -1995,7 +2003,7 @@ static inline int perform_fop_in_lock_queue(MPID_Win * win_ptr,
 
     /* Apply the op */
     if (fop_pkt->type == MPIDI_CH3_PKT_FOP_IMMED) {
-        mpi_errno = do_accumulate_op(fop_pkt->info.data, 1, fop_pkt->datatype,
+        mpi_errno = do_accumulate_op((void *) &fop_pkt->info.data, 1, fop_pkt->datatype,
                                      fop_pkt->addr, 1, fop_pkt->datatype, 0, fop_pkt->op);
     }
     else {

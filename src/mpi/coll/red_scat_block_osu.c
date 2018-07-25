@@ -48,7 +48,6 @@ int MPIR_Reduce_scatter_block_ring_2lvl_MV2(
     int mpi_errno     = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int comm_size     = comm_ptr->local_size;
-    int rank          = comm_ptr->rank;
 
     if (comm_ptr->dev.ch.rank_list == NULL) {
         return MPIR_Reduce_scatter_block_ring_MV2(
@@ -315,11 +314,10 @@ int MPIR_Reduce_scatter_block_MV2(const void *sendbuf, void *recvbuf,
                                 int recvcount, MPI_Datatype datatype,
                                 MPI_Op op, MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag)
 {
-    int type_size = 0;
 	MPID_Op *op_ptr = NULL;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int is_commutative = 0, total_count = 0, nbytes = 0;
+    int is_commutative = 0, nbytes = 0;
 
     MPID_THREADPRIV_DECL;
 

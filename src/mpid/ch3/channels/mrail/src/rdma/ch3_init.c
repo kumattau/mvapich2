@@ -31,6 +31,7 @@ int (*check_cq_overflow) (MPIDI_VC_t *c, int rail);
 int (*perform_blocking_progress) (int hca_num, int num_cqs);
 void (*handle_multiple_cqs) (int num_cqs, int cq_choice, int is_send_completion);
 extern int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank);
+extern void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg);
 
 #undef FUNCNAME
 #define FUNCNAME split_type
@@ -73,6 +74,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     int pg_size, threshold, dpm = 0, p;
     char *value, *conn_info = NULL;
     int mv2_rdma_init_timers = 0;
+    int user_selected_rdma_cm = 0;
     MPIDI_VC_t *vc;
 
     /* Override split_type */
@@ -296,6 +298,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
 #if defined(RDMA_CM) && !defined(CKPT)
     if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
+        if((value = getenv("MV2_USE_RDMA_CM")) != NULL && !!atoi(value)) {
+            user_selected_rdma_cm = 1;
+        }
         setenv("MV2_USE_RDMA_CM", "1", 1);
         if (mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode ||
                 (((value = getenv("MV2_USE_IWARP_MODE")) != NULL) && !!atoi(value))) {
@@ -332,15 +337,14 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     /* Check for SMP only */
     MPIDI_CH3I_set_smp_only();
 
+    if ((value = getenv("MV2_ENABLE_EAGER_THRESHOLD_REDUCTION")) != NULL) {
+        mv2_enable_eager_threshold_reduction = !!atoi(value);
+    }
+
     if ((value = getenv("MV2_USE_EAGER_FAST_SEND")) != NULL) {
         mv2_use_eager_fast_send = !!atoi(value);
     }
 
-#ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda) {
-        mv2_use_eager_fast_send = 0;
-    }
-#endif
     if (MPIDI_CH3I_Process.has_dpm) {
         mv2_use_eager_fast_send = 0;
     }
@@ -396,16 +400,29 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         /* Read RDMA FAST Path related params */
         rdma_set_rdma_fast_path_params(pg_size);
         switch (MPIDI_CH3I_Process.cm_type) {
-                /* allocate rmda memory and set up the queues */
 #if defined(RDMA_CM)
             case MPIDI_CH3I_CM_RDMA_CM:
                 mpi_errno = MPIDI_CH3I_RDMA_CM_Init(pg, pg_rank, &conn_info);
                 if (mpi_errno != MPI_SUCCESS) {
-                    MPIR_ERR_POP(mpi_errno);
+                    if (user_selected_rdma_cm) {
+                        /* Print backtrace and exit */
+                        MPIR_ERR_POP(mpi_errno);
+                    } else if (!pg_rank) {
+                        MPL_error_printf("Warning: RDMA CM Initialization failed. "
+                                "Continuing without RDMA CM support. "
+                                "Please set MV2_USE_RDMA_CM=0 to disable RDMA CM.\n");
+                    }
+                    /* Fall back to On-Demand CM */
+                    ib_finalize_rdma_cm(pg_rank, pg);
+                    rdma_default_port = RDMA_DEFAULT_PORT;
+                    mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm = 0;
+                    mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand = 0;
+                } else {
+                    break;
                 }
-                break;
 #endif /* defined(RDMA_CM) */
             case MPIDI_CH3I_CM_ON_DEMAND:
+                MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
                 mpi_errno = MPIDI_CH3I_CM_Init(pg, pg_rank, &conn_info);
                 if (mpi_errno != MPI_SUCCESS) {
                     MPIR_ERR_POP(mpi_errno);
@@ -413,6 +430,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
                 break;
             default:
                 /*call old init to setup all connections */
+                MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
                 if ((mpi_errno =
                      MPIDI_CH3I_RDMA_init(pg, pg_rank)) != MPI_SUCCESS) {
                     MPIR_ERR_POP(mpi_errno);

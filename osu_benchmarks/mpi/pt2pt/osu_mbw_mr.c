@@ -97,15 +97,18 @@ int main(int argc, char *argv[])
             break;
     }
 
-    if (posix_memalign((void**)&s_buf, align_size, MAX_MESSAGE_SIZE)) {
+    if (posix_memalign((void**)&s_buf, align_size, options.max_message_size)) {
         fprintf(stderr, "Error allocating host memory\n");
-        return 1;
+        return EXIT_FAILURE;
     }
 
-    if (posix_memalign((void**)&r_buf, align_size, MAX_MESSAGE_SIZE)) {
+    if (posix_memalign((void**)&r_buf, align_size, options.max_message_size)) {
         fprintf(stderr, "Error allocating host memory\n");
-        return 1;
+        return EXIT_FAILURE;
     }
+
+    memset(s_buf, 0, options.max_message_size);
+    memset(r_buf, 0, options.max_message_size);
 
     if(numprocs < 2) {
         if(rank == 0) {

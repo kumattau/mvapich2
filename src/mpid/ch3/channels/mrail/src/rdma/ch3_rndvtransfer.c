@@ -422,22 +422,16 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     MPIDI_Pkt_set_seqnum(&pkt_head, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
 
+#if defined(_ENABLE_CUDA_)
+    if (!rdma_enable_cuda || sreq->mrail.cuda_transfer_mode == NONE)
+#endif
+    {
 #if defined(_SMP_CMA_) || defined(_SMP_LIMIC_)
 #if defined(_SMP_CMA_)
     int use_cma = g_smp_use_cma; 
-#else
-    int use_cma = 0;
 #endif
 #if defined(_SMP_LIMIC_)
     int use_limic = g_smp_use_limic2;
-#else 
-    int use_limic = 0;
-#endif 
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
-        use_cma = 0; 
-        use_limic = 0;
-    } 
 #endif 
 
     /* Use cma for contiguous data 
@@ -467,7 +461,8 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
 #endif
 
 #endif
-    
+    }
+
     mpi_errno = MPIDI_CH3_iStartMsg(vc, &pkt_head,
                                     sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t),
                                     &send_req);
@@ -579,6 +574,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                     vc->smp.send_active = sreq;
                     sreq->mrail.nearly_complete = 1;
                     vc->smp.send_current_pkt_type = SMP_RNDV_MSG_CONT;
+                    MV2_INC_NUM_POSTED_SEND();
                     break;
                 }
             } else {
