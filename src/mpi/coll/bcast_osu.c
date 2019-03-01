@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -93,6 +93,10 @@ int (*MV2_Bcast_function) (void *buffer, int count, MPI_Datatype datatype,
                            int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag) = NULL;
 
 int (*MV2_Bcast_intra_node_function) (void *buffer, int count, MPI_Datatype datatype,
+                                      int root, MPID_Comm * comm_ptr,
+                                      MPIR_Errflag_t *errflag) = NULL;
+
+int (*MV2_Bcast_Shmem_Based_function) (void *buffer, int count, MPI_Datatype datatype,
                                       int root, MPID_Comm * comm_ptr,
                                       MPIR_Errflag_t *errflag) = NULL;
 
@@ -2507,14 +2511,18 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
             conf_index = 0;
             goto conf_check_end;
         }
-        if (likely(mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
+        if (likely(mv2_enable_shmem_bcast && mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
             /* for small messages, force shmem + zcpy pipeline */
 #if defined CHANNEL_MRAIL_GEN2
-            MV2_Bcast_function = MPIR_Pipelined_Bcast_Zcpy_MV2;
-            MV2_Bcast_intra_node_function = MPIR_Knomial_Bcast_intra_node_MV2;
+            if (mv2_enable_zcpy_bcast == 1) {
+                MV2_Bcast_function = &MPIR_Pipelined_Bcast_Zcpy_MV2;
+            } else {
+                MV2_Bcast_function = &MPIR_Pipelined_Bcast_MV2; 
+            }
+            MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
 #elif defined CHANNEL_PSM 
-            MV2_Bcast_function = MPIR_Bcast_binomial_MV2; 
-            MV2_Bcast_intra_node_function = MPIR_Shmem_Bcast_MV2;
+            MV2_Bcast_function = &MPIR_Bcast_binomial_MV2; 
+            MV2_Bcast_intra_node_function = &MPIR_Shmem_Bcast_MV2;
 #endif
             two_level_bcast = 1;
             zcpy_knomial_factor = 8;

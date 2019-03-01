@@ -685,7 +685,7 @@ int MPIDI_CH3_PktHandler_Get(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt, void *data,
 
             MPID_THREAD_CS_ENTER(POBJ, vc->pobj_mutex);
 #if defined (CHANNEL_PSM)
-            mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, 1, &req);
+            mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, iovcnt, &req);
 #else /* CHANNEL_PSM */
             mpi_errno = MPIDI_CH3_iSendv(vc, req, iov, iovcnt);
 #endif
@@ -718,7 +718,7 @@ int MPIDI_CH3_PktHandler_Get(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt, void *data,
 
                 MPID_THREAD_CS_ENTER(POBJ, vc->pobj_mutex);
 #if defined (CHANNEL_PSM)
-                mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, 2, &req);
+                mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, iovcnt, &req);
 #else /* CHANNEL_PSM */
                 mpi_errno = MPIDI_CH3_iSendv(vc, req, iov, iovcnt);
 #endif
@@ -2345,9 +2345,6 @@ int MPIDI_CH3_PktHandler_GetResp(MPIDI_VC_t * vc ATTRIBUTE((unused)),
     MPIDI_CH3_Pkt_get_resp_t *get_resp_pkt = &pkt->get_resp;
     MPID_Request *req;
     int complete = 0;
-#if !defined(CHANNEL_MRAIL)
-    char *data_buf = NULL;
-#endif /* !defined(CHANNEL_MRAIL) */
     MPIDI_msg_sz_t data_len;
     int mpi_errno = MPI_SUCCESS;
     MPI_Aint type_size;
@@ -2381,9 +2378,6 @@ int MPIDI_CH3_PktHandler_GetResp(MPIDI_VC_t * vc ATTRIBUTE((unused)),
     }
 
     data_len = *buflen - sizeof(MPIDI_CH3_Pkt_t);
-#if !defined(CHANNEL_MRAIL)
-    data_buf = (char *) pkt + sizeof(MPIDI_CH3_Pkt_t);
-#endif /* !defined(CHANNEL_MRAIL) */
 
     MPID_Datatype_get_size_macro(req->dev.datatype, type_size);
     req->dev.recv_data_sz = type_size * req->dev.user_count;

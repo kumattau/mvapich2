@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -75,6 +75,8 @@ extern int rdma_rq_size;
 extern unsigned long rdma_dreg_cache_limit;
 extern int rdma_rndv_protocol;
 extern int rdma_r3_threshold;
+extern int rdma_intra_node_r3_threshold;
+extern int rdma_inter_node_r3_threshold;
 extern int rdma_r3_threshold_nocache;
 extern int rdma_max_r3_pending_data;
 extern int rdma_vbuf_total_size;
@@ -301,6 +303,9 @@ extern int rdma_default_async_thread_stack_size;
 #define DEF_MV2_CM_WAIT_TIME            (5)
 #define RDMA_DEFAULT_QP_OUS_RD_ATOM     (1)
 #define DEFAULT_SHMEM_PRIORITY_FACTOR   (1)
+#define RDMA_DEFAULT_R3_THRESHOLD       (4096)
+#define RDMA_DEFAULT_INTER_NODE_R3_THRESHOLD       (4096)
+#define RDMA_DEFAULT_INTRA_NODE_R3_THRESHOLD       (1)
 
 /* This is a overprovision of resource, do not use in critical structures */
 #define MAX_NUM_SUBRAILS                (MAX_NUM_HCAS*  \

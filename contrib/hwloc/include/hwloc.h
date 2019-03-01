@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2017 Inria.  All rights reserved.
+ * Copyright © 2009-2018 Inria.  All rights reserved.
  * Copyright © 2009-2012 Université Bordeaux
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -1233,6 +1233,11 @@ enum hwloc_get_type_depth_e {
  * function returns the depth of the first "present" object typically found
  * inside \p type.
  *
+ * This function is only meaningful for normal object types.
+ * If an I/O object type is given, the corresponding virtual
+ * depth is always returned (see hwloc_get_type_depth()).
+ * If ::HWLOC_OBJ_MISC is given, the function returns ::HWLOC_TYPE_DEPTH_UNKNOWN.
+ *
  * If some objects of the given type exist in different levels, for instance
  * L1 and L2 caches, the function returns ::HWLOC_TYPE_DEPTH_MULTIPLE.
  */
@@ -1244,6 +1249,11 @@ hwloc_get_type_or_below_depth (hwloc_topology_t topology, hwloc_obj_type_t type)
  * If no object of this type is present on the underlying architecture, the
  * function returns the depth of the first "present" object typically
  * containing \p type.
+ *
+ * This function is only meaningful for normal object types.
+ * If an I/O object type is given, the corresponding virtual
+ * depth is always returned (see hwloc_get_type_depth()).
+ * If ::HWLOC_OBJ_MISC is given, the function returns ::HWLOC_TYPE_DEPTH_UNKNOWN.
  *
  * If some objects of the given type exist in different levels, for instance
  * L1 and L2 caches, the function returns ::HWLOC_TYPE_DEPTH_MULTIPLE.
@@ -1438,10 +1448,13 @@ HWLOC_DECLSPEC void hwloc_obj_add_info(hwloc_obj_t obj, const char *name, const 
 
 /** \defgroup hwlocality_cpubinding CPU binding
  *
- * It is often useful to call hwloc_bitmap_singlify() first so that a single CPU
- * remains in the set. This way, the process will not even migrate between
- * different CPUs inside the given set.
- * Some operating systems also only support that kind of binding.
+ * Some operating systems only support binding threads or processes to a single PU.
+ * Others allow binding to larger sets such as entire Cores or Packages or
+ * even random sets of invididual PUs. In such operating system, the scheduler
+ * is free to run the task on one of these PU, then migrate it to another PU, etc.
+ * It is often useful to call hwloc_bitmap_singlify() on the target CPU set before
+ * passing it to the binding function to avoid these expensive migrations.
+ * See the documentation of hwloc_bitmap_singlify() for details.
  *
  * Some operating systems do not provide all hwloc-supported
  * mechanisms to bind processes, threads, etc.

@@ -87,9 +87,8 @@ int MPIDI_CH3_iSendv (MPIDI_VC_t *vc, MPID_Request *sreq, MPL_IOV *iov, int n_io
 	    if (remaining_iov == iov)
 	    {
 		/* header was not sent */
-		sreq->dev.pending_pkt =
-		    *(MPIDI_CH3_Pkt_t *) iov[0].MPL_IOV_BUF;
-		sreq->dev.iov[0].MPL_IOV_BUF = (char *) &sreq->dev.pending_pkt;
+        MPIU_Memcpy(&sreq->dev.pending_pkt, iov[0].MPL_IOV_BUF, sizeof(MPIDI_CH3_Pkt_t));
+        sreq->dev.iov[0].MPL_IOV_BUF = (char *) &sreq->dev.pending_pkt;
 		sreq->dev.iov[0].MPL_IOV_LEN = iov[0].MPL_IOV_LEN;
 	    }
 	    else
@@ -162,15 +161,11 @@ int MPIDI_CH3_iSendv (MPIDI_VC_t *vc, MPID_Request *sreq, MPL_IOV *iov, int n_io
 	
 	MPIDI_DBG_PRINTF((55, FCNAME, "enqueuing"));
 	
-	sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPL_IOV_BUF;
-	sreq->dev.iov[0].MPL_IOV_BUF = (char *) &sreq->dev.pending_pkt;
+    MPIU_Memcpy(&sreq->dev.pending_pkt, iov[0].MPL_IOV_BUF, sizeof(MPIDI_CH3_Pkt_t));
+    sreq->dev.iov[0].MPL_IOV_BUF = (char *) &sreq->dev.pending_pkt;
 	sreq->dev.iov[0].MPL_IOV_LEN = iov[0].MPL_IOV_LEN;
 
-	for (i = 1; i < n_iov; i++)
-	{
-	    sreq->dev.iov[i] = iov[i];
-	}
-
+    MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPL_IOV));
 	sreq->dev.iov_count = n_iov;
 	sreq->dev.iov_offset = 0;
         sreq->ch.noncontig = FALSE;

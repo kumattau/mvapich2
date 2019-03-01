@@ -28,14 +28,11 @@ static MPID_Request * create_request(MPL_IOV * iov, int iov_count,
     sreq->kind = MPID_REQUEST_SEND;
     MV2_INC_NUM_POSTED_SEND();
     
-    for (i = 0; i < iov_count; i++)
-    {
-	sreq->dev.iov[i] = iov[i];
-    }
+    MPIU_Memcpy(sreq->dev.iov, iov, iov_count * sizeof(MPL_IOV));
     if (iov_offset == 0)
     {
 	MPIU_Assert(iov[0].MPL_IOV_LEN == sizeof(MPIDI_CH3_Pkt_t));
-	sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPL_IOV_BUF;
+	MPIU_Memcpy(&sreq->dev.pending_pkt, iov[0].MPL_IOV_BUF, sizeof(MPIDI_CH3_Pkt_t));
 	sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) &sreq->dev.pending_pkt;
     }
     sreq->dev.iov[iov_offset].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)((char *) sreq->dev.iov[iov_offset].MPL_IOV_BUF + nb);

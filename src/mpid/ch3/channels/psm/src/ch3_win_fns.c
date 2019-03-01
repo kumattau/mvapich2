@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
- * Copyright (c) 2001-2018, The Ohio State University. All rights
+ * Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,6 +23,8 @@
 #include "mpiu_shm_wrappers.h"
 #include "coll_shmem.h"
 #include "mpidi_ch3_impl.h"
+
+#include "bcast_tuning.h"
 
 #undef FUNCNAME
 
@@ -151,16 +153,13 @@ int MPIDI_CH3_SHM_Win_free(MPID_Win ** win_ptr)
     if (((*win_ptr)->create_flavor == MPI_WIN_FLAVOR_SHARED ||
          (*win_ptr)->create_flavor == MPI_WIN_FLAVOR_ALLOCATE) &&
         (*win_ptr)->shm_mutex && (*win_ptr)->shm_segment_len > 0) {
-        MPID_Comm *node_comm_ptr = NULL;
 
         /* When allocating shared memory region segment, we need comm of processes
          * that are on the same node as this process (node_comm).
          * If node_comm == NULL, this process is the only one on this node, therefore
          * we use comm_self as node comm. */
 
-        MPI_Comm shmem_comm;
-        shmem_comm = (*win_ptr)->comm_ptr->dev.ch.shmem_comm;
-        MPID_Comm_get_ptr(shmem_comm, node_comm_ptr);
+        MPID_Comm *node_comm_ptr = (*win_ptr)->node_comm_ptr;
         MPIU_Assert(node_comm_ptr != NULL);
         if (node_comm_ptr->rank == 0) {
             MPIDI_CH3I_SHM_MUTEX_DESTROY(*win_ptr);
@@ -174,6 +173,13 @@ int MPIDI_CH3_SHM_Win_free(MPID_Win ** win_ptr)
             MPIR_ERR_POP(mpi_errno);
 
         MPIU_SHMW_Hnd_finalize(&(*win_ptr)->shm_mutex_segment_handle);
+        /* if node_comm is not comm_self, it is a copy of shmcomm_ptr, let's release it here */
+        MPID_Comm *commself_ptr = NULL;
+        MPID_Comm_get_ptr( MPI_COMM_SELF, commself_ptr );
+        if (node_comm_ptr != commself_ptr) {
+            MPIR_Comm_release((*win_ptr)->node_comm_ptr);
+            (*win_ptr)->node_comm_ptr = NULL;
+        }
     }
 
     /* Free shared memory region for window info */
@@ -265,12 +271,8 @@ static int MPIDI_CH3I_Win_init(MPI_Aint size, int disp_unit, int create_flavor, 
     (*win_ptr)->info_shm_segment_len = 0;
     (*win_ptr)->info_shm_segment_handle = 0;
 
-  fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WIN_INIT);
     return mpi_errno;
-  fn_fail:
-    goto fn_exit;
-
 }
 
 #undef FUNCNAME
@@ -685,6 +687,16 @@ static int MPIDI_CH3I_Win_gather_info(void *base, MPI_Aint size, int disp_unit, 
     psm_prepost_1sc();
     MPIR_Barrier_impl((*win_ptr)->comm_ptr, &errflag);
 
+    if((*win_ptr)->comm_ptr->dev.ch.shmem_coll_ok == 1 && node_comm_ptr != NULL) {
+        /* make a copy of shmcomm_ptr to be used later for barrier
+         * NOTE: perform SHM-based collective on this communucator may result in undeterministic behavior */
+        MPIR_Comm_copy(node_comm_ptr, node_comm_ptr->local_size, &((*win_ptr)->node_comm_ptr));
+
+        mpi_errno = free_2level_comm((*win_ptr)->comm_ptr);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+        node_comm_ptr = NULL;
+    }
+
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WIN_GATHER_INFO);
@@ -735,68 +747,72 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
      * If node_comm == NULL, this process is the only one on this node, therefore
      * we use comm_self as node comm. */
 
-    if (!mv2_enable_shmem_collectives && (*win_ptr)->shm_coll_comm_ref == -1) {
-        MPIDI_PG_Get_vc(MPIDI_Process.my_pg, MPIDI_Process.my_pg_rank, &vc);
-        /* Shared memory for collectives */
-        mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(MPIDI_Process.my_pg,
-                vc->smp.local_rank);
-        if (mpi_errno) {
-            MPIR_ERR_POP(mpi_errno);
+    if (likely(!(*win_ptr)->node_comm_ptr)) {
+        if (!mv2_enable_shmem_collectives && (*win_ptr)->shm_coll_comm_ref == -1) {
+            MPIDI_PG_Get_vc(MPIDI_Process.my_pg, MPIDI_Process.my_pg_rank, &vc);
+            /* Shared memory for collectives */
+            mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(MPIDI_Process.my_pg,
+                    vc->smp.local_rank);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            /* local barrier */
+            mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            /* Memory Mapping shared files for collectives*/
+            mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_Process.my_pg,
+                    vc->smp.local_rank);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            /* local barrier */
+            mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            /* Unlink mapped files so that they get cleaned up when
+             * process exits */
+            MPIDI_CH3I_SHMEM_COLL_Unlink();
+            (*win_ptr)->shm_coll_comm_ref = 1;
+        } else if ((*win_ptr)->shm_coll_comm_ref > 0) {
+            (*win_ptr)->shm_coll_comm_ref++;
         }
 
-        /* local barrier */
-        mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
-        if (mpi_errno) {
-            MPIR_ERR_POP(mpi_errno);
+        if((*win_ptr)->comm_ptr->dev.ch.shmem_coll_ok == 0) {
+            mpi_errno = create_2level_comm((*win_ptr)->comm_ptr->handle,
+                    (*win_ptr)->comm_ptr->local_size, (*win_ptr)->comm_ptr->rank);
+            if(mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
         }
 
-        /* Memory Mapping shared files for collectives*/
-        mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_Process.my_pg,
-                vc->smp.local_rank);
-        if (mpi_errno) {
-            MPIR_ERR_POP(mpi_errno);
+        MPI_Comm shmem_comm;
+        shmem_comm = (*win_ptr)->comm_ptr->dev.ch.shmem_comm;
+        MPID_Comm_get_ptr(shmem_comm, node_comm_ptr);
+
+
+        /* Fall back to no_shm function if shmem_comm is not created successfully*/
+        if (node_comm_ptr == NULL) {
+            mpi_errno =
+                MPIDI_CH3U_Win_allocate_no_shm(size, disp_unit, info, comm_ptr, base_ptr, win_ptr);
+            (*win_ptr)->shm_allocated = FALSE;
+            goto fn_exit;
         }
 
-        /* local barrier */
-        mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
-        if (mpi_errno) {
-            MPIR_ERR_POP(mpi_errno);
-        }
+        MPIU_Assert(node_comm_ptr != NULL);
 
-        /* Unlink mapped files so that they get cleaned up when
-         * process exits */
-        MPIDI_CH3I_SHMEM_COLL_Unlink();
-        (*win_ptr)->shm_coll_comm_ref = 1;
-    } else if ((*win_ptr)->shm_coll_comm_ref > 0) {
-        (*win_ptr)->shm_coll_comm_ref++;
+        node_size = node_comm_ptr->local_size;
+        node_rank = node_comm_ptr->rank;
+        (*win_ptr)->node_comm_ptr = node_comm_ptr;
+    } else {
+        node_comm_ptr = (*win_ptr)->node_comm_ptr;
     }
-
-    if((*win_ptr)->comm_ptr->dev.ch.shmem_coll_ok == 0) {
-        mpi_errno = create_2level_comm((*win_ptr)->comm_ptr->handle, 
-                (*win_ptr)->comm_ptr->local_size, (*win_ptr)->comm_ptr->rank);
-        if(mpi_errno) {
-            MPIR_ERR_POP(mpi_errno);
-        }
-    }           
-
-    MPI_Comm shmem_comm;
-    shmem_comm = (*win_ptr)->comm_ptr->dev.ch.shmem_comm;
-    MPID_Comm_get_ptr(shmem_comm, node_comm_ptr);
-
-
-    /* Fall back to no_shm function if shmem_comm is not created successfully*/
-    if (node_comm_ptr == NULL) {
-        mpi_errno =
-            MPIDI_CH3U_Win_allocate_no_shm(size, disp_unit, info, comm_ptr, base_ptr, win_ptr);
-        (*win_ptr)->shm_allocated = FALSE;
-        goto fn_exit;
-    }
-
-    MPIU_Assert(node_comm_ptr != NULL);
-
-    node_size = node_comm_ptr->local_size;
-    node_rank = node_comm_ptr->rank;
-    (*win_ptr)->node_comm_ptr = node_comm_ptr;
 
     MPIR_T_PVAR_TIMER_START(RMA, rma_wincreate_allgather);
     /* allocate memory for the base addresses, disp_units, and

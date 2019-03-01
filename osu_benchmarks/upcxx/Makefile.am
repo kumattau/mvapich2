@@ -7,7 +7,7 @@ upcxx_PROGRAMS = osu_upcxx_allgather osu_upcxx_alltoall osu_upcxx_bcast \
 
 AM_CPPFLAGS = -I../util
 
-UTILITIES = ../util/osu_util.c osu_util.h
+UTILITIES =  ../util/osu_util.c ../util/osu_util.h ../util/osu_util_pgas.c ../util/osu_util_pgas.h
 
 if EMBEDDED_BUILD
      AM_CPPFLAGS += -I$(top_builddir)/../src/include \

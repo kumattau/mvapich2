@@ -133,9 +133,9 @@ int MPIDI_CH3_iStartMsgv (MPIDI_VC_t *vc, MPL_IOV *iov, int n_iov, MPID_Request 
 	    if ( iov == remaining_iov )
 	    {
 		/* header was not sent, so iov[0] might point to something on the stack */
-		sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPL_IOV_BUF;
+        MPIU_Memcpy(&sreq->dev.pending_pkt, iov[0].MPL_IOV_BUF, sizeof(MPIDI_CH3_Pkt_t));
 		sreq->dev.iov[0].MPL_IOV_BUF = (char *) &sreq->dev.pending_pkt;
-		sreq->dev.iov[0].MPL_IOV_LEN = iov[0].MPL_IOV_LEN;
+        sreq->dev.iov[0].MPL_IOV_LEN = iov[0].MPL_IOV_LEN;
 	    }
 	    MPIDI_CH3I_Sendq_enqueue(&MPIDI_CH3I_shm_sendq, sreq);
 	    MPIU_Assert (MPIDI_CH3I_shm_active_send == NULL);
@@ -153,8 +153,8 @@ int MPIDI_CH3_iStartMsgv (MPIDI_VC_t *vc, MPL_IOV *iov, int n_iov, MPID_Request 
 	MPIU_Object_set_ref(sreq, 2);
 	sreq->kind = MPID_REQUEST_SEND;
 
-	sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPL_IOV_BUF;
-	sreq->dev.iov[0].MPL_IOV_BUF = (char *) &sreq->dev.pending_pkt;
+    MPIU_Memcpy(&sreq->dev.pending_pkt, iov[0].MPL_IOV_BUF, sizeof(MPIDI_CH3_Pkt_t));
+    sreq->dev.iov[0].MPL_IOV_BUF = (char *) &sreq->dev.pending_pkt;
 	sreq->dev.iov[0].MPL_IOV_LEN = iov[0].MPL_IOV_LEN;
 
 	/* copy iov */

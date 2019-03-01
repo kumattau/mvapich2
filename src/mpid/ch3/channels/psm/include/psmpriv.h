@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -134,6 +134,8 @@
     #define PSM_IRECV_PTR(mq, rtag, rtagsel, flags, buf, buflen, req, mqreq)    psm2_mq_irecv2(mq, PSM2_MQ_ANY_ADDR, rtag, rtagsel, flags, buf, buflen, req, mqreq)
     #define PSM_LARGE_IRECV(buf, buflen, request, rtag, rtagsel)                psm_post_large_msg_irecv(buf, buflen, request, &rtag, &rtagsel)
     #define PSM_IPROBE(mq, rtag, rtagsel, status)                               psm2_mq_iprobe2(mq, PSM2_MQ_ANY_ADDR, &rtag, &rtagsel, status)
+    #define PSM_IMPROBE(mq, rtag, rtagsel, mqreq, status)                       psm2_mq_improbe2(mq, PSM2_MQ_ANY_ADDR, &rtag, &rtagsel, &mqreq, status)
+    #define PSM_IMRECV(mq, buf, buflen, req, mqreq)                             psm2_mq_imrecv(mq, MQ_FLAGS_NONE, buf, buflen, req, mqreq)
     #define PSM_TEST(req, status)                                               psm2_mq_test2(req,status)
     #define PSM_IPEEK(mq, req, stat)                                            psm2_mq_ipeek2(mq, req, stat)
     #define PSM_WAIT(mq, status)                                                psm2_mq_wait2(mq, status)
@@ -178,6 +180,9 @@
     #define PSM_TEST(req, status)                                               psm_mq_test(req,status)
     #define PSM_IPEEK(mq, req, stat)                                            psm_mq_ipeek(mq, req, stat)
     #define PSM_WAIT(mq, status)                                                psm_mq_wait(mq, status)
+    /* Matched Probe/Recv Not Supported */
+    #define PSM_IMPROBE(mq, rtag, rtagsel, mqreq, status)
+    #define PSM_IMRECV(mq, buf, buflen, req, mqreq)
 
     #define PSM_POLL                                                            psm_poll
     #define PSM_MQ_STATUS_T                                                     psm_mq_status_t
@@ -282,6 +287,7 @@ void psm_queue_init();
 int psm_dofinalize();
 int psm_do_cancel(MPID_Request *req);
 PSM_ERROR_T psm_probe(int src, int tag, int context, MPI_Status *stat);
+PSM_ERROR_T psm_mprobe(int src, int tag, int context, MPID_Request *req, MPI_Status *stat);
 void psm_init_1sided();
 int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank);   
 int psm_connect_peer(int peer);
@@ -297,11 +303,13 @@ int psm_recv(int rank, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen
 int psm_isendv(MPIDI_VC_t *vc, MPL_IOV *iov, int iov_n, MPID_Request *rptr);
 int psm_irecv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen,
         MPID_Request *req);
+int psm_imrecv(void *buf, MPIDI_msg_sz_t buflen, MPID_Request *req);
 int psm_istartmsg(MPIDI_VC_t *vc, void *upkt, MPIDI_msg_sz_t pkt_sz, MPID_Request **rptr);
 int psm_send_noncontig(MPIDI_VC_t *vc, MPID_Request *sreq, 
                        MPIDI_Message_match match);
 int MPIDI_CH3_iRecv(int rank, int tag, int cid, void *buf, MPIDI_msg_sz_t buflen, MPID_Request *req);
 int MPIDI_CH3_Recv(int rank, int tag, int cid, void *buf, MPIDI_msg_sz_t buflen, MPI_Status *stat, MPID_Request **req);
+int MPIDI_CH3_iMrecv(void *buf, MPIDI_msg_sz_t buflen, MPID_Request *req);
 
 void psm_pe_yield();
 int psm_try_complete(MPID_Request *req);
@@ -354,8 +362,14 @@ void psm_prepost_1sc();
 void psm_release_prepost_1sc();
 int MPIDI_CH3_Probe(int source, int tag, int context, MPI_Status *stat,
                     int *complete, int blk);
+int MPIDI_CH3_Mprobe(int source, int tag, int context, MPID_Request *req,
+                    MPI_Status *stat, int *complete, int blk);
 int MPID_Probe(int source, int tag, MPID_Comm * comm, int context_offset, 
 	       MPI_Status * status);
+int MPID_Mprobe(int source, int tag, MPID_Comm * comm, int context_offset,
+	       MPID_Request **req, MPI_Status * status);
+int MPID_Improbe(int source, int tag, MPID_Comm * comm, int context_offset,
+	       int *flag, MPID_Request **req, MPI_Status * status);
 int MPIDI_CH3I_comm_create(MPID_Comm *comm, void *param);
 int MPIDI_CH3I_comm_destroy(MPID_Comm *comm, void *param);
 

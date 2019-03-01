@@ -4,7 +4,7 @@ AC_PREREQ(2.63)
 #     See COPYRIGHT in top-level directory.
 #
 
-# Copyright (c) 2001-2018, The Ohio State University. All rights
+# Copyright (c) 2001-2019, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -1975,6 +1975,13 @@ AC_ARG_ENABLE([3dtorus-support],
               [AS_HELP_STRING([--enable-3dtorus-support],
                               [Enable support for 3D torus networks])
               ])
+AC_ARG_ENABLE([llnl-site-specific-options],
+              [AS_HELP_STRING([--enable-llnl-site-specific-options],
+                              [Enable site specific options for LLNL by default])
+              ],
+              [AC_DEFINE([ENABLE_LLNL_SITE_SPECIFIC_OPTIONS], [1],
+                 [Enable site specific options for LLNL by default])],
+              [])
 dnl </_OSU_MVAPICH_>
 # Check for whether the compiler defines a symbol that contains the 
 # function name.  The MPICH code, for greater portability, defines

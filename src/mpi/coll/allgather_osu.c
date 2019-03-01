@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
 * reserved.
 *
 * This file is part of the MVAPICH2 software package developed by the
@@ -2334,7 +2334,8 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
                 (mv2_allgather_cyclic_algo_threshold <= nbytes ||
                  mv2_allgather_ring_algo_threshold <= nbytes))) {
                 /* for large messages or nonblocked hostfiles, use ring-allgather algorithm. */
-                return MPIR_2lvl_Allgather_Ring_nonblocked_MV2(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm_ptr, errflag);
+                mpi_errno = MPIR_2lvl_Allgather_Ring_nonblocked_MV2(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm_ptr, errflag);
+                goto fn_cuda_exit;
         }
         do {
             if (local_size == mv2_allgather_indexed_table_ppn_conf[i]) {
@@ -2505,8 +2506,9 @@ conf_check_end:
                                          recvbuf, recvcount, recvtype, comm_ptr, errflag);
     }
 
+fn_cuda_exit:
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
+    if (rdma_enable_cuda && ((send_mem_type == 1) || (recv_mem_type == 1)) &&
         rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)) {
         cuda_stage_free((void **)&sendbuf,
                         &recvbuf, recvcount * recvtype_extent * comm_size,
@@ -2551,9 +2553,9 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     MPID_Comm *shmem_commptr=NULL;
     
     if (mv2_use_indexed_tuning || mv2_use_indexed_allgather_tuning) {
-	mpi_errno = MPIR_Allgather_index_tuned_intra_MV2(sendbuf, sendcount, sendtype, recvbuf, recvcount,
-				 recvtype, comm_ptr, errflag);
-	goto fn_exit;
+	    return MPIR_Allgather_index_tuned_intra_MV2(sendbuf, sendcount,
+                            sendtype, recvbuf, recvcount,
+				            recvtype, comm_ptr, errflag);
     }
 
     /* Get the size of the communicator */

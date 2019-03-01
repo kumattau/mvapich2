@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -151,20 +151,36 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #endif /*defined(RDMA_CM) && !defined(CKPT)*/
     }
 
-    if ((value = getenv("MV2_USE_CUDA")) != NULL) {
-        if (atoi(value)) {
 #ifdef _ENABLE_CUDA_
-            rdma_enable_cuda = atoi(value);
-            if (rdma_enable_cuda) {
-                cuda_get_user_parameters();
-            }
-#else
-            MPL_error_printf("GPU CUDA support is not configured. "
-                              "Please reconfigure MVAPICH2 library with --enable-cuda option.\n");
-            MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
-#endif
+    if ((value = getenv("MV2_USE_CUDA")) != NULL) {
+        rdma_enable_cuda = !!atoi(value);
+        if (rdma_enable_cuda) {
+            cuda_get_user_parameters();
+        }
+#ifdef ENABLE_LLNL_SITE_SPECIFIC_OPTIONS
+    } else {
+        rdma_enable_cuda = 1;
+        if (!(((value = getenv("MV2_SUPPRESS_CUDA_USAGE_WARNING")) != NULL) && !!atoi(value))) {
+            PRINT_INFO((pg_rank == 0), " Automatically enabling CUDA support."
+                        " If not using GPU buffers, disabling CUDA support by"
+                        " setting MV2_USE_CUDA=0 may improve performance.\n"
+                        "To suppress this message, please set"
+                        " MV2_SUPPRESS_CUDA_USAGE_WARNING to 1\n");
+        }
+#endif /*ENABLE_LLNL_SITE_SPECIFIC_OPTIONS*/
+    }
+    if (!rdma_enable_cuda) {
+        if (!(((value = getenv("MV2_SUPPRESS_CUDA_USAGE_WARNING")) != NULL) && !!atoi(value))) {
+            PRINT_INFO((pg_rank == 0), "MVAPICH2 has been built with support for CUDA."
+                        " But, MV2_USE_CUDA not set to 1. This can lead to errors in"
+                        " using GPU buffers. If you are running applications that use"
+                        " GPU buffers, please set MV2_USE_CUDA=1 and try again.\n");
+            PRINT_INFO((pg_rank == 0), "To suppress this warning, please set"
+                        " MV2_SUPPRESS_CUDA_USAGE_WARNING to 1\n");
         }
     }
+#endif
+
 #ifdef _ENABLE_UD_
     int i = 0;
     for (i = 0; i < MAX_NUM_HCAS; ++i) {
@@ -176,7 +192,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     if ((value = getenv("MV2_USE_UD_HYBRID")) != NULL) {
         rdma_enable_hybrid = atoi(value);
     }
-    if ((value = getenv("MV2_USE_ONLY_UD")) != NULL) {
+    if (((value = getenv("MV2_USE_ONLY_UD")) != NULL) && !!atoi(value)) {
         rdma_enable_hybrid = atoi(value);
         rdma_enable_only_ud = atoi(value);
         if ((value = getenv("MV2_HYBRID_ENABLE_THRESHOLD")) != NULL) {

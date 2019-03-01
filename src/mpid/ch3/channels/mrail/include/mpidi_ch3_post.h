@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,15 +26,18 @@ extern int g_smp_eagersize;
 #define MPIDI_CH3_EAGER_MAX_MSG_SIZE(vc) ((vc)->smp.local_nodes >= 0 && SMP_INIT ? g_smp_eagersize : rdma_iba_eager_threshold)
 #ifdef _ENABLE_UD_
 #define MPIDI_CH3_EAGER_FAST_MAX_MSG_SIZE(vc)                               \
-    (((vc)->smp.local_nodes >= 0 && SMP_INIT) ?  DEFAULT_MEDIUM_VBUF_SIZE : \
+    (((vc)->smp.local_nodes >= 0 && SMP_INIT) ?  g_smp_eagersize:           \
     ((rdma_enable_hybrid && (vc->mrail.state & MRAILI_UD_CONNECTED))?       \
         MRAIL_MAX_UD_SIZE : MIN(DEFAULT_MEDIUM_VBUF_SIZE, rdma_fp_buffer_size)))
 #else
 #define MPIDI_CH3_EAGER_FAST_MAX_MSG_SIZE(vc)                               \
-    (((vc)->smp.local_nodes >= 0 && SMP_INIT) ?  DEFAULT_MEDIUM_VBUF_SIZE : \
+    (((vc)->smp.local_nodes >= 0 && SMP_INIT) ?  g_smp_eagersize:           \
         MIN(DEFAULT_MEDIUM_VBUF_SIZE, rdma_fp_buffer_size))
 #endif
 
+#define MPIDI_CH3_R3_THRESHOLD(vc)                                              \
+    (((vc)->smp.local_nodes >= 0 && SMP_INIT) ?  rdma_intra_node_r3_threshold:  \
+        rdma_inter_node_r3_threshold)
 /*
  * Channel level request management macros
  */

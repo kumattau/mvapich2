@@ -1,29 +1,50 @@
 #!/bin/bash
 #
-# Copyright © 2012-2017 Inria.  All rights reserved.
+# Copyright © 2012-2018 Inria.  All rights reserved.
 # See COPYING in top-level directory.
 #
+
+echo "############################"
+echo "Running on:"
+uname -a
+echo "Tarball: $1"
+echo "############################"
 
 set -e
 set -x
 
-# Define the version
-if test x$1 = x; then
-  echo "Missing branch name as first argument"
+git_repo_url="$1"
+hwloc_branch="$2"
+tarball="$3"
+
+if test -z "$git_repo_url" || test -z "$hwloc_branch"; then
+  echo "Need repo URL and branch name as arguments."
   exit 1
 fi
-export hwloc_branch=$1
 
 # environment variables
 test -f $HOME/.ciprofile && . $HOME/.ciprofile
 
-# remove everything but the last 10 builds
-ls | grep -v ^hwloc- | grep -v ^job- | xargs rm -rf || true
-ls -td hwloc-* | tail -n +11 | xargs chmod u+w -R || true
-ls -td hwloc-* | tail -n +11 | xargs rm -rf || true
+# check that this is either master or vX.Y
+if test x$hwloc_branch != xmaster; then
+  if test x$(echo "x${hwloc_branch}x" | sed -r -e 's/xv[0-9]+\.[0-9]+x//') != x; then
+    echo "Sending non-master and non-stable branch output to `tmp` branch on sonarqube server."
+    hwloc_branch=tmp
+  fi
+fi
 
-# find the tarball, extract it
-tarball=$(ls -tr hwloc-*.tar.gz | grep -v build.tar.gz | tail -1)
+# check that the repo is the official one
+if test x$git_repo_url != xhttps://github.com/open-mpi/hwloc.git; then
+  if test x$FORCE_SONAR_SCANNER = xtrue; then
+    echo "Sending non-official repository output to 'tmp' branch on sonarqube server."
+    hwloc_branch=tmp
+  else
+    echo "Ignoring non-official repository."
+    exit 0
+  fi
+fi
+
+# extract the tarball
 basename=$(basename $tarball .tar.gz)
 test -d $basename && chmod -R u+rwX $basename && rm -rf $basename
 tar xfz $tarball
@@ -104,32 +125,30 @@ sed -e '/#define HWLOC_HAVE_ATTRIBUTE/d' -i include/private/autogen/config.h
 
 # Create the config for sonar-scanner
 cat > sonar-project.properties << EOF
-sonar.host.url=https://hpclib-sed.bordeaux.inria.fr/sonarqube-dev
-sonar.login=$(cat ~/.sonarqube-dev-hwloc-token)
+sonar.host.url=https://sonarqube.bordeaux.inria.fr/sonarqube
+sonar.login=$(cat ~/.sonarqube-hwloc-token)
 sonar.links.homepage=https://www.open-mpi.org/projects/hwloc/
 sonar.links.ci=https://ci.inria.fr/hwloc/
 sonar.links.scm=https://github.com/open-mpi/hwloc.git
 sonar.links.issue=https://github.com/open-mpi/hwloc/issues
-sonar.projectKey=hwloc
-sonar.projectName=hwloc
+sonar.projectKey=tadaam:hwloc:github:$hwloc_branch
 sonar.projectDescription=Hardware locality (hwloc)
-sonar.projectVersion=git
-sonar.branch=$hwloc_branch
+sonar.projectVersion=$hwloc_branch
 sonar.scm.disabled=false
 sonar.sourceEncoding=UTF-8
-sonar.language=c++
+sonar.language=c
 sonar.sources=src, tests, utils
 sonar.exclusions=tests/ports
-sonar.cxx.errorRecoveryEnabled=true
-sonar.cxx.compiler.parser=GCC
-sonar.cxx.compiler.charset=UTF-8
-sonar.cxx.compiler.regex=^(.*):([0-9]+):[0-9]+: warning: (.*)\\[(.*)\\]$
-sonar.cxx.compiler.reportPath=hwloc-build.log
-sonar.cxx.coverage.reportPath=hwloc-coverage.xml
-sonar.cxx.cppcheck.reportPath=${CPPCHECK_XMLS}
-sonar.cxx.includeDirectories=$(echo | gcc -E -Wp,-v - 2>&1 | grep "^ " | tr '\n' ',')include,src,utils/lstopo,utils/hwloc
-sonar.cxx.rats.reportPath=${RATS_XMLS}
-sonar.cxx.valgrind.reportPath=${VALGRIND_XMLS}
+sonar.c.errorRecoveryEnabled=true
+sonar.c.compiler.parser=GCC
+sonar.c.compiler.charset=UTF-8
+sonar.c.compiler.regex=^(.*):(\\\d+):\\\d+: warning: (.*)\\\[(.*)\\\]$
+sonar.c.compiler.reportPath=hwloc-build.log
+sonar.c.coverage.reportPath=hwloc-coverage.xml
+sonar.c.cppcheck.reportPath=${CPPCHECK_XMLS}
+sonar.c.includeDirectories=$(echo | gcc -E -Wp,-v - 2>&1 | grep "^ " | tr '\n' ',')include,src,utils/lstopo,utils/hwloc
+sonar.c.rats.reportPath=${RATS_XMLS}
+sonar.c.valgrind.reportPath=${VALGRIND_XMLS}
 sonar.issue.ignore.multicriteria=e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14
 # Complete the task associated to this TODO comment.
 sonar.issue.ignore.multicriteria.e1.ruleKey=cxx:TodoTagPresence
@@ -179,8 +198,4 @@ EOF
 # Run the sonar-scanner analysis and submit to SonarQube server
 sonar-scanner -X > sonar.log
 
-# cleanup
-rm -rf doc
-cd ..
-tar cfz ${basename}.build.tar.gz $basename
-rm -rf $basename
+exit 0

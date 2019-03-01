@@ -1,6 +1,6 @@
 #define BENCHMARK "OSU MPI_Put%s Bandwidth Test"
 /*
- * Copyright (C) 2003-2018 the Network-Based Computing Laboratory
+ * Copyright (C) 2003-2019 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University.            
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -9,7 +9,7 @@
  * copyright file COPYRIGHT in the top level OMB directory.
  */
 
-#include <osu_util.h>
+#include <osu_util_mpi.h>
 
 double  t_start = 0.0, t_end = 0.0;
 char    *sbuf=NULL, *rbuf=NULL;
@@ -69,7 +69,6 @@ int main (int argc, char *argv[])
                 break;
             case PO_BAD_USAGE:
                 print_bad_usage_message(rank);
-                break;
             case PO_HELP_MESSAGE:
                 usage_one_sided("osu_put_bw");
                 break;

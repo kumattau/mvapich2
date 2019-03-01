@@ -24,6 +24,13 @@ int MPID_Mrecv(void *buf, int count, MPI_Datatype datatype,
         goto fn_exit;
     }
 
+#if defined (CHANNEL_PSM)
+    #if PSM_VERNO < PSM_2_1_VERSION
+    MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s",
+            "Operation not supported for QLogic PSM (CH3:PSM) channel\n");
+    #endif
+#endif
+
     /* There is no optimized MPID_Mrecv at this time because there is no real
      * optimization potential in that case.  MPID_Recv exists to prevent
      * creating a request unnecessarily for messages that are already present
@@ -47,6 +54,7 @@ int MPID_Mrecv(void *buf, int count, MPI_Datatype datatype,
         }
         MPID_Progress_end(&progress_state);
     }
+
     mpi_errno = MPIR_Request_complete(&req_handle, rreq, status, &active_flag);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1185,7 +1185,7 @@ void async_thread(void *context)
                     ++mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num];
 
                     while(mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num] >= 1 
-                            && !(*(volatile int*)&mv2_MPIDI_CH3I_RDMA_Process.is_finalizing)) {
+                            && !mv2_MPIDI_CH3I_RDMA_Process.is_finalizing) {
                         /* Cannot post to SRQ, since all WQEs
                          * might be waiting in CQ to be pulled out */
                         pthread_cond_wait(

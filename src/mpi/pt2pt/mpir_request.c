@@ -6,7 +6,7 @@
  */
 
 /*
- * Copyright (c) 2001-2018, The Ohio State University. All rights
+ * Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -565,13 +565,9 @@ int MPIR_Grequest_progress_poke(int count,
 		MPID_Request **request_ptrs, 
 		MPI_Status array_of_statuses[] )
 {
-    void ** state_ptrs;
     int i;
     int mpi_errno = MPI_SUCCESS;
     int made_progress = 0;
-    MPIU_CHKLMEM_DECL(1);
-
-    MPIU_CHKLMEM_MALLOC(state_ptrs, void **, sizeof(void*) * count, mpi_errno, "state_ptrs");
 
     /* TODO: Implement the class-wise completion optimization described in:
     Latham, Robert, et al. "Extending the MPI-2 generalized request interface."
@@ -600,7 +596,6 @@ int MPIR_Grequest_progress_poke(int count,
 	}
 
 fn_exit:
-    MPIU_CHKLMEM_FREEALL();
     return mpi_errno;
 fn_fail:
     goto fn_exit;

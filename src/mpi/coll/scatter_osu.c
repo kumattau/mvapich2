@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1206,8 +1206,8 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
 
-    if (((rank == root) && (recvcnt == 0))
-        || ((rank != root) && (sendcnt == 0))) {
+    if (((rank == root) && (sendcnt == 0))
+        || ((rank != root) && (recvcnt == 0))) {
         return MPI_SUCCESS;
     }
 

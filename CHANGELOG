@@ -3,6 +3,45 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.3.1 (03/01/2019)
+
+* Features and Enhancements (since 2.3):
+    - Add support for JSM and Flux resource managers
+    - Architecture detection, enhanced point-to-point and collective tuning for
+      AMD EPYC system
+    - Enhanced point-to-point and collective tuning for IBM POWER9 and ARM
+      systems
+    - Add support of DDN Infinite Memory Engine (IME) to ROMIO
+        - Thanks to Sylvain Didelot @DDN for the patch
+    - Optimize performance of MPI_Wait operation
+    - Update to hwloc 1.11.11
+
+* Bug Fixes (since 2.3):
+    - Fix autogen error with Flang compiler on ARM systems
+        - Thanks to Nathan Sircombe @ARM for the patch
+    - Fix issues with shmem collectives on ARM architecture
+        - Thanks to Pavel Shamis @ARM for the patch
+    - Fix issues with MPI-3 shared memory windows for PSM-CH3 and PSM2-CH3
+      channel
+        - Thanks to Adam Moody @LLNL for the report
+    - Fix segfault in MPI_Reduce
+        - Thanks to Samuel Khuvis @OSC for the report
+    - Fix compilation issues with IBM XLC compiler
+        - Thanks to Ken Raffenetti and Yanfei Guo @ANL for the patch
+    - Fix issues with MPI_Mprobe/Improbe and MPI_Mrecv/Imrecv for PSM-CH3 and
+      PSM2-CH3 channel
+        - Thanks to Adam Moody @LLNL for the report
+    - Fix compilation issues with PGI compilers for CUDA-enabled builds
+    - Fix potential hangs in MPI_Finalize
+    - Fix issues in handling very large messages with RGET protocol
+    - Fix issues with handling GPU buffers
+    - Fix issue with hardware multicast based Allreduce
+    - Fix build issue with TCP/IP-CH3 channel
+    - Fix memory leaks exposed by TotalView
+        - Thanks to Adam Moody @LLNL for the report
+    - Fix issues with cleaning up temporary files generated in CUDA builds
+    - Fix compilation warnings
+
 MVAPICH2 2.3 (07/23/2018)
 
 * Features and Enhancements (since 2.3rc2):

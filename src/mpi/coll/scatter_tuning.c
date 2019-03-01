@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -566,6 +566,26 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
         MV2_COLL_TUNING_ADD_CONF_CMA (scatter, 28, 6, GEN2_CMA__RI2__28PPN)
         MV2_COLL_TUNING_FINISH_TABLE (scatter)
       }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                MV2_ARCH_AMD_EPYC_7551_64, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+      /* AMD EPYC table */
+      MV2_COLL_TUNING_START_TABLE  (scatter, 7)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 1,  3, GEN2__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (scatter, 1,  3, GEN2_CMA__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 2,  4, GEN2__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (scatter, 2,  4, GEN2_CMA__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 4,  4, GEN2__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (scatter, 4,  4, GEN2_CMA__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 8,  4, GEN2__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (scatter, 8,  4, GEN2_CMA__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 16, 4, GEN2__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (scatter, 16, 4, GEN2_CMA__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 32, 4, GEN2__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (scatter, 32, 4, GEN2_CMA__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (scatter, 64, 4, GEN2__AMD_EPYC__64PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (scatter, 64, 4, GEN2_CMA__AMD_EPYC__64PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (scatter)
+    }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 				    MV2_ARCH_ARM_CAVIUM_V8, MV2_HCA_MLX_CX_FDR) && !heterogeneity) {
       /* ARM system at Hartree Center */

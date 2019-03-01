@@ -5,7 +5,12 @@
 
 #include <stdio.h>
 #include <assert.h>
+#define CL_TARGET_OPENCL_VERSION 220
+#ifdef __APPLE__
+#include <OpenCL/cl.h>
+#else
 #include <CL/cl.h>
+#endif
 #include <hwloc.h>
 #include <hwloc/opencl.h>
 

@@ -3,7 +3,7 @@
 # (C) 2006 by Argonne National Laboratory.
 #     See COPYRIGHT in top-level directory.
 #
-# Copyright (c) 2001-2018, The Ohio State University. All rights
+# Copyright (c) 2001-2019, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -920,12 +920,36 @@ if [ "$do_build_configure" = "yes" ] ; then
             # Newer versions should have this patch already included.
             if [ -f $amdir/confdb/libtool.m4 ] ; then
                 # There is no need to patch if we're not going to use Fortran.
-                ifort_patch_requires_rebuild=no
+                fortran_patch_requires_rebuild=no
+                ibm_patch_requires_rebuild=no
                 if [ $do_bindings = "yes" ] ; then
                     echo_n "Patching libtool.m4 for compatibility with ifort on OSX... "
                     patch -N -s -l $amdir/confdb/libtool.m4 maint/darwin-ifort.patch
+
                     if [ $? -eq 0 ] ; then
-                        ifort_patch_requires_rebuild=yes
+                        fortran_patch_requires_rebuild=yes
+                        # Remove possible leftovers, which don't imply a failure
+                        rm -f $amdir/confdb/libtool.m4.orig
+                        echo "done"
+                    else
+                        echo "failed"
+                    fi
+
+                    echo_n "Patching libtool.m4 for compatibility with flang on linux... "
+                    patch -N -s -l $amdir/confdb/libtool.m4 maint/linux-flang.patch
+
+                    if [ $? -eq 0 ] ; then
+                        fortran_patch_requires_rebuild=yes
+                        # Remove possible leftovers, which don't imply a failure
+                        rm -f $amdir/confdb/libtool.m4.orig
+                        echo "done"
+                    else
+                        echo "failed"
+                    fi
+                    echo_n "Patching libtool.m4 for compatibility with IBM XL Fortran compilers..."
+                    patch -N -s -l $amdir/confdb/libtool.m4 maint/patches/optional/confdb/ibm-xlf.patch
+                    if [ $? -eq 0 ] ; then
+                        ibm_patch_requires_rebuild=yes
                         # Remove possible leftovers, which don't imply a failure
                         rm -f $amdir/confdb/libtool.m4.orig
                         echo "done"
@@ -934,7 +958,7 @@ if [ "$do_build_configure" = "yes" ] ; then
                     fi
                 fi
 
-                if [ $ifort_patch_requires_rebuild = "yes" ] ; then
+                if [ $fortran_patch_requires_rebuild = "yes" ] || [ $ibm_patch_requires_rebuild = "yes" ]; then
                     # Rebuild configure
                     (cd $amdir && $autoconf -f) || exit 1
                     # Reset libtool.m4 timestamps to avoid confusing make

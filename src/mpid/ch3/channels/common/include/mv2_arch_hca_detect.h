@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -148,6 +148,8 @@ typedef enum {
         MV2_ARCH_INTEL_PLATINUM_8160_2S_48,
         MV2_ARCH_INTEL_PLATINUM_8170_2S_52,
         MV2_ARCH_INTEL_PLATINUM_GENERIC,
+        MV2_ARCH_INTEL_GOLD_6132_2S_28,
+        MV2_ARCH_INTEL_GOLD_GENERIC,
         MV2_ARCH_INTEL_KNL_GENERIC,
         MV2_ARCH_INTEL_XEON_PHI_7210,
         MV2_ARCH_INTEL_XEON_PHI_7230,
@@ -163,6 +165,7 @@ typedef enum {
         MV2_ARCH_AMD_OPTERON_6136_32,
         MV2_ARCH_AMD_OPTERON_6276_64,
         MV2_ARCH_AMD_BULLDOZER_4274HE_16,
+	MV2_ARCH_AMD_EPYC_7551_64,
         MV2_ARCH_AMD_END,
 /* IBM Architectures */
         MV2_ARCH_IBM_START,

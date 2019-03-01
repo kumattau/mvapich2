@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -264,12 +264,22 @@ int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
 
 #ifdef _ENABLE_CUDA_
     if (rdma_enable_cuda && sreq) {
-        if(sreq->mrail.cuda_transfer_mode == NONE
-                && cts_pkt->rndv.cuda_transfer_mode != NONE) {
-            req->mrail.cuda_transfer_mode = HOST_TO_DEVICE;
+        /* Local data is on host, but remote side replied indicating that its
+         * buffers reside on device. If this is an intra-node transfer, we
+         * require cuda_transfer_mode to be set so that we can choose not to do
+         * CMA/LiMIC-based transfers if source or target is on device */
+        if ((sreq->mrail.cuda_transfer_mode == NONE) && (vc->smp.local_nodes >= 0)) {
+            if (cts_pkt->rndv.cuda_transfer_mode != NONE) {
+                req->mrail.cuda_transfer_mode = HOST_TO_DEVICE;
+            } 
         }
-        if (sreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE &&
-                           cts_pkt->rndv.cuda_transfer_mode == NONE) {
+
+        /* Local data is on device, but remote side replied indicating that its
+         * buffers reside on host or is unable to transfer to device directly.
+         * If this is an intra-node transfer, we require cuda_transfer_mode to
+         * be set so that we can choose not to do CMA/LiMIC-based transfers if
+         * source or target is on device */
+        if ((sreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE) && (vc->smp.local_nodes >= 0)) {
             req->mrail.cuda_transfer_mode = DEVICE_TO_HOST;
         }
     }
@@ -422,13 +432,11 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     MPIDI_Pkt_set_seqnum(&pkt_head, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
 
-#if defined(_ENABLE_CUDA_)
-    if (!rdma_enable_cuda || sreq->mrail.cuda_transfer_mode == NONE)
-#endif
-    {
 #if defined(_SMP_CMA_) || defined(_SMP_LIMIC_)
 #if defined(_SMP_CMA_)
     int use_cma = g_smp_use_cma; 
+#else
+    int use_cma = 0;
 #endif
 #if defined(_SMP_LIMIC_)
     int use_limic = g_smp_use_limic2;
@@ -441,27 +449,36 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     pkt_head.send_req_id = NULL;
 
 #if defined(_SMP_CMA_)
-    if(use_cma && (!g_smp_max_switch || 
+    if (use_cma && (!g_smp_max_switch || 
             (g_smp_max_switch && sreq->dev.iov[0].MPL_IOV_LEN < s_smp_cma_max_size))
             && sreq->dev.OnDataAvail != MPIDI_CH3_ReqHandler_SendReloadIOV
-            && sreq->dev.iov_count == 1) {
+            && sreq->dev.iov_count == 1
+#if defined(_ENABLE_CUDA_)
+            && (sreq->mrail.cuda_transfer_mode == NONE)
+#endif
+       )
+    {
         pkt_head.csend_req_id = sreq;
         pkt_head.send_req_id = NULL;
     }
 #endif
 
 #if defined(_SMP_LIMIC_)
-    if(use_limic && (!g_smp_max_switch ||
+    if (use_limic && (!g_smp_max_switch ||
             (g_smp_max_switch && sreq->dev.iov[0].MPL_IOV_LEN < s_smp_limic2_max_size))
             && sreq->dev.OnDataAvail != MPIDI_CH3_ReqHandler_SendReloadIOV
-            && sreq->dev.iov_count == 1) {
+            && sreq->dev.iov_count == 1
+#if defined(_ENABLE_CUDA_)
+            && (sreq->mrail.cuda_transfer_mode == NONE)
+#endif
+       )
+    {
         pkt_head.csend_req_id = NULL;
         pkt_head.send_req_id = sreq;
     }
 #endif
 
 #endif
-    }
 
     mpi_errno = MPIDI_CH3_iStartMsg(vc, &pkt_head,
                                     sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t),

@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1731,6 +1731,13 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
 	int is_commutative = 0;
 	MPID_Op *op_ptr = NULL;
 	int *disps = NULL;
+#ifdef _ENABLE_CUDA_
+    int recv_mem_type = 0, send_mem_type = 0, stride = 0;
+    char *recv_host_buf = NULL;
+    char *send_host_buf = NULL;
+    char *temp_recvbuf = recvbuf;
+    int rank = comm_ptr->rank;
+#endif
 	MPIU_THREADPRIV_DECL;
 	MPIU_THREADPRIV_GET;
 	MPIU_THREADPRIV_FIELD(op_errno) = 0;
@@ -1764,12 +1771,6 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
 	nbytes = total_count * type_size;
 
 #ifdef _ENABLE_CUDA_
-    int recv_mem_type = 0, send_mem_type = 0, stride = 0;
-    char *recv_host_buf = NULL;
-    char *send_host_buf = NULL;
-    char *temp_recvbuf = recvbuf;
-    int rank = comm_ptr->rank;
-
     MPI_Aint true_lb, true_extent, extent;
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
     MPID_Datatype_get_extent_macro(datatype, extent);
@@ -1852,8 +1853,9 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
 		MPIR_ERR_POP(mpi_errno);
     } 
 
+fn_exit:
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && recv_mem_type) {
+    if (rdma_enable_cuda && recv_mem_type==1) {
         recvbuf = temp_recvbuf;
         MPIU_Memcpy_CUDA((void *)recvbuf, 
                            (void *)recv_host_buf, 
@@ -1874,7 +1876,6 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
     }
 #endif
 
-  fn_exit:
 	MPIU_CHKLMEM_FREEALL();
 
 	/* check if multiple threads are calling this collective function */

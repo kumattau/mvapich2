@@ -73,21 +73,20 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
         }
 
 	MPID_Progress_start(&progress_state);
-        while (!MPID_Request_is_complete(request_ptr))
-	{
-	    mpi_errno = MPIR_Grequest_progress_poke(1, &request_ptr, status);
-	    if (request_ptr->kind == MPID_UREQUEST &&
-                request_ptr->greq_fns->wait_fn != NULL)
-	    {
-		if (mpi_errno) {
-		    /* --BEGIN ERROR HANDLING-- */
-		    MPID_Progress_end(&progress_state);
-                    MPIR_ERR_POP(mpi_errno);
-                    /* --END ERROR HANDLING-- */
-		}
-		continue; /* treating UREQUEST like normal request means we'll
-			     poll indefinitely. skip over progress_wait */
-	    }
+    while (!MPID_Request_is_complete(request_ptr))
+    {
+	    if (request_ptr->kind == MPID_UREQUEST)
+        {
+            mpi_errno = MPIR_Grequest_progress_poke(1, &request_ptr, status);
+            if (mpi_errno && request_ptr->greq_fns->wait_fn != NULL) {
+                /* --BEGIN ERROR HANDLING-- */
+                MPID_Progress_end(&progress_state);
+                MPIR_ERR_POP(mpi_errno);
+                /* --END ERROR HANDLING-- */
+            }
+            continue; /* treating UREQUEST like normal request means we'll
+                         poll indefinitely. skip over progress_wait */
+        }
 
         /* In a multi-threaded scenario, with tests like
          * test/mpi/threads/comm/comm_idup, we see a corner case where the

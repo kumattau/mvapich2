@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -507,7 +507,7 @@ int MPIDI_CH3_ReqHandler_GaccumRecvComplete(MPIDI_VC_t * vc, MPID_Request * rreq
         }
 
     }
-    mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, 2, &resp_req);
+    mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, iovcnt, &resp_req);
 #else /* CHANNEL_PSM */
     mpi_errno = MPIDI_CH3_iSendv(vc, resp_req, iov, iovcnt);
 #endif

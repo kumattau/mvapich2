@@ -25,7 +25,7 @@ static void update_request(MPID_Request * sreq, MPL_IOV * iov, int iov_count,
     if (iov_offset == 0)
     {
 	MPIU_Assert(iov[0].MPL_IOV_LEN == sizeof(MPIDI_CH3_Pkt_t));
-	sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPL_IOV_BUF;
+	MPIU_Memcpy(&sreq->dev.pending_pkt, iov[0].MPL_IOV_BUF, sizeof(MPIDI_CH3_Pkt_t));
 	sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) &sreq->dev.pending_pkt;
     }
     sreq->dev.iov[iov_offset].MPL_IOV_BUF = 

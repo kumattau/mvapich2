@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -274,6 +274,16 @@ inline int MPIDI_CH3_iRecv(int rank, int tag, int cid, void *buf, MPIDI_msg_sz_t
 }
 
 #undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_iMrecv
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+
+int MPIDI_CH3_iMrecv(void *buf, MPIDI_msg_sz_t buflen, MPID_Request *req)
+{
+    return (psm_imrecv(buf, buflen, req));
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_SendNonContig
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
@@ -334,6 +344,55 @@ fn_exit:
 }
 
 #undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_Mprobe
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIDI_CH3_Mprobe(int source, int tag, int context,
+                    MPID_Request *req, MPI_Status *stat,
+                    int *complete, int blk)
+{
+    int mpi_errno = MPI_SUCCESS, i;
+    PSM_ERROR_T psmerr;
+    uint32_t ipath_spinlimit =
+      (MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) ? 100 : 1000;
+
+    /* if not blocking, do probe once */
+    if(blk == PSM_NONBLOCKING) {
+        psmerr = psm_mprobe(source, tag, context, req, stat);
+        if(psmerr == PSM_OK) {
+            *complete = TRUE;
+        } else if(psmerr == PSM_MQ_NO_COMPLETIONS) {
+            *complete = FALSE;
+        } else {
+            MPIR_ERR_POP(mpi_errno);
+        }
+        goto fn_exit;
+    }
+
+    /* if blocking, probe SPINLIMIT times */
+spin:
+    for(i = 0; i < ipath_spinlimit; i++) {
+        psmerr = psm_mprobe(source, tag, context, req, stat);
+        if(psmerr == PSM_OK) {
+            *complete = TRUE;
+            goto fn_exit;
+        } else if(psmerr != PSM_MQ_NO_COMPLETIONS) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+    /* if we're MT yield global lock */
+
+    if(MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) {
+        psm_pe_yield();
+    }
+    goto spin;
+
+fn_fail:
+fn_exit:
+    return mpi_errno;
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Progress_register_hook
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
@@ -355,9 +414,10 @@ int MPIDI_CH3I_Progress_register_hook(int (*progress_fn)(int*), int *id)
     }
 
     if (i >= MAX_PROGRESS_HOOKS) {
-        return MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE,
+        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE,
                      "MPIDI_CH3I_Progress_register_hook", __LINE__,
                      MPI_ERR_INTERN, "**progresshookstoomany", 0 );
+        goto fn_fail;
     }
 
     (*id) = i;
@@ -388,13 +448,9 @@ int MPIDI_CH3I_Progress_deregister_hook(int id)
     progress_hooks[id].func_ptr = NULL;
     progress_hooks[id].active = FALSE;
 
-  fn_exit:
     MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_PROGRESS_DEREGISTER_HOOK);
     return mpi_errno;
-
-  fn_fail:
-    goto fn_exit;
 }
 
 
@@ -414,13 +470,9 @@ int MPIDI_CH3I_Progress_activate_hook(int id)
                 progress_hooks[id].active == FALSE && progress_hooks[id].func_ptr != NULL);
     progress_hooks[id].active = TRUE;
 
-  fn_exit:
     MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_PROGRESS_ACTIVATE_HOOK);
     return mpi_errno;
-
-  fn_fail:
-    goto fn_exit;
 }
 
 
@@ -440,12 +492,8 @@ int MPIDI_CH3I_Progress_deactivate_hook(int id)
                 progress_hooks[id].active == TRUE && progress_hooks[id].func_ptr != NULL);
     progress_hooks[id].active = FALSE;
 
-  fn_exit:
     MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_PROGRESS_DEACTIVATE_HOOK);
     return mpi_errno;
-
-  fn_fail:
-    goto fn_exit;
 }
 

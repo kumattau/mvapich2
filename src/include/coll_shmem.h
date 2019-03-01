@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -162,7 +162,6 @@ extern int shmem_coll_count_threshold;
 extern int mv2_g_shmem_coll_max_msg_size;
 extern int mv2_g_shmem_coll_blocks;
 extern int mv2_shmem_coll_num_procs;
-extern int mv2_shmem_coll_num_comm;
 extern int mv2_shmem_coll_spin_count;
 extern int mv2_enable_shmem_collectives;
 int is_shmem_collectives_enabled();

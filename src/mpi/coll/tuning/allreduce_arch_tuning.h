@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2018, The Ohio State University. All rights
+ * Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -136,3 +136,17 @@
 #include "allreduce/gen2_cma_IBM_POWER9_MLX_CX_EDR_22ppn.h"
 #include "allreduce/gen2_cma_IBM_POWER9_MLX_CX_EDR_32ppn.h"
 #include "allreduce/gen2_cma_IBM_POWER9_MLX_CX_EDR_44ppn.h"
+#include "allreduce/gen2_AMD_EPYC_1ppn.h"
+#include "allreduce/gen2_AMD_EPYC_2ppn.h"
+#include "allreduce/gen2_AMD_EPYC_4ppn.h"
+#include "allreduce/gen2_AMD_EPYC_8ppn.h"
+#include "allreduce/gen2_AMD_EPYC_16ppn.h"
+#include "allreduce/gen2_AMD_EPYC_32ppn.h"
+#include "allreduce/gen2_AMD_EPYC_64ppn.h"
+#include "allreduce/gen2_cma_AMD_EPYC_1ppn.h"
+#include "allreduce/gen2_cma_AMD_EPYC_2ppn.h"
+#include "allreduce/gen2_cma_AMD_EPYC_4ppn.h"
+#include "allreduce/gen2_cma_AMD_EPYC_8ppn.h"
+#include "allreduce/gen2_cma_AMD_EPYC_16ppn.h"
+#include "allreduce/gen2_cma_AMD_EPYC_32ppn.h"
+#include "allreduce/gen2_cma_AMD_EPYC_64ppn.h"

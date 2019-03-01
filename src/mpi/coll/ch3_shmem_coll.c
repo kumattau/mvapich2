@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -441,7 +441,6 @@ int mv2_use_indexed_tuning = 1;
 int mv2_use_osu_nb_collectives = 1;
 int mv2_use_anl_collectives = 0;
 int mv2_shmem_coll_num_procs = 64;
-int mv2_shmem_coll_num_comm = 20;
 
 int mv2_use_bitonic_comm_split = 0;
 int mv2_bitonic_comm_split_threshold = MV2_DEFAULT_BITONIC_COMM_SPLIT_THRESHOLD;
@@ -449,11 +448,7 @@ int mv2_bitonic_comm_split_threshold = MV2_DEFAULT_BITONIC_COMM_SPLIT_THRESHOLD;
 int mv2_shm_window_size = 128;
 int mv2_shm_reduce_tree_degree = 4; 
 int mv2_shm_slot_len = 8192;
-#if defined(__powerpc__) || defined(__ppc__) || defined(__PPC__) || defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__) || defined(__aarch64__)
-int mv2_use_slot_shmem_coll = 0;
-#else
 int mv2_use_slot_shmem_coll = 1;
-#endif
 int mv2_use_slot_shmem_bcast = 1;
 int mv2_use_mcast_pipeline_shm = 0;
 
@@ -566,6 +561,17 @@ int MV2_collectives_arch_init(int heterogeneity)
       MV2_set_iallgather_tuning_table(heterogeneity);
       MV2_set_iallgatherv_tuning_table(heterogeneity);
       MV2_set_ibarrier_tuning_table(heterogeneity);
+    }
+    if (mv2_use_osu_collectives) {
+        if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                        MV2_ARCH_IBM_POWER8, MV2_HCA_MLX_CX_EDR) ||
+             MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                            MV2_ARCH_IBM_POWER9, MV2_HCA_MLX_CX_EDR)) {
+            /* on open power systems do not use Bcast_Shmem */
+           MV2_Bcast_Shmem_Based_function = &MPIR_Knomial_Bcast_intra_node_MV2; 
+        } else {
+           MV2_Bcast_Shmem_Based_function = &MPIR_Shmem_Bcast_MV2; 
+        }
     }
     /* Functions to set collective algorithm based on MPI_T CVAR */
     if (mv2_use_osu_collectives) {
@@ -1359,7 +1365,7 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
 #endif
 
     if (local_id == 0) {
-        for (j = 0; j < mv2_shmem_coll_num_comm; ++j) {
+        for (j = 0; j < mv2_g_shmem_coll_blocks; ++j) {
             for (i = 0; i < mv2_shmem_coll_num_procs; ++i) {
                 SHMEM_BCAST_SYNC_CLR(child_complete_bcast, j, i);
                 WRITEBAR();
@@ -1386,7 +1392,7 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
         memset(shmem_coll->limic_hndl, 0, (sizeof (limic_user) * LIMIC_COLL_NUM_COMM));
 
 #endif                          /*#if defined(_SMP_LIMIC_) */
-        pthread_spin_init(&shmem_coll->shmem_coll_lock, 0);
+        pthread_spin_init(&shmem_coll->shmem_coll_lock, PTHREAD_PROCESS_SHARED);
         shmem_coll->mv2_shmem_comm_count = 0;
 #if defined(CKPT)
         /*
@@ -1485,8 +1491,9 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF);
 
+    READBAR();
     if (rank == 0) {
-        for (; i < size; ++i) {
+        for (i = 1; i < size; ++i) {
             READBAR();
             while (SHMEM_COLL_SYNC_ISCLR(child_complete_gather, shmem_comm_rank, i)) {
 #if defined(CKPT)
@@ -1586,8 +1593,9 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_BCAST_GETBUF);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_BCAST_GETBUF);
 
+    READBAR();
     if (rank == 0) {
-        for (; i < size; ++i) {
+        for (i = 1; i < size; ++i) {
             READBAR();
             while (SHMEM_BCAST_SYNC_ISSET(child_complete_bcast, shmem_comm_rank, i)) {
 #if defined(CKPT)
@@ -1661,6 +1669,7 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
         }
         *output_buf = (char *) shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
     }
+    READBAR();
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_BCAST_GETBUF);
 }
 
@@ -1675,8 +1684,9 @@ void MPIDI_CH3I_SHMEM_Bcast_Complete(int size, int rank, int shmem_comm_rank)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETBCASTCOMPLETE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETBCASTCOMPLETE);
 
+    READBAR();
     if (rank == 0) {
-        for (; i < size; ++i) {
+        for (i = 1; i < size; ++i) {
             SHMEM_BCAST_SYNC_SET(child_complete_bcast, shmem_comm_rank, i);
             WRITEBAR();
         }
@@ -1684,6 +1694,7 @@ void MPIDI_CH3I_SHMEM_Bcast_Complete(int size, int rank, int shmem_comm_rank)
         SHMEM_BCAST_SYNC_CLR(child_complete_bcast, shmem_comm_rank, rank);
         WRITEBAR();
     }
+    READBAR();
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETBCASTCOMPLETE);
 }
 
@@ -1697,6 +1708,7 @@ void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int size, int rank, int shmem_comm_
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETGATHERCOMPLETE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETGATHERCOMPLETE);
 
+    READBAR();
     if (rank == 0) {
         for (; i < size; ++i) {
             SHMEM_COLL_SYNC_SET(root_complete_gather, shmem_comm_rank, i);
@@ -1719,8 +1731,9 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_GATHER);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_GATHER);
 
+    READBAR();
     if (rank == 0) {
-        for (; i < size; ++i) {
+        for (i = 1; i < size; ++i) {
             READBAR();
             while (SHMEM_COLL_SYNC_ISCLR(barrier_gather, shmem_comm_rank, i)) {
 #if defined(CKPT)
@@ -1778,8 +1791,9 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_BCAST);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_BCAST);
 
+    READBAR();
     if (rank == 0) {
-        for (; i < size; ++i) {
+        for (i = 1; i < size; ++i) {
             SHMEM_COLL_SYNC_SET(barrier_bcast, shmem_comm_rank, i);
             WRITEBAR();
         }
@@ -2830,11 +2844,7 @@ void MV2_Read_env_vars(void)
         mv2_shm_slot_len = atoi(value);
     }
     if ((value = getenv("MV2_USE_SLOT_SHMEM_COLL")) != NULL) {
-#if defined(__powerpc__) || defined(__ppc__) || defined(__PPC__) || defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__) || defined(__aarch64__)
-        /* ignore mv2_use_slot_shmem_coll for PowerPC and ARM */
-#else
         mv2_use_slot_shmem_coll = atoi(value);
-#endif
     }
     if ((value = getenv("MV2_USE_SLOT_SHMEM_BCAST")) != NULL) {
         mv2_use_slot_shmem_bcast = atoi(value);
@@ -3203,12 +3213,23 @@ void CUDA_COLL_Finalize()
         MPIU_Memalign_Free(mv2_cuda_host_recv_buf);
         mv2_cuda_host_recv_buf = NULL;
     }
+
+    if (mv2_cuda_host_send_displs) {
+        MPIU_Free(mv2_cuda_host_send_displs);
+        mv2_cuda_host_send_displs = NULL;
+    }
+
     if (mv2_cuda_host_send_buf) {
         if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
             ibv_cuda_unregister(mv2_cuda_host_send_buf);
         }
         MPIU_Memalign_Free(mv2_cuda_host_send_buf);
         mv2_cuda_host_send_buf = NULL;
+    }
+
+    if (mv2_cuda_host_recv_displs) {
+        MPIU_Free(mv2_cuda_host_recv_displs);
+        mv2_cuda_host_recv_displs = NULL;
     }
 
     if (mv2_cuda_allgather_store_buf) {
@@ -3593,7 +3614,9 @@ void mv2_shm_barrier(shmem_info_t * shmem)
                     mv2_shm_progress(&nspin);
                 }
             }
+            READBAR();
         }
+        WRITEBAR();
         shmem->queue[0].shm_slots[idx]->psn = shmem->write;
     } else {
         shmem->queue[shmem->local_rank].shm_slots[idx]->psn = shmem->write;
@@ -3603,6 +3626,7 @@ void mv2_shm_barrier(shmem_info_t * shmem)
                 mv2_shm_progress(&nspin);
             }
         }
+        READBAR();
     }
     shmem->write++;
     shmem->read++;
@@ -3642,6 +3666,7 @@ void mv2_shm_reduce(shmem_info_t * shmem, char *in_buf, int len,
                     mv2_shm_progress(&nspin);
                 }
             }
+            READBAR();
 #ifdef HAVE_CXX_BINDING
             if (is_cxx_uop) {
                 (*MPIR_Process.cxx_call_op_fn) (
@@ -3652,6 +3677,7 @@ void mv2_shm_reduce(shmem_info_t * shmem, char *in_buf, int len,
             (*uop) (shmem->queue[i].shm_slots[rindex]->buf, buf, &count, &datatype);
         }
     } else {
+        WRITEBAR();
         shmem->queue[shmem->local_rank].shm_slots[windex]->psn = shmem->write;
     }
 }
@@ -3693,6 +3719,7 @@ void mv2_shm_tree_reduce(shmem_info_t * shmem, char *in_buf, int len,
                     mv2_shm_progress(&nspin);
                 }
             }
+            READBAR();
 #ifdef HAVE_CXX_BINDING
             if (is_cxx_uop) {
                 (*MPIR_Process.cxx_call_op_fn) (
@@ -3712,6 +3739,7 @@ void mv2_shm_tree_reduce(shmem_info_t * shmem, char *in_buf, int len,
                         mv2_shm_progress(&nspin);
                     }
                 }
+                READBAR();
 #ifdef HAVE_CXX_BINDING
                 if (is_cxx_uop) {
                     (*MPIR_Process.cxx_call_op_fn) (
@@ -3723,6 +3751,7 @@ void mv2_shm_tree_reduce(shmem_info_t * shmem, char *in_buf, int len,
                 (*uop) (shmem->queue[i].shm_slots[rindex]->buf, buf, &count, &datatype);
             }
         } else {
+            WRITEBAR();
             shmem->queue[shmem->local_rank].shm_slots[windex]->psn = shmem->write;
         }
 
@@ -3737,6 +3766,7 @@ void mv2_shm_tree_reduce(shmem_info_t * shmem, char *in_buf, int len,
             MPIU_Memcpy(shmem->queue[shmem->local_rank].shm_slots[windex]->buf, in_buf, len);
         }
 
+        WRITEBAR();
         shmem->queue[shmem->local_rank].shm_slots[windex]->psn = shmem->write;
     }
 } 
@@ -3770,6 +3800,7 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
             {
                 MPIU_Memcpy(shmem->queue[root].shm_slots[windex]->buf, buf, len);
             }
+            WRITEBAR();
             shmem->queue[root].shm_slots[windex]->psn = shmem->write;
         } else {
             while (shmem->queue[root].shm_slots[rindex]->psn != shmem->read) {
@@ -3778,6 +3809,7 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
                     mv2_shm_progress(&nspin);
                 }
             }
+            READBAR();
 #if defined(_ENABLE_CUDA_)
             if (rdma_enable_cuda) { 
                 MPIR_Localcopy(shmem->queue[root].shm_slots[rindex]->buf, len, MPI_BYTE, 
@@ -3841,7 +3873,9 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
 
 fn_exit:
     return mpi_errno;
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
 fn_fail:
+#endif
     goto fn_exit;
 }
 
@@ -3972,6 +4006,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                         (volatile uint32_t ) *(shmem->queue[intra_node_root].shm_slots[windex]->tail_psn)) {
                     mv2_shm_progress(&nspin);
                 }
+                WRITEBAR();
                 shmem->queue[intra_node_root].shm_slots[windex]->psn = shmem->write;
             } else {
                 /* node-level leader, and the root of the bcast */
@@ -3985,7 +4020,9 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
 
                     MPIU_Memcpy(shmem->queue[intra_node_root].shm_slots[windex]->buf, buf, len);
                 }
+                WRITEBAR();
                 shmem->queue[intra_node_root].shm_slots[windex]->psn = shmem->write;
+                WRITEBAR();
                 shmem->queue[intra_node_root].shm_slots[windex]->tail_psn = (volatile uint32_t *)
                             ((char *) (shmem->queue[intra_node_root].shm_slots[windex]->buf) + len);
                 *((volatile uint32_t *) shmem->queue[intra_node_root].shm_slots[windex]->tail_psn) =
@@ -4048,6 +4085,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
             {
                 MPIU_Memcpy(shmem->queue[intra_node_root].shm_slots[windex]->buf, buf, len);
             }
+            WRITEBAR();
             shmem->queue[intra_node_root].shm_slots[windex]->psn = shmem->write;
         }
     } else {
@@ -4057,6 +4095,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                 mv2_shm_progress(&nspin);
             }
         }
+        READBAR();
 #if defined(_ENABLE_CUDA_)
         if (rdma_enable_cuda) {
             mpi_errno = MPIR_Localcopy(shmem->queue[intra_node_root].shm_slots[rindex]->buf, len, MPI_BYTE,
@@ -4404,7 +4443,9 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
        mv2_shm_tree_reduce(shmem, in_buf, len, count, intra_node_root, uop, 
                       datatype, is_cxx_uop); 
 
+       WRITEBAR();
        shmem->queue[shmem->local_rank].shm_slots[windex]->psn = shmem->write;
+       WRITEBAR();
        shmem->queue[shmem->local_rank].shm_slots[windex]->tail_psn = (volatile uint32_t *)
                              ((char *) (shmem->queue[shmem->local_rank].shm_slots[windex]->buf) + len);
         *((volatile uint32_t *) shmem->queue[shmem->local_rank].shm_slots[windex]->tail_psn) =
@@ -4480,6 +4521,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
     } else { 
        mv2_shm_tree_reduce(shmem, in_buf, len, count, intra_node_root, uop, 
                       datatype, is_cxx_uop); 
+       WRITEBAR();
        shmem->queue[shmem->local_rank].shm_slots[windex]->psn = shmem->write;
     } 
 

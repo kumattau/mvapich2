@@ -1,7 +1,7 @@
 ## -*- Mode: Makefile; -*-
 ## vim: set ft=automake :
 ##
-## Copyright (c) 2001-2018, The Ohio State University. All rights
+## Copyright (c) 2001-2019, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -15,7 +15,8 @@
 
 if BUILD_CH3_PSM
 
-AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/psm/include
+AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/psm/include 	\
+			   -I$(top_srcdir)/src/mpi/coll
 AM_CPPFLAGS += -D_GNU_SOURCE
 
 mpi_core_sources +=   \

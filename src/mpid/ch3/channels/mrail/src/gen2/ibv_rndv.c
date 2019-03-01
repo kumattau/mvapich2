@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -104,7 +104,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
     req->mrail.rndv_buf_off = 0;
 
     /* Step 1.5: If use R3 for smaller messages */
-    if (req->mrail.rndv_buf_sz <= rdma_r3_threshold
+    if (req->mrail.rndv_buf_sz <= MPIDI_CH3_R3_THRESHOLD(vc)
 #ifdef _ENABLE_CUDA_
         && !rdma_enable_cuda
 #endif
@@ -206,7 +206,10 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
         if( rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
             sreq->mrail.cts_received = 1;
             sreq->mrail.num_send_cuda_copy = 0;
-            if (sreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE 
+	    if (rndv->cuda_transfer_mode == NONE || rndv->cuda_transfer_mode == DEVICE_TO_HOST) {
+                sreq->mrail.cuda_transfer_mode = DEVICE_TO_HOST;
+            }
+            if (sreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE
                 || sreq->mrail.cuda_transfer_mode == HOST_TO_DEVICE) {
                 for (i = 0; i < rndv->num_cuda_blocks; i++) {
                     sreq->mrail.cuda_remote_addr[i] = rndv->buffer_addr[i];
@@ -226,6 +229,9 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
                 sreq->mrail.remote_addr = rndv->buf_addr;
                 for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++)
                     sreq->mrail.rkey[hca_index] = rndv->rkey[hca_index];
+            } else {
+                /* Code should not enter here */
+		MPIU_Assert(0);
             }
         } else
 #endif
@@ -376,8 +382,11 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
         MPID_Request * rreq)
 {
     vbuf *v;
+    int queued = 0;
+    int ext_sendq_size = 0;
     int rail, disp, s_total, inc;
-    int nbytes, rail_index;
+    int rail_index;
+    MPIDI_msg_sz_t nbytes;
 
     int count_rail;
 
@@ -386,10 +395,9 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
 
     double time;
 
-    if (rreq->mrail.rndv_buf_off != 0) {
-        ibv_va_error_abort(GEN_ASSERT_ERR,
-                "s->bytes_sent != 0 Rendezvous Push, %d",
-                rreq->mrail.nearly_complete);
+    if (rreq->mrail.rndv_buf_off == 0) {
+        rreq->mrail.num_rdma_read_completions = 0;
+        rreq->mrail.completion_counter = 0;
     }
 
     for(rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
@@ -398,9 +406,6 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
         }
     }
 
-    rreq->mrail.completion_counter = 0;
-
-    rreq->mrail.num_rdma_read_completions = 0;
 
 #if defined(DEBUG)
     if (rreq->mrail.rndv_buf_sz > 0) {
@@ -451,10 +456,15 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                 rreq->mrail.rndv_buf_off, rreq->mrail.remote_addr);
         
         if (nbytes <= rdma_large_msg_rail_sharing_threshold) {
+            rail = MRAILI_Send_select_rail(vc);
+            /* Get current number of pending entries */
+            GET_EXT_SENDQ_SIZE(vc, rail, ext_sendq_size);
+            if (ext_sendq_size >= rdma_rndv_ext_sendq_size) {
+                break;
+            }
+
             GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
             v->sreq = rreq;
-
-            rail = MRAILI_Send_select_rail(vc);
 
             MRAILI_RDMA_Get(vc, v,
                     (char *) (rreq->mrail.rndv_buf) +
@@ -470,6 +480,17 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
 
         } else if(!mv2_MPIDI_CH3I_RDMA_Process.has_hsam) {
             inc = nbytes / rdma_num_rails;
+            for(rail = 0; rail < rdma_num_rails; rail++) {
+                /* Get current number of pending entries */
+                GET_EXT_SENDQ_SIZE(vc, rail, ext_sendq_size);
+                if (ext_sendq_size >= rdma_rndv_ext_sendq_size) {
+                    queued = 1;
+                    break;
+                }
+            }
+            if (queued) {
+                break;
+            }
             
             for(rail = 0; rail < rdma_num_rails - 1; rail++) {
                 GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
@@ -566,8 +587,12 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
         rreq->mrail.rndv_buf_off += nbytes; 
     }
 
-    MPIU_Assert(rreq->mrail.rndv_buf_off == rreq->mrail.rndv_buf_sz);
-    rreq->mrail.nearly_complete = 1;
+    /* Send the finish message through the rails, when all data is sent */
+    if (rreq->mrail.rndv_buf_off == rreq->mrail.rndv_buf_sz) {
+        rreq->mrail.nearly_complete = 1;
+    } else { 
+        rreq->mrail.nearly_complete = 0;
+    }
 }
 
 
@@ -595,6 +620,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
     int mapped[MAX_NUM_SUBRAILS];
     int actual_index[MAX_NUM_SUBRAILS];
     int queued = 0;
+    int ext_sendq_size = 0;
 
     double time;
 
@@ -661,7 +687,9 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
         if (nbytes <= rdma_large_msg_rail_sharing_threshold) {
             rail = MRAILI_Send_select_rail(vc);
 
-            if (vc->mrail.rails[rail].ext_sendq_size >= rdma_rndv_ext_sendq_size) {
+            /* Get current number of pending entries */
+            GET_EXT_SENDQ_SIZE(vc, rail, ext_sendq_size);
+            if (ext_sendq_size >= rdma_rndv_ext_sendq_size) {
                 break;
             }
 
@@ -680,7 +708,9 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
            
         } else if(!mv2_MPIDI_CH3I_RDMA_Process.has_hsam) {
             for(rail = 0; rail < rdma_num_rails; rail++) {
-                if (vc->mrail.rails[rail].ext_sendq_size >= rdma_rndv_ext_sendq_size) {
+                /* Get current number of pending entries */
+                GET_EXT_SENDQ_SIZE(vc, rail, ext_sendq_size);
+                if (ext_sendq_size >= rdma_rndv_ext_sendq_size) {
                     queued = 1;
                     break;
                 }

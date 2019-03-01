@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -153,7 +153,7 @@ int MPIR_Reduce_binomial_MV2(const void *sendbuf,
 
     /* If I'm not the root, then my recvbuf may not be valid, therefore
        I have to allocate a temporary one */
-    if ((rank != root) && (recvbuf == NULL)) {
+    if ((rank != root) && (sendbuf != MPI_IN_PLACE)) {
         MPIU_CHKLMEM_MALLOC(recvbuf, void *,
                             count * (MPIR_MAX(extent, true_extent)),
                             mpi_errno, "receive buffer");
@@ -1791,7 +1791,7 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
             conf_index = 0;
             goto conf_check_end;
         }
-        if (likely(mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
+        if (likely(mv2_enable_shmem_reduce && mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
             /* for small messages, force shmem + binomial */
             MV2_Reduce_intra_function = MPIR_Reduce_shmem_MV2;
             MV2_Reduce_function = MPIR_Reduce_binomial_MV2;

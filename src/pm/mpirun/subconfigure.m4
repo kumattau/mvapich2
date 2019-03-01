@@ -224,6 +224,14 @@ AS_IF([test "x$enable_ckpt" = xyes], [
 
 if test "$enable_rsh" = "yes"; then
     AC_DEFINE(USE_RSH, 1, [Define to enable use of rsh for command execution by default.])
+    AC_DEFINE(HAVE_PMI_IBARRIER, 1, [Define if pmi client supports PMI_Ibarrier])
+    AC_DEFINE(HAVE_PMI_WAIT, 1, [Define if pmi client supports PMI_Wait])
+    AC_DEFINE(HAVE_PMI2_KVS_IFENCE, 1, [Define if pmi client supports PMI2_KVS_Ifence])
+    AC_DEFINE(HAVE_PMI2_KVS_WAIT, 1, [Define if pmi client supports PMI2_KVS_Wait])
+    AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER, 1, [Define if pmi client supports PMI2_Iallgather])
+    AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER_WAIT, 1, [Define if pmi client supports PMI2_Iallgather_wait])
+    AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER, 1, [Define if pmi client supports PMI2_SHMEM_Iallgather])
+    AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER_WAIT, 1, [Define if pmi client supports PMI2_SHMEM_Iallgather_wait])
 fi
 
 # MVAPICH2_VERSION is exported from the top level configure

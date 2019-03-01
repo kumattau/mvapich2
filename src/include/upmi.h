@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2018, The Ohio State University. All rights
+ * Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -41,14 +41,6 @@ extern "C" {
 #define UPMI_ERR_INVALID_KEYVALP    12
 #define UPMI_ERR_INVALID_SIZE       13
 #define UPMI_ERR_OTHER              14
-
-#ifndef SLURM_PMI_CLIENT
-#   define HAVE_PMI2_KVS_IFENCE 1
-#   define HAVE_PMI2_KVS_WAIT   1
-#   define HAVE_PMI_IBARRIER    1
-#   define HAVE_PMI_WAIT        1
-#endif
-
 
 struct MPID_Info;
 
@@ -109,7 +101,6 @@ int UPMI_PUT_NODE_ATTR( const char name[], const char value[] );
 int UPMI_GET_JOB_ATTR( const char name[], char value[], int valuelen, int *found );
 
 int UPMI_GET_JOB_ATTR_INT_ARRAY( const char name[], int array[], int arraylen, int *outlen, int *found );
-
 
 int UPMI_JOB_SPAWN(int count,
                    const char * cmds[],

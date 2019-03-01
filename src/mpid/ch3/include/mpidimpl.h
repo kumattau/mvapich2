@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -2178,13 +2178,13 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
                             MPID_Request * req);
 int MPIDI_CH3_Get_rndv_recv(MPIDI_VC_t * vc, MPID_Request * req);
 
-int MPIDI_Num_local_processes(MPIDI_PG_t *pg);
-int MPIDI_Get_local_process_id(MPIDI_PG_t *pg);
 #define MPIDI_CH3U_PKT_SIZE(_pkt) \
     (MPIDI_CH3_Pkt_size_index[((MPIDI_CH3_Pkt_t *)(_pkt))->type])
 #endif /* if defined(CHANNEL_MRAIL) */
 
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+int MPIDI_Num_local_processes(MPIDI_PG_t *pg);
+int MPIDI_Get_local_process_id(MPIDI_PG_t *pg);
 void mv2_show_cpu_affinity(int verbosity);
 #endif
 #if defined(CHANNEL_MRAIL)

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -899,7 +899,7 @@ int MPIDI_CH3I_RDMA_finalize(void)
             /* Signal thread if waiting */
             pthread_mutex_lock(&mv2_MPIDI_CH3I_RDMA_Process.
                                srq_post_mutex_lock[i]);
-            *((volatile int *) &mv2_MPIDI_CH3I_RDMA_Process.is_finalizing) = 1;
+            mv2_MPIDI_CH3I_RDMA_Process.is_finalizing = 1;
             pthread_cond_signal(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
             pthread_mutex_unlock(&mv2_MPIDI_CH3I_RDMA_Process.
                                  srq_post_mutex_lock[i]);
@@ -2103,6 +2103,23 @@ int MPIDI_CH3I_CM_Finalize(void)
         ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
 
         if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
+            /* Signal thread if waiting */
+            pthread_mutex_lock(&mv2_MPIDI_CH3I_RDMA_Process.
+                    srq_post_mutex_lock[i]);
+            mv2_MPIDI_CH3I_RDMA_Process.is_finalizing = 1;
+            pthread_cond_signal(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
+            pthread_mutex_unlock(&mv2_MPIDI_CH3I_RDMA_Process.
+                    srq_post_mutex_lock[i]);
+
+            /* wait for async thread to finish processing */
+            pthread_mutex_lock(&mv2_MPIDI_CH3I_RDMA_Process.
+                    async_mutex_lock[i]);
+
+            /* destroy mutex and cond and cancel thread */
+            pthread_cond_destroy(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
+            pthread_mutex_destroy(&mv2_MPIDI_CH3I_RDMA_Process.
+                    srq_post_mutex_lock[i]);
+
             pthread_cancel(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i]);
             pthread_join(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);
             PRINT_DEBUG(DEBUG_XRC_verbose > 0, "destroyed SRQ: %d\n", i);

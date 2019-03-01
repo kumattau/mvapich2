@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -125,6 +125,10 @@ extern int mv2_use_slot_shmem_coll;
 #define INTEL_PLATINUM_8160_MODEL_NAME "Intel(R) Xeon(R) Platinum 8160 CPU @ 2.10GHz"
 #define INTEL_PLATINUM_8170_MODEL_NAME "Intel(R) Xeon(R) Platinum 8170 CPU @ 2.10GHz"
 
+#define INTEL_GOLD_GENERIC_MODEL_NAME  "Intel(R) Xeon(R) Gold"
+#define INTEL_GOLD_6132_MODEL_NAME "Intel(R) Xeon(R) Gold 6132 CPU @ 2.60GHz"
+
+
 #define INTEL_XEON_PHI_GENERIC_MODEL_NAME "Intel(R) Xeon Phi(TM) CPU"
 #define INTEL_XEON_PHI_7210_MODEL_NAME    "Intel(R) Xeon Phi(TM) CPU 7210 @ 1.30GHz"
 #define INTEL_XEON_PHI_7230_MODEL_NAME    "Intel(R) Xeon Phi(TM) CPU 7230 @ 1.30GHz"
@@ -168,6 +172,9 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_PLATINUM_GENERIC,      "MV2_ARCH_INTEL_PLATINUM_GENERIC"},
     {MV2_ARCH_INTEL_PLATINUM_8160_2S_48,   "MV2_ARCH_INTEL_PLATINUM_8160_2S_48"},
     {MV2_ARCH_INTEL_PLATINUM_8170_2S_52,   "MV2_ARCH_INTEL_PLATINUM_8170_2S_52"},
+    {MV2_ARCH_INTEL_GOLD_GENERIC,          "MV2_ARCH_INTEL_GOLD_GENERIC"},
+    {MV2_ARCH_INTEL_GOLD_6132_2S_28,       "MV2_ARCH_INTEL_GOLD_6132_2S_28"},
+
 
     /* KNL Architectures */
     {MV2_ARCH_INTEL_KNL_GENERIC,    "MV2_ARCH_INTEL_KNL_GENERIC"},
@@ -184,6 +191,7 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_AMD_OPTERON_6136_32,  "MV2_ARCH_AMD_OPTERON_6136_32"},
     {MV2_ARCH_AMD_OPTERON_6276_64,  "MV2_ARCH_AMD_OPTERON_6276_64"},
     {MV2_ARCH_AMD_BULLDOZER_4274HE_16,"MV2_ARCH_AMD_BULLDOZER_4274HE_16"},
+    {MV2_ARCH_AMD_EPYC_7551_64, "MV2_ARCH_AMD_EPYC_7551_64"},
 
     /* IBM Architectures */
     {MV2_ARCH_IBM_PPC,              "MV2_ARCH_IBM_PPC"},
@@ -344,6 +352,8 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
                 arch_type = MV2_ARCH_INTEL_XEON_E5_2695_V3_2S_28;
             } else if(NULL != strstr(model_name, INTEL_E5_2680_V4_MODEL_NAME)) {
                 arch_type = MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28;
+            } else if(NULL != strstr(model_name, INTEL_GOLD_GENERIC_MODEL_NAME)) { /* SkL Gold */
+                arch_type = MV2_ARCH_INTEL_PLATINUM_8170_2S_52; /* Use generic SKL tables */
             }
         } else if(32 == num_cpus){
             if(INTEL_XEON_E5_2698_V3_MODEL == g_mv2_cpu_model) {
@@ -457,11 +467,11 @@ mv2_arch_type mv2_get_arch_type()
                     tmp = strtok(NULL, MV2_STR_WS);
                     if (! strncmp(tmp, MV2_STR_POWER8_ID, strlen(MV2_STR_POWER8_ID))) {
                         g_mv2_cpu_family_type = MV2_CPU_FAMILY_POWER;
-                	arch_type = MV2_ARCH_IBM_POWER8;
+                    	arch_type = MV2_ARCH_IBM_POWER8;
                         continue;
                     } else if (! strncmp(tmp, MV2_STR_POWER9_ID, strlen(MV2_STR_POWER9_ID))) {
                         g_mv2_cpu_family_type = MV2_CPU_FAMILY_POWER;
-                	arch_type = MV2_ARCH_IBM_POWER9;
+                    	arch_type = MV2_ARCH_IBM_POWER9;
                         continue;
                     }
                 }
@@ -504,7 +514,6 @@ mv2_arch_type mv2_get_arch_type()
                 arch_type = mv2_get_intel_arch_type(model_name, num_sockets, num_cpus);
             } else if(MV2_CPU_FAMILY_AMD == g_mv2_cpu_family_type) {
                 arch_type = MV2_ARCH_AMD_GENERIC;
-
                 if(2 == num_sockets) {
                     if(4 == num_cpus) {
                         arch_type = MV2_ARCH_AMD_OPTERON_DUAL_4;
@@ -513,6 +522,8 @@ mv2_arch_type mv2_get_arch_type()
 
                     } else if(24 == num_cpus) {
                         arch_type =  MV2_ARCH_AMD_MAGNY_COURS_24;
+                    } else if(64 == num_cpus) {
+                        arch_type =  MV2_ARCH_AMD_EPYC_7551_64;
                     }
                 } else if(4 == num_sockets) {
                     if(16 == num_cpus) {
@@ -523,16 +534,6 @@ mv2_arch_type mv2_get_arch_type()
                         arch_type =  MV2_ARCH_AMD_OPTERON_6276_64;
                     }
                 }
-            } else if(MV2_CPU_FAMILY_POWER == g_mv2_cpu_family_type) {
-                /* Note: Disable slot-shmem collectives for POWER architectures
-                 * Further, disable zeroy copy broadcast algorithm as well. */
-                mv2_use_slot_shmem_coll = 0;
-                mv2_enable_zcpy_bcast = 0;
-            } else if(MV2_CPU_FAMILY_ARM == g_mv2_cpu_family_type) { 
-                arch_type = MV2_ARCH_ARM_CAVIUM_V8;
-                /* Disable slotted shmem collective algorithms for ARM 
-                 * architecture */
-                mv2_use_slot_shmem_coll = 0;
             }
         } else {
             fprintf(stderr, "Warning: %s: Failed to open \"%s\".\n", __func__,

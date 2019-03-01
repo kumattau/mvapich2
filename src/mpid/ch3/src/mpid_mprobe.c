@@ -34,6 +34,30 @@ int MPID_Mprobe(int source, int tag, MPID_Comm *comm, int context_offset,
         MPIR_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
     }
 
+#if defined (CHANNEL_PSM)
+    #if PSM_VERNO < PSM_2_1_VERSION
+    MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s",
+            "Operation not supported for QLogic PSM (CH3:PSM) channel\n");
+    #endif
+
+	int complete = FALSE;
+    MPID_Request *rreq = MPID_Request_create();
+    MPIU_Object_set_ref(rreq, 2);
+    rreq->kind = MPID_REQUEST_MPROBE;
+    MPIR_Comm_add_ref(comm);
+    rreq->comm = comm;
+
+    MPID_Progress_poke();
+    mpi_errno = MPIDI_CH3_Mprobe(source, tag, context_id,
+                                rreq, status, &complete,
+                                PSM_BLOCKING);
+    if(mpi_errno) MPIR_ERR_POP(mpi_errno);
+    MPIU_Assert(complete == TRUE);
+
+    *message = rreq;
+    goto fn_exit;
+#endif
+
 #ifdef ENABLE_COMM_OVERRIDES
     if (MPIDI_Anysource_improbe_fn) {
         if (source == MPI_ANY_SOURCE) {

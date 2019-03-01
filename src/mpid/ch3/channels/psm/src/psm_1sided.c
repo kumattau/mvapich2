@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -37,7 +37,7 @@ static void psm_1sided_recv(MPID_Request *req, void *ptr);
 static void *psm_gen_packbuf(MPID_Request *rreq, MPID_Request *dtreq);
 static void psm_init_tag();
 static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *, MPIDI_msg_sz_t, MPID_Request **,
-                                      void *, int, int, int, MPIDI_VC_t *);
+                                      void *, int, int, MPIDI_msg_sz_t, MPIDI_VC_t *);
 static MPIDI_CH3_PktHandler_Fcn *psm_pkthndl[MPIDI_CH3_PKT_END_CH3+1];
 
 /* notes:
@@ -1197,6 +1197,12 @@ int psm_complete_rndvrecv(MPID_Request *req, MPIDI_msg_sz_t inlen)
     MPIDI_msg_sz_t msg = req->pktlen;
     int complete = TRUE;
 
+    /* if request counter is greater than 1, then the transaction is not finished;
+     * cannot release the request yet */
+    if (unlikely(MPID_cc_get(req->cc) > 1)) {
+        return MPID_Request_complete(req);
+    }
+
     putreq = req->savedreq;
     vbptr = putreq->vbufptr;
     pkt = (MPIDI_CH3_Pkt_t *) vbptr->buffer;
@@ -1336,7 +1342,7 @@ fn_fail:
 
 static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *putreq, MPIDI_msg_sz_t putlen,
                      MPID_Request **nreq, void *useraddr, int rndv_tag, 
-                     int source_rank, int rndv_len, MPIDI_VC_t *vc)
+                     int source_rank, MPIDI_msg_sz_t rndv_len, MPIDI_VC_t *vc)
 {
     MPID_Request *req = *nreq;
     MPID_Request *preq = vc->ch.recv_active;
@@ -1463,13 +1469,18 @@ int psm_getresp_rndv_complete(MPID_Request *req, MPIDI_msg_sz_t inlen)
         MPIU_Object_set_ref(req, 0);
         MPIDI_CH3_Request_destroy(req);
     } else {
+        /* if request counter is greater than 1, then the transaction is not finished;
+         * cannot release the request yet */
+        if (unlikely(MPID_cc_get(req->cc) > 1)) {
+            mpi_errno = MPID_Request_complete(req);
+            goto fn_exit;
+        }
         if (req->request_completed_cb != NULL) {
             mpi_errno = req->request_completed_cb(req);
             if (mpi_errno != MPI_SUCCESS) {
                 MPIR_ERR_POP(mpi_errno);
             }
         }
-
         if (((req->psm_flags & PSM_RNDVRECV_GET_REQ) && !req->is_piggyback) 
             || ((req->psm_flags & PSM_GETACCUM_GET_RNDV_REQ) && req->last_stream_unit
                  && !req->is_piggyback)) {
@@ -1481,9 +1492,11 @@ int psm_getresp_rndv_complete(MPID_Request *req, MPIDI_msg_sz_t inlen)
         }
 
         MPID_cc_set(req->savedreq->cc_ptr, 0);
+	    MPID_Request_release(req->savedreq);
         MPIU_Object_set_ref(req, 0);
         MPIDI_CH3_Request_destroy(req);
     }
+fn_exit:
     return MPI_SUCCESS;
 
 fn_fail:

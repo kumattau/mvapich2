@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -94,17 +94,15 @@ static inline MPID_Request * create_request(MPL_IOV * iov, int iov_count,
     MPIU_Object_set_ref(sreq, 2);
     sreq->kind = MPID_REQUEST_SEND;
 
-    for (i = 0; i < iov_count; i++)
-    {
-        sreq->dev.iov[i] = iov[i];
-    }
+    MPIU_Memcpy(sreq->dev.iov, iov, iov_count * sizeof(MPL_IOV));
+
     if (iov_offset == 0)
     {
     /*
         MPIU_Assert(iov[0].MPL_IOV_LEN == sizeof(MPIDI_CH3_Pkt_t));
     */
     
-        sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPL_IOV_BUF;
+        MPIU_Memcpy(&sreq->dev.pending_pkt, iov[0].MPL_IOV_BUF, sizeof(MPIDI_CH3_Pkt_t));
         sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) &sreq->dev.pending_pkt;
     }
     sreq->dev.iov[iov_offset].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)((char *)
@@ -567,7 +565,7 @@ static void isend_update_request(MPID_Request* sreq, void* pkt, int pkt_sz, int 
 {
     MPIDI_STATE_DECL(MPID_STATE_ISEND_UPDATE_REQUEST);
     MPIDI_FUNC_ENTER(MPID_STATE_ISEND_UPDATE_REQUEST);
-    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) pkt;
+    MPIU_Memcpy(&sreq->dev.pending_pkt, pkt, sizeof(MPIDI_CH3_Pkt_t));
     sreq->dev.iov[0].MPL_IOV_BUF = (char *) &sreq->dev.pending_pkt + nb;
     sreq->dev.iov[0].MPL_IOV_LEN = pkt_sz - nb;
     sreq->dev.iov_count = 1;

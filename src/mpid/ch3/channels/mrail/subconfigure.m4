@@ -760,6 +760,7 @@ AS_CASE([$with_rdma],
     AM_CONDITIONAL([BUILD_MRAIL_CUDA], [test X$build_mrail_cuda = Xyes])
     AM_CONDITIONAL([BUILD_MRAIL_CUDA_KERNELS],
             [test X$build_mrail_cuda_kernels = Xyes])
+    AM_CONDITIONAL([BUILD_USE_PGI], [`$CXX -V 2>&1 | grep pgc++ > /dev/null 2>&1`])
     AM_CONDITIONAL([BUILD_LIB_CH3AFFINITY], [test X$build_mrail = Xyes])
     AM_CONDITIONAL([BUILD_LIB_SCR], [test X$with_scr = Xyes])
 ])dnl end _BODY

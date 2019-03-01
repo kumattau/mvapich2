@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,7 +26,6 @@
 #include "coll_shmem.h"
 
 extern int mv2_shmem_coll_num_procs;
-extern int mv2_shmem_coll_num_comm;
 extern int mv2_gather_status_alignment;
 extern int mv2_bcast_status_alignment;
 extern int mv2_max_limic_comms;
@@ -42,8 +41,8 @@ volatile int *limic_progress;
 
 #define SHMEM_COLL_NUM_SYNC_ARRAY 4
 #define SHMEM_COLL_STATUS_ARRAY_SIZE (sizeof(int)*mv2_g_shmem_coll_blocks) 
-#define SHMEM_COLL_SYNC_ARRAY_SIZE (mv2_gather_status_alignment * sizeof(int) * mv2_shmem_coll_num_procs * mv2_shmem_coll_num_comm)
-#define SHMEM_BCAST_SYNC_ARRAY_SIZE (mv2_bcast_status_alignment * sizeof(int) * mv2_shmem_coll_num_procs * mv2_shmem_coll_num_comm)
+#define SHMEM_COLL_SYNC_ARRAY_SIZE (mv2_gather_status_alignment * sizeof(int) * mv2_shmem_coll_num_procs * mv2_g_shmem_coll_blocks)
+#define SHMEM_BCAST_SYNC_ARRAY_SIZE (mv2_bcast_status_alignment * sizeof(int) * mv2_shmem_coll_num_procs * mv2_g_shmem_coll_blocks)
 #if defined(_SMP_LIMIC_)
 /*since the number of processes would be same, be it shared mem or limic, we use
  * the same variable for no. of processes as in shemem case*/

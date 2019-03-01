@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -471,11 +471,13 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
         break;
         case RDMA_CM_EVENT_ROUTE_ERROR:
             PRINT_DEBUG(DEBUG_CM_verbose>0,
-                "RDMA CM Route error: rdma cma event %d, error %d\n", 
+                "RDMA CM Route error: rdma cma event %d, error %d, Retrying\n",
                     event->event, event->status);
+            /* If rdma_resolve_route failed, retry */
+	    ret = rdma_resolve_route(cma_id, rdma_cm_arp_timeout*exp_factor);
         break;
         case RDMA_CM_EVENT_CONNECT_ERROR:
-            PRINT_DEBUG(DEBUG_CM_verbose>0,
+            MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
                 "RDMA CM Connect error: rdma cma event %d, error %d\n", 
                     event->event, event->status);
         break;
@@ -520,14 +522,18 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 void *cm_thread(void *arg)
 {
-    struct rdma_cm_event *event;
+    struct rdma_cm_event *event = NULL;
     mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;    
     int mpi_errno;
 
     while (1) {
 
+        event = NULL;
         mpi_errno = rdma_get_cm_event(proc->cm_channel, &event);
         if (rdma_cm_finalized) {
+            if (event != NULL) {
+                rdma_ack_cm_event(event);
+            }
             return NULL;
         }
         if (mpi_errno) {
@@ -1854,6 +1860,23 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
             }
 
             if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
+                /* Signal thread if waiting */
+                pthread_mutex_lock(&mv2_MPIDI_CH3I_RDMA_Process.
+                        srq_post_mutex_lock[i]);
+                mv2_MPIDI_CH3I_RDMA_Process.is_finalizing = 1;
+                pthread_cond_signal(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
+                pthread_mutex_unlock(&mv2_MPIDI_CH3I_RDMA_Process.
+                        srq_post_mutex_lock[i]);
+
+                /* wait for async thread to finish processing */
+                pthread_mutex_lock(&mv2_MPIDI_CH3I_RDMA_Process.
+                        async_mutex_lock[i]);
+
+                /* destroy mutex and cond and cancel thread */
+                pthread_cond_destroy(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
+                pthread_mutex_destroy(&mv2_MPIDI_CH3I_RDMA_Process.
+                        srq_post_mutex_lock[i]);
+
                 if (mv2_MPIDI_CH3I_RDMA_Process.async_thread[i]) {
                     pthread_cancel(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i]);
                     pthread_join(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);

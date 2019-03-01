@@ -1,3 +1,37 @@
+OSU Micro Benchmarks v5.6 (03/01/2019)
+
+* New Features & Enhancements
+    - Add support for benchmarking GPU-Aware multi-pair point-to-point
+      operations
+        * osu_mbw_mr
+        * osu_multi_lat
+    - Add support to specify different number of sender and receiver threads for
+      osu_latency_mt benchmark
+        
+* Bug Fixes
+    - Remove -t option for blocking collectives
+    - Fix issue when only building OpenSHMEM benchmarks
+    - Improve error reporting for one-sided benchmarks
+    - Fix compilation issues with PGI compilers for GPU-Aware benchmarks
+    - Fix incorrect handling of configure options
+        - Thanks to Tony Curtis @StonyBrook for the report
+    - Fix compilation warnings
+
+OSU Micro Benchmarks v5.5 (11/10/18)
+* New Features & Enhancements
+    - Introduce new MPI non-blocking collective benchmarks with support to
+      measure overlap of computation and communication for CPUs and GPUs
+        - osu_ireduce
+        - osu_iallreduce
+
+OSU Micro Benchmarks v5.4.4 (09/21/18)
+* Bug Fixes
+    - Deprecate the need to specify get_local_rank when running GPU-based
+      benchmarks built with MVAPICH2 and launched with mpirun_rsh
+    - Enhance error checking for GPU-based benchmarks
+    - Fix issues in GPU-based OpenACC benchmarks
+    - Fix race condition with OpenSHMEM non-blocking and overlap benchmarks
+
 OSU Micro Benchmarks v5.4.3 (07/23/18)
 * Bug Fixes
     - Fix buffer overflow in osu_reduce_scatter

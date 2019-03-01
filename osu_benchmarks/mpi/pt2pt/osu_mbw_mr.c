@@ -1,6 +1,6 @@
 #define BENCHMARK "OSU MPI Multiple Bandwidth / Message Rate Test"
 /*
- * Copyright (C) 2002-2018 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2019 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -9,7 +9,7 @@
  * copyright file COPYRIGHT in the top level OMB directory.
  */
 
-#include <osu_util.h>
+#include <osu_util_mpi.h>
 
 #ifdef PACKAGE_VERSION
 #   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
@@ -28,7 +28,6 @@ static int skip_override;
 int main(int argc, char *argv[])
 {
     char *s_buf, *r_buf;
-    unsigned long align_size = sysconf(_SC_PAGESIZE);
     int numprocs, rank;
     int c, curr_size;
 
@@ -97,18 +96,11 @@ int main(int argc, char *argv[])
             break;
     }
 
-    if (posix_memalign((void**)&s_buf, align_size, options.max_message_size)) {
-        fprintf(stderr, "Error allocating host memory\n");
-        return EXIT_FAILURE;
+    if (allocate_memory_pt2pt_mul(&s_buf, &r_buf, rank, options.pairs)) {
+        /* Error allocating memory */
+        MPI_CHECK(MPI_Finalize());
+        exit(EXIT_FAILURE);
     }
-
-    if (posix_memalign((void**)&r_buf, align_size, options.max_message_size)) {
-        fprintf(stderr, "Error allocating host memory\n");
-        return EXIT_FAILURE;
-    }
-
-    memset(s_buf, 0, options.max_message_size);
-    memset(r_buf, 0, options.max_message_size);
 
     if(numprocs < 2) {
         if(rank == 0) {
@@ -122,6 +114,7 @@ int main(int argc, char *argv[])
 
     if(rank == 0) {
         fprintf(stdout, HEADER);
+        print_header(rank, BW);
 
         if(options.window_varied) {
             fprintf(stdout, "# [ pairs: %d ] [ window size: varied ]\n", options.pairs);
@@ -259,8 +252,7 @@ int main(int argc, char *argv[])
        }
    }
 
-   free(r_buf);
-   free(s_buf);
+   free_memory_pt2pt_mul(s_buf, r_buf, rank, options.pairs);
 
    MPI_CHECK(MPI_Finalize());
 
@@ -273,10 +265,8 @@ double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
     double t_start = 0, t_end = 0, t = 0, sum_time = 0, bw = 0;
     int i, j, target;
 
-    for(i = 0; i < size; i++) {
-        s_buf[i] = 'a';
-        r_buf[i] = 'b';
-    }
+	set_buffer_pt2pt(s_buf, rank, options.accel, 'a', size);
+	set_buffer_pt2pt(r_buf, rank, options.accel, 'b', size);
 
     MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
 

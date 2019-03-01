@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -666,7 +666,7 @@ int psm_connect_peer(int peer)
     }
 
     PRINT_DEBUG(DEBUG_CM_verbose>0, "Connection established with peer %d\n", peer);
-fn_exit:
+
     return MPI_SUCCESS;
 
 fn_fail:

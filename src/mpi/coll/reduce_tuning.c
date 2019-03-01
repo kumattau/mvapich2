@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -565,6 +565,26 @@ force_default_tables:
       MV2_COLL_TUNING_FINISH_TABLE (reduce)
     }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                MV2_ARCH_AMD_EPYC_7551_64, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+      /* AMD EPYC table */
+      MV2_COLL_TUNING_START_TABLE  (reduce, 7)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 1,  3, GEN2__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 1,  3, GEN2_CMA__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 2,  4, GEN2__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 2,  4, GEN2_CMA__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 4,  4, GEN2__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 4,  4, GEN2_CMA__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 8,  4, GEN2__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 8,  4, GEN2_CMA__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 16, 4, GEN2__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 16, 4, GEN2_CMA__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 32, 4, GEN2__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 32, 4, GEN2_CMA__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 64, 4, GEN2__AMD_EPYC__64PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (reduce, 64, 4, GEN2_CMA__AMD_EPYC__64PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (reduce)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 				    MV2_ARCH_ARM_CAVIUM_V8, MV2_HCA_MLX_CX_FDR) && !heterogeneity) {
       /* ARM system at Hartree Center */
       MV2_COLL_TUNING_START_TABLE  (reduce, 5)
@@ -582,16 +602,14 @@ force_default_tables:
       if (pg_size > 64) goto force_default_tables;
 
       MV2_COLL_TUNING_START_TABLE  (reduce, 3)
-      MV2_COLL_TUNING_ADD_CONF     (reduce, 2,  5, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (reduce, 2,  4, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__2PPN)
       MV2_COLL_TUNING_ADD_CONF     (reduce, 4,  2, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__4PPN)
       MV2_COLL_TUNING_ADD_CONF     (reduce, 8,  2, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__8PPN)
       MV2_COLL_TUNING_FINISH_TABLE (reduce)
     }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 				    MV2_ARCH_IBM_POWER9, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
-      /* Sierra Table: Use table for Ray temporarily */
-      int pg_size = MPIDI_PG_Get_size(MPIDI_Process.my_pg);
-      if (pg_size > 64) goto force_default_tables;
+      /* Sierra Table */
 
       MV2_COLL_TUNING_START_TABLE  (reduce, 8)
       MV2_COLL_TUNING_ADD_CONF     (reduce, 1,  4, GEN2__IBM_POWER9_MLX_CX_EDR__1PPN)

@@ -17,7 +17,7 @@ static void update_request(MPID_Request * sreq, void * hdr,
 
     MPIDI_FUNC_ENTER(MPID_STATE_UPDATE_REQUEST);
     MPIU_Assert(hdr_sz == sizeof(MPIDI_CH3_Pkt_t));
-    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) hdr;
+    MPIU_Memcpy(&sreq->dev.pending_pkt, hdr, sizeof(MPIDI_CH3_Pkt_t));
     sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)((char *) &sreq->dev.pending_pkt + nb);
     sreq->dev.iov[0].MPL_IOV_LEN = hdr_sz - nb;
     sreq->dev.iov_count = 1;

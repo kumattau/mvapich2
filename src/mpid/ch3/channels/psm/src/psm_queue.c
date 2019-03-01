@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -367,6 +367,48 @@ PSM_ERROR_T psm_probe(int src, int tag, int context, MPI_Status *stat)
     }
 
     return psmerr;    
+}
+
+#undef FUNCNAME
+#define FUNCNAME psm_mprobe
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+PSM_ERROR_T psm_mprobe(int src, int tag, int context,
+        MPID_Request *req, MPI_Status *stat)
+{
+    PSM_ERROR_T psmerr = PSM_OK;
+#if PSM_VERNO >= PSM_2_1_VERSION
+    psm2_mq_tag_t rtag, rtagsel;
+    PSM_MQ_STATUS_T gblstatus;
+
+    rtagsel.tag0 = MQ_TAGSEL_ALL;
+    rtagsel.tag1 = MQ_TAGSEL_ALL;
+    rtagsel.tag2 = MQ_TAGSEL_ALL;
+    if(unlikely(tag == MPI_ANY_TAG))
+        rtagsel.tag0 = MQ_TAGSEL_ANY_TAG;
+    if(unlikely(src == MPI_ANY_SOURCE))
+        rtagsel.tag1 = MQ_TAGSEL_ANY_SOURCE;
+
+    MAKE_PSM_SELECTOR(rtag, context, tag, src);
+
+    _psm_enter_;
+    PRINT_DEBUG(DEBUG_CHM_verbose>1, "calling psm improbe2\n");
+    psmerr = PSM_IMPROBE(psmdev_cw.mq, rtag, rtagsel, req->mqreq, &gblstatus);
+    _psm_exit_;
+    if(psmerr == PSM_OK) {
+        PRINT_DEBUG(DEBUG_CHM_verbose>1, "one psm matched probe completed\n");
+        if (gblstatus.error_code == PSM_OK) {
+            req->status.MPI_TAG = gblstatus.msg_tag.tag0;
+            req->status.MPI_SOURCE = gblstatus.msg_tag.tag1;
+            MPIR_STATUS_SET_COUNT(req->status, gblstatus.nbytes);
+            if(stat != MPI_STATUS_IGNORE) {
+                MPIR_Request_extract_status(req, stat);
+            }
+        }
+    }
+#endif
+
+    return psmerr;
 }
 
 int psm_no_lock(pthread_spinlock_t *lock) 

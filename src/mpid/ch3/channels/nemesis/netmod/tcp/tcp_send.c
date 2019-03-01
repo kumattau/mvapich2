@@ -321,7 +321,7 @@ int MPID_nem_tcp_iStartContigMsg(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_s
 
     if (offset < sizeof(MPIDI_CH3_Pkt_t))
     {
-        sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *)hdr;
+        MPIU_Memcpy(&sreq->dev.pending_pkt, hdr, sizeof(MPIDI_CH3_Pkt_t));
         sreq->dev.iov[0].MPL_IOV_BUF = (char *)&sreq->dev.pending_pkt + offset;
         sreq->dev.iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t) - offset ;
         if (data_sz)
@@ -460,7 +460,7 @@ int MPID_nem_tcp_iStartContigMsg_paused(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_
 
     if (offset < sizeof(MPIDI_CH3_Pkt_t))
     {
-        sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *)hdr;
+        MPIU_Memcpy(&sreq->dev.pending_pkt, hdr, sizeof(MPIDI_CH3_Pkt_t));
         sreq->dev.iov[0].MPL_IOV_BUF = (char *)&sreq->dev.pending_pkt + offset;
         sreq->dev.iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t) - offset ;
         if (data_sz)
@@ -622,8 +622,7 @@ int MPID_nem_tcp_iSendContig(MPIDI_VC_t *vc, MPID_Request *sreq, void *hdr, MPID
     sreq->dev.iov_count = 0;
     if (offset < sizeof(MPIDI_CH3_Pkt_t))
     {
-        sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *)hdr;
-
+        MPIU_Memcpy(&sreq->dev.pending_pkt, hdr, sizeof(MPIDI_CH3_Pkt_t));
         sreq->dev.iov[sreq->dev.iov_count].MPL_IOV_BUF = (char *)&sreq->dev.pending_pkt + offset;
         sreq->dev.iov[sreq->dev.iov_count].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t) - offset;
         sreq->dev.iov_count++;
@@ -779,7 +778,7 @@ int MPID_nem_tcp_SendNoncontig(MPIDI_VC_t *vc, MPID_Request *sreq, void *header,
     if (offset < iov[0].MPL_IOV_LEN)
     {
         /* header was not yet sent, save it in req */
-        sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *)header;
+        MPIU_Memcpy(&sreq->dev.pending_pkt, header, sizeof(MPIDI_CH3_Pkt_t));
         iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)&sreq->dev.pending_pkt;
         iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
     }

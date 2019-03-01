@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -386,6 +386,8 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
         network_type = MV2_NETWORK_CLASS_UNKNOWN;
         *num_usable_hcas = num_unknwn_cards;
     }
+
+    ibv_free_device_list(dev_list);
 
     return network_type;
 }
@@ -1292,7 +1294,7 @@ rdma_iba_allocate_memory(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 
         mv2_MPIDI_CH3I_RDMA_Process.is_finalizing = 0;
 
-        for (; hca_num < rdma_num_hcas; ++hca_num) {
+        for (hca_num = 0; hca_num < rdma_num_hcas; ++hca_num) {
             pthread_mutex_init(&mv2_MPIDI_CH3I_RDMA_Process.
                                srq_post_mutex_lock[hca_num], 0);
             pthread_cond_init(&mv2_MPIDI_CH3I_RDMA_Process.
@@ -1333,6 +1335,8 @@ rdma_iba_allocate_memory(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                                    (void *) async_thread,
                                    (void *) mv2_MPIDI_CH3I_RDMA_Process.
                                    nic_context[hca_num]);
+                    /* Destroy thread attributes object */
+                    ret = pthread_attr_destroy(&attr);
                 }
             }
         }

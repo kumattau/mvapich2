@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -71,7 +71,7 @@ int (*MV2_Allreduce_intra_function)(const void *sendbuf,
 #undef FCNAME
 #define FCNAME "MPIR_Sharp_Allreduce_MV2"
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Sharp_Allreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
                         MPI_Datatype datatype, MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
@@ -1651,8 +1651,7 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
     }
 
     /* Broadcasting the mesage from leader to the rest */
-    /* Note: shared memory broadcast could improve the performance */
-    mpi_errno = MPIR_Shmem_Bcast_MV2(recvbuf, count, datatype, 0, shmem_commptr, errflag);
+    mpi_errno = MV2_Bcast_Shmem_Based_function(recvbuf, count, datatype, 0, shmem_commptr, errflag);
     if (mpi_errno) {
         /* for communication errors, just record the error but continue */
         *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
@@ -2181,15 +2180,15 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
         if((MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2)||
           (MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2)){
 #if defined(_MCST_SUPPORT_)
-            if(comm_ptr->dev.ch.is_mcast_ok == 1
-                && comm_ptr->dev.ch.shmem_coll_ok == 1
-                && mv2_use_mcast_allreduce == 1){
-            } else
+            /* fall back to RD algorithm if:
+             *  1) two level is disabled
+             *  2) mcast is not ready or supported */
+            if(is_two_level != 1 ||
+                mv2_use_mcast_allreduce != 1 ||
+                comm_ptr->dev.ch.is_mcast_ok != 1 ||
+                comm_ptr->dev.ch.shmem_coll_ok !=1)
 #endif  /* #if defined(_MCST_SUPPORT_) */
             {
-                MV2_Allreduce_function = &MPIR_Allreduce_pt2pt_rd_MV2;
-            }
-            if(is_two_level != 1) {
                 MV2_Allreduce_function = &MPIR_Allreduce_pt2pt_rd_MV2;
             }
         } 
@@ -2405,7 +2404,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
             conf_index = 0;
             goto conf_check_end;
         }
-        if (likely(mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
+        if (likely(mv2_enable_shmem_allreduce && mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
             /* for small messages, force Shmem + RD */
             MV2_Allreduce_intra_function = MPIR_Allreduce_reduce_shmem_MV2;
             MV2_Allreduce_function = MPIR_Allreduce_pt2pt_rd_MV2;
@@ -2413,15 +2412,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
             goto skip_tuning_tables;
         }
 
-        if ((comm_ptr->dev.ch.allgather_comm_ok != 0 &&
-              comm_ptr->dev.ch.is_blocked == 0 &&
-              mv2_allreduce_cyclic_algo_threshold <= nbytes) ||
-             mv2_allreduce_red_scat_allgather_algo_threshold <= nbytes) {
-            /* for large messages or cyclic hostfiles for medium messages, use
-             * red-scat-allgather algorithm  */
-            return MPIR_Allreduce_pt2pt_reduce_scatter_allgather_MV2(sendbuf, recvbuf, count,
-                    datatype, op, comm_ptr, errflag);
-        }
+
         do {
             if (local_size == mv2_allreduce_indexed_table_ppn_conf[i]) {
                 conf_index = i;
@@ -2436,7 +2427,18 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
         conf_index = mv2_allreduce_indexed_num_ppn_conf/2;
     }
  
+    if ((comm_ptr->dev.ch.allgather_comm_ok != 0 &&
+          comm_ptr->dev.ch.is_blocked == 0 &&
+          mv2_allreduce_cyclic_algo_threshold <= nbytes) ||
+         mv2_allreduce_red_scat_allgather_algo_threshold <= nbytes) {
+        /* for large messages or cyclic hostfiles for medium messages, use
+         * red-scat-allgather algorithm  */
+        return MPIR_Allreduce_pt2pt_reduce_scatter_allgather_MV2(sendbuf, recvbuf, count,
+                datatype, op, comm_ptr, errflag);
+    }
+
 conf_check_end:
+
 
 #ifdef MPID_HAS_HETERO
     if (comm_ptr->is_hetero) {
@@ -2558,17 +2560,17 @@ skip_tuning_tables:
 	    if((MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2)||
 	       (MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2)){
 #if defined(_MCST_SUPPORT_)
-		if(comm_ptr->dev.ch.is_mcast_ok == 1
-		   && comm_ptr->dev.ch.shmem_coll_ok == 1
-		   && mv2_use_mcast_allreduce == 1){
-		} else
+            /* fall back to RD algorithm if:
+             *  1) two level is disabled
+             *  2) mcast is not ready or supported */
+            if(is_two_level != 1 ||
+                mv2_use_mcast_allreduce != 1 ||
+                comm_ptr->dev.ch.is_mcast_ok != 1 ||
+                comm_ptr->dev.ch.shmem_coll_ok != 1)
 #endif  /* #if defined(_MCST_SUPPORT_) */
-		    {
-			MV2_Allreduce_function = &MPIR_Allreduce_pt2pt_rd_MV2;
-		    }
-		if(is_two_level != 1) {
-		    MV2_Allreduce_function = &MPIR_Allreduce_pt2pt_rd_MV2;
-		}
+            {
+                MV2_Allreduce_function = &MPIR_Allreduce_pt2pt_rd_MV2;
+            }
 	    }
 #if defined (_SHARP_SUPPORT_)
         if (comm_ptr->dev.ch.is_sharp_ok == 1 && nbytes <= mv2_sharp_tuned_msg_size

@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
-/* 
+/*
  *
- *   Copyright (C) 1997 University of Chicago. 
+ *   Copyright (C) 1997 University of Chicago.
  *   See COPYRIGHT notice in top-level directory.
  */
 
@@ -67,6 +67,11 @@ extern struct ADIOI_Fns_struct ADIO_PVFS_operations;
 #ifdef ROMIO_PVFS2
 extern struct ADIOI_Fns_struct ADIO_PVFS2_operations;
 /* prototypes are in adio/ad_pvfs2/ad_pvfs2.h */
+#endif
+
+#ifdef ROMIO_IME
+/* prototypes are in adio/ad_im/ad_im.h */
+extern struct ADIOI_Fns_struct ADIO_IME_operations;
 #endif
 
 #ifdef ROMIO_TESTFS

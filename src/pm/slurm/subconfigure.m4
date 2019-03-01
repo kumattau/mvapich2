@@ -41,7 +41,8 @@ if test "x$with_pmi" = "xsimple" -o "x$with_pmi" = "xpmi1"; then
              [PAC_PREPEND_FLAG([-lpmi],[LIBS])
               PAC_PREPEND_FLAG([-lpmi], [WRAPPER_LIBS])],
              [AC_MSG_ERROR([could not find the slurm libpmi.  Configure aborted])])
-    AC_CHECK_FUNCS([PMI_Ibarrier PMI_Wait])
+    AC_CHECK_FUNCS([PMI_Ibarrier], [AC_DEFINE([HAVE_PMI_IBARRIER], [1], [Define if pmi client supports PMI_Ibarrier])])
+    AC_CHECK_FUNCS([PMI_Wait], [AC_DEFINE([HAVE_PMI_WAIT], [1], [Define if pmi client supports PMI_Wait])])
 elif test "x$with_pmi" = "xpmi2/simple" -o "x$with_pmi" = "xpmi2"; then
     USE_PMI2_API=yes
     AC_CHECK_HEADER([slurm/pmi2.h], [], [AC_MSG_ERROR([could not find slurm/pmi2.h.  Configure aborted])])
@@ -49,9 +50,12 @@ elif test "x$with_pmi" = "xpmi2/simple" -o "x$with_pmi" = "xpmi2"; then
              [PAC_PREPEND_FLAG([-lpmi2],[LIBS])
               PAC_PREPEND_FLAG([-lpmi2], [WRAPPER_LIBS])],
              [AC_MSG_ERROR([could not find the slurm libpmi2.  Configure aborted])])
-    AC_CHECK_FUNCS([PMI2_KVS_Ifence PMI2_KVS_Wait])
-    AC_CHECK_FUNCS([PMI2_Iallgather PMI2_Iallgather_wait])
-    AC_CHECK_FUNCS([PMI2_SHMEM_Iallgather PMI2_SHMEM_Iallgather_wait])
+    AC_CHECK_FUNCS([PMI2_KVS_Ifence], [AC_DEFINE([HAVE_PMI2_KVS_IFENCE], [1], [Define if pmi client supports PMI2_KVS_Ifence])])
+    AC_CHECK_FUNCS([PMI2_KVS_Wait], [AC_DEFINE([HAVE_PMI2_KVS_WAIT], [1], [Define if pmi client supports PMI2_KVS_Wait])])
+    AC_CHECK_FUNCS([PMI2_Iallgather], [AC_DEFINE([HAVE_PMI2_SHMEM_IALLGATHER], [1], [Define if pmi client supports PMI2_Iallgather])])
+    AC_CHECK_FUNCS([PMI2_Iallgather_wait], [AC_DEFINE([HAVE_PMI2_SHMEM_IALLGATHER_WAIT], [1], [Define if pmi client supports PMI2_Iallgather_wait])])
+    AC_CHECK_FUNCS([PMI2_SHMEM_Iallgather], [AC_DEFINE([HAVE_PMI2_SHMEM_IALLGATHER], [1], [Define if pmi client supports PMI2_SHMEM_Iallgather])])
+    AC_CHECK_FUNCS([PMI2_SHMEM_Iallgather_wait], [AC_DEFINE([HAVE_PMI2_SHMEM_IALLGATHER_WAIT], [1], [Define if pmi client supports PMI2_SHMEM_Iallgather_wait])])
 else
     AC_MSG_ERROR([Selected PMI ($with_pmi) is not compatible with slurm])
 fi

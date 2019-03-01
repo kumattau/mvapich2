@@ -198,7 +198,7 @@ int MPID_nem_llc_iStartContigMsg(MPIDI_VC_t * vc, void *hdr, MPIDI_msg_sz_t hdr_
     REQ_FIELD(sreq, rma_buf) = NULL;
 
     /* sreq: src/mpid/ch3/include/mpidpre.h */
-    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) hdr;
+    MPIU_Memcpy(&sreq->dev.pending_pkt, hdr, sizeof(MPIDI_CH3_Pkt_t));
     sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) & sreq->dev.pending_pkt;
     sreq->dev.iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
     sreq->dev.iov_count = 1;
@@ -286,7 +286,7 @@ int MPID_nem_llc_iSendContig(MPIDI_VC_t * vc, MPID_Request * sreq, void *hdr, MP
     sreq->dev.iov_offset = 0;
 
     /* sreq: src/mpid/ch3/include/mpidpre.h */
-    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) hdr;
+    MPIU_Memcpy(&sreq->dev.pending_pkt, hdr, sizeof(MPIDI_CH3_Pkt_t));
     sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) & sreq->dev.pending_pkt;
     sreq->dev.iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
     sreq->dev.iov_count = 1;
@@ -355,7 +355,7 @@ int MPID_nem_llc_SendNoncontig(MPIDI_VC_t * vc, MPID_Request * sreq, void *hdr,
     MPIU_Assert(sreq->dev.segment_first == 0);
     REQ_FIELD(sreq, rma_buf) = NULL;
 
-    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) hdr;
+    MPIU_Memcpy(&sreq->dev.pending_pkt, hdr, sizeof(MPIDI_CH3_Pkt_t));
     sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) & sreq->dev.pending_pkt;
     sreq->dev.iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
     sreq->dev.iov_count = 1;

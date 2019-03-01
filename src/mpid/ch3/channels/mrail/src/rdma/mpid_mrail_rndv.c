@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -104,6 +104,12 @@ int MPID_MRAIL_RndvSend (
         sreq->dev.iov[0].MPL_IOV_LEN = sreq->dev.segment_size;
         sreq->dev.iov_count = 1;
         sreq->dev.OnDataAvail = 0;
+        /* When processing datatype operations, we can end up with cases where
+         * one IOV is on the host while the other is on the device. This catches
+         * this situation. In particular, when we are using MPI_BOTTOM based
+         * scheme in MPIR_Igather_binomial, MPIR_Igather_binomial_MV2,
+         * MPIR_Gather_intra we can hit this situation. */
+        rts_pkt->rndv.cuda_transfer_mode = sreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
     }
 #endif
 	/* --BEGIN ERROR HANDLING-- */

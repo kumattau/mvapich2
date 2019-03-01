@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -2296,6 +2296,13 @@ int MPICM_Create_finalize_thread()
                                   "pthread_attr_setstacksize failed");
     }
     pthread_create(&cm_finalize_progress_thread, &attr, cm_finalize_handler, NULL);
+    /* Destroy thread attributes object */
+    ret = pthread_attr_destroy(&attr);
+    if (ret) {
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                  "**fail %s",
+                                  "pthread_attr_destroy failed");
+    }
 
   fn_exit:
     return mpi_errno;
@@ -2331,6 +2338,12 @@ int MPICM_Create_UD_threads()
         }
         pthread_create(&cm_comp_thread, &attr, cm_completion_handler, NULL);
         pthread_create(&cm_timer_thread, &attr, cm_timeout_handler, NULL);
+        ret = pthread_attr_destroy(&attr);
+        if (ret) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                      "**fail %s",
+                                      "pthread_attr_destroy failed");
+        }
     }
 
   fn_exit:

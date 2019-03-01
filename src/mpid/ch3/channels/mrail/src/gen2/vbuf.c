@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -437,6 +437,7 @@ int allocate_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool, int nvbufs)
     region->count = nvbufs;
     rdma_vbuf_pool->free_head = vbuf_struct;
     region->vbuf_head = vbuf_struct;
+    region->shmid = -1;
 
     DEBUG_PRINT(
             "VBUF REGION ALLOCATION SZ %d TOT %d FREE %ld NF %ld NG %ld\n",

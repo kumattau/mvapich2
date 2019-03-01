@@ -12,7 +12,7 @@
  * excludes the implied warranties of merchantability, fitness for a
  * particular purpose and non-infringement.
  */
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the

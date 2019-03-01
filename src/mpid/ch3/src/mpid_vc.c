@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1416,38 +1416,48 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     mpi_errno = MPIDI_PG_GetConnKVSname(&kvs_name);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
-    /* Support for mpirun_rsh: it should works also when  _OSU_MVIPICH_ is not defined */
-    /* See if process manager supports PMI_process_mapping keyval */
-    /* Check if the user have used MPIRUN_RSH */
-    char *str = getenv("MPIRUN_RSH_LAUNCH");
-    if ((str == NULL || (atoi(str) != 1)) && (using_slurm == NULL))
-    {
+    char *str = NULL;
 
-    if (pmi_version == 1 && pmi_subversion == 1) {
-        pmi_errno = UPMI_KVS_GET(kvs_name, "PMI_process_mapping", value, val_max_sz);
-        if (pmi_errno == 0) {
-            int did_map = 0;
-            /* this code currently assumes pg is comm_world */
-            mpi_errno = populate_ids_from_mapping(value, &g_max_node_id, pg, &did_map);
-            if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
-            MPIDI_Get_local_host_mapping(pg, our_pg_rank);
+    /* See if we were launched by jsrun */
+    if ((str = getenv("JSM_NAMESPACE_RANK")) != NULL) {
+        mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    /* See if we were launched by Flux */
+    } else if ((str = getenv("FLUX_JOB_ID")) != NULL) {
+        mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    } else 
 #endif
-            if (did_map) {
-                goto odd_even_cliques;
+    if (((str = getenv("MPIRUN_RSH_LAUNCH")) == NULL || (atoi(str) != 1)) && (using_slurm == NULL)) {
+        /* Support for mpirun_rsh: it should also work when _OSU_MVAPICH_ is not defined */
+        /* See if process manager supports PMI_process_mapping keyval */
+        /* Check if the user have used MPIRUN_RSH */
+        if (pmi_version == 1 && pmi_subversion == 1) {
+            pmi_errno = UPMI_KVS_GET(kvs_name, "PMI_process_mapping", value, val_max_sz);
+            if (pmi_errno == 0) {
+                int did_map = 0;
+                /* this code currently assumes pg is comm_world */
+                mpi_errno = populate_ids_from_mapping(value, &g_max_node_id, pg, &did_map);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+                MPIDI_Get_local_host_mapping(pg, our_pg_rank);
+#endif
+                if (did_map) {
+                    goto odd_even_cliques;
+                } else {
+                    MPIU_DBG_MSG_S(CH3_OTHER,TERSE,"did_map==0, unable to populate node ids from mapping=%s",value);
+                }
+                /* else fall through to O(N^2) UPMI_KVS_GETs version */
+            } else {
+                MPIU_DBG_MSG(CH3_OTHER,TERSE,"unable to obtain the 'PMI_process_mapping' PMI key");
             }
-            else {
-                MPIU_DBG_MSG_S(CH3_OTHER,TERSE,"did_map==0, unable to populate node ids from mapping=%s",value);
-            }
-            /* else fall through to O(N^2) UPMI_KVS_GETs version */
         }
-        else {
-            MPIU_DBG_MSG(CH3_OTHER,TERSE,"unable to obtain the 'PMI_process_mapping' PMI key");
-        }
-    }
-
-    }
-    else {
+    } else {
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
         int mv2_use_mpirun_mapping = 1;
         char *val;

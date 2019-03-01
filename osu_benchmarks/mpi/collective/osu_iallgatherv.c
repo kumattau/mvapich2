@@ -1,6 +1,6 @@
 #define BENCHMARK "OSU MPI%s Non-blocking Allgatherv Latency Test"
 /*
- * Copyright (C) 2002-2018 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2019 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -10,7 +10,7 @@
  *
  */
 
-#include <osu_util.h>
+#include <osu_util_mpi.h>
 
 int main(int argc, char *argv[])
 {
@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
     set_header(HEADER);
     set_benchmark_name("osu_iallgatherv");
     options.bench = COLLECTIVE;
-    options.subtype = LAT;
+    options.subtype = NBC;
 
     po_ret = process_options(argc, argv);
 

@@ -1,6 +1,6 @@
-#line 2 "scanner.c"
+#line 2 "src/pm/mpirun/src/hostfile/scanner.c"
 
-#line 4 "scanner.c"
+#line 4 "src/pm/mpirun/src/hostfile/scanner.c"
 
 #define  YY_INT_ALIGNED short int
 
@@ -28,7 +28,7 @@
 #define FLEX_SCANNER
 #define YY_FLEX_MAJOR_VERSION 2
 #define YY_FLEX_MINOR_VERSION 5
-#define YY_FLEX_SUBMINOR_VERSION 35
+#define YY_FLEX_SUBMINOR_VERSION 37
 #if YY_FLEX_SUBMINOR_VERSION > 0
 #define FLEX_BETA
 #endif
@@ -73,7 +73,6 @@ typedef int flex_int32_t;
 typedef unsigned char flex_uint8_t; 
 typedef unsigned short int flex_uint16_t;
 typedef unsigned int flex_uint32_t;
-#endif /* ! C99 */
 
 /* Limits of integral types. */
 #ifndef INT8_MIN
@@ -103,6 +102,8 @@ typedef unsigned int flex_uint32_t;
 #ifndef UINT32_MAX
 #define UINT32_MAX             (4294967295U)
 #endif
+
+#endif /* ! C99 */
 
 #endif /* ! FLEXINT_H */
 
@@ -172,7 +173,12 @@ typedef unsigned int flex_uint32_t;
 typedef struct yy_buffer_state *YY_BUFFER_STATE;
 #endif
 
-extern int hostfile_yyleng;
+#ifndef YY_TYPEDEF_YY_SIZE_T
+#define YY_TYPEDEF_YY_SIZE_T
+typedef size_t yy_size_t;
+#endif
+
+extern yy_size_t hostfile_yyleng;
 
 extern FILE *hostfile_yyin, *hostfile_yyout;
 
@@ -198,11 +204,6 @@ extern FILE *hostfile_yyin, *hostfile_yyout;
 
 #define unput(c) yyunput( c, (yytext_ptr)  )
 
-#ifndef YY_TYPEDEF_YY_SIZE_T
-#define YY_TYPEDEF_YY_SIZE_T
-typedef size_t yy_size_t;
-#endif
-
 #ifndef YY_STRUCT_YY_BUFFER_STATE
 #define YY_STRUCT_YY_BUFFER_STATE
 struct yy_buffer_state
@@ -220,7 +221,7 @@ struct yy_buffer_state
 	/* Number of characters read into yy_ch_buf, not including EOB
 	 * characters.
 	 */
-	int yy_n_chars;
+	yy_size_t yy_n_chars;
 
 	/* Whether we "own" the buffer - i.e., we know we created it,
 	 * and can realloc() it to grow it, and should free() it to
@@ -290,8 +291,8 @@ static YY_BUFFER_STATE * yy_buffer_stack = 0; /**< Stack as an array. */
 
 /* yy_hold_char holds the character lost when hostfile_yytext is formed. */
 static char yy_hold_char;
-static int yy_n_chars;		/* number of characters read into yy_ch_buf */
-int hostfile_yyleng;
+static yy_size_t yy_n_chars;		/* number of characters read into yy_ch_buf */
+yy_size_t hostfile_yyleng;
 
 /* Points to current character in buffer. */
 static char *yy_c_buf_p = (char *) 0;
@@ -319,7 +320,7 @@ static void hostfile_yy_init_buffer (YY_BUFFER_STATE b,FILE *file  );
 
 YY_BUFFER_STATE hostfile_yy_scan_buffer (char *base,yy_size_t size  );
 YY_BUFFER_STATE hostfile_yy_scan_string (yyconst char *yy_str  );
-YY_BUFFER_STATE hostfile_yy_scan_bytes (yyconst char *bytes,int len  );
+YY_BUFFER_STATE hostfile_yy_scan_bytes (yyconst char *bytes,yy_size_t len  );
 
 void *hostfile_yyalloc (yy_size_t  );
 void *hostfile_yyrealloc (void *,yy_size_t  );
@@ -349,7 +350,7 @@ void hostfile_yyfree (void *  );
 
 #define YY_AT_BOL() (YY_CURRENT_BUFFER_LVALUE->yy_at_bol)
 
-#define hostfile_yywrap(n) 1
+#define hostfile_yywrap() 1
 #define YY_SKIP_YYWRAP
 
 typedef unsigned char YY_CHAR;
@@ -472,10 +473,10 @@ int hostfile_yy_flex_debug = 0;
 #define YY_MORE_ADJ 0
 #define YY_RESTORE_YY_MORE_OFFSET
 char *hostfile_yytext;
-#line 1 "scanner.l"
-#line 2 "scanner.l"
+#line 1 "src/pm/mpirun/src/hostfile/scanner.l"
+#line 2 "src/pm/mpirun/src/hostfile/scanner.l"
 /*
- * Copyright (c) 2001-2018, The Ohio State University. All rights
+ * Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -489,7 +490,7 @@ char *hostfile_yytext;
 #include <parser.h>
 #include <string.h>
 #define YY_NO_INPUT 1
-#line 493 "scanner.c"
+#line 494 "src/pm/mpirun/src/hostfile/scanner.c"
 
 #define INITIAL 0
 
@@ -528,7 +529,7 @@ FILE *hostfile_yyget_out (void );
 
 void hostfile_yyset_out  (FILE * out_str  );
 
-int hostfile_yyget_leng (void );
+yy_size_t hostfile_yyget_leng (void );
 
 char *hostfile_yyget_text (void );
 
@@ -587,7 +588,7 @@ static int input (void );
 	if ( YY_CURRENT_BUFFER_LVALUE->yy_is_interactive ) \
 		{ \
 		int c = '*'; \
-		unsigned n; \
+		size_t n; \
 		for ( n = 0; n < max_size && \
 			     (c = getc( hostfile_yyin )) != EOF && c != '\n'; ++n ) \
 			buf[n] = (char) c; \
@@ -669,10 +670,10 @@ YY_DECL
 	register char *yy_cp, *yy_bp;
 	register int yy_act;
     
-#line 29 "scanner.l"
+#line 29 "src/pm/mpirun/src/hostfile/scanner.l"
 
 
-#line 676 "scanner.c"
+#line 677 "src/pm/mpirun/src/hostfile/scanner.c"
 
 	if ( !(yy_init) )
 		{
@@ -757,37 +758,37 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 31 "scanner.l"
+#line 31 "src/pm/mpirun/src/hostfile/scanner.l"
 /* eat up comments and whitespace */
 	YY_BREAK
 case 2:
 YY_RULE_SETUP
-#line 33 "scanner.l"
+#line 33 "src/pm/mpirun/src/hostfile/scanner.l"
 { hostfile_yylval.decimal = (size_t)atoi(hostfile_yytext);
                           return DECIMAL; }
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 35 "scanner.l"
+#line 35 "src/pm/mpirun/src/hostfile/scanner.l"
 { hostfile_yylval.text = strdup(hostfile_yytext); return TEXT; }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 36 "scanner.l"
+#line 36 "src/pm/mpirun/src/hostfile/scanner.l"
 { return ':'; }
 	YY_BREAK
 case 5:
 /* rule 5 can match eol */
 YY_RULE_SETUP
-#line 37 "scanner.l"
+#line 37 "src/pm/mpirun/src/hostfile/scanner.l"
 { return '\n'; }
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 39 "scanner.l"
+#line 39 "src/pm/mpirun/src/hostfile/scanner.l"
 ECHO;
 	YY_BREAK
-#line 791 "scanner.c"
+#line 792 "src/pm/mpirun/src/hostfile/scanner.c"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -973,21 +974,21 @@ static int yy_get_next_buffer (void)
 
 	else
 		{
-			int num_to_read =
+			yy_size_t num_to_read =
 			YY_CURRENT_BUFFER_LVALUE->yy_buf_size - number_to_move - 1;
 
 		while ( num_to_read <= 0 )
 			{ /* Not enough room in the buffer - grow it. */
 
 			/* just a shorter name for the current buffer */
-			YY_BUFFER_STATE b = YY_CURRENT_BUFFER;
+			YY_BUFFER_STATE b = YY_CURRENT_BUFFER_LVALUE;
 
 			int yy_c_buf_p_offset =
 				(int) ((yy_c_buf_p) - b->yy_ch_buf);
 
 			if ( b->yy_is_our_buffer )
 				{
-				int new_size = b->yy_buf_size * 2;
+				yy_size_t new_size = b->yy_buf_size * 2;
 
 				if ( new_size <= 0 )
 					b->yy_buf_size += b->yy_buf_size / 8;
@@ -1018,7 +1019,7 @@ static int yy_get_next_buffer (void)
 
 		/* Read in more data. */
 		YY_INPUT( (&YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[number_to_move]),
-			(yy_n_chars), (size_t) num_to_read );
+			(yy_n_chars), num_to_read );
 
 		YY_CURRENT_BUFFER_LVALUE->yy_n_chars = (yy_n_chars);
 		}
@@ -1113,7 +1114,7 @@ static int yy_get_next_buffer (void)
 	yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
 	yy_is_jam = (yy_current_state == 15);
 
-	return yy_is_jam ? 0 : yy_current_state;
+		return yy_is_jam ? 0 : yy_current_state;
 }
 
 #ifndef YY_NO_INPUT
@@ -1140,7 +1141,7 @@ static int yy_get_next_buffer (void)
 
 		else
 			{ /* need more input */
-			int offset = (yy_c_buf_p) - (yytext_ptr);
+			yy_size_t offset = (yy_c_buf_p) - (yytext_ptr);
 			++(yy_c_buf_p);
 
 			switch ( yy_get_next_buffer(  ) )
@@ -1300,10 +1301,6 @@ static void hostfile_yy_load_buffer_state  (void)
 	hostfile_yyfree((void *) b  );
 }
 
-#ifndef __cplusplus
-extern int isatty (int );
-#endif /* __cplusplus */
-    
 /* Initializes or reinitializes a buffer.
  * This function is sometimes called more than once on the same buffer,
  * such as during a hostfile_yyrestart() or at EOF.
@@ -1416,7 +1413,7 @@ void hostfile_yypop_buffer_state (void)
  */
 static void hostfile_yyensure_buffer_stack (void)
 {
-	int num_to_alloc;
+	yy_size_t num_to_alloc;
     
 	if (!(yy_buffer_stack)) {
 
@@ -1508,12 +1505,12 @@ YY_BUFFER_STATE hostfile_yy_scan_string (yyconst char * yystr )
 
 /** Setup the input buffer state to scan the given bytes. The next call to hostfile_yylex() will
  * scan from a @e copy of @a bytes.
- * @param bytes the byte buffer to scan
- * @param len the number of bytes in the buffer pointed to by @a bytes.
+ * @param yybytes the byte buffer to scan
+ * @param _yybytes_len the number of bytes in the buffer pointed to by @a bytes.
  * 
  * @return the newly allocated buffer state object.
  */
-YY_BUFFER_STATE hostfile_yy_scan_bytes  (yyconst char * yybytes, int  _yybytes_len )
+YY_BUFFER_STATE hostfile_yy_scan_bytes  (yyconst char * yybytes, yy_size_t  _yybytes_len )
 {
 	YY_BUFFER_STATE b;
 	char *buf;
@@ -1600,7 +1597,7 @@ FILE *hostfile_yyget_out  (void)
 /** Get the length of the current token.
  * 
  */
-int hostfile_yyget_leng  (void)
+yy_size_t hostfile_yyget_leng  (void)
 {
         return hostfile_yyleng;
 }
@@ -1748,4 +1745,4 @@ void hostfile_yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 39 "scanner.l"
+#line 39 "src/pm/mpirun/src/hostfile/scanner.l"

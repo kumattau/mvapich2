@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -561,6 +561,26 @@ int MV2_set_allreduce_tuning_table(int heterogeneity)
       MV2_COLL_TUNING_ADD_CONF_CMA (allreduce, 16, 5, GEN2_CMA__RI2__16PPN)
       MV2_COLL_TUNING_ADD_CONF     (allreduce, 28, 6, GEN2__RI2__28PPN)
       MV2_COLL_TUNING_ADD_CONF_CMA (allreduce, 28, 6, GEN2_CMA__RI2__28PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (allreduce)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                MV2_ARCH_AMD_EPYC_7551_64, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+      /* AMD EPYC table */
+      MV2_COLL_TUNING_START_TABLE  (allreduce, 7)
+      MV2_COLL_TUNING_ADD_CONF     (allreduce, 1,  3, GEN2__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allreduce, 1,  3, GEN2_CMA__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allreduce, 2,  4, GEN2__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allreduce, 2,  4, GEN2_CMA__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allreduce, 4,  4, GEN2__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allreduce, 4,  4, GEN2_CMA__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allreduce, 8,  4, GEN2__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allreduce, 8,  4, GEN2_CMA__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allreduce, 16, 4, GEN2__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allreduce, 16, 4, GEN2_CMA__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allreduce, 32, 4, GEN2__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allreduce, 32, 4, GEN2_CMA__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allreduce, 64, 4, GEN2__AMD_EPYC__64PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allreduce, 64, 4, GEN2_CMA__AMD_EPYC__64PPN)
       MV2_COLL_TUNING_FINISH_TABLE (allreduce)
     }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),

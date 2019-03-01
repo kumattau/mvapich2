@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -105,7 +105,7 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     uint32_t                    srq_zero_post_counter[MAX_NUM_HCAS];
     pthread_t                   async_thread[MAX_NUM_HCAS];
     uint32_t                    posted_bufs[MAX_NUM_HCAS];
-    int                         is_finalizing;
+    volatile int                is_finalizing;
 
     /* data structure for ring based startup */
     struct ibv_context          *boot_context;
@@ -246,6 +246,11 @@ extern int (*check_cq_overflow) (MPIDI_VC_t *c, int rail);
     (_c)->mrail.srp.credits[(_subrail)].local_credit++;         \
     (_c)->mrail.srp.credits[(_subrail)].preposts++;             \
 }
+
+#define GET_EXT_SENDQ_SIZE(_vc, _rail, _size)                           \
+do {                                                                    \
+    (_size) = (_vc)->mrail.rails[(_rail)].ext_sendq_size;               \
+} while (0);
 
 #ifdef _ENABLE_XRC_
 #define  XRC_FILL_SRQN_FIX_CONN(_v, _vc, _rail)\

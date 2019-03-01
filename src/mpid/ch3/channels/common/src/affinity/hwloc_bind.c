@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -72,7 +72,11 @@ int mv2_my_async_cpu_id = -1;
 int *local_core_ids = NULL;
 int mv2_user_defined_mapping = FALSE;
 
+#ifdef ENABLE_LLNL_SITE_SPECIFIC_OPTIONS
+unsigned int mv2_enable_affinity = 0;
+#else
 unsigned int mv2_enable_affinity = 1;
+#endif /*ENABLE_LLNL_SITE_SPECIFIC_OPTIONS*/
 unsigned int mv2_enable_leastload = 0;
 unsigned int mv2_hca_aware_process_mapping = 1;
 
@@ -2443,7 +2447,7 @@ void mv2_show_cpu_affinity(int verbosity)
         fprintf(stderr, "OMP_NUM_THREADS: %9d\n",
                         ( (value = getenv("OMP_NUM_THREADS")) != NULL) ? atoi(value) : 0);
         fprintf(stderr, "MV2_THREADS_PER_PROCESS: %d\n", mv2_threads_per_proc);        
-        buf = (char *) MPIU_Malloc(sizeof(char) * 4 * num_cpus);
+        buf = (char *) MPIU_Malloc(sizeof(char) * 6 * num_cpus);
         for (i = 0; i < pg_size; i++) {
             MPIDI_Comm_get_vc(comm_world, i, &vc);
             if (vc->smp.local_rank != -1 || verbosity > 1) {

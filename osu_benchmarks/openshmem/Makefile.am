@@ -10,7 +10,7 @@ openshmem_PROGRAMS = osu_oshm_get osu_oshm_put osu_oshm_put_mr \
 
 AM_CFLAGS = -I../util
 
-UTILITIES = ../util/osu_util.c osu_util.h
+UTILITIES = ../util/osu_util.c ../util/osu_util.h ../util/osu_util_pgas.c ../util/osu_util_pgas.h
 
 if EMBEDDED_BUILD
      AM_CPPFLAGS = -I$(top_builddir)/../src/include \

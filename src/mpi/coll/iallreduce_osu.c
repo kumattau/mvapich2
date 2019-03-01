@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -37,7 +37,7 @@ int (*MV2_Iallreduce_intra_node_function) (const void *sendbuf, void *recvbuf, i
 #undef FCNAME
 #define FCNAME "MPIR_Sharp_Iallreduce_MV2"
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Sharp_Iallreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
                         MPI_Datatype datatype, MPI_Op op, MPID_Comm * comm_ptr, int *errflag, MPID_Request **req)
 {

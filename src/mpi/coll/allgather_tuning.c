@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -462,6 +462,26 @@ force_default_tables:
       MV2_COLL_TUNING_FINISH_TABLE (allgather)
     }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                MV2_ARCH_AMD_EPYC_7551_64, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+      /* AMD EPYC table */
+      MV2_COLL_TUNING_START_TABLE  (allgather, 7)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 1,  3, GEN2__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 1,  3, GEN2_CMA__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 2,  4, GEN2__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 2,  4, GEN2_CMA__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 4,  4, GEN2__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 4,  4, GEN2_CMA__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 8,  4, GEN2__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 8,  4, GEN2_CMA__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 16, 4, GEN2__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 16, 4, GEN2_CMA__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 32, 4, GEN2__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 32, 4, GEN2_CMA__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 64, 4, GEN2__AMD_EPYC__64PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (allgather, 64, 4, GEN2_CMA__AMD_EPYC__64PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (allgather)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 				    MV2_ARCH_ARM_CAVIUM_V8, MV2_HCA_MLX_CX_FDR) && !heterogeneity) {
       /* ARM system at Hartree Center */
       MV2_COLL_TUNING_START_TABLE  (allgather, 5)
@@ -479,7 +499,7 @@ force_default_tables:
       if (pg_size > 64) goto force_default_tables;
 
       MV2_COLL_TUNING_START_TABLE  (allgather, 3)
-      MV2_COLL_TUNING_ADD_CONF     (allgather, 2,  5, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (allgather, 2,  4, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__2PPN)
       MV2_COLL_TUNING_ADD_CONF     (allgather, 4,  2, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__4PPN)
       MV2_COLL_TUNING_ADD_CONF     (allgather, 8,  2, GEN2_CMA__IBM_POWER8_MLX_CX_EDR__8PPN)
       MV2_COLL_TUNING_FINISH_TABLE (allgather)

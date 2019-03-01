@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -211,5 +211,37 @@ int psm_irecv(int src, int tag, int context_id, void *buf, MPIDI_msg_sz_t buflen
     ++psm_tot_recvs;
 
 fn_fail:
+    return mpi_errno;
+}
+
+#undef FUNCNAME
+#define FUNCNAME psm_imrecv
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int psm_imrecv(void *buf, MPIDI_msg_sz_t buflen, MPID_Request *req)
+{
+    int mpi_errno = MPI_SUCCESS;
+#if PSM_VERNO >= PSM_2_1_VERSION
+    PSM_ERROR_T psmerr;
+
+    if(unlikely(buf == NULL && buflen > 0)) {
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_BUFFER, "**fail");
+        goto fn_fail;
+    }
+
+    _psm_enter_;
+    psmerr = PSM_IMRECV(psmdev_cw.mq, buf, buflen, req, &(req->mqreq));
+    _psm_exit_;
+    if(unlikely(psmerr != PSM_OK)) {
+        mpi_errno = psm_map_error(psmerr);
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        goto fn_fail;
+    }
+
+    PRINT_DEBUG(DEBUG_CHM_verbose>1, "imrecv enqueue\n");
+    ++psm_tot_recvs;
+
+fn_fail:
+#endif
     return mpi_errno;
 }

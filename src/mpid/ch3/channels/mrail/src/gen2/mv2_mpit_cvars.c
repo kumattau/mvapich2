@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2018, The Ohio State University. All rights
+/* Copyright (c) 2001-2019, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -430,16 +430,15 @@ int mv2_read_and_check_cvar (mv2_mpit_cvar_access_t container)
         goto fn_fail;
     }
     /* The user did not set any value for the CVAR. Exit. */
-    if (container.skip_if_default_has_set == 1 &&
-            read_value == container.default_cvar_value &&
-            getenv(container.env_name) == NULL) {
+    if ((container.skip_if_default_has_set == 1) &&
+        (read_value == container.default_cvar_value)) {
         *(container.skip) = 1;
         mpi_errno = MPI_SUCCESS; // no need just to reinforce success 4 test
         goto fn_exit;
     }
     /* Check if environment variable and CVAR has been set at the same time */
     if ((getenv(container.env_name) != NULL) &&
-            (container.check4_associate_env_conflict == 1)) {
+        (container.check4_associate_env_conflict == 1)) {
         value = atoi(getenv(container.env_name));
         if (value != read_value) {
             PRINT_INFO(MPIDI_Process.my_pg_rank == 0, "User has set environment "
@@ -450,10 +449,17 @@ int mv2_read_and_check_cvar (mv2_mpit_cvar_access_t container)
                     container.env_conflict_error_msg);
             mpi_errno = MPI_ERR_INTERN;
             MPIR_ERR_POP(mpi_errno);
+        } else {
+            /* Environment variable and CVAR was set and they had same value.
+             * Do not set internal variable since we may want to do other checks
+             * before setting the internal variable later on.
+             * This could also happen because MVAPICH2 read the value of the
+             * environment variable into the CVAR in mpich_cvars.c. */
+            *(container.skip) = 1;
         }
     }
     /* Check if value for CVAR is valid */
-    if((container.check_min == 1) && ( read_value < container.min_value)) {
+    if((container.check_min == 1) && (read_value < container.min_value)) {
         PRINT_INFO(MPIDI_Process.my_pg_rank == 0 , "\nSelected value of CVAR:"
                 "%s is out of range; valid values > %d. (current value: %d)"
                 " %s\n",
@@ -464,7 +470,7 @@ int mv2_read_and_check_cvar (mv2_mpit_cvar_access_t container)
         mpi_errno = MPI_ERR_INTERN;
         MPIR_ERR_POP(mpi_errno);
     }
-    if((container.check_max == 1) && read_value > container.max_value) {
+    if((container.check_max == 1) && (read_value > container.max_value)) {
         PRINT_INFO(MPIDI_Process.my_pg_rank == 0 , "\nSelected value of CVAR:"
                 "%s is out of range; valid values =< %d.(current value: %d)"
                 " %s\n",
@@ -1014,7 +1020,19 @@ int mv2_set_use_mcast()
     }
     /* Choose algorithm based on CVAR */
     if (!skip_setting) {
-        rdma_enable_mcast = !!read_value;
+        /* Multi-cast is only valid if we are either performing a multi-node job
+         * or if SMP only is disabled through one of many methods. */
+        MPIDI_CH3I_set_smp_only();
+        if (!SMP_ONLY) {
+            rdma_enable_mcast = !!read_value;
+        } else {
+            PRINT_INFO(MPIDI_Process.my_pg_rank == 0 , "\nError setting CVAR:"
+                    " Multi-cast is only valid if we are either performing a"
+                    " multi-node job or if SMP only is disabled through one"
+                    " of many methods.\n");
+            mpi_errno = MPI_ERR_INTERN;
+            MPIR_ERR_POP(mpi_errno);
+        }
     }
 fn_fail:
     return mpi_errno;
