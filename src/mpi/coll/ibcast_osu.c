@@ -45,7 +45,7 @@ static int MPIR_Ibcast_tune_helper_MV2(void *buffer, int count, MPI_Datatype dat
     MPIU_Assert(is_homogeneous);
     comm_size = comm_ptr->local_size;
 
-    if ((MV2_Ibcast_function == MPIR_Ibcast_scatter_rec_dbl_allgather)) {
+    if (MV2_Ibcast_function == MPIR_Ibcast_scatter_rec_dbl_allgather) {
         if (MPIU_is_pof2(comm_size, NULL)) {
             mpi_errno = MPIR_Ibcast_scatter_rec_dbl_allgather(buffer, count,
                                                               datatype, root, comm_ptr, s);

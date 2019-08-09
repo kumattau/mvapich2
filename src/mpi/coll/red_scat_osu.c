@@ -22,6 +22,15 @@
 #include "red_scat_tuning.h"
 #include <unistd.h>
 
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_reduce_scatter_noncomm);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_reduce_scatter_basic);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_reduce_scatter_rec_halving);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_reduce_scatter_pairwise);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_reduce_scatter_non_comm);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_reduce_scatter_ring);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_reduce_scatter_ring_2lvl);
+
+
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_noncomm);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_basic);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_rec_halving);
@@ -117,6 +126,7 @@ static int MPIR_Reduce_scatter_noncomm_MV2(const void *sendbuf,
 										   MPI_Op op,
 										   MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+	MPIR_TIMER_START(coll,reduce_scatter,noncomm);
 	int mpi_errno = MPI_SUCCESS;
 	int mpi_errno_ret = MPI_SUCCESS;
 	int comm_size = comm_ptr->local_size;
@@ -153,7 +163,7 @@ static int MPIR_Reduce_scatter_noncomm_MV2(const void *sendbuf,
 			is_cxx_uop = 1;
 		} else
 #endif
-		if ((op_ptr->language == MPID_LANG_C))
+		if (op_ptr->language == MPID_LANG_C)
 			uop = (MPI_User_function *) op_ptr->function.c_function;
 		else
 			uop = (MPI_User_function *) op_ptr->function.f77_function;
@@ -267,6 +277,7 @@ static int MPIR_Reduce_scatter_noncomm_MV2(const void *sendbuf,
 		mpi_errno = mpi_errno_ret;
 	else if (*errflag)
 		MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+	MPIR_TIMER_END(coll,reduce_scatter,noncomm);
 	return mpi_errno;
   fn_fail:
 	goto fn_exit;
@@ -283,6 +294,7 @@ int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
                                   MPI_Op op,
                                   MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+	MPIR_TIMER_START(coll,reduce_scatter,basic);
 	int mpi_errno = MPI_SUCCESS, i;
 	int rank, size;
 	int total_count;
@@ -328,6 +340,7 @@ int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
 									datatype, op, root, comm_ptr, errflag);
 	}
 	if (MPI_SUCCESS != mpi_errno) {
+		MPIR_TIMER_END(coll,reduce_scatter,basic);
 		return mpi_errno;
 	}
 
@@ -356,6 +369,7 @@ int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
             }
       }
         if (MPI_SUCCESS != mpi_errno) {
+        	MPIR_TIMER_END(coll,reduce_scatter,basic);
 			return mpi_errno;
 		}
 	} else {
@@ -382,6 +396,7 @@ int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
             }
         }
 		if (MPI_SUCCESS != mpi_errno) {
+			MPIR_TIMER_END(coll,reduce_scatter,basic);
 			return mpi_errno;
 		}
 		MPIU_Free(displs);
@@ -389,6 +404,7 @@ int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
 
   fn_exit:
 	MPIU_CHKLMEM_FREEALL();
+	MPIR_TIMER_END(coll,reduce_scatter,basic);
 	return mpi_errno;
   fn_fail:
 	goto fn_exit;
@@ -407,6 +423,7 @@ int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
                                         MPID_Comm * comm_ptr,
                                         MPIR_Errflag_t *errflag)
 {
+	MPIR_TIMER_START(coll,reduce_scatter,rec_halving);
 	int rank, comm_size, i;
 	MPI_Aint extent, true_extent, true_lb;
 	int *disps;
@@ -449,7 +466,7 @@ int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 			is_cxx_uop = 1;
 		} else
 #endif
-		if ((op_ptr->language == MPID_LANG_C))
+		if (op_ptr->language == MPID_LANG_C)
 			uop = (MPI_User_function *) op_ptr->function.c_function;
 		else
 			uop = (MPI_User_function *) op_ptr->function.f77_function;
@@ -745,6 +762,8 @@ int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 		mpi_errno = mpi_errno_ret;
 	else if (*errflag)
 		MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+
+	MPIR_TIMER_END(coll,reduce_scatter,rec_halving);
 	return mpi_errno;
   fn_fail:
 	goto fn_exit;
@@ -761,6 +780,7 @@ int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
                                       MPI_Op op,
                                       MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+	MPIR_TIMER_START(coll,reduce_scatter,pairwise);
 	int rank, comm_size, i;
 	MPI_Aint extent, true_extent, true_lb;
 	int *disps;
@@ -806,7 +826,7 @@ int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 			is_cxx_uop = 1;
 		} else
 #endif
-		if ((op_ptr->language == MPID_LANG_C))
+		if (op_ptr->language == MPID_LANG_C)
 			uop = (MPI_User_function *) op_ptr->function.c_function;
 		else
 			uop = (MPI_User_function *) op_ptr->function.f77_function;
@@ -982,6 +1002,8 @@ int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 		mpi_errno = mpi_errno_ret;
 	else if (*errflag)
 		MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+
+	MPIR_TIMER_END(coll,reduce_scatter,pairwise);
 	return mpi_errno;
   fn_fail:
 	goto fn_exit;
@@ -996,6 +1018,7 @@ int MPIR_Reduce_scatter_ring(const void* sendbuf, void* recvbuf,
     MPI_Op op, MPID_Comm *comm_ptr,
     MPIR_Errflag_t *errflag)
 {
+	MPIR_TIMER_START(coll,reduce_scatter,ring);
     int mpi_errno     = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int comm_size     = comm_ptr->local_size;
@@ -1139,6 +1162,8 @@ fn_exit:
     else if (*errflag != MPIR_ERR_NONE)
         MPIR_ERR_SET(mpi_errno, *errflag, "**coll_fail");
     /* --END ERROR HANDLING-- */
+
+    MPIR_TIMER_END(coll,reduce_scatter,ring);
     return mpi_errno;
 fn_fail:
     goto fn_exit;
@@ -1153,11 +1178,13 @@ int MPIR_Reduce_scatter_ring_2lvl(const void* sendbuf, void* recvbuf,
         MPI_Op op, MPID_Comm *comm_ptr,
         MPIR_Errflag_t *errflag)
 {
+	MPIR_TIMER_START(coll,reduce_scatter,ring_2lvl);
     int mpi_errno     = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int comm_size     = comm_ptr->local_size;
 
     if (comm_ptr->dev.ch.rank_list == NULL) {
+    	MPIR_TIMER_END(coll,reduce_scatter,ring_2lvl);
         return MPIR_Reduce_scatter_ring(
                             sendbuf, recvbuf, recvcnts, datatype,
                             op, comm_ptr, errflag);
@@ -1308,6 +1335,8 @@ fn_exit:
     else if (*errflag != MPIR_ERR_NONE)
         MPIR_ERR_SET(mpi_errno, *errflag, "**coll_fail");
     /* --END ERROR HANDLING-- */
+
+    MPIR_TIMER_END(coll,reduce_scatter,ring_2lvl);
     return mpi_errno;
 fn_fail:
     goto fn_exit;
@@ -1324,6 +1353,7 @@ static int MPIR_Reduce_scatter_non_comm_MV2(const void *sendbuf,
 											MPI_Op op,
 											MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+	MPIR_TIMER_START(coll,reduce_scatter,non_comm);
 	int rank, comm_size, i;
 	MPI_Aint extent, true_extent, true_lb;
 	int *disps;
@@ -1372,7 +1402,7 @@ static int MPIR_Reduce_scatter_non_comm_MV2(const void *sendbuf,
 			is_cxx_uop = 1;
 		} else
 #endif
-		if ((op_ptr->language == MPID_LANG_C))
+		if (op_ptr->language == MPID_LANG_C)
 			uop = (MPI_User_function *) op_ptr->function.c_function;
 		else
 			uop = (MPI_User_function *) op_ptr->function.f77_function;
@@ -1704,6 +1734,8 @@ static int MPIR_Reduce_scatter_non_comm_MV2(const void *sendbuf,
 		mpi_errno = mpi_errno_ret;
 	else if (*errflag)
 		MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+
+	MPIR_TIMER_END(coll,reduce_scatter,non_comm);
 	return mpi_errno;
   fn_fail:
 	goto fn_exit;

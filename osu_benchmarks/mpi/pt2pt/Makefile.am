@@ -9,7 +9,7 @@ SUFFIXES = .cu .cpp
 pt2ptdir = $(pkglibexecdir)/mpi/pt2pt
 pt2pt_PROGRAMS = osu_bibw osu_bw osu_latency osu_mbw_mr osu_multi_lat
 
-AM_CFLAGS = -I../../util
+AM_CFLAGS = -I${top_srcdir}/util
 
 UTILITIES = ../../util/osu_util.c ../../util/osu_util.h ../../util/osu_util_mpi.c ../../util/osu_util_mpi.h
 if CUDA_KERNELS

@@ -56,6 +56,8 @@ do {                                                          \
 #define MAX_PROGRESS_HOOKS 4
 long int mv2_num_posted_send = 0;
 long int mv2_unexp_msg_recv  = 0;
+long int mv2_num_posted_send;
+long int mv2_unexp_msg_recv;
 
 typedef int (*progress_func_ptr_t) (int* made_progress);
 
@@ -1442,7 +1444,11 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
                 PRINT_DEBUG(DEBUG_CM_verbose>0, "NOOP Received, RDMA CM is setting the proper status on the client side for multirail.\n");
                 if (mv2_use_eager_fast_send &&
                     !(SMP_INIT && (vc->smp.local_nodes >= 0))) {
-                    vc->eager_fast_fn = mv2_eager_fast_send;
+                    if (likely(rdma_use_coalesce)) {
+                        vc->eager_fast_fn = mv2_eager_fast_coalesce_send;
+                    } else {
+                        vc->eager_fast_fn = mv2_eager_fast_send;
+                    }
                 }
             }
 
@@ -1471,25 +1477,25 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
     case MPIDI_CH3_PKT_ADDRESS:
     case MPIDI_CH3_PKT_ADDRESS_REPLY:
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
-            DEBUG_PRINT("NOOP received, don't need to proceed\n");
+            PRINT_DEBUG(DEBUG_RNDV_verbose>2, "flow control received from: %d\n", vc->pg_rank);
         goto fn_exit;
     case MPIDI_CH3_PKT_PACKETIZED_SEND_DATA:
-            DEBUG_PRINT("Packetized data received, don't need to proceed\n");
+            PRINT_DEBUG(DEBUG_RNDV_verbose>1, "Packetized data received from: %d\n", vc->pg_rank);
             MPIDI_CH3_Packetized_recv_data(vc, buffer);
         goto fn_exit;
     case MPIDI_CH3_PKT_RNDV_R3_DATA:
-            DEBUG_PRINT("R3 data received, don't need to proceed\n");
+            PRINT_DEBUG(DEBUG_RNDV_verbose>1, "R3 data received from: %d\n", vc->pg_rank);
             MPIDI_CH3_Rendezvouz_r3_recv_data(vc, buffer);
         goto fn_exit;
     case MPIDI_CH3_PKT_RNDV_R3_ACK:
             MPIDI_CH3_Rendezvouz_r3_ack_recv(vc, (void*) header);
         goto fn_exit;
     case MPIDI_CH3_PKT_RPUT_FINISH:
-            DEBUG_PRINT("RPUT finish received, don't need to proceed\n");
+            PRINT_DEBUG(DEBUG_RNDV_verbose>1, "RPUT finish received from: %d\n", vc->pg_rank);
             MPIDI_CH3_Rendezvous_rput_finish(vc, (void*) header);
         goto fn_exit;
     case MPIDI_CH3_PKT_RGET_FINISH:
-            DEBUG_PRINT("RGET finish received\n");
+            PRINT_DEBUG(DEBUG_RNDV_verbose>1, "RGET finish received from: %d\n", vc->pg_rank);
             MPIDI_CH3_Rendezvous_rget_send_finish(vc, (void*) header);
         goto fn_exit;
 #ifdef _ENABLE_CUDA_

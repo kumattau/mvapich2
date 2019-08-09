@@ -150,7 +150,11 @@ int MPID_Imrecv(void *buf, int count, MPI_Datatype datatype,
     else if (MPIDI_Request_get_msg_type(rreq) == MPIDI_REQUEST_RNDV_MSG)
     {
         MPIDI_Comm_get_vc_set_active(comm, rreq->dev.match.parts.rank, &vc);
-
+#if defined (CHANNEL_MRAIL)
+        if (IS_VC_SMP(vc)) {
+            rreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
+        }
+#endif
         mpi_errno = vc->rndvRecv_fn(vc, rreq);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN)

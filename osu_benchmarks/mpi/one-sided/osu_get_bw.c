@@ -192,7 +192,7 @@ void run_get_with_flush_local (int rank, enum WINDOW type)
 
         print_bw(rank, size, t);
 
-        MPI_Win_free(&win);
+        free_memory_one_sided(sbuf,rbuf,win,rank);
     }
 }
 
@@ -238,7 +238,7 @@ void run_get_with_flush (int rank, enum WINDOW type)
 
         print_bw(rank, size, t);
 
-        MPI_Win_free(&win);
+        free_memory_one_sided(sbuf,rbuf,win,rank);
     }
 }
 
@@ -282,7 +282,7 @@ void run_get_with_lock_all (int rank, enum WINDOW type)
 
         print_bw(rank, size, t);
 
-        MPI_Win_free(&win);
+        free_memory_one_sided(sbuf,rbuf,win,rank);
     }
 }
 #endif
@@ -329,7 +329,7 @@ void run_get_with_lock(int rank, enum WINDOW type)
 
         print_bw(rank, size, t);
 
-        MPI_Win_free(&win);
+        free_memory_one_sided(sbuf,rbuf,win,rank);
     }
 }
 
@@ -383,7 +383,7 @@ void run_get_with_fence(int rank, enum WINDOW type)
 
         print_bw(rank, size, t);
 
-        MPI_Win_free(&win);
+        free_memory_one_sided(sbuf,rbuf,win,rank);
     }
 }
 
@@ -447,7 +447,7 @@ void run_get_with_pscw(int rank, enum WINDOW type)
 
         MPI_CHECK(MPI_Group_free(&group));
 
-        MPI_Win_free(&win);
+        free_memory_one_sided(sbuf,rbuf,win,rank);
     }
     MPI_CHECK(MPI_Group_free(&comm_group));
 }

@@ -35,6 +35,10 @@ int MPI_T_init_thread(int required, int *provided) __attribute__((weak,alias("PM
 #undef MPI_T_init_thread
 #define MPI_T_init_thread PMPI_T_init_thread
 
+#ifdef ENABLE_PVAR_MEM
+int mv2_enable_pvar_mem = 0;
+#endif
+
 /* any non-MPI functions go here, especially non-static ones */
 static inline void MPIR_T_enum_env_init(void)
 {
@@ -74,6 +78,13 @@ static inline void MPIR_T_pvar_env_init(void)
     for (i = 0; i < MPIR_T_PVAR_CLASS_NUMBER; i++) {
         pvar_hashs[i] = NULL;
     }
+
+#ifdef ENABLE_PVAR_MEM
+    const char* value;
+    if((value = getenv("MV2_ENABLE_PVAR_MEM"))!=NULL) {
+        mv2_enable_pvar_mem = !!atoi(value);
+    }
+#endif
 }
 
 void MPIR_T_env_init(void)
@@ -87,7 +98,11 @@ void MPIR_T_env_init(void)
         MPIR_T_cvar_env_init();
         MPIR_T_pvar_env_init();
 #ifdef _OSU_MVAPICH_
-        MPIT_MEM_REGISTER_PVARS();
+#if ENABLE_PVAR_MEM
+	if(mv2_enable_pvar_mem) {
+	    MPIT_MEM_REGISTER_PVARS();
+	}
+#endif /* ENABLE_PVAR_MEM */
         MPIT_REGISTER_MV2_VARIABLES();
 #endif
     }

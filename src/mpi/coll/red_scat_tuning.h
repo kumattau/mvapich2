@@ -93,7 +93,7 @@ extern int MPIR_Reduce_scatter_ring_2lvl(const void *sendbuf,
                                          MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 /* Architecture detection tuning */
-int MV2_set_red_scat_tuning_table(int heterogeneity);
+int MV2_set_red_scat_tuning_table(int heterogeneity, struct coll_info *colls_arch_hca);
 
 /* Function to clean free memory allocated by red_scat tuning table*/
 void MV2_cleanup_red_scat_tuning_table();

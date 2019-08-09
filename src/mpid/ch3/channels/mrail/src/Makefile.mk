@@ -47,6 +47,7 @@ if BUILD_MRAIL_GEN2
 
 AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/mrail/src/gen2 \
 			   -I$(top_srcdir)/src/mpi/coll
+AM_CPPFLAGS += -I$(top_srcdir)/src/mpi/romio/adio/include
 
 mpi_core_sources	+=					\
     src/mpid/ch3/channels/mrail/src/gen2/ibv_send.c			\

@@ -23,6 +23,9 @@
 #if defined (_SHARP_SUPPORT_)
 #include "ibv_sharp.h"
 #endif
+#ifdef HAVE_ROMIO
+#include "romioconf.h"
+#endif
 
 #define MPIDI_CH3I_HOST_DESCRIPTION_KEY "description"
 
@@ -102,7 +105,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     
     /* Choose default startup method and set default on-demand threshold */
-#if defined(RDMA_CM) && !defined(CKPT)
+#if defined(RDMA_CM) && !defined(CKPT) && !(ROMIO_IME)
     /* If user has not forcefully disabled RDMA_CM, and if user has not
      * specified the use of MCAST use it by default */
     if (
@@ -132,13 +135,6 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         dpm = !!atoi(value);
         MPIDI_CH3I_Process.has_dpm = dpm;
     }
-#ifdef _ENABLE_UD_
-    if (MPIDI_CH3I_Process.has_dpm) {
-        MPL_error_printf("Error: DPM is not supported with Hybrid builds.\n"
-                          "Please reconfigure MVAPICH2 library without --enable-hybrid option.\n");
-        MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
-    }
-#endif /* _ENABLE_UD_ */
     if (MPIDI_CH3I_Process.has_dpm) {
         setenv("MV2_ENABLE_AFFINITY", "0", 1);
 #if defined(RDMA_CM) && !defined(CKPT)
@@ -149,6 +145,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
         }
 #endif /*defined(RDMA_CM) && !defined(CKPT)*/
+#ifdef _ENABLE_UD_
+        /* DPM and Hybrid cannot be enabled at the same time */
+        rdma_enable_hybrid = 0;
+#endif /*_ENABLE_UD_*/
     }
 
 #ifdef _ENABLE_CUDA_
@@ -203,7 +203,17 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         }
         rdma_hybrid_enable_threshold = 0;
     }
+
+    if(((value = getenv("MV2_SUPPORT_DPM")) != NULL) && !!atoi(value)) {
+            rdma_enable_hybrid = 0;
+    }
+
     if (pg_size < rdma_hybrid_enable_threshold) {
+        rdma_enable_hybrid = 0;
+    }
+    if (rdma_enable_hybrid && MPIDI_CH3I_Process.has_dpm) {
+        PRINT_INFO((pg_rank==0), "DPM is not supported with Hybrid builds. Disabling Hybrid\n");
+        rdma_enable_only_ud = 0;
         rdma_enable_hybrid = 0;
     }
     if(rdma_enable_hybrid == 1) { 
@@ -220,8 +230,13 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
         }
 #endif /*defined(RDMA_CM) && !defined(CKPT)*/
+        if (MPIDI_CH3I_Process.has_dpm) {
+            MPL_error_printf("Error: DPM is not supported with Hybrid builds.\n"
+                    "Please reconfigure MVAPICH2 library without --enable-hybrid option.\n");
+            MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
+        }
     } 
-#endif
+#endif /* #ifdef _ENABLE_UD_ */
 
     value = getenv("MV2_USE_XRC");
     if (value) {
@@ -244,6 +259,8 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
                 /* Enable on-demand */
                 threshold = 0;
             }
+            /* RGET is not supporpted with XRC. Use RPUT by default */
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
         }
 #else
         if (atoi(value)) {
@@ -258,7 +275,12 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     if (((value = getenv("MV2_USE_RDMA_CM")) != NULL
          || (value = getenv("MV2_USE_IWARP_MODE")) != NULL)
         && atoi(value) && !dpm) {
+#if defined (ROMIO_IME)
+        PRINT_INFO((pg_rank == 0), "Error: IME FS does not work with RDMA CM. "
+                                   "Proceeding without RDMA support.\n");
+#else
         MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+#endif
 #ifdef _ENABLE_XRC_
         USE_XRC = 0;
         value = getenv("MV2_USE_XRC");
@@ -269,8 +291,6 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             }
         }
 #endif
-    } else {
-        rdma_cm_get_hca_type(&mv2_MPIDI_CH3I_RDMA_Process);
     }
 #endif /* defined(RDMA_CM) */
 
@@ -459,6 +479,37 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
                 }
                 break;
         }
+#if defined(RDMA_CM)
+    } else {
+        /* If SMP_ONLY, we need to get the HCA type */
+        rdma_cm_get_hca_type(&mv2_MPIDI_CH3I_RDMA_Process);
+#endif /*defined(RDMA_CM)*/
+    }
+
+    if ((value = getenv("MV2_RNDV_PROTOCOL")) != NULL) {
+        if (strncmp(value, "RPUT", 4) == 0) {
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
+        } else if (strncmp(value, "RGET", 4) == 0) {
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RGET;
+        } else {
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_R3;
+        }
+    }
+    if ((value = getenv("MV2_SMP_RNDV_PROTOCOL")) != NULL) {
+        if (strncmp(value, "RPUT", 4) == 0) {
+            smp_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
+        } else if (strncmp(value, "RGET", 4) == 0) {
+            smp_rndv_protocol = MV2_RNDV_PROTOCOL_RGET;
+        } else if (strncmp(value, "R3", 2) == 0) {
+            smp_rndv_protocol = MV2_RNDV_PROTOCOL_R3;
+        } else {
+            MPL_usage_printf("MV2_SMP_RNDV_PROTOCOL "
+                    "must be one of: RPUT, RGET, R3\n");
+            smp_rndv_protocol = rdma_rndv_protocol;
+        }
+    }
+    if ((value = getenv("MV2_RNDV_IMMEDIATE")) != NULL) {
+        rdma_rndv_immediate = !!atoi(value);
     }
 #if defined(CKPT)
 #if defined(DISABLE_PTMALLOC)
@@ -484,7 +535,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         MPIU_Free(conn_info);
     }
 
-    mpi_errno = MV2_collectives_arch_init(mv2_MPIDI_CH3I_RDMA_Process.heterogeneity);
+
+    struct coll_info colls_arch_hca[colls_max];
+
+    mpi_errno = MV2_collectives_arch_init(mv2_MPIDI_CH3I_RDMA_Process.heterogeneity, colls_arch_hca);
     if (mpi_errno != MPI_SUCCESS) {
         MPIR_ERR_POP(mpi_errno);
     }
@@ -538,7 +592,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         mv2_show_env_info = atoi(value);
     }
     if (pg_rank == 0 && mv2_show_env_info) {
-        mv2_print_env_info(&mv2_MPIDI_CH3I_RDMA_Process);
+        mv2_print_env_info(&mv2_MPIDI_CH3I_RDMA_Process, colls_arch_hca);
     }
 
 #if defined(_MCST_SUPPORT_)
@@ -548,7 +602,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         srand(time(NULL) * pg_rank);
 
         /* initialize comm table */
-        for (p = 0; p <= MV2_MCAST_MAX_COMMS; p++) {
+        for (p = 0; p < MV2_MCAST_MAX_COMMS; p++) {
             comm_table[p] = NULL;
         }
         /* init mcast context */

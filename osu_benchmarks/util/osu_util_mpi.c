@@ -1154,6 +1154,7 @@ int init_accel (void)
                 CUDA_CHECK(cudaGetDeviceCount(&dev_count));
                 dev_id = local_rank % dev_count;
             }
+            CUDA_CHECK(cudaSetDevice(dev_id));
 
             curesult = cuInit(0);
             if (curesult != CUDA_SUCCESS) {
@@ -1165,7 +1166,7 @@ int init_accel (void)
                 return 1;
             }
 
-            curesult = cuCtxCreate(&cuContext, 0, cuDevice);
+            curesult = cuDevicePrimaryCtxRetain(&cuContext, cuDevice);
             if (curesult != CUDA_SUCCESS) {
                 return 1;
             }
@@ -1200,11 +1201,8 @@ int cleanup_accel (void)
 #ifdef _ENABLE_CUDA_
         case MANAGED:
         case CUDA:
-            curesult = cuCtxDestroy(cuContext);
-
-            if (curesult != CUDA_SUCCESS) {
-                return 1;
-            }
+            /* reset the device to release all resources */
+            CUDA_CHECK(cudaDeviceReset());
             break;
 #endif
 #ifdef _ENABLE_OPENACC_

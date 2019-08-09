@@ -49,6 +49,7 @@ cvars:
 === END_MPI_T_CVAR_INFO_BLOCK ===
 */
 
+extern int g_mv2_num_cpus;
 static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
 
 #define MV2_STR_MLX          "mlx"
@@ -91,6 +92,7 @@ static mv2_hca_types_log_t mv2_hca_types_log[] = {
     {MV2_HCA_MLX_CX_QDR,    "MV2_HCA_MLX_CX_QDR"},
     {MV2_HCA_MLX_CX_FDR,    "MV2_HCA_MLX_CX_FDR"},
     {MV2_HCA_MLX_CX_EDR,    "MV2_HCA_MLX_CX_EDR"},
+    {MV2_HCA_MLX_CX_HDR,    "MV2_HCA_MLX_CX_HDR"},
     {MV2_HCA_MLX_CX_CONNIB, "MV2_HCA_MLX_CX_CONNIB"},
     {MV2_HCA_MLX_PCI_X,     "MV2_HCA_MLX_PCI_X"},
 
@@ -119,6 +121,9 @@ static mv2_hca_types_log_t mv2_hca_types_log[] = {
 char* mv2_get_hca_name(mv2_hca_type hca_type)
 {
     int i=0;
+    if (hca_type == MV2_HCA_ANY) {
+        return("MV2_HCA_ANY");
+    }
     while(mv2_hca_types_log[i].hca_type != MV2_HCA_LAST_ENTRY){
 
         if(mv2_hca_types_log[i].hca_type == hca_type){
@@ -139,7 +144,9 @@ static int get_rate(umad_ca_t *umad_ca)
         int default_port = atoi(value);
         
         if(default_port <= umad_ca->numports){
-            return umad_ca->ports[default_port]->rate;
+            if (IBV_PORT_ACTIVE == umad_ca->ports[default_port]->state) {
+                return umad_ca->ports[default_port]->rate;
+            }
         }
     }
 
@@ -159,8 +166,13 @@ static const int get_link_width(uint8_t width)
     case 2:  return 4;
     case 4:  return 8;
     case 8:  return 12;
-    default: return 0;
-    }   
+    /* Links on Frontera are returning 16 as link width for now.
+     * This is a temporary work around for that. */
+    case 16:  return 2;
+    default:
+        PRINT_ERROR("Invalid link width %u\n", width);
+        return 0;
+    }
 }
 
 static const float get_link_speed(uint8_t speed)
@@ -174,8 +186,11 @@ static const float get_link_speed(uint8_t speed)
 
     case 16: return 14.0; /* FDR */
     case 32: return 25.0; /* EDR */
-    default: return 0;    /* Invalid speed */
-    }   
+    case 64: return 50.0; /* EDR */
+    default:
+        PRINT_ERROR("Invalid link speed %u\n", speed);
+        return 0;    /* Invalid speed */
+    }
 }
 
 int mv2_check_hca_type(mv2_hca_type type, int rank)
@@ -276,10 +291,14 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
         if (!ibv_query_port(ctx, query_port, &port_attr)) {
             rate = (int) (get_link_width(port_attr.active_width)
                     * get_link_speed(port_attr.active_speed));
-            PRINT_DEBUG(0, "rate : %d\n", rate);
+            PRINT_DEBUG(DEBUG_INIT_verbose, "rate : %d\n", rate);
         }
         /* mlx4, mlx5 */ 
         switch(rate) {
+            case 200:
+                hca_type = MV2_HCA_MLX_CX_HDR;
+                break;
+
             case 100:
                 hca_type = MV2_HCA_MLX_CX_EDR;
                 break;
@@ -393,7 +412,7 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
         || !strncmp(dev_name, MV2_STR_MLX5, 4) 
         || !strncmp(dev_name, MV2_STR_MTHCA, 5)) {
 
-        hca_type = MV2_HCA_MLX_PCI_X;
+        hca_type = MV2_HCA_UNKWN;
 #if !defined(HAVE_LIBIBUMAD)
         int query_port = 1;
         struct ibv_context *ctx= NULL;
@@ -419,10 +438,11 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
             query_port = (default_port <= max_ports) ? default_port : 1;
         }
         
-        if (!ibv_query_port(ctx, query_port, &port_attr)) {
-            rate = (int) (get_link_width( port_attr.active_width)
-                    * get_link_speed( port_attr.active_speed));
-            PRINT_DEBUG(0, "rate : %d\n", rate);
+        if (!ibv_query_port(ctx, query_port, &port_attr) &&
+            (port_attr.state == IBV_PORT_ACTIVE)) {
+            rate = (int) (get_link_width(port_attr.active_width)
+                    * get_link_speed(port_attr.active_speed));
+            PRINT_DEBUG(DEBUG_INIT_verbose, "rate : %d\n", rate);
         }
 #else
         umad_ca_t umad_ca;
@@ -480,6 +500,10 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 #endif
         { /* mlx4, mlx5 */ 
             switch(rate) {
+                case 200:
+                    hca_type = MV2_HCA_MLX_CX_HDR;
+                    break;
+
                 case 100:
                     hca_type = MV2_HCA_MLX_CX_EDR;
                     break;
@@ -586,21 +610,24 @@ mv2_hca_type mv2_get_hca_type(void *dev)
 mv2_arch_hca_type mv2_new_get_arch_hca_type (mv2_hca_type hca_type)
 {
     mv2_arch_hca_type arch_hca = mv2_get_arch_type();
-    arch_hca = arch_hca << 32 | hca_type;
+    arch_hca = arch_hca << 16 | hca_type;
+    arch_hca = arch_hca << 16 | (mv2_arch_num_cores) g_mv2_num_cpus;
     return arch_hca;
 }
 
 mv2_arch_hca_type mv2_get_arch_hca_type (struct ibv_device *dev)
 {
     mv2_arch_hca_type arch_hca = mv2_get_arch_type();
-    arch_hca = arch_hca << 32 | mv2_get_hca_type(dev);
+    arch_hca = arch_hca << 16 | mv2_get_hca_type(dev);
+    arch_hca = arch_hca << 16 | (mv2_arch_num_cores) g_mv2_num_cpus;
     return arch_hca;
 }
 #else 
 mv2_arch_hca_type mv2_get_arch_hca_type (void *dev)
 {
     mv2_arch_hca_type arch_hca = mv2_get_arch_type();
-    arch_hca = arch_hca << 32 | mv2_get_hca_type(dev);
+    arch_hca = arch_hca << 16 | mv2_get_hca_type(dev);
+    arch_hca = arch_hca << 16 | (mv2_arch_num_cores) g_mv2_num_cpus;
     return arch_hca;
 }
 #endif
@@ -632,7 +659,9 @@ mv2_multirail_info_type mv2_get_multirail_info()
                 g_mv2_multirail_info = mv2_num_rail_unknown;
                 break;
         }
-        ibv_free_device_list(dev_list);
+        if (dev_list) {
+            ibv_free_device_list(dev_list);
+        }
     }
     return g_mv2_multirail_info;
 }
@@ -691,7 +720,8 @@ int mv2_set_force_hca_type()
         else {
             mv2_MPIDI_CH3I_RDMA_Process.hca_type = hca_type;
             mv2_arch_hca_type arch_hca = mv2_get_arch_type();
-            mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type = arch_hca << 32 | hca_type;
+            mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type = 
+                (((arch_hca << 16 | hca_type) << 16) | g_mv2_num_cpus);
             goto fn_change;
         }
     }

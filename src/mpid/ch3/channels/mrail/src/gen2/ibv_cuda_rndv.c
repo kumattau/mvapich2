@@ -86,7 +86,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda(MPIDI_VC_t * vc,
         MIN(req->mrail.num_cuda_blocks, rdma_num_cuda_rndv_blocks);
     req->mrail.num_remote_cuda_done = 0;
     req->mrail.num_remote_cuda_inflight = 0;
-    req->mrail.completion_counter = 0;
+    req->mrail.local_complete = 0;
 
     return 1;
 }
@@ -835,7 +835,7 @@ int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, MPID_Request * rreq,
             busy_cuda_event_list_head, busy_cuda_event_list_tail);
     }
 
-    rreq->mrail.completion_counter = 0;
+    rreq->mrail.local_complete = 0;
 
     PRINT_DEBUG(DEBUG_CUDA_verbose>1, "RECV cudaMemcpyAsync :%d "
             "req:%p strm:%p\n", rreq->mrail.num_remote_cuda_done,

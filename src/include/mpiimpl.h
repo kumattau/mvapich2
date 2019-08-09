@@ -1317,6 +1317,10 @@ typedef struct MPID_Comm {
     MPIR_Comm_map_t *mapper_head;
     MPIR_Comm_map_t *mapper_tail;
 
+#if ENABLE_PVAR_MV2
+    unsigned long long *sub_comm_counters;
+#endif
+
   /* Other, device-specific information */
 #ifdef MPID_DEV_COMM_DECL
     MPID_DEV_COMM_DECL

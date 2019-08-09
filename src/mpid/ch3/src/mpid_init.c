@@ -331,6 +331,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     if (mpi_errno) {
 	MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
+    pg->is_spawned=has_parent;
 
     /* Create the string that will cache the last group of failed processes
      * we received from PMI */
@@ -577,10 +578,10 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
         }
         if ((value = getenv("OMP_NUM_THREADS")) != NULL) {
             int _temp = atoi(value);
-            if ((_temp > 0) && mv2_enable_affinity && (0 == pg_rank)
+            if ((_temp > 1) && mv2_enable_affinity && (0 == pg_rank)
                 && thread_warning && (mv2_binding_level == LEVEL_CORE)) {
                 fprintf(stderr, "Warning: Process to core binding is enabled and"
-                        " OMP_NUM_THREADS is set to non-zero (%d) value\nIf"
+                        " OMP_NUM_THREADS is greater than one (%d).\nIf"
                         " your program has OpenMP sections, this can cause"
                         " over-subscription of cores and consequently poor"
                         " performance\nTo avoid this, please re-run your"

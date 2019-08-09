@@ -47,6 +47,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                              MPI_Datatype recvtype,
                              MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgather,cuda);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -64,6 +65,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
     cudaError_t cudaerr;
 
     if (((sendcount == 0) && (sendbuf != MPI_IN_PLACE)) || (recvcount == 0)) {
+        MPIR_TIMER_END(coll,allgather,cuda);
         return MPI_SUCCESS;
     }
 
@@ -428,6 +430,7 @@ int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
 
   fn_fail:
+    MPIR_TIMER_END(coll,allgather,cuda);
     return (mpi_errno);
 }
 /* end:nested */

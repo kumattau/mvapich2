@@ -381,7 +381,7 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf_stream(
 {
     MPI_Aint last;
     int iov_n;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     cudaStream_t stream_passed = 0;
 
     if (stream != NULL) { 
@@ -502,7 +502,7 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf_stream(
 {
     MPI_Aint last;
     int iov_n, bytes_copied;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     cudaStream_t stream_passed = 0;
 
     if (stream != NULL) {
@@ -627,7 +627,7 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     int device_pack_buf = 1;
     int buff_off = 0;
     void *tmpbuf = NULL;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     DLOOP_Offset segment_first, segment_last;
     int segment_size;
     int sbuf_isdev = 0;
@@ -725,7 +725,7 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     int device_unpack_buf = 1;
     int buff_off = 0;
     void *tmpbuf;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     DLOOP_Offset segment_first, segment_last;
     int segment_size;
     int rbuf_isdev = 0;

@@ -13,6 +13,7 @@
 
 void MPIT_REGISTER_MV2_VARIABLES (void);
 void MPIT_MEM_REGISTER_PVARS (void);
+void MPIT_FREE_MV2_VARIABLES (void);
 
 void * MPIT_malloc (size_t, int, char const *);
 void * MPIT_calloc (size_t, size_t, int, char const *);

@@ -44,7 +44,7 @@ following:
                      osu_upc_all_barrier
         do
             echo "Compiling $bench..."
-            upcc $bench.c ../util/osu_util.c -o $bench
+            upcc $bench.c ../util/osu_util_pgas.c ../util/osu_util.c -o $bench
         done
 
 The MPI Multiple Bandwidth / Message Rate (osu_mbw_mr), OpenSHMEM Put Message
@@ -787,6 +787,7 @@ MPI communication using buffers on NVIDIA GPU devices.
     osu_latency        - Latency Test
     osu_mbw_mr         - Multiple Bandwidth / Message Rate Test
     osu_multi_lat      - Multi-pair Latency Test
+    osu_latency_mt     - Multi-threaded Latency Test
     osu_put_latency    - Latency Test for Put
     osu_get_latency    - Latency Test for Get
     osu_put_bw         - Bandwidth Test for Put

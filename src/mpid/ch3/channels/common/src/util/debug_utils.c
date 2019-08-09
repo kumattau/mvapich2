@@ -74,6 +74,9 @@ int DEBUG_SHM_verbose;
 // Verbosity level for Channel manager
 int DEBUG_CHM_verbose;
 
+// Verbosity level for RNDV transfers
+int DEBUG_RNDV_verbose;
+
 // Verbosity level for Init phase
 int DEBUG_INIT_verbose;
 
@@ -82,6 +85,9 @@ int DEBUG_RDMACM_verbose;
 
 // Verbosity level for One-sided
 int DEBUG_1SC_verbose;
+
+// Verbosity level for dreg cache
+int DEBUG_DREG_verbose;
 
 static inline int env2int (char *name)
 {
@@ -111,9 +117,11 @@ int initialize_debug_variables() {
     DEBUG_MCST_verbose = env2int( "MV2_DEBUG_MCST_VERBOSE" );
     DEBUG_SHM_verbose = env2int( "MV2_DEBUG_SHM_VERBOSE" );
     DEBUG_CHM_verbose = env2int( "MV2_DEBUG_CHM_VERBOSE" );
+    DEBUG_RNDV_verbose = env2int( "MV2_DEBUG_RNDV_VERBOSE" );
     DEBUG_INIT_verbose = env2int( "MV2_DEBUG_INIT_VERBOSE" );
     DEBUG_RDMACM_verbose = env2int( "MV2_DEBUG_RDMACM_VERBOSE" );
     DEBUG_1SC_verbose = env2int( "MV2_DEBUG_1SC_VERBOSE" );
+    DEBUG_DREG_verbose = env2int( "MV2_DEBUG_DREG_VERBOSE" );
     return 0;
 }
 

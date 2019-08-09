@@ -194,12 +194,16 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
             /* TODO: Create an appropriate error message based on the value of errno
              * */
             sreq->status.MPI_ERROR = MPI_ERR_INTERN;
+            PRINT_DEBUG(DEBUG_SHM_verbose>1,
+                    "Enqueue send to rank: %d, sreq: %p, type: %d, ch.reqtype: %d\n",
+                    vc->pg_rank, sreq, MPIDI_Request_get_type(sreq), sreq->ch.reqtype);
         }
     } else {
-        MPIDI_DBG_PRINTF((55, FCNAME,
-                          "send in progress, request enqueued"));
         sreq = create_request(pkt, pkt_sz, 0);
         MPIDI_CH3I_SendQ_enqueue(vc, sreq);
+        PRINT_DEBUG(DEBUG_SHM_verbose>1,
+                "Eqnueue send to rank: %d, sreq: %p, type: %d, ch.reqtype: %d\n",
+                vc->pg_rank, sreq, MPIDI_Request_get_type(sreq), sreq->ch.reqtype);
     }
 
   fn_exit:
@@ -264,9 +268,7 @@ int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
 #endif  // CKPT
         if (nb != pkt_sz) 
         {
-            DEBUG_PRINT("send delayed, request enqueued\n");
             sreq = create_request(pkt, pkt_sz, nb);
-
             if(pkt_header->type == MPIDI_CH3_PKT_RNDV_R3_DATA)
             { 
                 sreq->ch.reqtype = REQUEST_RNDV_R3_HEADER;
@@ -274,6 +276,10 @@ int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
 
             MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
             vc->smp.send_active = sreq;
+
+            PRINT_DEBUG(DEBUG_SHM_verbose>1,
+                    "send to %d delayed, request enqueued: %p, type: %d, pkt_sz: %d, ch.reqtype: %d\n",
+                    vc->pg_rank, sreq, MPIDI_Request_get_type(sreq), pkt_sz, sreq->ch.reqtype);
         }
 #if defined(DEBUG)
         else
@@ -282,13 +288,15 @@ int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
         }
 #endif /* defined(DEBUG) */
     } else {
-        MPIDI_DBG_PRINTF((55, FCNAME,
-                          "send in progress, request enqueued"));
         sreq = create_request(pkt, pkt_sz, 0);
-        if(pkt_header->type == MPIDI_CH3_PKT_RNDV_R3_DATA)
-            sreq->ch.reqtype = REQUEST_RNDV_R3_HEADER; 
+        if(pkt_header->type == MPIDI_CH3_PKT_RNDV_R3_DATA) {
+            sreq->ch.reqtype = REQUEST_RNDV_R3_HEADER;
+        }
 
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
+        PRINT_DEBUG(DEBUG_SHM_verbose>1,
+                "send to %d delayed, request enqueued: %p, type: %d, pkt_sz: %d, ch.reqtype: %d\n",
+                vc->pg_rank, sreq, MPIDI_Request_get_type(sreq), pkt_sz, sreq->ch.reqtype);
 #ifdef CKPT  
 		MPIDI_CH3I_MRAILI_Pkt_comm_header* p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)pkt;
 		if( p->type >= MPIDI_CH3_PKT_CM_SUSPEND && 

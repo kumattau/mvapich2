@@ -55,10 +55,8 @@ static inline MPID_Request * create_request(MPL_IOV * iov, int iov_count,
     sreq->kind = MPID_REQUEST_SEND;
     MV2_INC_NUM_POSTED_SEND();
 
-    for (i = 0; i < iov_count; i++)
-    {
-        sreq->dev.iov[i] = iov[i];
-    }
+    MPIU_Memcpy(sreq->dev.iov, iov, iov_count * sizeof(MPL_IOV));
+
     if (iov_offset == 0)
     {
 	/*

@@ -17,6 +17,7 @@
 
 #include "mpiimpl.h"
 #include "coll_shmem.h"
+#include "common_tuning.h"
 #include "alltoallv_tuning.h"
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_pw);
@@ -487,15 +488,7 @@ int MPIR_Alltoallv_index_tuned_intra_MV2(const void *sendbuf,
         shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
-        i = 0;
-        do {
-            if (local_size == mv2_alltoallv_indexed_table_ppn_conf[i]) {
-                conf_index = i;
-                partial_sub_ok = 1;
-                break;
-            }
-            i++;
-        } while(i < mv2_alltoallv_indexed_num_ppn_conf);
+        FIND_PPN_INDEX  (alltoallv, local_size,conf_index, partial_sub_ok)
     }
     
     if (partial_sub_ok != 1) {

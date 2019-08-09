@@ -61,13 +61,7 @@ static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
     }
 #endif
 
-    if (SMP_INIT && vc->smp.local_nodes >= 0) { 
-        sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
-        sreq->mrail.d_entry = NULL;
-    } else 
-    {
-        MPIDI_CH3I_MRAIL_Prepare_rndv(vc, sreq);
-    }
+    MPIDI_CH3I_MRAIL_Prepare_rndv(vc, sreq);
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
 fn_exit:
@@ -104,6 +98,11 @@ int MPIDI_CH3_iStartRndvMsg(MPIDI_VC_t * vc,
            write */
         MPIDI_CH3_Prepare_rndv(vc, sreq);
         MPIDI_CH3I_MRAIL_SET_PKT_RNDV(rndv_pkt, sreq);
+
+        PRINT_DEBUG(DEBUG_RNDV_verbose>1,
+                "Sending RTS to: %d, sreq: %08x, protocol: %d, buf: %p, rndv_buf_alloc: %d\n",
+                vc->pg_rank, sreq, sreq->mrail.protocol, sreq->mrail.rndv_buf, sreq->mrail.rndv_buf_alloc);
+
         if(1 == sreq->mrail.rndv_buf_alloc) {
             MPIDI_CH3I_MRAIL_REVERT_RPUT(sreq);
             if (MV2_RNDV_PROTOCOL_RGET == rndv_pkt->rndv.protocol) {
@@ -127,7 +126,8 @@ int MPIDI_CH3_iStartRndvMsg(MPIDI_VC_t * vc,
             MPID_Request_release(send_req);
         }
     } else {
-        MPIDI_DBG_PRINTF((55, FCNAME, "send queue not empty, enqueuing"));
+        PRINT_DEBUG(DEBUG_RNDV_verbose>1,
+                "Enqueuing RNDV msg to rank %d, sreq: %08x\n", vc->pg_rank, sreq);
         MPIDI_CH3I_SendQ_enqueue(vc, sreq);
     }
 
@@ -314,7 +314,11 @@ int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t * vc,
            sizeof(MPL_IOV) * num_control);
 
     MPIDI_CH3_Prepare_rndv(vc, sreq);
-    MPIDI_CH3I_MRAIL_REVERT_RPUT(sreq);
+    if (IS_VC_SMP(vc)) {
+        sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
+    } else {
+        sreq->mrail.protocol = MV2_RNDV_PROTOCOL_RPUT;
+    }
 
 #ifdef _ENABLE_UD_
     if(rdma_enable_hybrid && sreq->mrail.protocol == MV2_RNDV_PROTOCOL_UD_ZCOPY) {

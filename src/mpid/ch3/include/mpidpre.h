@@ -423,6 +423,9 @@ typedef struct MPIDI_Request {
     int iov_count;
     size_t iov_offset;
 
+    /* In case of chunked Send, how many chunks have been sent */
+    int chunk_count;
+
     /* OnDataAvail is the action to take when data is now available.
        For example, when an operation described by an iov has 
        completed.  This replaces the MPIDI_CA_t (completion action)

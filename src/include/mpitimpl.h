@@ -215,6 +215,9 @@ typedef struct {
 
     /* Description of the pvar */
     const char *desc;
+
+    //Index (used only if pvar is at sub communicator level)
+    int sub_comm_index;
 } pvar_table_entry_t;
 
 /*
@@ -644,6 +647,17 @@ extern void MPIR_T_PVAR_REGISTER_impl(
 /* MPI_T_PVAR_CLASS_COUNTER (continuous or not)
  */
 
+typedef struct pvar_bucket
+{
+int min;
+int max;
+} pvar_bucket;
+
+#define counter_pvar_array_size 32
+
+extern pvar_bucket counter_pvar_buckets[counter_pvar_array_size];
+extern int num_counter_pvar_buckets;
+
 /* Declaration -- static pvar */
 #define MPIR_T_PVAR_UINT_COUNTER_DECL_impl(name_) \
     unsigned PVAR_COUNTER_##name_;
@@ -659,12 +673,18 @@ extern void MPIR_T_PVAR_REGISTER_impl(
 #define MPIR_T_PVAR_ULONG2_COUNTER_DECL_STATIC_impl(name_) \
     static unsigned long long PVAR_COUNTER_##name_;
 
+#define MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL_impl(name_) \
+    unsigned long long *PVAR_COUNTER_##name_;
+
 #define MPIR_T_PVAR_UINT_COUNTER_DECL_EXTERN_impl(name_) \
     extern unsigned PVAR_COUNTER_##name_;
 #define MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN_impl(name_) \
     extern unsigned long PVAR_COUNTER_##name_;
 #define MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN_impl(name_) \
     extern unsigned long long PVAR_COUNTER_##name_;
+
+#define MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL_EXTERN_impl(name_) \
+    extern unsigned long long *PVAR_COUNTER_##name_;
 
 /* Interfaces through pointer or name */
 #define MPIR_T_PVAR_COUNTER_INIT_VAR_impl(ptr_) \
@@ -681,8 +701,51 @@ extern void MPIR_T_PVAR_REGISTER_impl(
     MPIR_T_PVAR_COUNTER_GET_VAR_impl(&PVAR_COUNTER_##name_)
 #define MPIR_T_PVAR_COUNTER_INC_impl(name_, inc_) \
     MPIR_T_PVAR_COUNTER_INC_VAR_impl(&PVAR_COUNTER_##name_, inc_)
+
+#define QUOTE(name) #name
+
+#if ENABLE_PVAR_MV2
+#define MPIR_T_PVAR_COMM_COUNTER_INC_impl(name_, inc_,comm) \
+    do { \
+    name2index_hash_t *hash_entry;\
+    pvar_table_entry_t *pvar;\
+    int pvar_idx;\
+    int seq = MPI_T_PVAR_CLASS_COUNTER - MPIR_T_PVAR_CLASS_FIRST;\
+    char *name = QUOTE(name_);\
+    HASH_FIND_STR(pvar_hashs[seq],name, hash_entry);\
+    if (hash_entry != NULL) {\
+        pvar_idx = hash_entry->idx;\
+        pvar = (pvar_table_entry_t *)utarray_eltptr(pvar_table, pvar_idx);\
+        if(comm->sub_comm_counters!=NULL)\
+           comm->sub_comm_counters[pvar->sub_comm_index]+=inc_;\
+    }\
+    } while(0)  
+#else
+   #define MPIR_T_PVAR_COMM_COUNTER_INC_impl(name_, inc_,comm)
+#endif
+
 #define MPIR_T_PVAR_COUNTER_ADDR_impl(name_) \
     (&PVAR_COUNTER_##name_)
+
+#define MPIR_T_PVAR_COUNTER_BUCKET_INC_impl(name_, count, datatype)\
+        do {\
+        int _pSize = 0;                                                                          \
+        MPID_Datatype_get_size_macro(datatype, _pSize);                                          \
+        int msgsize = count * _pSize;                                                            \
+        if (msgsize < 0) {                                                                       \
+            msgsize = 0;                                                                         \
+        }                                                                                        \
+        int index = -1;                                                                          \
+        int i = 0;                                                                               \
+        while(i < num_counter_pvar_buckets && index == -1){                                      \
+           if((msgsize <= counter_pvar_buckets[i].max && msgsize >=counter_pvar_buckets[i].min)  \
+             || (counter_pvar_buckets[i].max == -1 && msgsize >= counter_pvar_buckets[i].min))   \
+           { index = i; }                                                                        \
+           i++;                                                                                  \
+        }                                                                                        \
+        if(index!=-1)                                                                            \
+        MPIR_T_PVAR_COUNTER_ARRAY_INC_impl(name_, index, 1);                                     \
+        }while(0) 
 
 /* Registration AND initialization to zero for static pvar.  */
 #define MPIR_T_PVAR_COUNTER_REGISTER_STATIC_impl(dtype_, name_, \
@@ -700,6 +763,18 @@ extern void MPIR_T_PVAR_REGISTER_impl(
             addr_, 1, MPI_T_ENUM_NULL, verb_, bind_, flags_, NULL, NULL, cat_, desc_); \
     } while (0)
 
+/*Wrapper to aid Registration for bucket pvars (uses the dynamic pvar interface in the end). */
+#define MPIR_T_PVAR_COUNTER_BUCKET_REGISTER_DYNAMIC_impl(dtype_, name_, count_, \
+            verb_, bind_, flags_, cat_, desc_) \
+   do {\
+    /*TODO : use MPI defined datatypes*/\
+    PVAR_COUNTER_##name_ = (unsigned long long *)MPIU_Malloc(count_ * sizeof(unsigned long long));\
+    int i = 0;\
+    for(i = 0; i < count_;i++) { PVAR_COUNTER_##name_[i]=0; }\
+    MPIR_T_PVAR_COUNTER_REGISTER_DYNAMIC_impl(dtype_, name_, \
+              PVAR_COUNTER_##name_, count_, verb_, bind_, flags_,NULL, NULL, cat_, desc_);\
+   }while(0)
+
 /* Registration for dynamic pvar w/ or w/o callback. Init is left to users */
 #define MPIR_T_PVAR_COUNTER_REGISTER_DYNAMIC_impl(dtype_, name_, \
             addr_, count_, verb_, bind_, flags_, get_value_, get_count_, cat_, desc_) \
@@ -712,6 +787,11 @@ extern void MPIR_T_PVAR_REGISTER_impl(
             addr_, count_, MPI_T_ENUM_NULL, verb_, bind_, flags_, get_value_, \
             get_count_, cat_, desc_); \
     } while (0)
+
+#define MPIR_T_PVAR_COUNTER_BUCKET_DYNAMIC_FREE(name_) \
+    if(PVAR_COUNTER_##name_) {                         \
+        MPIU_Free(PVAR_COUNTER_##name_);               \
+    }
 
 /* Declaration of a counter array -- static pvar */
 #define MPIR_T_PVAR_UINT_COUNTER_ARRAY_DECL_impl(name_, len_) \
@@ -757,7 +837,7 @@ extern void MPIR_T_PVAR_REGISTER_impl(
 #define MPIR_T_PVAR_COUNTER_ARRAY_GET_impl(name_, idx_) \
     MPIR_T_PVAR_COUNTER_ARRAY_GET_VAR_impl(PVAR_COUNTER_##name_, idx_)
 #define MPIR_T_PVAR_COUNTER_ARRAY_INC_impl(ptr_, idx_, inc_) \
-    MPIR_T_PVAR_COUNTER_ARRAY_INC_VAR_impl(PVAR_COUNTER_##name_, idx_, inc_)
+    MPIR_T_PVAR_COUNTER_ARRAY_INC_VAR_impl(PVAR_COUNTER_##ptr_, idx_, inc_)
 
 /* Registration AND initialization to zero for static counter array  */
 #define MPIR_T_PVAR_COUNTER_ARRAY_REGISTER_STATIC_impl(dtype_, name_, \
@@ -1411,6 +1491,27 @@ static inline int MPIR_T_is_initialized() {
 #else /*ENABLE_PVAR_MV2*/
     #define MPIR_PVAR_INC(_mpicoll, _algo, _operation, _count, _datatype)
 #endif /*ENABLE_PVAR_MV2*/
+
+
+/* Helper functions to start/end MV2 PVAR timers */
+
+#if ENABLE_PVAR_MV2
+    #define MPIR_TIMER_START(_optype,_op,_algo)                                                  \
+    do {                                                                                         \
+        if(mv2_enable_pvar_timer)                                                                \
+             MPIR_T_PVAR_TIMER_START(MV2,mv2_##_optype##_timer_##_op##_##_algo);                 \
+    } while (0)                                                                                  
+    #define MPIR_TIMER_END(_optype,_op,_algo)                                                    \
+    do {                                                                                         \
+        if(mv2_enable_pvar_timer)                                                                \
+             MPIR_T_PVAR_TIMER_END(MV2,mv2_##_optype##_timer_##_op##_##_algo);                   \
+    } while(0)
+#else /*ENABLE_PVAR_MV2*/
+    #define MPIR_TIMER_START(_optype,_op,_algo)                                                  
+    #define MPIR_TIMER_END(_optype,_op,_algo)
+#endif /*ENABLE_PVAR_MV2*/
+
+
 
 /* A special strncpy to return strings in behavior defined by MPI_T */
 extern void MPIR_T_strncpy(char *dst, const char *src, int *len);

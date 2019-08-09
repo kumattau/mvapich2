@@ -150,6 +150,9 @@ extern int DEBUG_SHM_verbose;
 // Verbosity level for Channel manager
 extern int DEBUG_CHM_verbose;
 
+// Verbosity level for RNDV transfers
+extern int DEBUG_RNDV_verbose;
+
 // Verbosity level for Init phase
 extern int DEBUG_INIT_verbose;
 
@@ -158,6 +161,9 @@ extern int DEBUG_RDMACM_verbose;
 
 // Verbosity level for One-sided
 extern int DEBUG_1SC_verbose;
+
+// Verbosity level for dreg cache
+extern int DEBUG_DREG_verbose;
 
 // Initialize the verbosity level of the above variables
 extern int initialize_debug_variables();

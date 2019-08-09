@@ -215,7 +215,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     (_pkt)->rndv.protocol = (_req)->mrail.protocol;             \
     if ( (MV2_RNDV_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||       \
             (MV2_RNDV_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {   \
-        if (!IS_CUDA_RNDV_REQ(_req)) {                          \
+        if (!IS_CUDA_RNDV_REQ(_req) && ((_req)->mrail.d_entry)) {   \
             for (_i = 0; _i < rdma_num_hcas; _i ++) {           \
                 (_pkt)->rndv.rkey[_i] =                         \
                 ((_req)->mrail.d_entry)->memhandle[_i]->rkey;   \
@@ -223,6 +223,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
         }                                                       \
         (_pkt)->rndv.buf_addr = (_req)->mrail.rndv_buf;         \
     }                                                           \
+    (_pkt)->rndv.reqtype = MPIDI_Request_get_type(_req);       \
     MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA_IPC(_pkt, _req);         \
 }
 
@@ -254,8 +255,8 @@ do {                                                            \
 {                                                               \
     int _i;                                                     \
     (_req)->mrail.protocol = (_pkt)->rndv.protocol;             \
-    if ( (MV2_RNDV_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||       \
-            (MV2_RNDV_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {   \
+    if (  (MV2_RNDV_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||  \
+          (MV2_RNDV_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {     \
         (_req)->mrail.remote_addr = (_pkt)->rndv.buf_addr;          \
         for (_i = 0; _i < rdma_num_hcas; _i ++)                     \
         (_req)->mrail.rkey[_i] = (_pkt)->rndv.rkey[_i];             \

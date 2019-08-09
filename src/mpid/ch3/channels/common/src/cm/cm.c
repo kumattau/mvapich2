@@ -60,7 +60,11 @@ do {                                                        \
         (USE_XRC && VC_XST_ISSET (vc, XF_SEND_IDLE)) &&     \
         MPIDI_CH3I_CM_SendQ_empty(vc) &&                    \
         !(SMP_INIT && (vc->smp.local_nodes >= 0))) {        \
-        vc->eager_fast_fn = mv2_eager_fast_send;            \
+        if (likely(rdma_use_coalesce)) {                    \
+            vc->eager_fast_fn = mv2_eager_fast_coalesce_send;\
+        } else {                                            \
+            vc->eager_fast_fn = mv2_eager_fast_send;        \
+        }                                                   \
     }                                                       \
 } while (0);
 #else
@@ -72,7 +76,11 @@ do {                                                        \
         vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE &&         \
         MPIDI_CH3I_CM_SendQ_empty(vc) &&                    \
         !(SMP_INIT && (vc->smp.local_nodes >= 0))) {        \
-        vc->eager_fast_fn = mv2_eager_fast_send;            \
+        if (likely(rdma_use_coalesce)) {                    \
+            vc->eager_fast_fn = mv2_eager_fast_coalesce_send;\
+        } else {                                            \
+            vc->eager_fast_fn = mv2_eager_fast_send;        \
+        }                                                   \
     }                                                       \
 } while (0);
 #endif
@@ -1198,7 +1206,7 @@ void cm_xrc_send_enable(MPIDI_VC_t * vc)
     VC_XST_CLR(vc, XF_SEND_CONNECTING);
     VC_XST_CLR(vc, XF_REUSE_WAIT);
 #ifdef _ENABLE_UD_
-    if (vc->mrail.state & MRAILI_UD_CONNECTED) {
+    if (rdma_enable_hybrid && vc->mrail.state & MRAILI_UD_CONNECTED) {
         MRAILI_RC_Enable(vc);
     }
 #endif

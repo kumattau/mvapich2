@@ -18,12 +18,25 @@
 #include "mpiimpl.h"
 
 #include "datatype.h"
+#include "common_tuning.h"
 #include "coll_shmem.h"
 #include "allgather_tuning.h"
 extern struct coll_runtime mv2_coll_param;
 extern int allgather_tuning_algo;
 extern int allgather_algo_num;
 extern int use_2lvl_allgather;
+
+
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgather_rd);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgather_bruck);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgather_ring);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgather_direct);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgather_directspread);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgather_gather_bcast);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgather_2lvl_nonblocked);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgather_2lvl_ring_nonblocked);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgather_2lvl_direct);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgather_2lvl_ring);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgather_rd_allgather_comm);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgather_rd);
@@ -189,6 +202,7 @@ int MPIR_Allgather_Direct_MV2(
           void *recvbuf, int recvcnt, MPI_Datatype recvtype,
     MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgather,direct);
     int i;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -319,6 +333,7 @@ int MPIR_Allgather_Direct_MV2(
 
     MPIU_CHKLMEM_FREEALL();
   fn_fail:
+    MPIR_TIMER_END(coll,allgather,direct);
     return (mpi_errno);
 }
 
@@ -336,6 +351,7 @@ int MPIR_Allgather_DirectSpread_MV2(
           void *recvbuf, int recvcnt, MPI_Datatype recvtype,
     MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgather,directspread);
     int i;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -468,6 +484,7 @@ int MPIR_Allgather_DirectSpread_MV2(
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
   fn_fail:
+    MPIR_TIMER_END(coll,allgather,directspread);
     return (mpi_errno);
 }
 
@@ -483,6 +500,7 @@ int MPIR_Allgather_RD_MV2(const void *sendbuf,
                           MPI_Datatype recvtype, MPID_Comm * comm_ptr,
                           MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgather,rd);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -843,6 +861,7 @@ int MPIR_Allgather_RD_MV2(const void *sendbuf,
 #endif                          /* MPID_HAS_HETERO */
 
   fn_fail:
+    MPIR_TIMER_END(coll,allgather,rd);
     return (mpi_errno);
 }
 
@@ -858,7 +877,7 @@ int MPIR_Allgather_Bruck_MV2(const void *sendbuf,
                              MPI_Datatype recvtype, MPID_Comm * comm_ptr,
                              MPIR_Errflag_t *errflag)
 {
-
+    MPIR_TIMER_START(coll,allgather,bruck);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -985,6 +1004,7 @@ int MPIR_Allgather_Bruck_MV2(const void *sendbuf,
     MPIU_Free(tmp);
 
   fn_fail:
+    MPIR_TIMER_END(coll,allgather,bruck);
     return (mpi_errno);
 }
 
@@ -1000,7 +1020,7 @@ int MPIR_Allgather_Ring_MV2(const void *sendbuf,
                             MPI_Datatype recvtype, MPID_Comm * comm_ptr,
                             MPIR_Errflag_t *errflag)
 {
-
+    MPIR_TIMER_START(coll,allgather,ring);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -1058,6 +1078,7 @@ int MPIR_Allgather_Ring_MV2(const void *sendbuf,
     }
 
   fn_fail:
+    MPIR_TIMER_END(coll,allgather,ring);
     return (mpi_errno);
 }
 
@@ -1071,7 +1092,7 @@ int MPIR_Allgather_gather_bcast_MV2(
           void *recvbuf, int recvcount, MPI_Datatype recvtype,
     MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
-
+    MPIR_TIMER_START(coll,allgather,gather_bcast);
     int comm_size;
     int mpi_errno = MPI_SUCCESS;
     int gather_bcast_root = -1;
@@ -1102,6 +1123,7 @@ int MPIR_Allgather_gather_bcast_MV2(
     }
 
   fn_fail:
+    MPIR_TIMER_END(coll,allgather,gather_bcast);
     return (mpi_errno);
 }
 
@@ -1309,6 +1331,7 @@ int MPIR_2lvl_Allgather_nonblocked_MV2(
           void *recvbuf, int recvcnt, MPI_Datatype recvtype,
     MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgather,2lvl_nonblocked);
     int i;
     int mpi_errno = MPI_SUCCESS;
 
@@ -1518,6 +1541,7 @@ int MPIR_2lvl_Allgather_nonblocked_MV2(
     }
 
   fn_fail:
+    MPIR_TIMER_END(coll,allgather,2lvl_nonblocked);
     return (mpi_errno);
 }
 
@@ -1534,6 +1558,7 @@ int MPIR_2lvl_Allgather_Ring_nonblocked_MV2(
           void *recvbuf, int recvcount, MPI_Datatype recvtype,
     MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgather,2lvl_ring_nonblocked);
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int i;
@@ -1608,6 +1633,7 @@ int MPIR_2lvl_Allgather_Ring_nonblocked_MV2(
     }
 
   fn_fail:
+    MPIR_TIMER_END(coll,allgather,2lvl_ring_nonblocked);
     return (mpi_errno);
 }
 
@@ -1626,6 +1652,7 @@ int MPIR_2lvl_Allgather_Direct_MV2(
           void *recvbuf, int recvcnt, MPI_Datatype recvtype,
     MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgather,2lvl_direct);
     int i, j;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -1901,6 +1928,7 @@ int MPIR_2lvl_Allgather_Direct_MV2(
     MPIU_CHKLMEM_FREEALL();
 
   fn_fail:
+    MPIR_TIMER_END(coll,allgather,2lvl_direct);
     return (mpi_errno);
 }
 
@@ -1920,6 +1948,7 @@ int MPIR_2lvl_Allgather_Ring_MV2(
           void *recvbuf, int recvcnt, MPI_Datatype recvtype,
     MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgather,2lvl_ring);
     int i, j;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -2201,6 +2230,7 @@ int MPIR_2lvl_Allgather_Ring_MV2(
     MPIU_CHKLMEM_FREEALL();
 
   fn_fail:
+    MPIR_TIMER_END(coll,allgather,2lvl_ring);
     return (mpi_errno);
 }
 
@@ -2337,14 +2367,10 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
                 mpi_errno = MPIR_2lvl_Allgather_Ring_nonblocked_MV2(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm_ptr, errflag);
                 goto fn_cuda_exit;
         }
-        do {
-            if (local_size == mv2_allgather_indexed_table_ppn_conf[i]) {
-                conf_index = i;
-                partial_sub_ok = 1;
-                break;
-            }
-            i++;
-        } while(i < mv2_allgather_indexed_num_ppn_conf);
+
+        FIND_PPN_INDEX  (allgather, local_size,conf_index, partial_sub_ok)
+
+
     }
 
     if (partial_sub_ok != 1) {
@@ -2657,14 +2683,11 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
             conf_index = 0;
             goto conf_check_end;
         }
-        do {
-            if (local_size == mv2_allgather_table_ppn_conf[i]) {
-                conf_index = i;
-                partial_sub_ok = 1;
-                break;
-            }
-            i++;
-        } while(i < mv2_allgather_num_ppn_conf);
+        
+
+        FIND_PPN_INDEX  (allgather, local_size,conf_index, partial_sub_ok)
+
+        
     }
 
     if (partial_sub_ok != 1) {

@@ -19,6 +19,11 @@
 #include "coll_shmem.h"
 #include "allgatherv_tuning.h"
 
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgatherv_rec_doubling);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgatherv_bruck);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgatherv_ring);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allgatherv_ring_cyclic);
+
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgatherv_rec_doubling);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgatherv_bruck);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allgatherv_ring);
@@ -100,6 +105,7 @@ int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
                                      MPI_Datatype recvtype,
                                      MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgatherv,rec_doubling);
     int comm_size, rank, j, i;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -570,6 +576,7 @@ int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
     else if (*errflag)
         MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
+    MPIR_TIMER_END(coll,allgatherv,rec_doubling);      
     return mpi_errno;
   fn_fail:
     goto fn_exit;
@@ -588,6 +595,7 @@ int MPIR_Allgatherv_Bruck_MV2(const void *sendbuf,
                               MPI_Datatype recvtype,
                               MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgatherv,bruck);
     int comm_size, rank, j, i;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -740,6 +748,7 @@ int MPIR_Allgatherv_Bruck_MV2(const void *sendbuf,
     else if (*errflag)
         MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
+    MPIR_TIMER_END(coll,allgatherv,bruck);
     return mpi_errno;
   fn_fail:
     goto fn_exit;
@@ -759,6 +768,7 @@ int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
                              MPI_Datatype recvtype,
                              MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgatherv,ring);
     int comm_size, rank, i, left, right, total_count;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -922,6 +932,7 @@ int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
     else if (*errflag)
         MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
+    MPIR_TIMER_END(coll,allgatherv,ring);
     return mpi_errno;
   fn_fail:
     goto fn_exit;
@@ -944,6 +955,7 @@ int MPIR_Allgatherv_Ring_Cyclic_MV2(const void *sendbuf,
                              MPI_Datatype recvtype,
                              MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allgatherv,ring_cyclic);
     int comm_size, rank, i, total_count;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -1116,6 +1128,7 @@ int MPIR_Allgatherv_Ring_Cyclic_MV2(const void *sendbuf,
     else if (*errflag)
         MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
+    MPIR_TIMER_END(coll,allgatherv,ring_cyclic);
     return mpi_errno;
   fn_fail:
     goto fn_exit;

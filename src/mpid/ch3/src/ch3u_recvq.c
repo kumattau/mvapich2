@@ -847,7 +847,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
         /* Reset the error bits if we unset it earlier. */
         if (error_bit_masked) MPIR_TAG_SET_ERROR_BIT(match->parts.tag);
         if (proc_failure_bit_masked) MPIR_TAG_SET_PROC_FAILURE_BIT(match->parts.tag);
-	rreq->dev.match	= *match;
+	MPIU_Memcpy(&rreq->dev.match, match, sizeof(MPIDI_Message_match));
 	rreq->dev.next	= NULL;
 	if (recvq_unexpected_tail != NULL) {
 	    recvq_unexpected_tail->dev.next = rreq;

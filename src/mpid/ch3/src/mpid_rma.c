@@ -287,9 +287,13 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     MPIR_ERR_CHKANDJUMP1(!(*win_ptr), mpi_errno, MPI_ERR_OTHER, "**nomem",
                          "**nomem %s", "MPID_Win_mem");
 
+#ifdef _OSU_MVAPICH_	
+    win_comm_ptr = comm_ptr;
+#else
     mpi_errno = MPIR_Comm_dup_impl(comm_ptr, &win_comm_ptr);
     if (mpi_errno)
         MPIR_ERR_POP(mpi_errno);
+#endif
 
     MPIU_Object_set_ref(*win_ptr, 1);
 
@@ -384,7 +388,6 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
         (*win_ptr)->target_pool_start[i].pool_type = MPIDI_RMA_POOL_WIN;
         MPL_DL_APPEND((*win_ptr)->target_pool_head, &((*win_ptr)->target_pool_start[i]));
     }
-
     (*win_ptr)->num_slots = MPIR_MIN(MPIR_CVAR_CH3_RMA_SLOTS_SIZE, MPIR_Comm_size(win_comm_ptr));
     MPIU_CHKPMEM_MALLOC((*win_ptr)->slots, MPIDI_RMA_Slot_t *,
                         sizeof(MPIDI_RMA_Slot_t) * (*win_ptr)->num_slots, mpi_errno, "RMA slots");

@@ -1261,6 +1261,12 @@ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
 #ifdef _OSU_MVAPICH_
     if (mv2_use_osu_collectives) {
         mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+        if(comm_ptr->dev.ch.allgather_comm_ok == 0) {
+            mpi_errno = mv2_increment_allgather_coll_counter(comm_ptr);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
         if (mpi_errno) {
             MPIR_ERR_POP(mpi_errno);
         }

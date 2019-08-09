@@ -336,7 +336,7 @@ char *obtain_host_list_from_file()
     return host_list;
 }
 
-void find_children (int id, int degree, int size, int children[degree])
+void find_children (int id, int degree, int size, int child[degree])
 {
     size_t c_start = degree * id + 1;
     size_t i;
@@ -346,14 +346,14 @@ void find_children (int id, int degree, int size, int children[degree])
     }
 
     for (i = 0; i < degree; i++) {
-        children[i] = -1;
+        child[i] = -1;
     }
 
     if (c_start < size) {
         i = (degree > size - c_start) ? size - c_start : degree;
 
         while (i--) {
-            children[i] = c_start + i;
+            child[i] = c_start + i;
         }
     }
 }

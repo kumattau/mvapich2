@@ -52,8 +52,7 @@ print_header(int rank, int full)
                     default:
                         if (options.subtype == BW && options.bench != MBW_MR) {
                             fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Bandwidth (MB/s)");
-                        }
-                        else {
+                        } else if (options.subtype == LAT) {
                             fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Latency (us)");
                         }
                         fflush(stdout);
@@ -351,7 +350,6 @@ int process_options (int argc, char *argv[])
         if (accel_enabled) {
             if (options.subtype == LAT_MT) {
                 optstring = "+:x:i:t:m:d:hv";
-                accel_enabled = 0;
             } else if (options.subtype == BW) {
                 optstring = "+:x:i:t:m:d:W:hv";
             } else {

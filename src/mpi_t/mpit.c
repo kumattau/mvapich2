@@ -25,6 +25,8 @@ name2index_hash_t *cat_hash;
 name2index_hash_t *cvar_hash;
 name2index_hash_t *pvar_hashs[MPIR_T_PVAR_CLASS_NUMBER];
 
+int sub_comm_counter_idx = 0;
+
 /* Create an enum.
  * IN: enum_name, name of the enum
  * OUT: handle, handle of the enum
@@ -408,9 +410,13 @@ void MPIR_T_PVAR_REGISTER_impl(
         hash_entry->name = name;
         hash_entry->idx = pvar_idx;
         HASH_ADD_KEYPTR(hh, pvar_hashs[seq], hash_entry->name,
-                        strlen(hash_entry->name), hash_entry);
-
-        /* Add the pvar to a category */
+                        strlen(hash_entry->name), hash_entry); 
+        if(pvar->bind == MPI_T_BIND_MPI_COMM)
+         {
+                pvar->sub_comm_index = sub_comm_counter_idx;
+                sub_comm_counter_idx+=count;
+         }
+	/* Add the pvar to a category */
         MPIR_T_cat_add_pvar(cat, utarray_len(pvar_table)-1);
     }
 }

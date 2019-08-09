@@ -48,14 +48,15 @@
 #define FILENAME_LENGTH 512
 
 /* Hybrid mapping related definitions */
-#define BASE_THREAD_SIBLING_FILE \
-    "/sys/devices/system/cpu/cpu0/topology/thread_siblings_list"
+#define HYBRID_LINEAR  0
+#define HYBRID_COMPACT 1
+#define HYBRID_SPREAD  2
+#define HYBRID_BUNCH   3
+#define HYBRID_SCATTER 4
+#define HYBRID_NUMA    5
 
-#define HYBRID_LINEAR  0x001
-#define HYBRID_COMPACT 0x010
-#define HYBRID_SPREAD  0x011
-#define HYBRID_BUNCH   0x100
-#define HYBRID_SCATTER 0x101
+const char *mv2_cpu_policy_names[] = {"Bunch", "Scatter", "Hybrid"};
+const char *mv2_hybrid_policy_names[] = {"Linear", "Compact", "Spread", "Bunch", "Scatter", "NUMA"};
 
 int mv2_hybrid_binding_policy = HYBRID_LINEAR; /* default as linear */
 int mv2_pivot_core_id = 0;     /* specify pivot core to start binding MPI ranks */
@@ -65,6 +66,7 @@ int num_physical_cores = 0;
 int num_pu = 0;
 int hw_threads_per_core = 0;
 int *mv2_core_map; /* list of core ids achieved after hwloc tree scanning */
+int *mv2_core_map_per_numa; /* list of core ids based on NUMA nodes */
 
 int mv2_my_cpu_id = -1;
 int mv2_my_sock_id = -1;
@@ -2072,7 +2074,12 @@ int smpi_load_hwloc_topology(void)
     mpi_errno = hwloc_topology_init(&topology);
     hwloc_topology_set_flags(topology,
             HWLOC_TOPOLOGY_FLAG_IO_DEVICES   |
-            HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM |
+    
+    /* removing HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM flag since we now 
+     * have cpu_cores in the heterogeneity detection logic
+     */
+     //     HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM |
+     
             HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM);
 
     uid = getuid();
@@ -2442,11 +2449,19 @@ void mv2_show_cpu_affinity(int verbosity)
     }
     if (my_rank == 0) {
         char *value;
+        value = getenv("OMP_NUM_THREADS");
         num_cpus = sysconf(_SC_NPROCESSORS_CONF);
         fprintf(stderr, "-------------CPU AFFINITY-------------\n");
-        fprintf(stderr, "OMP_NUM_THREADS: %9d\n",
-                        ( (value = getenv("OMP_NUM_THREADS")) != NULL) ? atoi(value) : 0);
-        fprintf(stderr, "MV2_THREADS_PER_PROCESS: %d\n", mv2_threads_per_proc);        
+        fprintf(stderr, "OMP_NUM_THREADS           : %d\n",(value != NULL) ? atoi(value) : 0);
+        fprintf(stderr, "MV2_THREADS_PER_PROCESS   : %d\n",mv2_threads_per_proc);        
+        fprintf(stderr, "MV2_CPU_BINDING_POLICY    : %s\n",mv2_cpu_policy_names[mv2_binding_policy]);
+        /* hybrid binding policy is only applicable when mv2_binding_policy is hybrid */
+        if (mv2_binding_policy ==  POLICY_HYBRID) {
+            fprintf(stderr, "MV2_HYBRID_BINDING_POLICY : %s\n",
+                              mv2_hybrid_policy_names[mv2_hybrid_binding_policy]);
+        }
+        fprintf(stderr, "--------------------------------------\n");
+
         buf = (char *) MPIU_Malloc(sizeof(char) * 6 * num_cpus);
         for (i = 0; i < pg_size; i++) {
             MPIDI_Comm_get_vc(comm_world, i, &vc);
@@ -2566,6 +2581,24 @@ void mv2_get_pu_list_on_socket (hwloc_topology_t topology, hwloc_obj_t obj,
     return;
 }
 
+void get_pu_list_on_numanode (hwloc_topology_t topology, hwloc_obj_t obj, int depth, 
+                    int *pu_ids, int *idx) {
+    int i;
+    if (obj->type == HWLOC_OBJ_PU) {
+        pu_ids[*idx] = obj->os_index;
+        *idx = *idx + 1;
+        return;
+    }
+
+    for (i = 0; i < obj->arity; i++) {
+        get_pu_list_on_numanode (topology, obj->children[i], depth+1, pu_ids, idx);
+    }
+
+    return;
+}
+
+
+
 #undef FUNCNAME
 #define FUNCNAME mv2_generate_implicit_cpu_mapping
 #undef FCNAME
@@ -2574,37 +2607,57 @@ static int mv2_generate_implicit_cpu_mapping (int local_procs, int num_app_threa
     
     hwloc_obj_t obj;
 
-    int i, j, k, curr, count, chunk, size, step;
+    int i, j, k, l, curr, count, chunk, size, scanned, step, node_offset, node_base_pu;
     int topodepth, num_physical_cores_per_socket, num_pu_per_socket;
+    int num_numanodes, num_pu_per_numanode;
     char mapping [s_cpu_mapping_line_max];
     
-    i = j = k = curr = count = chunk = size = step = 0;
+    i = j = k = l = curr = count = chunk = size = scanned = step = node_offset = node_base_pu = 0;
     count = mv2_pivot_core_id;
     
     /* call optimized topology load */
     smpi_load_hwloc_topology ();
 
     num_sockets = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_SOCKET);
+    num_numanodes = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_NUMANODE);
+
     num_physical_cores = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_CORE);
     num_pu = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_PU);
 
     num_physical_cores_per_socket = num_physical_cores / num_sockets;
     num_pu_per_socket = num_pu / num_sockets;
+    num_pu_per_numanode = num_pu / num_numanodes;
 
     topodepth = hwloc_get_type_depth (topology, HWLOC_OBJ_CORE);
     obj = hwloc_get_obj_by_depth (topology, topodepth, 0); /* check on core 0*/
 
     hw_threads_per_core = hwloc_bitmap_weight (obj->allowed_cpuset);
     
-    mv2_core_map = MPIU_Malloc(sizeof(int) * num_sockets * num_pu_per_socket);
+    mv2_core_map = MPIU_Malloc(sizeof(int) * num_pu);
+    mv2_core_map_per_numa = MPIU_Malloc(sizeof(int) * num_pu);
 
     /* generate core map of the system by scanning the hwloc tree and save it 
      *  in mv2_core_map array. All the policies below are core_map aware now */
     topodepth = hwloc_get_type_depth (topology, HWLOC_OBJ_SOCKET);
     for (i = 0; i < num_sockets; i++) {
         obj = hwloc_get_obj_by_depth (topology, topodepth, i);
-        mv2_get_pu_list_on_socket (topology, obj, topodepth, mv2_core_map, &size);
+        mv2_get_pu_list_on_socket (topology, obj, topodepth, mv2_core_map, &scanned);
     } 
+    
+    size = scanned;
+        
+
+    /* generate core map of the system basd on NUMA domains by scanning the hwloc 
+     * tree and save it in mv2_core_map_per_numa array. NUMA based policies are now 
+     * map-aware */
+    scanned = 0;
+    for (i = 0; i < num_numanodes; i++) {
+        obj = hwloc_get_obj_by_type(topology, HWLOC_OBJ_NUMANODE, i);
+        get_pu_list_on_numanode (topology, obj, topodepth, mv2_core_map_per_numa, &scanned);
+    }
+
+    /* make sure total PUs are same when we scanned the machine w.r.t sockets and NUMA */
+    MPIU_Assert(size == scanned);
 
     if (mv2_hybrid_binding_policy == HYBRID_COMPACT) {
         /* Compact mapping: Bind each MPI rank to a single phyical core, and bind
@@ -2653,10 +2706,13 @@ static int mv2_generate_implicit_cpu_mapping (int local_procs, int num_app_threa
             /* limit the mapping to max available PUs */
             num_physical_cores = num_pu;
         }
-        chunk = size / local_procs;
+        chunk = num_physical_cores / local_procs;
         for (i = 0; i < local_procs; i++) {
              for (k = curr; k < curr+chunk; k++) {
-                 j += snprintf (mapping+j, _POSIX2_LINE_MAX, "%d,", mv2_core_map[k]);
+                 for (l = 0; l < hw_threads_per_core; l++) {
+                    j += snprintf (mapping+j, _POSIX2_LINE_MAX, "%d,", 
+                            mv2_core_map[k * hw_threads_per_core + l]);
+                 }
              }
              mapping [--j] = '\0';
              j += snprintf (mapping+j, _POSIX2_LINE_MAX, ":");
@@ -2684,6 +2740,19 @@ static int mv2_generate_implicit_cpu_mapping (int local_procs, int num_app_threa
                     (k + num_pu_per_socket) % size :
                     (k + num_pu_per_socket + hw_threads_per_core) % size;
         }
+    } else if (mv2_hybrid_binding_policy == HYBRID_NUMA) {
+        /* NUMA mapping: Bind consecutive MPI ranks to different NUMA domains in
+         * round-robin fashion. */
+        for (i = 0; i < local_procs; i++) {
+            j += snprintf (mapping+j, _POSIX2_LINE_MAX, "%d,", 
+                               mv2_core_map_per_numa[node_base_pu+node_offset]);
+            mapping [--j] = '\0';
+            j += snprintf (mapping+j, _POSIX2_LINE_MAX, ":");
+            node_base_pu = (node_base_pu + num_pu_per_numanode) % size;
+            node_offset = (node_base_pu == 0) ? 
+                            (node_offset + ((hw_threads_per_core > 0) ? hw_threads_per_core : 1)) : 
+                            node_offset;
+        }
     }
 
     /* copy the generated mapping string to final mapping*/
@@ -2698,6 +2767,7 @@ static int mv2_generate_implicit_cpu_mapping (int local_procs, int num_app_threa
     
     /* cleanup */
     MPIU_Free(mv2_core_map);
+    MPIU_Free(mv2_core_map_per_numa);
      
     return MPI_SUCCESS;
 }
@@ -2727,12 +2797,21 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
     }
 
     arch_type = mv2_get_arch_type ();
-    /* set CPU_BINDING_POLICY=hybrid for Skylake and KNL */
+    /* set CPU_BINDING_POLICY=hybrid for Power, Skylake, and KNL */
     if (arch_type == MV2_ARCH_IBM_POWER8 ||
-             arch_type == MV2_ARCH_INTEL_XEON_PHI_7250 ||
-             arch_type == MV2_ARCH_INTEL_PLATINUM_8170_2S_52 ||
-             arch_type == MV2_ARCH_INTEL_PLATINUM_8160_2S_48) {
+        arch_type == MV2_ARCH_IBM_POWER9 ||
+        arch_type == MV2_ARCH_INTEL_XEON_PHI_7250 ||
+        arch_type == MV2_ARCH_INTEL_PLATINUM_8170_2S_52 ||
+        arch_type == MV2_ARCH_INTEL_PLATINUM_8160_2S_48 ||
+        arch_type == MV2_ARCH_AMD_EPYC_7551_64 /* EPYC */ ||
+        arch_type == MV2_ARCH_AMD_EPYC_7742_128 /* rome */) {
         setenv ("MV2_CPU_BINDING_POLICY", "hybrid", 0);
+        
+        /* if CPU is EPYC, further force hybrid_binding_policy to NUMA */
+        if (arch_type == MV2_ARCH_AMD_EPYC_7551_64 ||
+            arch_type == MV2_ARCH_AMD_EPYC_7742_128 /* rome */) {
+            setenv ("MV2_HYBRID_BINDING_POLICY", "numa", 0);
+        } 
     }
 
     if (mv2_enable_affinity && (num_local_procs > N_CPUs_online)) {
@@ -2832,6 +2911,11 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
                            mv2_hybrid_binding_policy = HYBRID_BUNCH;
                        } else if (!strcmp(value, "scatter") || !strcmp(value, "SCATTER")) {
                            mv2_hybrid_binding_policy = HYBRID_SCATTER;
+                       } else if (!strcmp(value, "numa") || !strcmp(value, "NUMA")) {
+                           /* we only force NUMA binding if we have more than 2 ppn,
+                            * otherwise we use bunch (linear) mapping */
+                           mv2_hybrid_binding_policy =
+                               (num_local_procs > 2) ?  HYBRID_NUMA : HYBRID_LINEAR;
                        }
                    }
 

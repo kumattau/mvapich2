@@ -13,7 +13,7 @@ if MPI3_LIBRARY
     one_sided_PROGRAMS += osu_get_acc_latency osu_fop_latency osu_cas_latency
 endif
 
-AM_CFLAGS = -I../../util
+AM_CFLAGS = -I${top_srcdir}/util
 
 UTILITIES = ../../util/osu_util.c ../../util/osu_util.h ../../util/osu_util_mpi.c ../../util/osu_util_mpi.h
 if CUDA_KERNELS

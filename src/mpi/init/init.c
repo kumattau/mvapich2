@@ -213,6 +213,31 @@ int MPI_Init( int *argc, char ***argv )
         }
     }
 
+    /* initialize the two level communicator for MPI_COMM_WORLD  */
+    if (mv2_use_osu_collectives && 
+            mv2_enable_shmem_collectives) {
+
+       MPID_Comm *comm_ptr = NULL;
+       MPID_Comm_get_ptr(MPI_COMM_WORLD, comm_ptr);
+       int flag=0; 
+       PMPI_Comm_test_inter(comm_ptr->handle, &flag);
+
+       if(flag == 0 && comm_ptr->dev.ch.shmem_coll_ok == 0 &&
+               comm_ptr->local_size < mv2_two_level_comm_early_init_threshold &&
+               check_split_comm(pthread_self())) { 
+
+            disable_split_comm(pthread_self());
+            mpi_errno = create_2level_comm(comm_ptr->handle, comm_ptr->local_size, comm_ptr->rank);
+            if(mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);
+            }
+            enable_split_comm(pthread_self());
+            if(mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);
+            }
+       } 
+    }
+
     /* ... end of body of routine ... */
     MPID_MPI_INIT_FUNC_EXIT(MPID_STATE_MPI_INIT);
     return mpi_errno;

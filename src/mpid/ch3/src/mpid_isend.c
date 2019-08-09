@@ -17,6 +17,8 @@
 
 #include "mpidimpl.h"
 
+MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL_EXTERN(MV2,mv2_pt2pt_mpid_isend);
+
 /* FIXME: HOMOGENEOUS SYSTEMS ONLY -- no data conversion is performed */
 
 /* FIXME: The routines MPID_Isend, MPID_Issend, MPID_Irsend are nearly 
@@ -46,6 +48,9 @@ int MPID_Isend(const void * buf, MPI_Aint count, MPI_Datatype datatype, int rank
 	       int tag, MPID_Comm * comm, int context_offset,
                MPID_Request ** request)
 {
+
+    MPIR_T_PVAR_COUNTER_BUCKET_INC(MV2,mv2_pt2pt_mpid_isend,count,datatype);
+
     MPIDI_msg_sz_t data_sz;
     int dt_contig;
     MPI_Aint dt_true_lb;
@@ -161,8 +166,8 @@ skip_self_send:
 
     if (sreq == NULL) {
         MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
-        MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
     }
+    MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_ISEND);
 
     if (data_sz == 0)
     {

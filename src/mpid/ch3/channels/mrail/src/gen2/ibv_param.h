@@ -74,6 +74,8 @@ extern int rdma_credit_preserve;
 extern int rdma_rq_size;
 extern unsigned long rdma_dreg_cache_limit;
 extern int rdma_rndv_protocol;
+extern int smp_rndv_protocol;
+extern int rdma_rndv_immediate;
 extern int rdma_r3_threshold;
 extern int rdma_intra_node_r3_threshold;
 extern int rdma_inter_node_r3_threshold;
@@ -594,6 +596,7 @@ typedef enum mv2_env_param_id {
     MV2_RDMA_NUM_EXTRA_POLLS,
     MV2_RNDV_EXT_SENDQ_SIZE,
     MV2_RNDV_PROTOCOL,
+    MV2_SMP_RNDV_PROTOCOL,
     MV2_SMALL_MSG_RAIL_SHARING_POLICY,
     MV2_SM_SCHEDULING,
     MV2_SPIN_COUNT,
@@ -628,7 +631,7 @@ typedef enum mv2_env_param_id {
     MV2_SMP_USE_CMA,
     MV2_SMP_BATCH_SIZE,
     MV2_SMP_EAGERSIZE,
-    MV2_SMPI_LENGTH_QUEUE,
+    MV2_SMP_QUEUE_LENGTH,
     MV2_SMP_NUM_SEND_BUFFER,
     MV2_SMP_SEND_BUF_SIZE,
     MV2_USE_SHARED_MEM,
@@ -798,7 +801,7 @@ extern int dreg_max_use_count;
 #define DEFAULT_NUM_PORTS                1
 #define DEFAULT_NUM_QP_PER_PORT          1
 #define DEFAULT_COALESCE_THRESHOLD       6
-#define DEFAULT_USE_COALESCE             0
+#define DEFAULT_USE_COALESCE             1
 #define DEFAULT_SPIN_COUNT               5000
 #define MAX_NUM_CQES_PER_POLL            96
 #define MIN_NUM_CQES_PER_POLL            1

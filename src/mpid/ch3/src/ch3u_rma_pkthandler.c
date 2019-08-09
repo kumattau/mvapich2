@@ -559,7 +559,7 @@ int MPIDI_CH3_PktHandler_Get(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt, void *data,
 {
     MPIDI_CH3_Pkt_get_t *get_pkt = &pkt->get;
     MPID_Request *req = NULL;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     int complete = 0;
     char *data_buf = NULL;
     MPIDI_msg_sz_t data_len;
@@ -1254,7 +1254,7 @@ int MPIDI_CH3_PktHandler_GetAccumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt, v
         MPID_Request *resp_req = NULL;
         MPIDI_CH3_Pkt_t upkt;
         MPIDI_CH3_Pkt_get_accum_resp_t *get_accum_resp_pkt = &upkt.get_accum_resp;
-        MPL_IOV iov[MPL_IOV_LIMIT];
+        MPL_IOV iov[MPL_IOV_LIMIT] = {0};
         int iovcnt;
         MPI_Aint type_size;
 
@@ -2164,7 +2164,8 @@ int MPIDI_CH3_PktHandler_Get_AccumResp(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt, v
 #if defined(CHANNEL_MRAIL)
     MPID_Datatype_get_size_macro(req->dev.datatype, type_size);
     data_len = type_size * req->dev.user_count;
-    if ((data_len + sizeof(MPIDI_CH3_Pkt_get_accum_resp_t)) > vc->eager_max_msg_sz) {
+    /* if origin's data is sent by using RNDV, we shall expect RNDV to be used for data in RESP pkt */
+    if ((data_len + sizeof(MPIDI_CH3_Pkt_get_accum_rndv_t)) > vc->eager_max_msg_sz) {
         /*if data length + packet header was larger than eager size,
          * rndv protocol should have been used*/
         MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(req);

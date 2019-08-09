@@ -132,6 +132,8 @@ int MPID_Abort(MPID_Comm * comm, int mpi_errno, int exit_code,
 
     /* FIXME: This should not use an ifelse chain. Either define the function
        by name or set a function pointer */
+    if(!MPIDI_Process.my_pg->is_spawned)
+    {
 #ifdef MPIDI_CH3_IMPLEMENTS_ABORT
     MPIDI_CH3_Abort(exit_code, error_msg);
 #elif defined(MPIDI_DEV_IMPLEMENTS_ABORT)
@@ -147,6 +149,11 @@ int MPID_Abort(MPID_Comm * comm, int mpi_errno, int exit_code,
     MPL_exit(exit_code);
     
     return MPI_ERR_INTERN;
+    }
+    else
+    {
+        return MPI_SUCCESS;
+    }
 }
 
 #ifdef MPIDI_DEV_IMPLEMENTS_ABORT

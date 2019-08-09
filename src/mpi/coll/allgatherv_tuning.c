@@ -24,7 +24,7 @@ enum {
 int mv2_size_allgatherv_tuning_table = 0;
 mv2_allgatherv_tuning_table *mv2_allgatherv_thresholds_table = NULL;
 
-int MV2_set_allgatherv_tuning_table(int heterogeneity)
+int MV2_set_allgatherv_tuning_table(int heterogeneity, struct coll_info *colls_arch_hca)
 {
 #ifndef CHANNEL_PSM
 #ifdef CHANNEL_MRAIL_GEN2

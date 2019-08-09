@@ -30,6 +30,10 @@ int MPIDI_CH3U_Handle_send_req(MPIDI_VC_t * vc, MPID_Request * sreq, int *comple
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_HANDLE_SEND_REQ);
 
+    PRINT_DEBUG(DEBUG_SHM_verbose>1,
+            "vc: %p, rank: %d, sreq: %p, type: %d, onDataAvail: %p\n",
+            vc, vc->pg_rank, sreq, MPIDI_Request_get_type(sreq), sreq->dev.OnDataAvail);
+
     /* Use the associated function rather than switching on the old ca field */
     /* Routines can call the attached function directly */
     reqFn = sreq->dev.OnDataAvail;
@@ -72,7 +76,7 @@ int MPIDI_CH3_ReqHandler_GetSendComplete(MPIDI_VC_t * vc ATTRIBUTE((unused)),
 #if defined(CHANNEL_MRAIL)
     if (MV2_RNDV_PROTOCOL_R3 == sreq->mrail.protocol && 
         (sreq->dev.recv_data_sz + sizeof(MPIDI_CH3_Pkt_get_resp_t))> vc->eager_max_msg_sz) {
-        MPL_IOV iov[1];
+        MPL_IOV iov[1] = {0};
         int iovcnt;
         MPIDI_CH3_Pkt_t upkt;
         MPID_Request *resp_req;
@@ -204,9 +208,10 @@ int MPIDI_CH3_ReqHandler_GaccumSendComplete(MPIDI_VC_t * vc, MPID_Request * rreq
     MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
 
 #if defined(CHANNEL_MRAIL)
-    if (MV2_RNDV_PROTOCOL_R3 == rreq->mrail.protocol && 
-        (rreq->dev.recv_data_sz + sizeof(MPIDI_CH3_Pkt_get_accum_resp_t))> vc->eager_max_msg_sz) {
-        MPL_IOV iov[1];
+    /* If R3 is used, we need to send MPIDI_CH3_PKT_GET_ACCUM_RESP pkt acting like FIN,
+     * so the origin process can handle it properly */
+    if (MV2_RNDV_PROTOCOL_R3 == rreq->mrail.protocol) {
+        MPL_IOV iov[1] = {0};
         int iovcnt;
         MPIDI_CH3_Pkt_t upkt;
         MPID_Request *resp_req;

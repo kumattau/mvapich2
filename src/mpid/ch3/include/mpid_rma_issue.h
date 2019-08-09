@@ -229,7 +229,7 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
     MPI_Datatype target_datatype;
     MPID_Datatype *target_dtp = NULL, *origin_dtp = NULL;
     int is_origin_contig;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     int iovcnt = 0;
     MPID_Request *req = NULL;
     MPI_Aint dt_true_lb;
@@ -1289,7 +1289,7 @@ static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
     MPID_Request *req = NULL;
     MPIDI_CH3_Ext_pkt_get_derived_t *ext_hdr_ptr = NULL;
     MPI_Aint ext_hdr_sz = 0;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     MPIDI_STATE_DECL(MPID_STATE_ISSUE_GET_OP);
 #if defined(CHANNEL_MRAIL)
     MPI_Aint type_size, origin_type_size;

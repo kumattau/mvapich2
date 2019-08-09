@@ -96,8 +96,6 @@ void  mv2_get_sharp_datatype(MPI_Datatype  mpi_datatype, struct
     }
 
     *dt_size_out = dt_size;
-
-    return dt_size;
 }
 
 enum sharp_reduce_op mv2_get_sharp_reduce_op(MPI_Op mpi_op) 
@@ -223,8 +221,7 @@ int mv2_sharp_coll_init(sharp_conf_t *sharp_conf, int rank)
         PRINT_ERROR("SHARP initialization failed. Continuing without SHARP support. Errno: %d (%s) \n", mpi_errno, sharp_coll_strerror(mpi_errno));
         mpi_errno = MPI_ERR_INTERN;
         goto fn_exit;
-    }
-    PRINT_DEBUG(DEBUG_Sharp_verbose, "sharp was initialized successfully \n");
+    } 
 
 fn_exit:
     MPIU_Free(init_spec);
@@ -249,7 +246,7 @@ int sharp_get_hca_name_and_port ()
     dev_list = ibv_get_device_list(&num_devices);
     for(i=0; i<num_devices; i++){
         hca_type = mv2_get_hca_type(dev_list[i]);
-        if(MV2_IS_INTEL_CARD(hca_type) || MV2_IS_QLE_CARD(hca_type)) {
+        if(!MV2_IS_IB_CARD(hca_type)) {
             PRINT_ERROR( "Unable to get the device name, please set MV2_SHARP_HCA_NAME and MV2_SHARP_PORT and rerun the program\n");
             mpi_errno = MPI_ERR_INTERN;
             MPIR_ERR_POP(mpi_errno);
@@ -281,7 +278,9 @@ finished_query:
         MPIR_ERR_POP(mpi_errno);
     }  
 
-    ibv_free_device_list(dev_list);
+    if (dev_list) {
+        ibv_free_device_list(dev_list);
+    }
     return 0;
 #else
     PRINT_ERROR( "Unable to get the device name, please set MV2_SHARP_HCA_NAME and MV2_SHARP_PORT, then rerun the program. ");
@@ -298,14 +297,7 @@ static char * sharp_get_kvs_id ()
     int  i = 0;
     char * id_str = MPIU_Malloc(100);
     MPIU_Memset(id_str, 0, 100);
-    char KVSname[100] = {0};
-    UPMI_KVS_GET_MY_NAME(KVSname, 100); /* set kvsname as job id */
-    for (i = 4; i < 100; i++) {
-        if (KVSname[i] == '_') break; /* format is like kvs_906_storage03.cluster_26667_0 */
-        if (KVSname[i] > 48 && KVSname[i] < 57) {
-            id_str[i-4] = KVSname[i];
-        }
-    }
+    UPMI_KVS_GET_MY_NAME(id_str, 100); /* set kvsname as job id */
     return id_str;
 }
 
@@ -346,7 +338,7 @@ int mv2_setup_sharp_env(sharp_conf_t *sharp_conf, MPI_Comm comm)
     
     /* set kvsname as job id */  
     sharp_conf->jobid = sharp_get_kvs_id();
-    PRINT_DEBUG(DEBUG_Sharp_verbose, "sharp_conf->jobid = %s and dev_list =  %s", sharp_conf->jobid, dev_list); 
+    PRINT_DEBUG(DEBUG_Sharp_verbose>2, "sharp_conf->jobid = %s and dev_list =  %s\n", sharp_conf->jobid, dev_list); 
     
     MPI_Comm_rank(comm, &(sharp_conf->rank));
     MPI_Comm_size(comm, &(sharp_conf->size));

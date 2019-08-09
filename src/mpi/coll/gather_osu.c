@@ -17,7 +17,19 @@
 
 #include "mpiimpl.h"
 #include "datatype.h"
+#include "common_tuning.h"
 #include "gather_tuning.h"
+
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_gather_pt2pt);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_gather_direct);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_gather_direct_blk);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_gather_two_level_direct);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_gather_limic_scheme_pt_pt);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_gather_limic_scheme_pt_linear);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_gather_limic_scheme_linear_pt);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_gather_limic_scheme_linear_linear);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_gather_limic_scheme_single_leader);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_gather_intra_node_limic);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_pt2pt);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gather_direct);
@@ -82,6 +94,7 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
                                   MPI_Datatype recvtype,
                                   int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,gather,direct);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -98,6 +111,8 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
 
     if (((rank == root) && (recvcnt == 0)) ||
         ((rank != root) && (sendcnt == 0))) {
+
+        MPIR_TIMER_END(coll,gather,direct);
         return MPI_SUCCESS;
     }
 
@@ -188,6 +203,7 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
     /* check if multiple threads are calling this collective function */
     MPIU_CHKLMEM_FREEALL();
 
+    MPIR_TIMER_END(coll,gather,direct);
     return (mpi_errno);
 }
 
@@ -203,7 +219,8 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
                                   int recvcnt,
                                   MPI_Datatype recvtype,
                                   int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
-{
+{   
+    MPIR_TIMER_START(coll,gather,direct_blk);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -217,6 +234,8 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
 
     if (((rank == root) && (recvcnt == 0)) ||
         ((rank != root) && (sendcnt == 0))) {
+
+        MPIR_TIMER_END(coll,gather,direct_blk);
         return MPI_SUCCESS;
     }
 
@@ -254,6 +273,8 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
                                                  FCNAME,
                                                  __LINE__, MPI_ERR_OTHER,
                                                  "**fail", 0);
+
+                MPIR_TIMER_END(coll,gather,direct_blk);
                 return mpi_errno;
             }
             /* --END ERROR HANDLING-- */
@@ -280,6 +301,7 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
     }
 
  fn_exit:
+    MPIR_TIMER_END(coll,gather,direct_blk);
     return mpi_errno;
  fn_fail:
     goto fn_exit;
@@ -317,6 +339,7 @@ int MPIR_pt_pt_intra_gather(const void *sendbuf, int sendcnt, MPI_Datatype sendt
                             MV2_Gather_function_ptr intra_node_fn_ptr,
                             MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,gather,pt2pt);
     int mpi_errno = MPI_SUCCESS;
     MPI_Aint recvtype_extent = 0;  /* Datatype extent */
     MPI_Aint true_lb, sendtype_true_extent, recvtype_true_extent;
@@ -352,6 +375,7 @@ int MPIR_pt_pt_intra_gather(const void *sendbuf, int sendcnt, MPI_Datatype sendt
                                       0, comm_ptr, errflag);
     }
 
+    MPIR_TIMER_END(coll,gather,pt2pt);
     return mpi_errno;
 
 }
@@ -369,7 +393,8 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
                                             MPI_Datatype recvtype,
                                             int root,
                                             MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
-{
+{   
+    MPIR_TIMER_START(coll,gather,two_level_direct);
     void *leader_gather_buf = NULL;
     int comm_size, rank;
     int local_rank, local_size;
@@ -543,6 +568,8 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
                                                      FCNAME, __LINE__,
                                                      MPI_ERR_OTHER,
                                                      "**nomem", 0);
+
+                    MPIR_TIMER_END(coll,gather,two_level_direct);
                     return mpi_errno;
                 }
             }
@@ -558,6 +585,8 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
                                                      FCNAME, __LINE__,
                                                      MPI_ERR_OTHER,
                                                      "**nomem", 0);
+
+                    MPIR_TIMER_END(coll,gather,two_level_direct);
                     return mpi_errno;
                 }
             }
@@ -620,17 +649,51 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
                                                      FCNAME, __LINE__,
                                                      MPI_ERR_OTHER,
                                                      "**nomem", 0);
+                    
+                    MPIR_TIMER_END(coll,gather,two_level_direct);
                     return mpi_errno;
                 }
             }
             if (root == leader_of_root) {
-                mpi_errno = MPIR_Gather_MV2_Direct(tmp_buf,
-                                                   nbytes * local_size,
-                                                   MPI_BYTE, recvbuf,
-                                                   recvcnt * local_size,
-                                                   recvtype, leader_root,
-                                                   leader_commptr, errflag);
-                 
+                if (comm_ptr->dev.ch.is_global_block != 1 || comm_ptr->dev.ch.is_blocked != 1) {
+                    /* cyclic process mapping */
+
+                    MPIU_Assert (comm_ptr->dev.ch.rank_list != NULL); 
+
+                    void * reorder_tmp_buf = NULL;
+                    if (leader_comm_rank == leader_root) {
+                        reorder_tmp_buf = MPIU_Malloc(nbytes * comm_size);
+                    }
+
+                    mpi_errno = MPIR_Gather_MV2_Direct(tmp_buf,
+                                                       nbytes * local_size,
+                                                       MPI_BYTE, reorder_tmp_buf,
+                                                       recvcnt * local_size,
+                                                       recvtype, leader_root,
+                                                       leader_commptr, errflag);
+
+                    if (leader_comm_rank == leader_root) {
+                        /* now reorder and place the results in recvbuf */
+                        void *src = NULL, *dst = NULL; int i;
+                        for (i = 0; i < comm_size; i++) {
+                            src = reorder_tmp_buf + i * nbytes;
+                            dst = recvbuf + comm_ptr->dev.ch.rank_list[i]*nbytes;
+                            if (dst == NULL) PRINT_ERROR("recvbuf=%p comm_ptr->dev.ch.rank_list[%d]=%d\n", 
+                                    recvbuf, i, comm_ptr->dev.ch.rank_list[i]);
+                            MPIU_Memcpy(dst, src, nbytes);
+                        }
+                        MPIU_Free(reorder_tmp_buf);
+                    }
+
+                } else {
+                    /* blocked (bunch) process mapping */
+                    mpi_errno = MPIR_Gather_MV2_Direct(tmp_buf,
+                                                       nbytes * local_size,
+                                                       MPI_BYTE, recvbuf,
+                                                       recvcnt * local_size,
+                                                       recvtype, leader_root,
+                                                       leader_commptr, errflag);
+                }
             } else {
                 mpi_errno = MPIR_Gather_MV2_Direct(tmp_buf, nbytes * local_size,
                                                    MPI_BYTE, leader_gather_buf,
@@ -662,9 +725,30 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
         /* The root of the gather operation is not the node leader. Receive
          y* data from the node leader */
         MPIR_PVAR_INC(gather, two_level_direct, recv, recvcnt * comm_size, recvtype);
-        mpi_errno = MPIC_Recv(recvbuf, recvcnt * comm_size, recvtype,
-                                 leader_of_root, MPIR_GATHER_TAG, comm_ptr,
-                                 &status, errflag);
+        if (comm_ptr->dev.ch.is_global_block != 1 || comm_ptr->dev.ch.is_blocked != 1) {
+            /* cyclic process mapping */
+            MPIU_Assert (comm_ptr->dev.ch.rank_list != NULL); 
+            void * reorder_tmp_buf = MPIU_Malloc(nbytes * comm_size);
+            mpi_errno = MPIC_Recv(reorder_tmp_buf, recvcnt * comm_size, recvtype,
+                                     leader_of_root, MPIR_GATHER_TAG, comm_ptr,
+                                     &status, errflag);
+            /* now reorder and place the results in recvbuf */
+            void *src = NULL, *dst = NULL; int i;
+            for (i = 0; i < comm_size; i++) {
+                src = reorder_tmp_buf + i * nbytes;
+                dst = recvbuf + comm_ptr->dev.ch.rank_list[i]*nbytes;
+                if (dst == NULL) PRINT_ERROR("recvbuf=%p comm_ptr->dev.ch.rank_list[%d]=%d\n", 
+                        recvbuf, i, comm_ptr->dev.ch.rank_list[i]);
+                MPIU_Memcpy(dst, src, nbytes);
+            }
+            MPIU_Free(reorder_tmp_buf);
+        } else { 
+            /* blocked (bunch) process mapping */
+            mpi_errno = MPIC_Recv(recvbuf, recvcnt * comm_size, recvtype,
+                                     leader_of_root, MPIR_GATHER_TAG, comm_ptr,
+                                     &status, errflag);
+
+        }
         if (mpi_errno) {
             /* for communication errors, just record the error but 
                continue */
@@ -685,6 +769,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
         }
     }
 
+    MPIR_TIMER_END(coll,gather,two_level_direct);
     return (mpi_errno);
 }
 
@@ -700,7 +785,7 @@ static int MPIR_Limic_Gather_Scheme_PT_PT(
                                          MV2_Gather_function_ptr intra_node_fn_ptr, 
                                          MPIR_Errflag_t *errflag) 
 {
-
+    MPIR_TIMER_START(coll,gather,limic_scheme_pt_pt);
     void *intra_tmp_buf = NULL;
     int rank;
     int local_size;
@@ -720,6 +805,8 @@ static int MPIR_Limic_Gather_Scheme_PT_PT(
 
     if (((rank == root) && (recvcnt == 0)) ||
             ((rank != root) && (sendcnt == 0))) {
+
+        MPIR_TIMER_END(coll,gather,limic_scheme_pt_pt);
         return MPI_SUCCESS;
     }
 
@@ -790,6 +877,8 @@ static int MPIR_Limic_Gather_Scheme_PT_PT(
                     MPIR_ERR_RECOVERABLE,
                     FCNAME, __LINE__, MPI_ERR_OTHER,
                     "**nomem", 0);
+
+            MPIR_TIMER_END(coll,gather,limic_scheme_pt_pt);
             return mpi_errno;
         }
 
@@ -833,6 +922,8 @@ static int MPIR_Limic_Gather_Scheme_PT_PT(
                             FCNAME, __LINE__,
                             MPI_ERR_OTHER,
                             "**nomem", 0);
+
+                    MPIR_TIMER_END(coll,gather,limic_scheme_pt_pt);
                     return mpi_errno;
                 }
 
@@ -917,6 +1008,7 @@ fn_fail:
         }
     }
 
+    MPIR_TIMER_END(coll,gather,limic_scheme_pt_pt);
     return (mpi_errno);
 }
 
@@ -930,7 +1022,8 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
                                          int root, MPID_Comm * comm_ptr, 
                                          MV2_Gather_function_ptr intra_node_fn_ptr, 
                                          MPIR_Errflag_t *errflag) 
-{
+{   
+    MPIR_TIMER_START(coll,gather,limic_scheme_pt_linear);
     void *intra_tmp_buf = NULL;
     void *local_sendbuf=NULL;
     int rank;
@@ -955,6 +1048,8 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
 
     if (((rank == root) && (recvcnt == 0)) ||
             ((rank != root) && (sendcnt == 0))) {
+
+        MPIR_TIMER_END(coll,gather,limic_scheme_pt_linear);
         return MPI_SUCCESS;
     }
 
@@ -1038,6 +1133,8 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
                     MPIR_ERR_RECOVERABLE,
                     FCNAME, __LINE__, MPI_ERR_OTHER,
                     "**nomem", 0);
+
+            MPIR_TIMER_END(coll,gather,limic_scheme_pt_linear);
             return mpi_errno;
         }
 
@@ -1088,6 +1185,8 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
                             FCNAME, __LINE__,
                             MPI_ERR_OTHER,
                             "**nomem", 0);
+
+                    MPIR_TIMER_END(coll,gather,limic_scheme_pt_linear);
                     return mpi_errno;
                 }
 
@@ -1172,6 +1271,7 @@ fn_fail:
         }
     }
     MPIU_CHKLMEM_FREEALL();
+    MPIR_TIMER_END(coll,gather,limic_scheme_pt_linear);
     return (mpi_errno);
 }
 
@@ -1186,6 +1286,7 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_PT(
                                          MV2_Gather_function_ptr intra_node_fn_ptr, 
                                          MPIR_Errflag_t *errflag) 
 {
+    MPIR_TIMER_START(coll,gather,limic_scheme_linear_pt);
     void *intra_tmp_buf = NULL;
     int rank;
     int local_size;
@@ -1205,6 +1306,8 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_PT(
 
     if (((rank == root) && (recvcnt == 0)) ||
             ((rank != root) && (sendcnt == 0))) {
+
+        MPIR_TIMER_END(coll,gather,limic_scheme_linear_pt);
         return MPI_SUCCESS;
     }
 
@@ -1275,6 +1378,8 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_PT(
                     MPIR_ERR_RECOVERABLE,
                     FCNAME, __LINE__, MPI_ERR_OTHER,
                     "**nomem", 0);
+
+            MPIR_TIMER_END(coll,gather,limic_scheme_linear_pt);
             return mpi_errno;
         }
     }
@@ -1318,6 +1423,7 @@ fn_fail:
         }
     }
 
+    MPIR_TIMER_END(coll,gather,limic_scheme_linear_pt);
     return (mpi_errno);
 }
 
@@ -1331,6 +1437,7 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
                                          int root, MPID_Comm * comm_ptr, 
                                          MPIR_Errflag_t *errflag) 
 {
+    MPIR_TIMER_START(coll,gather,limic_scheme_linear_linear);
     void *intra_tmp_buf = NULL;
     void *local_sendbuf=NULL;
     int rank;
@@ -1355,6 +1462,8 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
 
     if (((rank == root) && (recvcnt == 0)) ||
             ((rank != root) && (sendcnt == 0))) {
+
+        MPIR_TIMER_END(coll,gather,limic_scheme_linear_linear);
         return MPI_SUCCESS;
     }
 
@@ -1438,6 +1547,8 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
                     MPIR_ERR_RECOVERABLE,
                     FCNAME, __LINE__, MPI_ERR_OTHER,
                     "**nomem", 0);
+
+            MPIR_TIMER_END(coll,gather,limic_scheme_linear_linear);
             return mpi_errno;
         }
 
@@ -1490,6 +1601,7 @@ fn_fail:
     }
     
     MPIU_CHKLMEM_FREEALL(); 
+    MPIR_TIMER_END(coll,gather,limic_scheme_linear_linear);
     return (mpi_errno);
 }
 
@@ -1503,6 +1615,7 @@ static int MPIR_Limic_Gather_Scheme_SINGLE_LEADER(
                                          int root, MPID_Comm * comm_ptr, 
                                          MPIR_Errflag_t *errflag) 
 {
+    MPIR_TIMER_START(coll,gather,limic_scheme_single_leader);
     void *local_sendbuf=NULL;
     int rank;
     int local_rank, local_size;
@@ -1523,6 +1636,8 @@ static int MPIR_Limic_Gather_Scheme_SINGLE_LEADER(
 
     if (((rank == root) && (recvcnt == 0)) ||
             ((rank != root) && (sendcnt == 0))) {
+
+        MPIR_TIMER_END(coll,gather,limic_scheme_single_leader);
         return MPI_SUCCESS;
     }
 
@@ -1580,6 +1695,7 @@ static int MPIR_Limic_Gather_Scheme_SINGLE_LEADER(
                     MPIR_ERR_RECOVERABLE,
                     FCNAME, __LINE__, MPI_ERR_OTHER,
                     "**nomem", 0);
+            MPIR_TIMER_END(coll,gather,limic_scheme_single_leader);
             return mpi_errno;
         }
 
@@ -1609,6 +1725,7 @@ static int MPIR_Limic_Gather_Scheme_SINGLE_LEADER(
 
 fn_fail:
     MPIU_CHKLMEM_FREEALL();
+    MPIR_TIMER_END(coll,gather,limic_scheme_single_leader);
     return (mpi_errno);
 }
 
@@ -1621,6 +1738,7 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
                                      void *recvbuf, int recvcnt,MPI_Datatype recvtype,
                                      int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,gather,intra_node_limic);
     int mpi_errno = MPI_SUCCESS;
     MPI_Comm shmem_comm;
     MPID_Comm *shmem_commptr;
@@ -1751,6 +1869,7 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
 
 
   fn_fail:
+    MPIR_TIMER_END(coll,gather,intra_node_limic);
     return (mpi_errno);
 }
 
@@ -1820,14 +1939,9 @@ int MPIR_Gather_index_tuned_intra_MV2(const void *sendbuf,
             conf_index = 0;
             goto conf_check_end;
         }
-        do {
-            if (local_size == mv2_gather_indexed_table_ppn_conf[i]) {
-                conf_index = i;
-                partial_sub_ok = 1;
-                break;
-            }
-            i++;
-        } while(i < mv2_gather_indexed_num_ppn_conf);
+
+        FIND_PPN_INDEX  (gather, local_size,conf_index, partial_sub_ok)
+
     }
 
     if (partial_sub_ok != 1) {
@@ -1955,8 +2069,9 @@ conf_check_end:
     } else
 #endif /*_ENABLE_CUDA_*/
 
-    if (comm_ptr->dev.ch.is_global_block == 1 && mv2_use_direct_gather == 1 &&
-            mv2_use_two_level_gather == 1 && comm_ptr->dev.ch.shmem_coll_ok == 1) {
+    if (comm_ptr->dev.ch.rank_list != NULL &&
+            mv2_use_direct_gather == 1 && mv2_use_two_level_gather == 1 &&
+            comm_ptr->dev.ch.shmem_coll_ok == 1) {
         /* Set intra-node function pt for gather_two_level */
         MV2_Gather_intra_node_function = mv2_gather_indexed_thresholds_table[conf_index][comm_size_index].
 	    intra_node[intra_node_algo_index].MV2_pt_Gather_function;

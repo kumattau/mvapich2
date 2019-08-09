@@ -34,15 +34,15 @@
         posix_memalign(a, b, c)
 #else
 #   define mpit_malloc(a, line, file)           \
-        malloc(a)
+        malloc((size_t)a)
 #   define mpit_calloc(a, b, line, file)        \
-        calloc(a, b)
+        calloc((size_t)a, (size_t)b)
 #   define mpit_free(a, line, file)             \
-        free(a)
+        free((void *)a)
 #   define mpit_strdup(a, line, file)           \
         strdup(a)
 #   define mpit_realloc(a, b, line, file)       \
-        realloc(a, b)
+        realloc((void *)a, (size_t)b)
 #   define mpit_memalign(a, b, c, line, file)   \
         posix_memalign(a, b, c)
 #endif
@@ -80,12 +80,16 @@ static int initialized = 0;
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t oracle_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+extern int mv2_enable_pvar_mem;
+
 void Real_Free (void *ptr);
 
 static inline void
 increment_malloc_counter (void)
 {
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_lock(&mutex);
+    MPIU_THREAD_CHECK_END
 
     if (initialized) {
         MPIR_T_PVAR_COUNTER_INC(MV2, num_malloc_calls, 1);
@@ -94,15 +98,18 @@ increment_malloc_counter (void)
     else {
         unaccounted_malloc++;
     }
-
+ 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&mutex);
-}
+    MPIU_THREAD_CHECK_END}
 
 static inline void
 increment_calloc_counter (void)
 {
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_lock(&mutex);
-
+    MPIU_THREAD_CHECK_END
+   
     if (initialized) {
         MPIR_T_PVAR_COUNTER_INC(MV2, num_calloc_calls, 1);
     }
@@ -111,13 +118,16 @@ increment_calloc_counter (void)
         unaccounted_calloc++;
     }
 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&mutex);
-}
+    MPIU_THREAD_CHECK_END}
 
 static inline void
 increment_realloc_counter (void)
 {
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_lock(&mutex);
+    MPIU_THREAD_CHECK_END
 
     if (initialized) {
         MPIR_T_PVAR_COUNTER_INC(MV2, num_realloc_calls, 1);
@@ -127,13 +137,16 @@ increment_realloc_counter (void)
         unaccounted_realloc++;
     }
 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&mutex);
-}
+    MPIU_THREAD_CHECK_END}
 
 static inline void
 increment_free_counter (void)
 {
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_lock(&mutex);
+    MPIU_THREAD_CHECK_END
 
     if (initialized) {
         MPIR_T_PVAR_COUNTER_INC(MV2, num_free_calls, 1);
@@ -143,13 +156,16 @@ increment_free_counter (void)
         unaccounted_free++;
     }
 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&mutex);
-}
+    MPIU_THREAD_CHECK_END}
 
 static inline void
 increment_memalign_counter (void)
 {
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_lock(&mutex);
+    MPIU_THREAD_CHECK_END
 
     if (initialized) {
         MPIR_T_PVAR_COUNTER_INC(MV2, num_memalign_calls, 1);
@@ -159,13 +175,16 @@ increment_memalign_counter (void)
         unaccounted_memalign++;
     }
 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&mutex);
-}
+    MPIU_THREAD_CHECK_END}
 
 static inline void
 increment_memalign_free_counter (void)
 {
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_lock(&mutex);
+    MPIU_THREAD_CHECK_END
 
     if (initialized) {
         MPIR_T_PVAR_COUNTER_INC(MV2, num_memalign_free_calls, 1);
@@ -175,13 +194,16 @@ increment_memalign_free_counter (void)
         unaccounted_memalign_free++;
     }
 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&mutex);
-}
+    MPIU_THREAD_CHECK_END}
 
 static inline void
 increment_strdup_counter (void)
 {
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_lock(&mutex);
+    MPIU_THREAD_CHECK_END
 
     if (initialized) {
         MPIR_T_PVAR_COUNTER_INC(MV2, num_strdup_calls, 1);
@@ -191,8 +213,9 @@ increment_strdup_counter (void)
         unaccounted_strdup++;
     }
 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&mutex);
-}
+    MPIU_THREAD_CHECK_END}
 
 
 static int
@@ -243,10 +266,12 @@ static MPIT_MEMORY_T *
 oracle_insert (void * ptr, size_t size)
 {
     MPIT_MEMORY_T * mptr = mpit_malloc(sizeof (MPIT_MEMORY_T), __LINE__,
-            __FILE__);
+            __FILE__); 
     void * result;
 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_lock(&oracle_mutex);
+    MPIU_THREAD_CHECK_END
 
     if (mptr) {
         mptr->addr = ptr;
@@ -256,7 +281,9 @@ oracle_insert (void * ptr, size_t size)
         fflush(stdout);
     }
 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&oracle_mutex);
+    MPIU_THREAD_CHECK_END
 
     return mptr;
 }
@@ -268,10 +295,14 @@ oracle_find (void * ptr)
     MPIT_MEMORY_T * mptr;
     void * result;
 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_lock(&oracle_mutex);
+    MPIU_THREAD_CHECK_END
     result = tfind(&m, &oracle, ptr_cmp);
     mptr = result ? *(MPIT_MEMORY_T **)result : NULL;
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&oracle_mutex);
+    MPIU_THREAD_CHECK_END
 
     return mptr;
 }
@@ -279,16 +310,22 @@ oracle_find (void * ptr)
 static void
 oracle_delete (MPIT_MEMORY_T * ptr)
 {
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_lock(&oracle_mutex);
+    MPIU_THREAD_CHECK_END
     tdelete(ptr, &oracle, ptr_cmp);
     mpit_free(ptr, __LINE__, __FILE__);
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&oracle_mutex);
+    MPIU_THREAD_CHECK_END
 }
 
 static inline void
 increment_counter (signed long size)
 {
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_lock(&mutex);
+    MPIU_THREAD_CHECK_END
 
     if (initialized) {
         MPIR_T_PVAR_LEVEL_INC(MV2, mem_allocated, size);
@@ -300,8 +337,9 @@ increment_counter (signed long size)
         unaccounted += size;
     }
 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&mutex);
-}
+    MPIU_THREAD_CHECK_END}
 
 void
 MPIT_MEM_REGISTER_PVARS (void)
@@ -396,7 +434,9 @@ MPIT_MEM_REGISTER_PVARS (void)
             "MEM", /* category name */
             "Number of MPIT_memalign_free calls");
 
+    MPIU_THREAD_CHECK_BEGIN 
     pthread_mutex_lock(&mutex);
+    MPIU_THREAD_CHECK_END
     initialized = 1;
     MPIR_T_PVAR_LEVEL_INC(MV2, mem_allocated, unaccounted);
     MPIR_T_PVAR_ULONG2_HIGHWATERMARK_UPDATE(MV2, mem_allocated,
@@ -411,35 +451,53 @@ MPIT_MEM_REGISTER_PVARS (void)
     MPIR_T_PVAR_COUNTER_INC(MV2, num_memalign_free_calls,
             unaccounted_memalign_free);
 
+    MPIU_THREAD_CHECK_BEGIN
     pthread_mutex_unlock(&mutex);
-}
+    MPIU_THREAD_CHECK_END}
 
 void *
 MPIT_malloc (size_t size, int lineno, char const * filename)
 {
-    increment_malloc_counter();
-    void * ptr = mpit_malloc(size, lineno, filename);
+    void *ptr;
 
-    if (ptr) {
-        increment_counter(size);
-        oracle_insert(ptr, size);
+    if(mv2_enable_pvar_mem)	
+    {
+        ptr = mpit_malloc(size, lineno, filename);
+
+        if (ptr) {
+            increment_counter(size);
+            oracle_insert(ptr, size);
+        }    
+    }
+    else
+    {
+        ptr = mpit_malloc(size, lineno, filename);
     }
 
     return ptr;
 }
 
 void *
-MPIT_calloc (size_t nelements, size_t elementSize, int lineno, char const *
-        filename)
+MPIT_calloc (size_t nelements, size_t elementSize, int lineno, char const *filename)
 {
-    increment_calloc_counter();
-    void * ptr = mpit_calloc(nelements, elementSize, lineno, filename);
-    size_t size = nelements * elementSize;
+    void *ptr;
 
-    if (ptr) {
-        increment_counter(size);
-        oracle_insert(ptr, size);
+    if(mv2_enable_pvar_mem)
+    {
+        increment_calloc_counter();
+        ptr = mpit_calloc(nelements, elementSize, lineno, filename);
+ 
+        size_t size = nelements * elementSize;
+
+        if (ptr) {
+           increment_counter(size);
+           oracle_insert(ptr, size);
+        }
     }
+    else
+    {
+        ptr = mpit_calloc(nelements, elementSize, lineno, filename);
+    }      
 
     return ptr;
 }
@@ -448,27 +506,44 @@ int
 MPIT_memalign (void ** ptr, size_t alignment, size_t size, int lineno, char
         const * filename)
 {
-    increment_memalign_counter();
-    int rv = mpit_memalign(ptr, alignment, size, lineno, filename);
+    int rv;
 
-    if (!rv) {
-        increment_counter(size);
-        oracle_insert(*ptr, size);
+    if(mv2_enable_pvar_mem)
+    {
+        increment_memalign_counter();
+    
+        rv = mpit_memalign(ptr, alignment, size, lineno, filename);
+   
+        if (!rv) {
+            increment_counter(size);
+            oracle_insert(*ptr, size);
+        }
     }
-
+    else
+    {
+        rv = mpit_memalign(ptr, alignment, size, lineno, filename);
+    }
     return rv;
 }
 
 char *
 MPIT_strdup (const char * s, int lineno, char const * filename)
 {
-    increment_strdup_counter();
-    char * ptr = mpit_strdup(s, lineno, filename);
-    size_t size = strlen(s);
+    char *ptr;
 
-    if (ptr) {
-        increment_counter(size);
-        oracle_insert(ptr, size);
+    if(mv2_enable_pvar_mem)
+    {
+        increment_strdup_counter();
+        ptr = mpit_strdup(s, lineno, filename);
+        size_t size = strlen(s);
+        if (ptr) {
+            increment_counter(size);
+            oracle_insert(ptr, size);
+        }
+    }
+    else
+    {
+        ptr = mpit_strdup(s, lineno, filename);        
     }
 
     return ptr;
@@ -477,91 +552,118 @@ MPIT_strdup (const char * s, int lineno, char const * filename)
 void *
 MPIT_realloc (void * ptr, size_t size, int lineno, char const * filename)
 {
-    increment_realloc_counter();
-    if (ptr) {
-        MPIT_MEMORY_T * mptr = oracle_find(ptr);
-        size_t oldsize;
-
-        MPIU_Assert(NULL != mptr);
-        oldsize = mptr->size;
-
-        ptr = mpit_realloc(ptr, size, lineno, filename);
-        if (ptr) {
-            oracle_delete(mptr);
-            oracle_insert(ptr, size);
-            increment_counter(size - oldsize);
+    if(mv2_enable_pvar_mem)
+    {
+        increment_realloc_counter();
+    
+        if (ptr) 
+        {
+            MPIT_MEMORY_T * mptr = oracle_find(ptr);
+            size_t oldsize;
+            MPIU_Assert(NULL != mptr);
+            oldsize = mptr->size;
+            ptr = mpit_realloc(ptr, size, lineno, filename);
+            if (ptr) {
+                oracle_delete(mptr);
+                oracle_insert(ptr, size);
+                increment_counter(size - oldsize);
+            }
+            else if (!size) {
+                oracle_delete(mptr);
+                increment_counter(size - oldsize);
+            }
         }
-
-        else if (!size) {
-            oracle_delete(mptr);
-            increment_counter(size - oldsize);
+        else 
+        {
+            ptr = mpit_realloc(ptr, size, lineno, filename);
+            if (ptr) {
+                oracle_insert(ptr, size);
+                increment_counter(size);
+            }
         }
     }
-
-    else {
+    else
+    {
         ptr = mpit_realloc(ptr, size, lineno, filename);
-        if (ptr) {
-            oracle_insert(ptr, size);
-            increment_counter(size);
-        }
     }
-
     return ptr;
 }
 
 void
 MPIT_free (void * ptr, int lineno, char const * filename)
 {
-    increment_free_counter();
-    size_t oldsize = 0;
+    if(mv2_enable_pvar_mem)
+    {
+        increment_free_counter();
+        size_t oldsize = 0;
 
-    if (ptr) {
-        MPIT_MEMORY_T * mptr = oracle_find(ptr);
+        if (ptr) {
+            MPIT_MEMORY_T * mptr = oracle_find(ptr);
 
-        if (mptr) {
-            oldsize = mptr->size;
-            oracle_delete(mptr);
+            if (mptr) {
+                oldsize = mptr->size;
+                oracle_delete(mptr);
+            }
         }
-    }
 
-    mpit_free(ptr, lineno, filename);
-    increment_counter(0 - oldsize);
+        mpit_free(ptr, lineno, filename);
+        increment_counter(0 - oldsize);        
+    }
+    else
+    {
+        mpit_free(ptr, lineno, filename);
+    }    
 }
 
 void
 MPIT_memalign_free (void * ptr, int lineno, char const * filename)
 {
-    increment_memalign_free_counter();
-    size_t oldsize = 0;
+    if(mv2_enable_pvar_mem)
+    {
+        increment_memalign_free_counter();
+        size_t oldsize = 0;
 
-    if (ptr) {
-        MPIT_MEMORY_T * mptr = oracle_find(ptr);
+        if (ptr) {
+            MPIT_MEMORY_T * mptr = oracle_find(ptr);
 
-        if (mptr) {
-            oldsize = mptr->size;
-            oracle_delete(mptr);
+            if (mptr) {
+                oldsize = mptr->size;
+                oracle_delete(mptr);
+            }
         }
-    }
 
-    Real_Free(ptr);
-    increment_counter(0 - oldsize);
+        Real_Free(ptr);
+        increment_counter(0 - oldsize); 
+    }
+    else
+    {
+        Real_Free(ptr);
+    }
 }
 
 void
 MPIT_shmdt (void * ptr, int lineno, char const * filename)
 {
-    increment_memalign_free_counter();
-    size_t oldsize = 0;
+    if(mv2_enable_pvar_mem)
+    {
+        increment_memalign_free_counter();
+        size_t oldsize = 0;
 
-    if (ptr) {
-        MPIT_MEMORY_T * mptr = oracle_find(ptr);
+        if (ptr) {
+            MPIT_MEMORY_T * mptr = oracle_find(ptr);
 
-        if (mptr) {
-            oldsize = mptr->size;
-            oracle_delete(mptr);
+            if (mptr) {
+                oldsize = mptr->size;
+                oracle_delete(mptr);
+            }
         }
+
+        shmdt(ptr);
+        increment_counter(0 - oldsize);  
+    }
+    else
+    {
+        shmdt(ptr);
     }
 
-    shmdt(ptr);
-    increment_counter(0 - oldsize);
 }

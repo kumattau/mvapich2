@@ -1,3 +1,24 @@
+OSU Micro Benchmarks v5.6.2 (08/09/2019)
+
+* New Features & Enhancements
+    - Add support for benchmarking GPU-Aware multi-threaded point-to-point
+      operations
+        * osu_latency_mt
+
+* Bug Fixes (since v5.6.1)
+    - Fix issue with freeing in osu_get_bw benchmark
+    - Fix issues with out of tree builds
+        - Thanks to Joseph Schuchart@HLRS for reporting the issue
+    - Fix incorrect header in osu_mbw_mr benchmark
+    - Fix memory alignment for non-heap allocations in openshmem message rate
+      benchmarks
+        - Thanks to Yossi@Mellanox for pointing out the issue
+
+OSU Micro Benchmarks v5.6.1 (03/15/2019)
+
+* Bug Fixes (since v5.6)
+    - Fix issue with latency computation in osu_latency_mt benchmark.
+
 OSU Micro Benchmarks v5.6 (03/01/2019)
 
 * New Features & Enhancements

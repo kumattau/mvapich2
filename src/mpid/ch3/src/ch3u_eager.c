@@ -283,6 +283,7 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
    We may need a nonblocking (cancellable) version of this, which will 
    have a smaller payload.
 */
+
 #undef FUNCNAME
 #define FUNCNAME MPIDI_EagerContigShortSend
 #undef FCNAME
@@ -306,22 +307,17 @@ int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p,
     MPID_Seqnum_t seqnum = 0;
 #endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
     
-    MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
-       "sending contiguous short eager message, data_sz=" MPIDI_MSG_SZ_FMT,
-					data_sz));
+    /*PRINT_DEBUG(DEBUG_SHM_verbose>1,
+            "sending contiguous short eager message to rank: %d, data_sz: %d, sreq: %p\n",
+            rank, data_sz, sreq);*/
 	    
 #if defined(CHANNEL_MRAIL)
     {
         MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
 
-        if (vc->eager_fast_rfp_fn &&
-            !(unlikely(num_rdma_buffer < 2 ||
-             vc->mrail.rfp.phead_RDMA_send == vc->mrail.rfp.ptail_RDMA_send ||
-             vc->mrail.rfp.RDMA_send_buf[vc->mrail.rfp.phead_RDMA_send].padding == BUSY_FLAG ||
-             ((data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t)) > MRAIL_MAX_RDMA_FP_SIZE))
-            )) {
-            mpi_errno = vc->eager_fast_rfp_fn(vc, buf, data_sz, rank, 
-				                                tag, comm, context_offset);
+        if (vc->eager_fast_rfp_fn) {
+            mpi_errno = vc->eager_fast_rfp_fn(vc, buf, data_sz, rank,
+				                                tag, comm, context_offset, sreq_p);
         } else {
             mpi_errno = vc->eager_fast_fn(vc, buf, data_sz, rank, 
 				                            tag, comm, context_offset, sreq_p);
@@ -382,6 +378,9 @@ int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p,
          * progress engine is racy.  The start call above is protected by
          * vc CS, but the progress engine is protected by MPIDCOMM.  So
          * we can't just extend the CS type below this point... what's the fix? */
+        PRINT_DEBUG(DEBUG_SHM_verbose>1,
+                "eager send to %d delayed, request enqueued: %p, type: %d ch.reqtype: %d\n",
+                rank, sreq, MPIDI_Request_get_type(sreq), sreq->ch.reqtype);
 	MPIDI_Request_set_seqnum(sreq, seqnum);
 	MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
     }

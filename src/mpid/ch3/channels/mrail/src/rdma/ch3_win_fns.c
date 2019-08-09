@@ -671,10 +671,14 @@ static int MPIDI_CH3I_Win_gather_info(void *base, MPI_Aint size, int disp_unit, 
             comm_rank, win_ptr, comm_ptr);
 #endif 
 
+#if !defined(_OSU_MVAPICH_)
+    /* In default MVAPICH2, communicator will be shared among RMA windows if applicable
+     * (see function `win_init`), so no need to free 2-level comm here  */
     if((*win_ptr)->comm_ptr->dev.ch.shmem_coll_ok == 1 && node_comm_ptr != NULL) {
         mpi_errno = free_2level_comm((*win_ptr)->comm_ptr);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno); 
     }
+#endif
 
   fn_exit:
     MPIU_CHKLMEM_FREEALL();

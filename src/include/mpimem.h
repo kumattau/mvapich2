@@ -295,7 +295,7 @@ extern char *strdup( const char * );
 #endif /* USE_MEMORY_TRACING */
 
 #ifdef _OSU_MVAPICH_
-#   if ENABLE_PVAR_MV2
+#   if ENABLE_PVAR_MEM
 #       undef MPIU_Malloc
 #       undef MPIU_Calloc
 #       undef MPIU_Free
@@ -322,7 +322,7 @@ void MPIT_shmdt (void * ptr, int lineno, char const * filename);
 #       define MPIU_Memalign(a,b,c) MPIT_memalign(a, b, c, __LINE__, __FILE__)
 #       define MPIU_Memalign_Free(a) MPIT_memalign_free(a, __LINE__, __FILE__)
 #       define MPIU_shmdt(a)        MPIT_shmdt(a, __LINE__, __FILE__)
-#   else /* ENABLE_PVAR_MV2 */
+#   else /* ENABLE_PVAR_MEM */
 /*
  * Forward declaration of function used to call the real free function
  */
@@ -330,7 +330,7 @@ void Real_Free (void * ptr);
 #       define MPIU_Memalign(a,b,c) posix_memalign(a, b, c)
 #       define MPIU_Memalign_Free(a) Real_Free(a)
 #       define MPIU_shmdt(a) shmdt(a)
-#   endif /* ENABLE_PVAR_MV2 */
+#   endif /* ENABLE_PVAR_MEM */
 #endif /* _OSU_MVAPICH_ */
 
 /* Memory allocation macros. See document. */

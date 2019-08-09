@@ -145,6 +145,11 @@ int MPIR_Comm_init(MPID_Comm * comm_p)
     comm_p->dev.ch.intra_sock_comm=MPI_COMM_NULL;
     comm_p->dev.ch.intra_sock_leader_comm=MPI_COMM_NULL;
 #endif /*defined(_SMP_LIMIC) */
+
+#if ENABLE_PVAR_MV2
+    comm_p->sub_comm_counters = NULL;
+#endif
+
 #endif /* _OSU_MVAPICH_ */
 
     /* abstractions bleed a bit here... :(*/
@@ -588,6 +593,11 @@ int MPIR_Comm_commit(MPID_Comm * comm)
     MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_COMMIT);
 
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_COMMIT);
+
+#if ENABLE_PVAR_MV2
+    extern int sub_comm_counter_idx;
+    comm->sub_comm_counters = (unsigned long long *)MPIU_Calloc(sub_comm_counter_idx, sizeof(unsigned long long));
+#endif
 
     /* It's OK to relax these assertions, but we should do so very
      * intentionally.  For now this function is the only place that we create
@@ -1036,7 +1046,15 @@ int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr)
             MPIR_Group_release(comm_ptr->local_group);
         if (comm_ptr->remote_group)
             MPIR_Group_release(comm_ptr->remote_group);
-
+ 
+        /* Free sub-communicator counters */
+        #if ENABLE_PVAR_MV2
+        if(comm_ptr->sub_comm_counters)
+        {
+           MPIU_Free(comm_ptr->sub_comm_counters);
+        }
+        #endif
+ 
         /* free the intra/inter-node communicators, if they exist */
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
         if( comm_ptr->dev.ch.shmem_coll_ok == 1) { 

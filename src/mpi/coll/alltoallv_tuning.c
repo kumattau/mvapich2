@@ -28,7 +28,7 @@ int mv2_alltoallv_indexed_num_ppn_conf = 1;
 int *mv2_size_alltoallv_indexed_tuning_table = NULL;
 mv2_alltoallv_indexed_tuning_table **mv2_alltoallv_indexed_thresholds_table = NULL;
 
-int MV2_set_alltoallv_tuning_table(int heterogeneity)
+int MV2_set_alltoallv_tuning_table(int heterogeneity, struct coll_info *colls_arch_hca)
 {
 
     int agg_table_sum = 0;

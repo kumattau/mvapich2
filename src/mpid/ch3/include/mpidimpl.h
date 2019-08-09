@@ -118,6 +118,8 @@ typedef struct MPIDI_PG
     /* Number of processes in the process group */
     int size;
 
+    int is_spawned;
+
     /* VC table.  At present this is a pointer to an array of VC structures. 
        Someday we may want make this a pointer to an array
        of VC references.  Thus, it is important to use MPIDI_PG_Get_vc() 
@@ -450,24 +452,27 @@ extern MPIDI_Process_t MPIDI_Process;
 }
 
 #define MPIDI_REQUEST_TYPE_MASK (0xF << MPIDI_REQUEST_TYPE_SHIFT)
-#define MPIDI_REQUEST_TYPE_SHIFT 4
+#define MPIDI_REQUEST_TYPE_SHIFT 5
 #define MPIDI_REQUEST_TYPE_RECV 0
 #define MPIDI_REQUEST_TYPE_SEND 1
 #define MPIDI_REQUEST_TYPE_RSEND 2
 #define MPIDI_REQUEST_TYPE_SSEND 3
 /* We need a BSEND type for persistent bsends (see mpid_startall.c) */
 #define MPIDI_REQUEST_TYPE_BSEND 4
-#define MPIDI_REQUEST_TYPE_PUT_RECV 5                    /* target is receiving PUT data */
-#define MPIDI_REQUEST_TYPE_GET_RESP 6                    /* target is sending GET response data */
-#define MPIDI_REQUEST_TYPE_ACCUM_RECV 7                  /* target is receiving ACC data */
-#define MPIDI_REQUEST_TYPE_PUT_RECV_DERIVED_DT 8         /* target is receiving derived DT info for PUT data */
-#define MPIDI_REQUEST_TYPE_GET_RECV_DERIVED_DT 9         /* target is receiving derived DT info for GET data */
-#define MPIDI_REQUEST_TYPE_ACCUM_RECV_DERIVED_DT 10      /* target is receiving derived DT info for ACC data */
-#define MPIDI_REQUEST_TYPE_GET_ACCUM_RECV 11             /* target is receiving GACC data */
-#define MPIDI_REQUEST_TYPE_GET_ACCUM_RECV_DERIVED_DT 12  /* target is receiving derived DT info for GACC data */
-#define MPIDI_REQUEST_TYPE_GET_ACCUM_RESP 13             /* target is sending GACC response data */
-#define MPIDI_REQUEST_TYPE_FOP_RECV 14                   /* target is receiving FOP data */
-#define MPIDI_REQUEST_TYPE_FOP_RESP 15                   /* target is sending FOP response data */
+#define MPIDI_REQUEST_TYPE_ISEND 5
+#define MPIDI_REQUEST_TYPE_IRECV 6
+
+#define MPIDI_REQUEST_TYPE_PUT_RECV 7                     /* target is receiving PUT data */
+#define MPIDI_REQUEST_TYPE_GET_RESP 8                     /* target is sending GET response data */
+#define MPIDI_REQUEST_TYPE_ACCUM_RECV 9                   /* target is receiving ACC data */
+#define MPIDI_REQUEST_TYPE_PUT_RECV_DERIVED_DT 10         /* target is receiving derived DT info for PUT data */
+#define MPIDI_REQUEST_TYPE_GET_RECV_DERIVED_DT 11         /* target is receiving derived DT info for GET data */
+#define MPIDI_REQUEST_TYPE_ACCUM_RECV_DERIVED_DT 12       /* target is receiving derived DT info for ACC data */
+#define MPIDI_REQUEST_TYPE_GET_ACCUM_RECV 13              /* target is receiving GACC data */
+#define MPIDI_REQUEST_TYPE_GET_ACCUM_RECV_DERIVED_DT 14   /* target is receiving derived DT info for GACC data */
+#define MPIDI_REQUEST_TYPE_GET_ACCUM_RESP 15              /* target is sending GACC response data */
+#define MPIDI_REQUEST_TYPE_FOP_RECV 16                    /* target is receiving FOP data */
+#define MPIDI_REQUEST_TYPE_FOP_RESP 17                    /* target is sending FOP response data */
 
 
 #define MPIDI_Request_get_type(req_)						\
@@ -843,7 +848,7 @@ typedef struct MPIDI_VC
     int (* eager_fast_fn)(struct MPIDI_VC* vc, const void * buf, MPIDI_msg_sz_t data_sz,
                             int rank, int tag, MPID_Comm * comm, int context_offset, MPID_Request **sreq_p);
     int (* eager_fast_rfp_fn)(struct MPIDI_VC* vc, const void * buf, MPIDI_msg_sz_t data_sz,
-                            int rank, int tag, MPID_Comm * comm, int context_offset);
+                            int rank, int tag, MPID_Comm * comm, int context_offset, MPID_Request **sreq_p);
 
     /* eager message threshold */
     int eager_max_msg_sz;
@@ -2217,6 +2222,13 @@ int MPIDI_CH3I_Progress_deactivate_hook(int id);
     *buflen += sizeof(MPIDI_CH3_Pkt_t);
 #else
 #define MPIDI_CH3U_Append_pkt_size()
+#endif
+
+#if defined(CHANNEL_MRAIL)
+#define IS_VC_SMP(_vc) \
+    (SMP_INIT && (_vc)->smp.local_nodes >= 0)
+#else
+#define IS_VC_SMP(_vc) (0)
 #endif
 
 #endif /* !defined(MPICH_MPIDIMPL_H_INCLUDED) */

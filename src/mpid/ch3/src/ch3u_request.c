@@ -102,12 +102,13 @@ MPID_Request * MPID_Request_create(void)
         req->dev.target_lock_queue_entry = NULL;
 	req->dev.dataloop	   = NULL;
 	req->dev.iov_offset        = 0;
+	req->dev.chunk_count       = 0;
         req->dev.flags             = MPIDI_CH3_PKT_FLAG_NONE;
         req->dev.resp_request_handle = MPI_REQUEST_NULL;
         req->dev.user_buf          = NULL;
         req->dev.OnDataAvail       = NULL;
         req->dev.OnFinal           = NULL;
-        req->dev.user_buf          = NULL;
+        req->dev.datatype          = NULL;
         req->dev.drop_data         = FALSE;
         req->dev.tmpbuf            = NULL;
         req->dev.ext_hdr_ptr       = NULL;
@@ -642,10 +643,12 @@ int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq)
 	    rreq->dev.iov[0].MPL_IOV_LEN = data_sz;
 #if defined (CHANNEL_PSM)
 	    MPIU_Assert((MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_RECV) || 
+                    (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_IRECV) ||
                     (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_ACCUM_RECV) ||
                     (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_GET_ACCUM_RECV));
 #else
-	    MPIU_Assert(MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_RECV);
+	    MPIU_Assert((MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_RECV) ||
+                    (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_IRECV));
 #endif
 	    /* Eventually, use OnFinal for this instead */
 	    rreq->dev.OnDataAvail = rreq->dev.OnFinal;

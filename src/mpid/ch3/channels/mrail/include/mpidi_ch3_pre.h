@@ -373,6 +373,8 @@ struct MPIDI_CH3I_Request						\
     (_rreq)->mrail.d_entry = NULL;       \
     (_rreq)->mrail.remote_addr = NULL;   \
     (_rreq)->mrail.nearly_complete = 0;  \
+    (_rreq)->mrail.local_complete  = 0;  \
+    (_rreq)->mrail.remote_complete = 0;  \
     (_rreq)->mrail.is_rma_last_stream_unit = 1;  \
     MPIDI_CH3_REQUEST_INIT_CUDA(_rreq)   \
     MPIDI_CH3_REQUEST_INIT_CUDA_IPC(_rreq) 

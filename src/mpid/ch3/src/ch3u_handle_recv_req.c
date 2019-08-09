@@ -61,6 +61,7 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq, int *comple
     if (!reqFn) {
 #if defined(CHANNEL_MRAIL)
         if(MPIDI_Request_get_type(rreq) != MPIDI_REQUEST_TYPE_RECV
+           && MPIDI_Request_get_type(rreq) != MPIDI_REQUEST_TYPE_IRECV
            && MPIDI_Request_get_type(rreq) != MPIDI_REQUEST_TYPE_ACCUM_RECV
            && MPIDI_Request_get_type(rreq) != MPIDI_REQUEST_TYPE_GET_ACCUM_RECV) {
             MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -68,7 +69,8 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq, int *comple
           "MPIDI_Request_get_type(rreq) != MPIDI_REQUEST_TYPE_RECV");
         }
 #else /* defined(CHANNEL_MRAIL) */
-        MPIU_Assert(MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_RECV);
+        MPIU_Assert((MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_RECV) ||
+                    (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_IRECV));
 #endif /* defined(CHANNEL_MRAIL) */
         mpi_errno = MPID_Request_complete(rreq);
         if (mpi_errno != MPI_SUCCESS) {
@@ -329,7 +331,7 @@ int MPIDI_CH3_ReqHandler_GaccumRecvComplete(MPIDI_VC_t * vc, MPID_Request * rreq
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_get_accum_resp_t *get_accum_resp_pkt = &upkt.get_accum_resp;
     MPID_Request *resp_req;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     int iovcnt;
     int is_contig;
     MPI_Datatype basic_type;
@@ -561,12 +563,13 @@ int MPIDI_CH3_ReqHandler_FOPRecvComplete(MPIDI_VC_t * vc, MPID_Request * rreq, i
     MPID_Win *win_ptr = NULL;
     MPI_Aint type_size;
     MPID_Request *resp_req = NULL;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     int iovcnt;
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_fop_resp_t *fop_resp_pkt = &upkt.fop_resp;
     int is_contig;
     int is_empty_origin = FALSE;
+    int reqtype;
     MPIU_CHKPMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQHANDLER_FOPRECVCOMPLETE);
 
@@ -577,7 +580,9 @@ int MPIDI_CH3_ReqHandler_FOPRecvComplete(MPIDI_VC_t * vc, MPID_Request * rreq, i
         is_empty_origin = TRUE;
     }
 
-    MPIU_Assert(MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_FOP_RECV);
+    reqtype = MPIDI_Request_get_type(rreq);
+    MPIU_Assert(reqtype == MPIDI_REQUEST_TYPE_RECV ||
+                reqtype == MPIDI_REQUEST_TYPE_FOP_RECV);
 
     MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
 
@@ -1185,7 +1190,7 @@ int MPIDI_CH3_ReqHandler_GetDerivedDTRecvComplete(MPIDI_VC_t * vc,
 
 #if defined (CHANNEL_PSM)
     {
-	MPL_IOV iov[MPL_IOV_LIMIT];
+	MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     	/* GET_RESP packet. send packet & data. Pack if needed */
 	iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST) get_resp_pkt;
 	iov[0].MPL_IOV_LEN = sizeof(*get_resp_pkt);
@@ -1265,8 +1270,7 @@ int MPIDI_CH3_ReqHandler_GetDerivedDTRecvComplete(MPIDI_VC_t * vc,
         }
         /* --END ERROR HANDLING-- */
 #if defined(CHANNEL_MRAIL)
-    } else if (sreq->mrail.protocol == MV2_RNDV_PROTOCOL_RPUT 
-            || sreq->mrail.protocol == MV2_RNDV_PROTOCOL_R3) {
+    } else { 
         sreq->dev.iov_count = MPL_IOV_LIMIT;
         mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq,sreq->dev.iov,&sreq->dev.iov_count);
 
@@ -1275,10 +1279,6 @@ int MPIDI_CH3_ReqHandler_GetDerivedDTRecvComplete(MPIDI_VC_t * vc,
         } else {
            MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|loadsendiov");
         }
-    }
-    else
-    {
-        MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|loadrecviov");
     }
 #endif //defined(CHANNEL_MRAIL)
 
@@ -1545,7 +1545,7 @@ static inline int perform_get_in_lock_queue(MPID_Win * win_ptr,
     MPI_Aint type_size;
     size_t len;
     int iovcnt;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     int is_contig;
     int mpi_errno = MPI_SUCCESS;
 
@@ -1720,7 +1720,7 @@ static inline int perform_get_acc_in_lock_queue(MPID_Win * win_ptr,
     MPI_Aint type_size;
     size_t len;
     int iovcnt;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     int is_contig;
     int mpi_errno = MPI_SUCCESS;
     MPI_Aint type_extent;
@@ -1911,7 +1911,7 @@ static inline int perform_fop_in_lock_queue(MPID_Win * win_ptr,
     MPIDI_CH3_Pkt_fop_t *fop_pkt = &((target_lock_entry->pkt).fop);
     MPID_Request *resp_req = NULL;
     MPI_Aint type_size;
-    MPL_IOV iov[MPL_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT] = {0};
     int iovcnt;
     int is_contig;
     int mpi_errno = MPI_SUCCESS;

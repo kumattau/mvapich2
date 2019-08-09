@@ -67,12 +67,15 @@ static int numcores_persocket[SOCKETS]={0};
 #endif /*#if defined(_SMP_LIMIC_)*/
 
 static mv2_arch_type g_mv2_arch_type = MV2_ARCH_UNKWN;
-static int g_mv2_num_cpus = -1;
+int g_mv2_num_cpus = -1;
 static int g_mv2_cpu_model = -1;
 static mv2_cpu_family_type g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
 
 extern int mv2_enable_zcpy_bcast;
 extern int mv2_use_slot_shmem_coll;
+
+mv2_arch_type table_arch_tmp;
+mv2_hca_type  table_hca_tmp;
 
 #define CONFIG_FILE         "/proc/cpuinfo"
 #define MAX_LINE_LENGTH     512
@@ -91,8 +94,11 @@ extern int mv2_use_slot_shmem_coll;
 #define INTEL_XEON_E5_2695_V3_MODEL 63
 #define INTEL_XEON_E5_2670_V3_MODEL 64
 #define INTEL_XEON_E5_2680_V4_MODEL 79
+/* Skylake */
 #define INTEL_PLATINUM_8160_MODEL   85
 #define INTEL_PLATINUM_8170_MODEL   85
+/* Cascade Lake */
+#define INTEL_PLATINUM_8260_MODEL   85
 
 #define MV2_STR_VENDOR_ID    "vendor_id"
 #define MV2_STR_AUTH_AMD     "AuthenticAMD"
@@ -121,9 +127,12 @@ extern int mv2_use_slot_shmem_coll;
 #define INTEL_E5_2695_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2695 v3 @ 2.30GHz"
 #define INTEL_E5_2695_V4_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2695 v4 @ 2.10GHz"
 
+/* For both Skylake and Cascade Lake, generic models are tthe same */
 #define INTEL_PLATINUM_GENERIC_MODEL_NAME  "Intel(R) Xeon(R) Platinum"
 #define INTEL_PLATINUM_8160_MODEL_NAME "Intel(R) Xeon(R) Platinum 8160 CPU @ 2.10GHz"
 #define INTEL_PLATINUM_8170_MODEL_NAME "Intel(R) Xeon(R) Platinum 8170 CPU @ 2.10GHz"
+#define INTEL_PLATINUM_8260_MODEL_NAME "Intel(R) Xeon(R) Platinum 8260Y CPU @ 2.40GHz"
+#define INTEL_PLATINUM_8280_MODEL_NAME "Intel(R) Xeon(R) Platinum 8280 CPU @ 2.70GHz"
 
 #define INTEL_GOLD_GENERIC_MODEL_NAME  "Intel(R) Xeon(R) Gold"
 #define INTEL_GOLD_6132_MODEL_NAME "Intel(R) Xeon(R) Gold 6132 CPU @ 2.60GHz"
@@ -168,9 +177,11 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36,"MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36"},
     {MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28,"MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28"},
 
-    /* Skylake Architectures */
+    /* Skylake and Cascade Lake Architectures */
     {MV2_ARCH_INTEL_PLATINUM_GENERIC,      "MV2_ARCH_INTEL_PLATINUM_GENERIC"},
     {MV2_ARCH_INTEL_PLATINUM_8160_2S_48,   "MV2_ARCH_INTEL_PLATINUM_8160_2S_48"},
+    {MV2_ARCH_INTEL_PLATINUM_8260_2S_48,   "MV2_ARCH_INTEL_PLATINUM_8260_2S_48"},
+    {MV2_ARCH_INTEL_PLATINUM_8280_2S_56,   "MV2_ARCH_INTEL_PLATINUM_8280_2S_56"},
     {MV2_ARCH_INTEL_PLATINUM_8170_2S_52,   "MV2_ARCH_INTEL_PLATINUM_8170_2S_52"},
     {MV2_ARCH_INTEL_GOLD_GENERIC,          "MV2_ARCH_INTEL_GOLD_GENERIC"},
     {MV2_ARCH_INTEL_GOLD_6132_2S_28,       "MV2_ARCH_INTEL_GOLD_6132_2S_28"},
@@ -192,6 +203,7 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_AMD_OPTERON_6276_64,  "MV2_ARCH_AMD_OPTERON_6276_64"},
     {MV2_ARCH_AMD_BULLDOZER_4274HE_16,"MV2_ARCH_AMD_BULLDOZER_4274HE_16"},
     {MV2_ARCH_AMD_EPYC_7551_64, "MV2_ARCH_AMD_EPYC_7551_64"},
+    {MV2_ARCH_AMD_EPYC_7742_128, "MV2_ARCH_AMD_EPYC_7742_128"},
 
     /* IBM Architectures */
     {MV2_ARCH_IBM_PPC,              "MV2_ARCH_IBM_PPC"},
@@ -199,7 +211,8 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_IBM_POWER9,           "MV2_ARCH_IBM_POWER9"},
 
     /* ARM Architectures */
-    {MV2_ARCH_ARM_CAVIUM_V8,           "MV2_ARCH_ARM_CAVIUM_V8"},
+    {MV2_ARCH_ARM_CAVIUM_V8_2S_28,  "MV2_ARCH_ARM_CAVIUM_V8_2S_28"},
+    {MV2_ARCH_ARM_CAVIUM_V8_2S_32,  "MV2_ARCH_ARM_CAVIUM_V8_2S_32"},
 
     /* Unknown */
     {MV2_ARCH_UNKWN,                "MV2_ARCH_UNKWN"},
@@ -361,10 +374,25 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
                     arch_type = MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32;
                 }
             }
-        } else if(48 == num_cpus || 52 == num_cpus){
-            // Map 8160 and 8170 (Diamond) Skylake cpus to 8170
-            if(NULL != strstr(model_name, INTEL_PLATINUM_GENERIC_MODEL_NAME)) {
-	        arch_type = MV2_ARCH_INTEL_PLATINUM_8170_2S_52;
+        /* Support Pitzer cluster */
+        } else if(40 == num_cpus){
+            if(NULL != strstr(model_name, INTEL_GOLD_GENERIC_MODEL_NAME)) { /* SkL Gold */
+                arch_type = MV2_ARCH_INTEL_PLATINUM_8170_2S_52; /* Use generic SKL tables */
+            }
+	/* detect skylake or cascade lake CPUs */
+        } else if(48 == num_cpus || 52 == num_cpus || 56 == num_cpus || 44 == num_cpus /* azure skx */){
+            if (NULL != strstr(model_name, INTEL_PLATINUM_GENERIC_MODEL_NAME)) {
+                arch_type = MV2_ARCH_INTEL_PLATINUM_8170_2S_52;
+            }
+
+            /* Check if the model is Cascade lake, if yes then change from generic */
+            if (NULL != strstr(model_name, INTEL_PLATINUM_8260_MODEL_NAME)) {
+                arch_type = MV2_ARCH_INTEL_PLATINUM_8260_2S_48;
+            }
+
+            /* Frontera */
+            if(NULL != strstr(model_name, INTEL_PLATINUM_8280_MODEL_NAME)) {
+                arch_type = MV2_ARCH_INTEL_PLATINUM_8280_2S_56; 
             }
         }  else if(36 == num_cpus || 72 == num_cpus){
             if(NULL != strstr(model_name, INTEL_E5_2695_V4_MODEL_NAME)) {
@@ -483,8 +511,12 @@ mv2_arch_type mv2_get_arch_type()
                     tmp = strtok(NULL, MV2_STR_WS);
                     if (! strncmp(tmp, MV2_STR_CAVIUM_ID, strlen(MV2_STR_CAVIUM_ID))) {
                         g_mv2_cpu_family_type = MV2_CPU_FAMILY_ARM;
-                        arch_type = MV2_ARCH_ARM_CAVIUM_V8;
                         g_mv2_cpu_model = MV2_ARM_CAVIUM_V8_MODEL;
+			if (num_cpus == 56) {
+			    arch_type = MV2_ARCH_ARM_CAVIUM_V8_2S_28;
+			} else if (num_cpus == 64) {
+			    arch_type = MV2_ARCH_ARM_CAVIUM_V8_2S_32;
+			}
                         continue;
                     }
                 }
@@ -522,8 +554,10 @@ mv2_arch_type mv2_get_arch_type()
 
                     } else if(24 == num_cpus) {
                         arch_type =  MV2_ARCH_AMD_MAGNY_COURS_24;
-                    } else if(64 == num_cpus) {
+                    } else if(64 == num_cpus || 60 == num_cpus /* azure vm */) {
                         arch_type =  MV2_ARCH_AMD_EPYC_7551_64;
+                    } else if(128 == num_cpus) { /* rome */
+                        arch_type = MV2_ARCH_AMD_EPYC_7742_128;
                     }
                 } else if(4 == num_sockets) {
                     if(16 == num_cpus) {
@@ -588,24 +622,26 @@ int mv2_is_arch_hca_type(mv2_arch_hca_type arch_hca_type,
         mv2_arch_type arch_type, mv2_hca_type hca_type)
 {
     int ret;
-    if (MV2_ARCH_ANY == arch_type && MV2_HCA_ANY == hca_type){
+    uint16_t  my_num_cores, my_arch_type, my_hca_type;
+    uint64_t mask = UINT16_MAX;
+    my_num_cores = (arch_hca_type & mask);
+    arch_hca_type >>= 16;
+    my_hca_type = arch_hca_type & mask;
+    arch_hca_type >>= 16;
+    my_arch_type = arch_hca_type & mask;
+
+    table_arch_tmp = my_arch_type;
+    table_hca_tmp = my_hca_type;
+
+    if (((MV2_ARCH_ANY == arch_type) || (MV2_ARCH_ANY == my_arch_type)) &&
+        ((MV2_HCA_ANY == hca_type) || (MV2_HCA_ANY == my_hca_type))) {
         ret = 1;
-
-    } else if (MV2_ARCH_ANY == arch_type){
-        mv2_arch_hca_type tmp = UINT32_MAX;
-        mv2_arch_hca_type input = arch_hca_type & tmp;
-        ret = (input==hca_type) ? 1: 0;
-
-    } else if (MV2_HCA_ANY == hca_type){
-        mv2_arch_hca_type tmp = UINT32_MAX;
-        tmp = tmp << 32;
-        mv2_arch_hca_type input = arch_hca_type & tmp;
-        ret = (input==arch_type) ? 1: 0;
-
+    } else if (MV2_ARCH_ANY == arch_type){  // cores
+        ret = (my_hca_type==hca_type) ? 1: 0;
+    } else if ((MV2_HCA_ANY == hca_type) || (MV2_HCA_ANY == my_hca_type)) {
+        ret = (my_arch_type==arch_type) ? 1: 0;
     } else{
-        uint64_t value = arch_type;
-        value = value << 32 | hca_type;
-        ret = (value==arch_hca_type) ? 1:0;
+        ret = (my_arch_type==arch_type && my_hca_type==hca_type) ? 1:0;
     }
     return ret;
 }

@@ -17,8 +17,16 @@
 
 #include "mpiimpl.h"
 #include "coll_shmem.h"
+#include "common_tuning.h"
 #include "bcast_tuning.h"
 #include "scatter_tuning.h"
+
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_mcast);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_binomial);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_direct);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_direct_blk);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_two_level_binomial);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_two_level_direct);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_scatter_mcast);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_scatter_binomial);
@@ -106,7 +114,8 @@ int MPIR_Scatter_mcst_MV2(const void *sendbuf,
                               int recvcnt,
                               MPI_Datatype recvtype,
                               int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
-{ 
+{
+    MPIR_TIMER_START(coll,scatter,mcast); 
     int mpi_errno=MPI_SUCCESS; 
     int mpi_errno_ret=MPI_SUCCESS; 
     int rank=comm_ptr->rank, local_rank; 
@@ -267,6 +276,7 @@ int MPIR_Scatter_mcst_MV2(const void *sendbuf,
 
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
+    MPIR_TIMER_END(coll,scatter,mcast);
     return mpi_errno;
   fn_fail:
     goto fn_exit;
@@ -302,6 +312,7 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
                               MPI_Datatype recvtype,
                               int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,scatter,binomial);
     MPI_Status status;
     MPI_Aint extent = 0;
     int rank, comm_size, is_homogeneous, sendtype_size;
@@ -323,6 +334,8 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
 
     if (((rank == root) && (sendcnt == 0))
         || ((rank != root) && (recvcnt == 0))) {
+
+        MPIR_TIMER_END(coll,scatter,binomial);
         return MPI_SUCCESS;
     }
 
@@ -705,6 +718,7 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
 
+    MPIR_TIMER_END(coll,scatter,binomial);
     return (mpi_errno);
 }
 
@@ -720,6 +734,7 @@ int MPIR_Scatter_MV2_Direct(const void *sendbuf,
                             MPI_Datatype recvtype,
                             int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,scatter,direct);
     int rank, comm_size;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -825,6 +840,7 @@ int MPIR_Scatter_MV2_Direct(const void *sendbuf,
 
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
+    MPIR_TIMER_END(coll,scatter,direct);
     return mpi_errno;
   fn_fail:
     goto fn_exit;
@@ -842,7 +858,8 @@ int MPIR_Scatter_MV2_Direct_Blk(const void *sendbuf,
                             int recvcnt,
                             MPI_Datatype recvtype,
                             int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
-{
+{   
+    MPIR_TIMER_START(coll,scatter,direct_blk);
     int rank, comm_size;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -920,6 +937,7 @@ int MPIR_Scatter_MV2_Direct_Blk(const void *sendbuf,
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
 
   fn_exit:
+    MPIR_TIMER_END(coll,scatter,direct_blk);
     return mpi_errno;
   fn_fail:
     goto fn_exit;
@@ -939,6 +957,7 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
                                         int root, MPID_Comm * comm_ptr,
                                         MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,scatter,two_level_binomial);
     int comm_size, rank;
     int local_rank, local_size;
     int leader_comm_rank, leader_comm_size;
@@ -961,6 +980,8 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
 
     if (((rank == root) && (sendcnt == 0))
         || ((rank != root) && (recvcnt == 0))) {
+
+        MPIR_TIMER_END(coll,scatter,two_level_binomial);
         return MPI_SUCCESS;
     }
     /* check if multiple threads are calling this collective function */
@@ -1171,6 +1192,7 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
     }
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
 
+    MPIR_TIMER_END(coll,scatter,two_level_binomial);
     return (mpi_errno);
 }
 
@@ -1187,6 +1209,7 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
                                       int root, MPID_Comm * comm_ptr,
                                       MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,scatter,two_level_direct);
     int comm_size, rank;
     int local_rank, local_size;
     int leader_comm_rank, leader_comm_size;
@@ -1208,6 +1231,8 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
 
     if (((rank == root) && (sendcnt == 0))
         || ((rank != root) && (recvcnt == 0))) {
+
+        MPIR_TIMER_END(coll,scatter,two_level_direct);
         return MPI_SUCCESS;
     }
 
@@ -1414,6 +1439,7 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
     }
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
 
+    MPIR_TIMER_END(coll,scatter,two_level_direct);
     return (mpi_errno);
 }
 
@@ -1486,14 +1512,7 @@ int MPIR_Scatter_index_tuned_intra_MV2(const void *sendbuf,
             conf_index = 0;
             goto conf_check_end;
         }
-        do {
-            if (local_size == mv2_scatter_indexed_table_ppn_conf[i]) {
-                conf_index = i;
-                partial_sub_ok = 1;
-                break;
-            }
-            i++;
-        } while(i < mv2_scatter_indexed_num_ppn_conf);
+        FIND_PPN_INDEX  (scatter, local_size,conf_index, partial_sub_ok)
     }
     
     if (partial_sub_ok != 1) {

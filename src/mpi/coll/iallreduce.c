@@ -645,6 +645,7 @@ fn_fail:
 #if defined (_SHARP_SUPPORT_)
 #include "api/sharp_coll.h"
 #include "ibv_sharp.h"
+#include "iallreduce_tuning.h"
 extern int mv2_sharp_tuned_msg_size;
 #endif
 

@@ -119,7 +119,7 @@ extern int MPIR_Alltoallv_intra_scatter_MV2(const void *sendbuf,
 
 
 /* Architecture detection tuning */
-int MV2_set_alltoallv_tuning_table(int heterogeneity);
+int MV2_set_alltoallv_tuning_table(int heterogeneity, struct coll_info *colls_arch_hca);
 
 /* Function to clean free memory allocated by bcast tuning table*/
 void MV2_cleanup_alltoallv_tuning_table();

@@ -111,7 +111,9 @@ static int hca_check(int rank) {
        */
     }
 
-    ibv_free_device_list(dev_list);
+    if (dev_list) {
+        ibv_free_device_list(dev_list);
+    }
     return mpi_errno;
 }
 

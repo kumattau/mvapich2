@@ -1301,6 +1301,14 @@ mv2_env_param_list_t  param_list[] = {
     1,
     NULL    },
 {
+    MV2_SMP_RNDV_PROTOCOL,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_pt2pt,
+    "MV2_SMP_RNDV_PROTOCOL",
+    &smp_rndv_protocol,
+    1,
+    NULL    },
+{
     MV2_SMALL_MSG_RAIL_SHARING_POLICY,
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_pt2pt,
@@ -1562,11 +1570,11 @@ mv2_env_param_list_t  param_list[] = {
     1,
     NULL    },
 {
-    MV2_SMPI_LENGTH_QUEUE,
+    MV2_SMP_QUEUE_LENGTH,
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_intranode,
-    "MV2_SMPI_LENGTH_QUEUE",
-    &s_smpi_length_queue,
+    "MV2_SMP_QUEUE_LENGTH",
+    &s_smp_queue_length,
     1,
     NULL    },
 {

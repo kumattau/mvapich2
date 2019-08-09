@@ -20,6 +20,8 @@
 #include <mv2_arch_hca_detect.h>
 #include <upmi.h>
 
+extern int g_mv2_num_cpus;
+
 volatile unsigned int MPIDI_CH3I_progress_completion_count = 0; //ODOT: what is this ?
 volatile int MPIDI_CH3I_progress_blocked = FALSE;
 volatile int MPIDI_CH3I_progress_wakeup_signalled = FALSE;
@@ -171,8 +173,10 @@ static MPID_CommOps comm_fns = {
     split_type
 };
 
-void mv2_print_env_info(void)
+void mv2_print_env_info(struct coll_info *colls_arch_hca)
 {
+    int i = 0;
+
     mv2_arch_type arch_type = MV2_GET_ARCH(g_mv2_arch_hca_type);
     mv2_hca_type hca_type = MV2_GET_HCA(g_mv2_arch_hca_type);
     mv2_cpu_family_type family_type = mv2_get_cpu_family();
@@ -194,10 +198,18 @@ void mv2_print_env_info(void)
             mv2_shm_rndv_thresh);
     fprintf(stderr, "\tHFI Eagersize                  : %d\n",
             mv2_hfi_rndv_thresh);
+    fprintf(stderr, "\t%s                  : %s %s\n", "Tuning Table:", mv2_get_arch_name(colls_arch_hca[0].arch_type), mv2_get_hca_name(colls_arch_hca[0].hca_type));
     fprintf(stderr,
             "---------------------------------------------------------------------\n");
-    fprintf(stderr,
-            "---------------------------------------------------------------------\n");
+
+    if (atoi(getenv("MV2_SHOW_ENV_INFO")) >= 3) {
+        fprintf(stderr, "\nCollective Tuning Tables\n");
+        fprintf(stderr, "\t%-20s %-40s %-40s\n", "Collective", "Architecture", "Interconnect");
+        for(i = 0; i < colls_max; i++) {
+            fprintf(stderr, "\t%-20s %-40s %-40s\n", collective_names[i], mv2_get_arch_name(colls_arch_hca[i].arch_type), mv2_get_hca_name(colls_arch_hca[i].hca_type));
+        }
+        fprintf(stderr, "\n---------------------------------------------------------------------\n");
+    }
 }
 
 #undef FUNCNAME
@@ -212,8 +224,8 @@ mv2_arch_hca_type MV2_get_arch_hca_type(void)
 #if defined(HAVE_LIBIBVERBS)
     int num_devices = 0, i;
     struct ibv_device **dev_list = NULL;
-    mv2_arch_type arch_type = mv2_get_arch_type();
     mv2_hca_type hca_type = 0;
+    mv2_arch_type arch_type = 0;
     dev_list = ibv_get_device_list(&num_devices);
 
     for(i=0; i<num_devices; i++){
@@ -225,8 +237,16 @@ mv2_arch_hca_type MV2_get_arch_hca_type(void)
     if(i == num_devices)
         hca_type = MV2_HCA_ANY;
 
-    g_mv2_arch_hca_type = (uint64_t)arch_type << 32 | hca_type;
-    ibv_free_device_list(dev_list);
+    arch_type = mv2_get_arch_type();
+    g_mv2_arch_hca_type = arch_type;
+    g_mv2_arch_hca_type <<= 16;
+    g_mv2_arch_hca_type |= hca_type;
+    g_mv2_arch_hca_type <<= 16;
+    g_mv2_arch_hca_type |= g_mv2_num_cpus;
+
+    if (dev_list) {
+        ibv_free_device_list(dev_list);
+    }
 #else
     g_mv2_arch_hca_type = mv2_get_arch_hca_type(NULL);
 #endif
@@ -286,7 +306,8 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
      * Its ok to pass heterogeneity as 0. We anyway fall-back to the 
      * basic case for PSM */ 
     heterogeneity = !mv2_homogeneous_cluster;
-    mpi_errno = MV2_collectives_arch_init(heterogeneity); 
+    struct coll_info colls_arch_hca[colls_max];
+    mpi_errno = MV2_collectives_arch_init(heterogeneity, colls_arch_hca); 
     if (mpi_errno != MPI_SUCCESS) {
         MPIR_ERR_POP(mpi_errno);
     }
@@ -428,7 +449,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     psm_other_init(pg);
 
     if(0==pg_rank && g_mv2_show_env_info){
-        mv2_print_env_info();
+        mv2_print_env_info(colls_arch_hca);
     }
 
     mpi_errno = MPIDI_CH3U_Comm_register_destroy_hook(MPIDI_CH3I_comm_destroy, NULL);

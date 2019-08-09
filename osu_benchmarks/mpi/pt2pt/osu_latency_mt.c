@@ -1,4 +1,4 @@
-#define BENCHMARK "OSU MPI Multi-threaded Latency Test"
+#define BENCHMARK "OSU MPI%s Multi-threaded Latency Test"
 /*
  * Copyright (C) 2002-2019 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 
@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
     if(myid == 0) {
         printf("# Number of Sender threads: %d \n# Number of Receiver threads: %d\n",num_threads_sender,options.num_threads );
     
-        fprintf(stdout, HEADER);
+        print_header(myid, LAT_MT);
         fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Latency (us)");
         fflush(stdout);
 
@@ -179,6 +179,7 @@ void * recv_thread(void *arg) {
     unsigned long align_size = sysconf(_SC_PAGESIZE);
     int size, i, val;
     int iter;
+    int myid;
     char * ret = NULL;
     char *s_buf, *r_buf;
     thread_tag_t *thread_id;
@@ -186,14 +187,16 @@ void * recv_thread(void *arg) {
     thread_id = (thread_tag_t *)arg;
     val = thread_id->id;
 
-    if (posix_memalign((void**)&s_buf, align_size, options.max_message_size)) {
-        fprintf(stderr, "Error allocating host memory\n");
-        *ret = '1';
-        return ret;
+    MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &myid));
+
+    if (NONE != options.accel && init_accel()) {
+        fprintf(stderr, "Error initializing device\n");
+        exit(EXIT_FAILURE);
     }
 
-    if (posix_memalign((void**)&r_buf, align_size, options.max_message_size)) {
-        fprintf(stderr, "Error allocating host memory\n");
+    if (allocate_memory_pt2pt(&s_buf, &r_buf, myid)) {
+        /* Error allocating memory */
+        fprintf(stderr, "Error allocating memory on Rank %d, thread ID %d\n", myid, thread_id->id);
         *ret = '1';
         return ret;
     }
@@ -223,10 +226,8 @@ void * recv_thread(void *arg) {
         }  
 
         /* touch the data */
-        for(i = 0; i < size; i++) {
-            s_buf[i] = 'a';
-            r_buf[i] = 'b';
-        }
+        set_buffer_pt2pt(s_buf, myid, options.accel, 'a', size);
+        set_buffer_pt2pt(r_buf, myid, options.accel, 'b', size);
 
         for(i = val; i < (options.iterations + options.skip); i += options.num_threads) {
             if(options.sender_thread>1) {
@@ -244,8 +245,7 @@ void * recv_thread(void *arg) {
         iter++;
     }
 
-    free(r_buf);
-    free(s_buf);
+    free_memory(s_buf, r_buf, myid);
 
     sleep(1);
 
@@ -256,6 +256,7 @@ void * recv_thread(void *arg) {
 void * send_thread(void *arg) {
     unsigned long align_size = sysconf(_SC_PAGESIZE);
     int size, i, val, iter;
+    int myid;
     char *s_buf, *r_buf;
     double t = 0, latency;
     thread_tag_t *thread_id = (thread_tag_t *)arg;
@@ -263,14 +264,16 @@ void * send_thread(void *arg) {
 
     val = thread_id->id;
 
-    if (posix_memalign((void**)&s_buf, align_size, options.max_message_size)) {
-        fprintf(stderr, "Error allocating host memory\n");
-        *ret = '1';
-        return ret;
+    MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &myid));
+
+    if (NONE != options.accel && init_accel()) {
+        fprintf(stderr, "Error initializing device\n");
+        exit(EXIT_FAILURE);
     }
 
-    if (posix_memalign((void**)&r_buf, align_size, options.max_message_size)) {
-        fprintf(stderr, "Error allocating host memory\n");
+    if (allocate_memory_pt2pt(&s_buf, &r_buf, myid)) {
+        /* Error allocating memory */
+        fprintf(stderr, "Error allocating memory on Rank %d, thread ID %d\n", myid, thread_id->id);
         *ret = '1';
         return ret;
     }
@@ -301,10 +304,9 @@ void * send_thread(void *arg) {
         }  
 
         /* touch the data */
-        for(i = 0; i < size; i++) {
-            s_buf[i] = 'a';
-            r_buf[i] = 'b';
-        }
+        set_buffer_pt2pt(s_buf, myid, options.accel, 'a', size);
+        set_buffer_pt2pt(r_buf, myid, options.accel, 'b', size);
+
         int flag_print=0;
         for(i = val; i < options.iterations + options.skip; i+=num_threads_sender) {
             if(i == options.skip) {
@@ -333,7 +335,7 @@ void * send_thread(void *arg) {
             t_end = MPI_Wtime ();
             t = t_end - t_start;
 
-            latency = (t) * 1.0e6 / (2.0 * options.iterations);
+            latency = (t) * 1.0e6 / (2.0 * options.iterations / num_threads_sender);
             fprintf(stdout, "%-*d%*.*f\n", 10, size, FIELD_WIDTH, FLOAT_PRECISION,
                     latency);
             fflush(stdout);
@@ -341,8 +343,7 @@ void * send_thread(void *arg) {
         iter++;
     }
 
-    free(r_buf);
-    free(s_buf);
+    free_memory(s_buf, r_buf, myid);
 
     return 0;
 }

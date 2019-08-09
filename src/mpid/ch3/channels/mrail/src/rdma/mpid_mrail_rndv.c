@@ -47,6 +47,9 @@ int MPID_MRAIL_RndvSend (
     MPIDI_STATE_DECL(MPID_STATE_MRAIL_RNDVSEND);
     MPIDI_FUNC_ENTER(MPID_STATE_MRAIL_RNDVSEND);
 	
+    PRINT_DEBUG(DEBUG_RNDV_verbose,
+            "Rndv Send to rank: %d, tag: %d, context: %d, buf: %p, size: %llu, contig: %d\n",
+            rank, tag, comm->context_id + context_offset, buf, data_sz, dt_contig);
     MPIU_DBG_MSG_D(CH3_OTHER,VERBOSE,
 		   "sending rndv RTS, data_sz=" MPIDI_MSG_SZ_FMT, data_sz);
 	    
@@ -95,6 +98,11 @@ int MPID_MRAIL_RndvSend (
 	sreq->dev.OnFinal = 0;
 	mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq, &sreq->dev.iov[0],
 						     &sreq->dev.iov_count);
+    /* Fallback to R3 for non-contig transfers */
+    if (IS_VC_SMP(vc)) {
+        sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
+        MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(sreq);
+    }
 #if defined(_ENABLE_CUDA_)
     if (rdma_enable_cuda && sreq->dev.OnDataAvail == 
                         MPIDI_CH3_ReqHandler_pack_cudabuf) {
@@ -158,6 +166,11 @@ int MPID_MRAIL_RndvRecv (MPIDI_VC_t* vc, MPID_Request* rreq)
     /* A rendezvous request-to-send (RTS) message has arrived.  We need
        to send a CTS message to the remote process. */
     
+    PRINT_DEBUG(DEBUG_RNDV_verbose,
+            "Rndv Recv from rank: %d, tag: %d, context: %d, buf: %p, size: %llu\n",
+            rreq->dev.match.parts.rank, rreq->dev.match.parts.tag,
+            rreq->dev.match.parts.context_id, rreq->dev.user_buf, rreq->dev.recv_data_sz);
+
     if (rreq->dev.recv_data_sz == 0) {
 	MPID_Request_complete(rreq);
     }
@@ -171,7 +184,11 @@ int MPID_MRAIL_RndvRecv (MPIDI_VC_t* vc, MPID_Request* rreq)
 	}
     }
 
-    mpi_errno = MPIDI_CH3_iStartRndvTransfer (vc, rreq);
+    if (MPIDI_CH3_RECV_REQ_IS_READ(rreq)) {
+        mpi_errno = MPIDI_CH3_RecvRndv(vc, rreq);
+    } else {
+        mpi_errno = MPIDI_CH3_iStartRndvTransfer (vc, rreq);
+    }
 
     if (mpi_errno != MPI_SUCCESS) {
 	MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,

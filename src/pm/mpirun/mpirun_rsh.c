@@ -2363,6 +2363,7 @@ void child_handler(int signal)
 {
     int status, pid;
     static int count = 0;
+    int is_dpm_signal = 0;
 
     int check_mpirun = 1;
     list_pid_mpirun_t *curr = dpm_mpirun_pids;
@@ -2375,6 +2376,8 @@ void child_handler(int signal)
         do {
             pid = waitpid(-1, &status, WNOHANG);
         } while (pid == -1 && errno == EINTR);
+
+        is_dpm_signal = 0;
 
         // Debug output
         PRINT_DEBUG(DEBUG_Fork_verbose, "waitpid return pid = %d\n", pid);
@@ -2426,6 +2429,7 @@ void child_handler(int signal)
         if (check_mpirun) {
             while (curr != NULL) {
                 if (pid == curr->pid) {
+                    is_dpm_signal = 1;
                     if (prev == NULL)
                         dpm_mpirun_pids = (list_pid_mpirun_t *) curr->next;
                     else
@@ -2474,7 +2478,7 @@ void child_handler(int signal)
             continue;
         }
 #endif
-        if (!WIFEXITED(status) || WEXITSTATUS(status)) {
+        if (!is_dpm_signal && (!WIFEXITED(status) || WEXITSTATUS(status))) {
             /*
              * mpirun_rsh did not successfully accept the connections of each
              * mpispawn before one of the processes terminated abnormally or

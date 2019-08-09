@@ -22,7 +22,7 @@ enum {
 int mv2_size_red_scat_block_tuning_table = 0;
 mv2_red_scat_block_tuning_table *mv2_red_scat_block_thresholds_table = NULL;
 
-int MV2_set_red_scat_block_tuning_table(int heterogeneity)
+int MV2_set_red_scat_block_tuning_table(int heterogeneity, struct coll_info *colls_arch_hca)
 {
 #ifndef CHANNEL_PSM
     if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),

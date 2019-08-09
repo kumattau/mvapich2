@@ -207,7 +207,7 @@ main (int argc, char *argv[])
      * Allocate Memory
      */
     use_heap = !strncmp(argv[1], "heap", 10);
-    alignment = use_heap ? sysconf(_SC_PAGESIZE) : 4096;
+    alignment = use_heap ? sysconf(_SC_PAGESIZE) : MESSAGE_ALIGNMENT_MR;
     msg_buffer = allocate_memory(v.me, alignment, use_heap);
     aligned_buffer = align_memory((unsigned long)msg_buffer, alignment);
     memset(aligned_buffer, 0, MAX_MESSAGE_SIZE * OSHM_LOOP_LARGE_MR);

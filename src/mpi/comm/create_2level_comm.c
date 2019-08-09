@@ -724,6 +724,7 @@ int create_allgather_comm(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
             break;
         }
     }
+
     mpi_errno=PMPI_Group_free(&comm_group);
     if(mpi_errno) {
         MPIR_ERR_POP(mpi_errno);
@@ -743,6 +744,7 @@ int create_sharp_comm(MPI_Comm comm, int size, int my_rank)
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm* comm_ptr = NULL;
     int leader_group_size = 0, my_local_id = -1;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
     if (size <= 1) {
         return mpi_errno;
@@ -784,14 +786,27 @@ int create_sharp_comm(MPI_Comm comm, int size, int my_rank)
             PRINT_ERROR("Invalid value for MV2_ENABLE_SHARP\n");
             mpi_errno = MPI_ERR_OTHER;
         }
+        int can_support_sharp = 0;
+        can_support_sharp = (mpi_errno == SHARP_COLL_SUCCESS) ? 1 : 0;
+
+
+        int global_sharp_init_ok = 0;
+        mpi_errno = MPIR_Allreduce_impl(&can_support_sharp, &global_sharp_init_ok,  1, 
+                                        MPI_INT, MPI_LAND, comm_ptr, &errflag);
         if (mpi_errno) {
+           MPIR_ERR_POP(mpi_errno);  
+        }
+
+        if (global_sharp_init_ok == 0) {
            mv2_free_sharp_handlers(comm_ptr->dev.ch.sharp_coll_info); 
            /* avoid using sharp and fall back to other designs */
            comm_ptr->dev.ch.sharp_coll_info = NULL;
+           comm_ptr->dev.ch.is_sharp_ok = -1; /* we set it to -1 so that we do not get back to here anymore */
            mpi_errno = MPI_SUCCESS;
+           PRINT_DEBUG(DEBUG_Sharp_verbose, "Falling back from Sharp  \n");
            goto sharp_fall_back;
-        }
-        
+        } 
+
         sharp_coll_info->sharp_comm_module = MPIU_Malloc(sizeof(coll_sharp_module_t));
         MPIU_Memset(sharp_coll_info->sharp_comm_module, 0, sizeof(coll_sharp_module_t));
         /* create sharp module which contains sharp communicator */
@@ -809,6 +824,8 @@ int create_sharp_comm(MPI_Comm comm, int size, int my_rank)
             } 
         }
         comm_ptr->dev.ch.is_sharp_ok = 1;
+
+        PRINT_DEBUG(DEBUG_Sharp_verbose, "Sharp was initialized successfully \n");
 
         /* If the user does not set the MV2_SHARP_MAX_MSG_SIZE then try to tune
          * mv2_sharp_tuned_msg_size variable based on node count */

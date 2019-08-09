@@ -480,13 +480,13 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int subrail);
 int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 int rdma_find_active_port(struct ibv_context *context, struct ibv_device *ib_dev);
 int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
-                           int *num_usable_hcas);
+                           struct ibv_device **usable_dev_list, int *num_usable_hcas);
 int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type);
 int  rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 void  rdma_set_default_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 void rdma_get_user_parameters(int num_proc, int me);
 void rdma_get_pm_parameters(mv2_MPIDI_CH3I_RDMA_Process_t *proc);
-void mv2_print_env_info(mv2_MPIDI_CH3I_RDMA_Process_t *proc);
+void mv2_print_env_info(mv2_MPIDI_CH3I_RDMA_Process_t *proc, struct coll_info *colls_arch_hca);
 int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
               int pg_rank, int pg_size);
 int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
@@ -568,6 +568,8 @@ void set_pkey_index(uint16_t * pkey_index, int hca_num, int port_num);
 
 void init_apm_lock(void);
 
+void MRAILI_RDMA_Put_finish(MPIDI_VC_t * vc, 
+        MPID_Request * sreq, int rail);
 void MRAILI_RDMA_Get_finish(MPIDI_VC_t * vc, 
         MPID_Request * rreq, int rail);
         

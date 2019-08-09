@@ -901,6 +901,8 @@ void flush_dereg_mrs_external()
     for(j = 0; j < n_dereg_mr; j++) {
         
         d = deregister_mr_array[j];
+        PRINT_DEBUG(DEBUG_DREG_verbose, "Trying to free dreg %p. ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                    d, d->refcount, d->is_valid, d->npages, d->pagenum);
         MPIU_Assert(d->is_valid == 0);
         MPIU_Assert(d->refcount == 0);
        
@@ -925,6 +927,9 @@ void flush_dereg_mrs_external()
                 DREG_REMOVE_FROM_UNUSED_LIST(d);
             }
 
+            d->in_deregister_mr_array = 0;
+            PRINT_DEBUG(DEBUG_DREG_verbose, "Adding dreg %p to free list. ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                        d, d->refcount, d->is_valid, d->npages, d->pagenum);
             DREG_ADD_TO_FREE_LIST(d);
     }
 
@@ -961,6 +966,8 @@ dreg_entry *dreg_register(void* buf, size_t len)
     {
         ++dreg_stat_cache_hit;
         dreg_incr_refcount(d);
+        PRINT_DEBUG(DEBUG_DREG_verbose, "Dreg hit with dreg %p for buf %p, ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                    d, buf, d->refcount, d->is_valid, d->npages, d->pagenum);
         MPIR_T_PVAR_COUNTER_INC(MV2, mv2_reg_cache_hits, 1);
     }
     else
@@ -984,12 +991,15 @@ dreg_entry *dreg_register(void* buf, size_t len)
 #if !defined(DISABLE_PTMALLOC)
                 unlock_dreg();
 #endif /* !defined(DISABLE_PTMALLOC) */
+                PRINT_DEBUG(DEBUG_DREG_verbose, "Eviction failed\n");
                 return NULL;
             }
+            PRINT_DEBUG(DEBUG_DREG_verbose, "Eviction sucessful\n");
             /* eviction successful, try again */
         }
-
         dreg_incr_refcount(d);
+        PRINT_DEBUG(DEBUG_DREG_verbose, "Dreg miss for %p. Dreg = %p ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                    buf, d, d->refcount, d->is_valid, d->npages, d->pagenum);
     }
 
 #if !defined(DISABLE_PTMALLOC)
@@ -1035,14 +1045,17 @@ dreg_entry* dreg_get(void)
     if (d != NULL)
     {
         d->refcount = 0;
+        d->in_deregister_mr_array = 0;
         d->next_unused = NULL;
         d->prev_unused = NULL;
         d->next = NULL;
+        PRINT_DEBUG(DEBUG_DREG_verbose, "Got Dreg %p from free list. ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                    d, d->refcount, d->is_valid, d->npages, d->pagenum);
     } 
 #if defined(DEBUG)
     else
     {
-        DEBUG_PRINT("dreg_get: no free dreg entries");
+        PRINT_DEBUG(DEBUG_DREG_verbose, "No free dreg entries\n");
     }
 #endif /* defined(DEBUG) */
     return d;
@@ -1066,6 +1079,8 @@ void dreg_decr_refcount(dreg_entry* d)
     MPIU_Assert(d->refcount > 0);
     --d->refcount;
 
+    PRINT_DEBUG(DEBUG_DREG_verbose, "Decrementing refcount for dreg %p. ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                d, d->refcount, d->is_valid, d->npages, d->pagenum);
     if (d->refcount == 0)
     {
 #ifdef NEMESIS_BUILD
@@ -1097,6 +1112,8 @@ void dreg_decr_refcount(dreg_entry* d)
             }
 
             dreg_remove(d);
+            PRINT_DEBUG(DEBUG_DREG_verbose, "Adding dreg %p to free list. ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                        d, d->refcount, d->is_valid, d->npages, d->pagenum);
             DREG_ADD_TO_FREE_LIST(d);
         }
     }
@@ -1119,6 +1136,8 @@ void dreg_incr_refcount(dreg_entry* d)
     }
 
     ++d->refcount;
+    PRINT_DEBUG(DEBUG_DREG_verbose, "Incrementing refcount for dreg %p. ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                d, d->refcount, d->is_valid, d->npages, d->pagenum);
 }
 
 /*
@@ -1138,6 +1157,10 @@ int dreg_evict()
 
     dreg_entry* d = dreg_unused_tail;
 
+    while (d && d->in_deregister_mr_array) {
+        d = d->next_unused;
+    }
+
     if (d == NULL)
     {
         /* no entries left on unused list, return failure */
@@ -1151,6 +1174,8 @@ int dreg_evict()
     MPIU_Assert(d->refcount == 0);
 #endif
 
+    PRINT_DEBUG(DEBUG_DREG_verbose, "Trying to evict dreg %p. ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                d, d->refcount, d->is_valid, d->npages, d->pagenum);
 #ifdef NEMESIS_BUILD
     for (; hca_index < ib_hca_num_hcas; ++hca_index)
 #else
@@ -1161,6 +1186,8 @@ int dreg_evict()
         {
             d->is_valid = 0;
 
+            PRINT_DEBUG(DEBUG_DREG_verbose, "Unregistering dreg %p: ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                        d, d->refcount, d->is_valid, d->npages, d->pagenum);
             if (deregister_memory(d->memhandle[hca_index]))
             {
                 ibv_error_abort(IBV_RETURN_ERR, "Deregister fails\n");
@@ -1169,6 +1196,8 @@ int dreg_evict()
     }
 
     dreg_remove(d);
+    PRINT_DEBUG(DEBUG_DREG_verbose, "Adding dreg %p to free list: ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                d, d->refcount, d->is_valid, d->npages, d->pagenum);
     DREG_ADD_TO_FREE_LIST(d);
     ++dreg_stat_evicted;
     return 1;
@@ -1346,10 +1375,15 @@ find_buf:
                 /* OR: This memory region is in the process of
                 * being deregistered. Leave it alone! */
 
+                PRINT_DEBUG(DEBUG_DREG_verbose, "Not freeing dreg %p. ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                            d, d->refcount, d->is_valid, d->npages, d->pagenum);
                 break;
             }
             deregister_mr_array[n_dereg_mr] = d;
+            d->in_deregister_mr_array = 1;
             d->is_valid = 0;
+            PRINT_DEBUG(DEBUG_DREG_verbose, "Trying to free associated dreg %p. ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                        d, d->refcount, d->is_valid, d->npages, d->pagenum);
             /*
             *  dreg_remove can call free() while removing vma_entry
             *  It can lead to resursion here. but, still we have added 

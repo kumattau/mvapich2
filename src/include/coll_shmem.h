@@ -25,6 +25,8 @@
 #include <math.h>
 #include "mpidimpl.h"
 
+#include "mv2_arch_hca_detect.h"
+
 #if defined(_SMP_LIMIC_)
 #define LIMIC_COLL_NUM_COMM  128
 #endif /* #if defined(_SMP_LIMIC_) */ 
@@ -67,7 +69,7 @@
 #define SHMEM_AVAIL(a)                                    \
  ((a & 0xFFFFFFFFFFFFFFF8) - SHMEM_CACHE_LINE_SIZE)
 
-#elif defined(_X86_64_)
+#elif defined(__x86_64__)
 
 #define SHMEM_CACHE_LINE_SIZE 128
 #define SHMEM_ALIGN(a)                                    \
@@ -149,6 +151,7 @@ struct allgatherv_tuning{
     int switchp;
 };
 
+
 #define BCAST_LEN 20
 #define SHMEM_BCAST_FLAGS	1024
 /*
@@ -165,6 +168,7 @@ extern int mv2_shmem_coll_num_procs;
 extern int mv2_shmem_coll_spin_count;
 extern int mv2_enable_shmem_collectives;
 int is_shmem_collectives_enabled();
+extern int mv2_two_level_comm_early_init_threshold;
 
 extern struct coll_runtime mv2_coll_param;
 void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
@@ -172,6 +176,8 @@ void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
 int create_allgather_comm(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 #define MV2_DEFAULT_COLL_SKIP_TABLE_THRESHOLD 1024
+
+extern int mv2_allred_use_ring;
 
 extern int mv2_coll_skip_table_threshold;
 extern int mv2_enable_skip_tuning_table_search;
@@ -196,8 +202,11 @@ extern int mv2_enable_ireduce;
 extern int mv2_enable_ireduce_scatter;
 extern int mv2_enable_iallreduce;
 
+/* Enable/Disable MPI_T pvar timers */
+extern int mv2_enable_pvar_timer;
+
 /* Use for collective tuning based on arch detection*/
-int MV2_collectives_arch_init(int heterogeneity);
+int MV2_collectives_arch_init(int heterogeneity, struct coll_info *collective_tuning_info);
 void MV2_collectives_arch_finalize();
 
 /* Use for allgather_osu.c */
@@ -279,6 +288,7 @@ extern int  mv2_alltoall_inplace_old;
 extern int  mv2_use_scatter_dest_alltoallv;
 
 extern int  mv2_allreduce_red_scat_allgather_algo_threshold;
+extern int  mv2_allreduce_ring_algo_threshold;
 extern int  mv2_allgather_ring_algo_threshold;
 extern int  mv2_allgather_cyclic_algo_threshold;
 extern int  mv2_redscat_cyclic_algo_threshold;
@@ -525,6 +535,16 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
 extern int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
                                 char *prefix, int *fd, size_t file_size);
 #endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
+
+static inline int Cyclic_Rank_list_mapper(MPID_Comm * comm_ptr, int idx)
+{
+    return comm_ptr->dev.ch.rank_list[idx];
+};
+
+static inline int Bunch_Rank_list_mapper(MPID_Comm * comm_ptr, int idx)
+{
+    return idx;
+};
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_shmem_coll_calls);
 

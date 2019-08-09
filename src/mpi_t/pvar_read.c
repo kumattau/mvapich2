@@ -34,6 +34,23 @@ int MPIR_T_pvar_read_impl(MPI_T_pvar_session session, MPI_T_pvar_handle handle, 
 {
     int i, mpi_errno = MPI_SUCCESS;
 
+     //Special handling for sub-comm counter pvars
+     #if ENABLE_PVAR_MV2
+     if(handle->info->bind == MPI_T_BIND_MPI_COMM && handle->info->varclass == MPI_T_PVAR_CLASS_COUNTER)
+     {
+     
+         MPID_Comm *comm = NULL;
+         MPID_Comm_get_ptr(*(MPI_Comm*)handle->obj_handle, comm);
+         int idx = handle->info->sub_comm_index;
+         int j = 0;
+         for (j = 0; j < handle->info->count; j++) {
+             ((unsigned long long *)buf)[j] = comm->sub_comm_counters[idx+j];
+         }
+
+         goto fn_exit;
+    }
+    #endif
+ 
     /* Reading a never started pvar, or a stopped and then reset wartermark,
      * will run into this nasty situation. MPI-3.0 did not define what error
      * code should be returned. We returned a generic MPI error code. With MPI-3.1

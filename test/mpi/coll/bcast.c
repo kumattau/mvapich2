@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
                         }
                         err = MTestCheckRecv(0, &recvtype);
                         if (err) {
-                            errs += errs;
+                            errs += err;
                         }
                     }
                 }

@@ -18,13 +18,27 @@
 #include "mpidimpl.h"
 #ifdef CHANNEL_MRAIL
 #include "mpid_mrail_rndv.h"
+#include "mpidi_ch3_impl.h"
 #endif
 
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2,expected_recvs_rendezvous);
 
 /*
  * This file contains the implementation of the rendezvous protocol
  * for MPI point-to-point messaging.
  */
+
+static inline int mv2_is_dt_contig(MPID_Request *req) {
+    int dt_contig = 1;
+    if (req->dev.datatype &&
+            HANDLE_GET_KIND(req->dev.datatype) != HANDLE_KIND_BUILTIN) {
+        MPID_Datatype * dt_ptr = NULL;
+        MPID_Datatype_get_ptr(req->dev.datatype, dt_ptr);
+        dt_contig = dt_ptr->is_contig;
+    }
+    return dt_contig;
+}
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_RndvSend
@@ -179,6 +193,156 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, MPI_Aint count,
     MPIDI_Request_set_msg_type((rreq_), (msg_type_));		\
 }
 
+#if defined(CHANNEL_MRAIL)
+void mv2_select_rndv_protocol(
+        MPIDI_VC_t *vc,
+        MPID_Request *rreq,
+        MPIDI_CH3_Pkt_rndv_req_to_send_t * rts_pkt)
+{
+    int protocol = rts_pkt->rndv.protocol;
+    int dt_contig = mv2_is_dt_contig(rreq);
+
+    if (protocol == MV2_RNDV_PROTOCOL_R3 || rreq->dev.iov_count > 1 || !dt_contig) {
+        /* Fallback to R3 for non-contiguous transfers */
+        protocol = MV2_RNDV_PROTOCOL_R3;
+    }
+    rreq->mrail.protocol = rts_pkt->rndv.protocol = protocol;
+}
+
+int MPIDI_CH3_PktHandler_SMP_RTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
+					MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
+{
+    int found, k;
+    int mpi_errno = MPI_SUCCESS;
+    MPID_Request * rreq;
+    MPID_Seqnum_t seqnum;
+    MPIDI_CH3_Pkt_rndv_req_to_send_t * rts_pkt = &pkt->rndv_req_to_send;
+
+    MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_POBJ_MSGQ_MUTEX);
+    if (*rreqp == NULL) {
+        rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&rts_pkt->match, &found);
+        MPIR_ERR_CHKANDJUMP1(!rreq, mpi_errno,MPI_ERR_OTHER, "**nomemreq", "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
+
+        if (found) {
+            PRINT_DEBUG(DEBUG_RNDV_verbose>1, "posted request found, "
+                    "rreq: %08x, rank: %d, tag: %d, context: %d, protocol: %d, recv_sz: %llu\n",
+                    rreq, rreq->dev.match.parts.rank, rreq->dev.match.parts.tag, 
+                    rreq->dev.match.parts.context_id, rreq->mrail.protocol, rreq->dev.recv_data_sz);
+        } else if (MPID_cc_get(rreq->cc) == 0) {
+            *rreqp = NULL;
+            goto fn_fail;
+        }
+
+        set_request_info(rreq, rts_pkt, MPIDI_REQUEST_RNDV_MSG);
+        MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_MSGQ_MUTEX);
+
+        *buflen = sizeof(MPIDI_CH3_Pkt_t);
+        mv2_select_rndv_protocol(vc, rreq, rts_pkt);
+    } else {
+        found = 1;
+        rreq = *rreqp;
+        *buflen = sizeof(MPIDI_CH3_Pkt_t);
+        set_request_info(rreq, rts_pkt, MPIDI_REQUEST_RNDV_MSG);
+        mv2_select_rndv_protocol(vc, rreq, rts_pkt);
+        PRINT_DEBUG(DEBUG_RNDV_verbose>1,
+                "Saved RTS, sreq: %08x, rank: %d, tag: %d, context: %d, protocol: %d, data_sz: %llu\n",
+                rts_pkt->sender_req_id, rts_pkt->match.parts.rank, rts_pkt->match.parts.tag, 
+                rts_pkt->match.parts.context_id, rts_pkt->rndv.protocol, rts_pkt->data_sz);
+    }
+
+    if (found) {
+
+        if(MV2_RNDV_PROTOCOL_RGET == rts_pkt->rndv.protocol) {
+
+            MPIDI_CH3I_MRAIL_SET_REQ_REMOTE_RNDV(rreq, rts_pkt);
+
+            mpi_errno = MPIDI_CH3U_Post_data_receive_found(rreq);
+            if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
+                MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER,"**ch3|loadsendiov");
+            }
+
+            mpi_errno = MPIDI_CH3_Prepare_rndv_get(vc, rreq);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
+            }
+
+            if (!rdma_rndv_immediate) {
+                RENDEZVOUS_IN_PROGRESS(vc, rreq);
+                rreq->mrail.nearly_complete = 0;
+                PUSH_FLOWLIST(vc);
+            } else {
+                mpi_errno = MPIDI_CH3_Rendezvous_push(vc, rreq);
+                if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
+                    MPIR_ERR_SETANDJUMP(mpi_errno,
+                            MPI_ERR_OTHER,"**ch3|senddata");
+                }
+            }
+        } 
+        
+        if (MV2_RNDV_PROTOCOL_RPUT == rts_pkt->rndv.protocol ||
+            MV2_RNDV_PROTOCOL_R3   == rts_pkt->rndv.protocol) {
+
+            MPID_Request * cts_req;
+            MPIDI_CH3_Pkt_t upkt;
+            MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt = &upkt.rndv_clr_to_send;
+
+            MPIDI_Pkt_init(cts_pkt, MPIDI_CH3_PKT_RNDV_CLR_TO_SEND);
+            cts_pkt->sender_req_id = rts_pkt->sender_req_id;
+            cts_pkt->receiver_req_id = rreq->handle;
+            cts_pkt->recv_sz = 0;
+
+            MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+            MPIDI_Pkt_set_seqnum(cts_pkt, seqnum);
+
+            mpi_errno = MPIDI_CH3U_Post_data_receive_found(rreq);
+            if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
+                MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|loadsendiov");
+            }
+
+            if (rreq->dev.OnDataAvail == NULL) {
+                for (k=0; k < rreq->dev.iov_count; ++k) {
+                    cts_pkt->recv_sz += rreq->dev.iov[k].MPL_IOV_LEN;
+                }
+            } else {
+                cts_pkt->recv_sz = rreq->dev.segment_size;
+            }
+
+            mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
+            }
+
+            PRINT_DEBUG(DEBUG_RNDV_verbose>1,
+                    "sending CTS to rank: %d, buf_addr: %p, recv_sz: %llu, protocol: %d\n",
+                    vc->pg_rank, cts_pkt->rndv.buf_addr, cts_pkt->recv_sz, cts_pkt->rndv.protocol);
+
+            MPID_THREAD_CS_ENTER(POBJ, vc->pobj_mutex);
+            mpi_errno = MPIDI_CH3_iStartMsg(vc, cts_pkt, sizeof(*cts_pkt), &cts_req);
+            MPID_THREAD_CS_EXIT(POBJ, vc->pobj_mutex);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
+                        "**ch3|ctspkt");
+            }
+            if (cts_req != NULL) {
+                MPID_Request_release(cts_req);
+            }
+        }
+    } else {
+        MV2_INC_NUM_POSTED_RECV();
+        PRINT_DEBUG(DEBUG_RNDV_verbose>1,
+                "unexpected request allocated, rreq: %08x, sreq: %08x\n",
+                rreq, rts_pkt->sender_req_id);
+        MPIU_Memcpy(&rreq->ch.pkt, pkt, sizeof(MPIDI_CH3_Pkt_t));
+        MPIDI_CH3_Progress_signal_completion();
+    }
+
+ fn_exit:
+    *rreqp = NULL;
+ fn_fail:
+    return mpi_errno;
+}
+#endif
+
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_PktHandler_RndvReqToSend
 #undef FCNAME
@@ -191,6 +355,17 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
     MPIDI_CH3_Pkt_rndv_req_to_send_t * rts_pkt = &pkt->rndv_req_to_send;
     int mpi_errno = MPI_SUCCESS;
     
+#if defined(CHANNEL_MRAIL)
+    PRINT_DEBUG(DEBUG_RNDV_verbose,
+            "received RTS, sreq: %08x, rank: %d, tag: %d, context: %d, protocol: %d, data_sz: %llu\n",
+            rts_pkt->sender_req_id, rts_pkt->match.parts.rank, rts_pkt->match.parts.tag, 
+            rts_pkt->match.parts.context_id, rts_pkt->rndv.protocol, rts_pkt->data_sz);
+
+    if (IS_VC_SMP(vc)) {
+        return MPIDI_CH3_PktHandler_SMP_RTS(vc, pkt, buflen, rreqp);
+    }
+#endif
+
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
  "received rndv RTS pkt, sreq=0x%08x, rank=%d, tag=%d, context=%d, data_sz=" MPIDI_MSG_SZ_FMT,
 	      rts_pkt->sender_req_id, rts_pkt->match.parts.rank, 
@@ -237,7 +412,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
 #endif /* defined(CHANNEL_MRAIL) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 	
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"posted request found");	
-	
+        MPIR_T_PVAR_COUNTER_INC(MV2, expected_recvs_rendezvous, 1);	
 #if defined(CHANNEL_MRAIL)
 #if defined (_ENABLE_CUDA_) && defined (HAVE_CUDA_IPC)
         /*initialize IPC buffers if not initialized*/
@@ -412,6 +587,47 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
     return mpi_errno;
 }
 
+#if defined(CHANNEL_MRAIL)
+int MPIDI_CH3_PktHandler_SMP_CTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
+					MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
+{
+    int i, mpi_errno = MPI_SUCCESS;
+    MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt = &pkt->rndv_clr_to_send;
+    MPID_Request * sreq;
+    MPIDI_msg_sz_t recv_size;
+
+    MPIU_Assert(pkt->type == MPIDI_CH3_PKT_RNDV_CLR_TO_SEND);
+    MPID_Request_get_ptr(cts_pkt->sender_req_id, sreq);
+    MPIU_Assert(sreq != NULL);
+
+    recv_size = cts_pkt->recv_sz;
+    for (i = 0; i < sreq->dev.iov_count ; i ++) {
+        if (recv_size < sreq->dev.iov[i].MPL_IOV_LEN) {
+            fprintf(stderr, "Warning! Rndv Receiver is expecting %lu Bytes "
+                    "But, is receiving %lu Bytes \n", 
+                    sreq->dev.iov[i].MPL_IOV_LEN, recv_size);
+            sreq->dev.iov[i].MPL_IOV_LEN = recv_size;
+            sreq->dev.iov_count = i + 1;
+            break;
+        } else {
+            recv_size -= sreq->dev.iov[i].MPL_IOV_LEN;
+        }
+    }
+    sreq->mrail.rndv_buf_sz = cts_pkt->recv_sz;
+    sreq->mrail.protocol = cts_pkt->rndv.protocol;
+
+    mpi_errno = MPIDI_CH3_Rndv_transfer(vc, sreq, NULL, cts_pkt, NULL);
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|senddata");
+    }
+    *rreqp = NULL;
+    *buflen = sizeof(MPIDI_CH3_Pkt_t);
+
+fn_fail:
+    return mpi_errno;
+}
+#endif
+
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_PktHandler_RndvClrToSend
 #undef FCNAME
@@ -435,6 +651,16 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
     MPID_Datatype * dt_ptr;
 #endif /* defined(CHANNEL_MRAIL) */
     
+#if defined(CHANNEL_MRAIL)
+    PRINT_DEBUG(DEBUG_RNDV_verbose,
+            "received CTS, seqnum: %d, sender_req_id: %08x, receiver_req_id: %08x, protocol: %d\n",
+            cts_pkt->seqnum, cts_pkt->sender_req_id, cts_pkt->receiver_req_id, cts_pkt->rndv.protocol);
+
+    if (IS_VC_SMP(vc) && pkt->type == MPIDI_CH3_PKT_RNDV_CLR_TO_SEND) {
+        return MPIDI_CH3_PktHandler_SMP_CTS(vc, pkt, buflen, rreqp);
+    }
+#endif
+
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"received rndv CTS pkt");
     
     MPID_Request_get_ptr(cts_pkt->sender_req_id, sreq);
@@ -469,6 +695,11 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
                 recv_size -= sreq->dev.iov[i].MPL_IOV_LEN;
         }
         sreq->mrail.rndv_buf_sz = cts_pkt->recv_sz;
+    } else if (IS_VC_SMP(vc)) {
+        /* Used for one-sided communications */
+        sreq->mrail.protocol   = MV2_RNDV_PROTOCOL_R3;
+        cts_pkt->rndv.protocol = MV2_RNDV_PROTOCOL_R3;
+        MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(sreq);
     }
 
     mpi_errno = MPIDI_CH3_Rndv_transfer(vc, sreq, NULL,
@@ -507,7 +738,7 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
     
     if (dt_contig) 
     {
-	MPL_IOV iov[MPL_IOV_LIMIT];
+	MPL_IOV iov[MPL_IOV_LIMIT] = {0};
 
 	MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
 		    "sending contiguous rndv data, data_sz=" MPIDI_MSG_SZ_FMT, 
@@ -619,6 +850,14 @@ int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
 #ifdef MPIDI_CH3_CHANNEL_RNDV
     /* The channel will be performing the rendezvous */
     
+#if defined(CHANNEL_MRAIL)
+    if (IS_VC_SMP(vc)) {
+        MPIDI_msg_sz_t buflen;
+        MPIU_Assert(rreq != NULL);
+        return MPIDI_CH3_PktHandler_SMP_RTS(vc, &(rreq->ch.pkt), &buflen, &rreq);
+    }
+#endif
+
 #if defined(CHANNEL_MRAIL)
     if (rreq->dev.recv_data_sz == 0) {
 	MPID_Request_complete(rreq);

@@ -17,6 +17,8 @@
 
 #include "mpidimpl.h"
 
+MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL_EXTERN(MV2,mv2_pt2pt_mpid_send);
+
 /* FIXME - HOMOGENEOUS SYSTEMS ONLY -- no data conversion is performed */
 
 /*
@@ -30,6 +32,9 @@ int MPID_Send(const void * buf, MPI_Aint count, MPI_Datatype datatype, int rank,
 	      int tag, MPID_Comm * comm, int context_offset,
 	      MPID_Request ** request)
 {
+
+    MPIR_T_PVAR_COUNTER_BUCKET_INC(MV2,mv2_pt2pt_mpid_send,count,datatype);
+
     MPIDI_msg_sz_t data_sz;
     int dt_contig;
     MPI_Aint dt_true_lb;

@@ -311,6 +311,11 @@ static inline cvar_table_entry_t * LOOKUP_CVAR_BY_NAME(const char* cvar_name)
 #define MPIR_T_PVAR_ULONG2_COUNTER_DECL_STATIC(MODULE, name_) \
     PVAR_GATED_DECL(MODULE, MPIR_T_PVAR_ULONG2_COUNTER_DECL_STATIC_impl(name_))
 
+#define MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL(MODULE, name_) \
+      PVAR_GATED_DECL(MODULE, MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL_impl(name_))  
+#define MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL_EXTERN(MODULE, name_) \
+      PVAR_GATED_DECL(MODULE, MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL_EXTERN_impl(name_))  \
+
 #define MPIR_T_PVAR_UINT_COUNTER_DECL_EXTERN(MODULE, name_) \
     PVAR_GATED_DECL(MODULE, MPIR_T_PVAR_UINT_COUNTER_DECL_EXTERN_impl(name_))
 #define MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MODULE, name_) \
@@ -331,13 +336,24 @@ static inline cvar_table_entry_t * LOOKUP_CVAR_BY_NAME(const char* cvar_name)
     MPIR_T_PVAR_COUNTER_GET_impl(name_)
 #define MPIR_T_PVAR_COUNTER_INC(MODULE, name_, inc_) \
     PVAR_GATED_ACTION(MODULE, MPIR_T_PVAR_COUNTER_INC_impl(name_, inc_))
+#define MPIR_T_PVAR_COMM_COUNTER_INC(MODULE,name_,inc_,comm) \
+    PVAR_GATED_ACTION(MODULE, MPIR_T_PVAR_COMM_COUNTER_INC_impl(name_, inc_,comm))
+
 #define MPIR_T_PVAR_COUNTER_ADDR(name_) \
     MPIR_T_PVAR_COUNTER_ADDR_impl(name_)
+
+#define MPIR_T_PVAR_COUNTER_BUCKET_INC(MODULE, name_,count,datatype) \
+        PVAR_GATED_ACTION(MODULE, MPIR_T_PVAR_COUNTER_BUCKET_INC_impl(name_, count, datatype))
 
 #define MPIR_T_PVAR_COUNTER_REGISTER_STATIC(MODULE, dtype_, name_, \
             verb_, bind_, flags_, cat_, desc_) \
     PVAR_GATED_ACTION(MODULE, MPIR_T_PVAR_COUNTER_REGISTER_STATIC_impl(dtype_, name_, \
             verb_, bind_, flags_, cat_, desc_))
+
+#define MPIR_T_PVAR_COUNTER_BUCKET_REGISTER_DYNAMIC(MODULE, dtype_, name_, count_, \
+            verb_, bind_, flags_, cat_, desc_) \
+    PVAR_GATED_ACTION(MODULE,MPIR_T_PVAR_COUNTER_BUCKET_REGISTER_DYNAMIC_impl(dtype_, name_, count_, \
+            verb_, bind_, flags_, cat_, desc_));
 
 #define MPIR_T_PVAR_COUNTER_REGISTER_DYNAMIC(MODULE, dtype_, name_, \
             addr_, count_, verb_, bind_, flags_, get_value_, get_count_, cat_, desc_) \

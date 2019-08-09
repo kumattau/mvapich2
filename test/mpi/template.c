@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
                     }
                     err = MTestCheckRecv(&status, &recvtype);
                     if (err) {
-                        errs += errs;
+                        errs += err;
                     }
                     MTestFreeDatatype(&recvtype);
                 }

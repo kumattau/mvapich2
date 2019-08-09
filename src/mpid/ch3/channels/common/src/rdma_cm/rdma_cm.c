@@ -416,7 +416,11 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                              pg_rank, rank);
                          if (mv2_use_eager_fast_send &&
                              !(SMP_INIT && (vc->smp.local_nodes >= 0))) {
-                             vc->eager_fast_fn = mv2_eager_fast_send;
+                             if (likely(rdma_use_coalesce)) {
+                                 vc->eager_fast_fn = mv2_eager_fast_coalesce_send;
+                             } else {
+                                 vc->eager_fast_fn = mv2_eager_fast_send;
+                             }
                          }
                      }
                  }
@@ -440,7 +444,11 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                              "%d->%d\n", pg_rank, rank);
                              if (mv2_use_eager_fast_send &&
                                  !(SMP_INIT && (vc->smp.local_nodes >= 0))) {
-                                 vc->eager_fast_fn = mv2_eager_fast_send;
+                                 if (likely(rdma_use_coalesce)) {
+                                     vc->eager_fast_fn = mv2_eager_fast_coalesce_send;
+                                 } else {
+                                     vc->eager_fast_fn = mv2_eager_fast_send;
+                                 }
                              }
                          }
                      }

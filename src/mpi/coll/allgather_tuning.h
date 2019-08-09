@@ -192,7 +192,7 @@ int MPIR_2lvl_Allgather_Ring_MV2(const void *sendbuf,
 								MPIR_Errflag_t *errflag);
 
 /* Architecture detection tuning */
-int MV2_set_allgather_tuning_table(int heterogeneity);
+int MV2_set_allgather_tuning_table(int heterogeneity, struct coll_info *colls_arch_hca);
 
 /* Function to clean free memory allocated by allgather tuning table*/
 void MV2_cleanup_allgather_tuning_table();

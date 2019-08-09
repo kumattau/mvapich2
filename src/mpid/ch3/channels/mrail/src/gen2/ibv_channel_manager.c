@@ -42,7 +42,7 @@
 static pthread_spinlock_t g_apm_lock;
 static int num_cqes[MAX_NUM_HCAS] = { 0 };
 static int curr_cqe[MAX_NUM_HCAS] = { 0 };
-static struct ibv_wc wc[MAX_NUM_HCAS][RDMA_MAX_CQE_ENTRIES_PER_POLL];
+static struct ibv_wc wc[MAX_NUM_HCAS][RDMA_MAX_CQE_ENTRIES_PER_POLL] = {0};
 static unsigned long nspin = 0;
 
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
@@ -601,10 +601,15 @@ static inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
             SET_PKT_HEADER_OFFSET(v);
             p = v->pheader;
 #ifdef _ENABLE_UD_
-            MPIDI_PG_Get_vc(MPIDI_Process.my_pg, p->src.rank, &vc);
-#else
-            vc = (MPIDI_VC_t *)p->src.vc_addr;
+	    if(rdma_enable_hybrid)
+	    {
+                MPIDI_PG_Get_vc(MPIDI_Process.my_pg, p->src.rank, &vc);
+	    } else
 #endif
+        {
+                vc = (MPIDI_VC_t *)p->src.vc_addr;
+        }
+
             v->vc = vc;
             v->rail = p->rail;
         }
@@ -936,7 +941,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll_iwarp(vbuf **vbuf_handle,
                     goto fn_exit;
                 }
             } else {
-                memset(wc[i], 0, sizeof(struct ibv_wc)*RDMA_MAX_CQE_ENTRIES_PER_POLL);
+                memset(wc[i], 0, sizeof(struct ibv_wc) * num_cqes[i]);
 	            ne = ibv_poll_cq(chosen_cq, rdma_num_cqes_per_poll, wc[i]);
 
     	        if (unlikely(ne < 0)) {
@@ -1015,7 +1020,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf **vbuf_handle,
             }
         } else {
 get_blocking_message:
-            memset(wc[i], 0, sizeof(struct ibv_wc)*RDMA_MAX_CQE_ENTRIES_PER_POLL);
+            memset(wc[i], 0, sizeof(struct ibv_wc) * num_cqes[i]);
 	        ne = ibv_poll_cq(chosen_cq, rdma_num_cqes_per_poll, wc[i]);
 
     	    if (unlikely(ne < 0)) {
@@ -1105,11 +1110,22 @@ void async_thread(void *context)
         switch (event.event_type) {
             /* Fatal */
             case IBV_EVENT_CQ_ERR:
+                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on CQ %d\n",
+                                    ibv_event_type_str(event.event_type),
+                                    event.element.cq);
+                break;
+            case IBV_EVENT_COMM_EST:
+            case IBV_EVENT_SQ_DRAINED:
+                PRINT_DEBUG(DEBUG_CHM_verbose, "Async event %s on QP 0x%x\n",
+                            ibv_event_type_str(event.event_type),
+                            event.element.qp->qp_num);
+                break;
             case IBV_EVENT_QP_FATAL:
             case IBV_EVENT_QP_REQ_ERR:
             case IBV_EVENT_QP_ACCESS_ERR:
-                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
-                        event.event_type);
+                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on QP 0x%x\n",
+                                    ibv_event_type_str(event.event_type),
+                                    event.element.qp->qp_num);
                 break;
             case IBV_EVENT_PATH_MIG_ERR:
 #ifdef DEBUG
@@ -1117,8 +1133,9 @@ void async_thread(void *context)
                     DEBUG_PRINT("Path Migration Failed\n");
                 }
 #endif /* ifdef DEBUG */
-                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
-                        event.event_type);
+                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on QP 0x%x\n",
+                                    ibv_event_type_str(event.event_type),
+                                    event.element.qp->qp_num);
                 break;
             case IBV_EVENT_PATH_MIG:
                 if(mv2_MPIDI_CH3I_RDMA_Process.has_apm && !apm_tester){
@@ -1127,26 +1144,35 @@ void async_thread(void *context)
                 }
 
                 if(!mv2_MPIDI_CH3I_RDMA_Process.has_apm) {
-                    ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
-                            event.event_type);
+                    ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on QP 0x%x\n",
+                                        ibv_event_type_str(event.event_type),
+                                        event.element.qp->qp_num);
                 }
                 
                 break;
-
             case IBV_EVENT_DEVICE_FATAL:
-            case IBV_EVENT_SRQ_ERR:
-                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
-                        event.event_type);
-                break;
-
-            case IBV_EVENT_COMM_EST:
-            case IBV_EVENT_PORT_ACTIVE:
-            case IBV_EVENT_SQ_DRAINED:
             case IBV_EVENT_PORT_ERR:
+                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on port %d\n",
+                                    ibv_event_type_str(event.event_type),
+                                    event.element.port_num);
+                break;
+            case IBV_EVENT_SRQ_ERR:
+                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on SRQ %p\n",
+                                    ibv_event_type_str(event.event_type),
+                                    event.element.srq);
+                break;
+            case IBV_EVENT_QP_LAST_WQE_REACHED:
+                PRINT_DEBUG(DEBUG_CHM_verbose, "Async event %s on SRQ %p\n",
+                            ibv_event_type_str(event.event_type),
+                            event.element.srq);
+                break;
+            case IBV_EVENT_PORT_ACTIVE:
             case IBV_EVENT_LID_CHANGE:
             case IBV_EVENT_PKEY_CHANGE:
             case IBV_EVENT_SM_CHANGE:
-            case IBV_EVENT_QP_LAST_WQE_REACHED:
+                PRINT_DEBUG(DEBUG_CHM_verbose, "Async event %s on port %d",
+                            ibv_event_type_str(event.event_type),
+                            event.element.port_num);
                 break;
 
             case IBV_EVENT_SRQ_LIMIT_REACHED:

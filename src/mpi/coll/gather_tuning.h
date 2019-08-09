@@ -122,7 +122,7 @@ extern int MPIR_Intra_node_LIMIC_Gather_MV2(const void *sendbuf,int sendcnt, MPI
 #endif /*#if defined(_SMP_LIMIC_)*/
 
 /* Architecture detection tuning */
-int MV2_set_gather_tuning_table(int heterogeneity);
+int MV2_set_gather_tuning_table(int heterogeneity, struct coll_info *colls_arch_hca);
 void MV2_cleanup_gather_tuning_table(); 
 
 /* Function used inside ch3_shmem_coll.c to tune gather thresholds */

@@ -19,6 +19,8 @@
 #include "datatype.h"
 #include "coll_shmem.h"
 
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_gatherv_algo);
+
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gatherv_algo);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_gatherv_default_bytes_send);
@@ -48,6 +50,7 @@ int MPIR_Gatherv_MV2 (
 	MPID_Comm *comm_ptr,
         MPIR_Errflag_t *errflag )
 {
+    MPIR_TIMER_START(coll,gatherv,algo);
     int        comm_size, rank;
     int        mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -162,6 +165,8 @@ fn_exit:
         mpi_errno = mpi_errno_ret;
     else if (*errflag)
         MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+
+    MPIR_TIMER_END(coll,gatherv,algo);
     return mpi_errno;
 fn_fail:
     goto fn_exit;

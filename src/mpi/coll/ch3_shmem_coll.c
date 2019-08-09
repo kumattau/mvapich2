@@ -243,6 +243,7 @@ int mv2_enable_shmem_collectives = 1;
 int mv2_allgather_ranking = 1;
 int mv2_enable_shmem_allreduce = 1;
 int shmem_coll_count_threshold=16; 
+int mv2_two_level_comm_early_init_threshold=2048; /* max process count for MPI_COMM_WORLD to create 2lvl comm in MPI_INIT */ 
 #if defined(_MCST_SUPPORT_)
 int mv2_use_mcast_allreduce = 1;
 int mv2_mcast_allreduce_small_msg_size = 1024;
@@ -415,9 +416,10 @@ int mv2_bcast_large_msg = MPIR_BCAST_LARGE_MSG;
 
 /* after these threshold, force ring algorithm */
 int mv2_allreduce_red_scat_allgather_algo_threshold = 524288;
+int mv2_allreduce_ring_algo_threshold = 1024*1024;
 int mv2_allgather_ring_algo_threshold = 131072;
 int mv2_allgather_cyclic_algo_threshold = 1024;
-int mv2_allreduce_cyclic_algo_threshold = 32768;
+int mv2_allreduce_cyclic_algo_threshold = 1024*1024;
 int mv2_redscat_cyclic_algo_threshold = 1024;
 int mv2_red_scat_ring_algo_threshold = 131072;
 
@@ -433,6 +435,8 @@ int mv2_bcast_scatter_ring_overlap_cores_lowerbound = 32;
 int mv2_use_pipelined_bcast = 1;
 int bcast_segment_size = 8192;
 int ibcast_segment_size = 8192;
+
+int mv2_allred_use_ring = 0;
 
 static char *mv2_kvs_name;
 
@@ -514,11 +518,14 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_2level_comm_requests);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_2level_comm_success);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_shmem_coll_calls);
 
+/* Runtime parameter to enable/disable MPI_T timers */
+int mv2_enable_pvar_timer = 0;
+
 #undef FUNCNAME
 #define FUNCNAME MV2_collectives_arch_init
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MV2_collectives_arch_init(int heterogeneity)
+int MV2_collectives_arch_init(int heterogeneity, struct coll_info *colls_arch_hca)
 {
     int mpi_errno = MPI_SUCCESS;
 
@@ -537,17 +544,17 @@ int MV2_collectives_arch_init(int heterogeneity)
     MV2_Read_env_vars();
     
     if (mv2_use_osu_collectives) {
-      MV2_set_gather_tuning_table(heterogeneity);
-      MV2_set_bcast_tuning_table(heterogeneity);
-      MV2_set_alltoall_tuning_table(heterogeneity);
-      MV2_set_alltoallv_tuning_table(heterogeneity);
-      MV2_set_scatter_tuning_table(heterogeneity);
-      MV2_set_allreduce_tuning_table(heterogeneity);
-      MV2_set_reduce_tuning_table(heterogeneity);
-      MV2_set_allgather_tuning_table(heterogeneity);
-      MV2_set_red_scat_tuning_table(heterogeneity);
-      MV2_set_red_scat_block_tuning_table(heterogeneity);
-      MV2_set_allgatherv_tuning_table(heterogeneity);
+      MV2_set_gather_tuning_table(heterogeneity, colls_arch_hca);
+      MV2_set_bcast_tuning_table(heterogeneity, colls_arch_hca);
+      MV2_set_alltoall_tuning_table(heterogeneity, colls_arch_hca);
+      MV2_set_alltoallv_tuning_table(heterogeneity, colls_arch_hca);
+      MV2_set_scatter_tuning_table(heterogeneity, colls_arch_hca);
+      MV2_set_allreduce_tuning_table(heterogeneity, colls_arch_hca);
+      MV2_set_reduce_tuning_table(heterogeneity, colls_arch_hca);
+      MV2_set_allgather_tuning_table(heterogeneity, colls_arch_hca);
+      MV2_set_red_scat_tuning_table(heterogeneity, colls_arch_hca);
+      MV2_set_red_scat_block_tuning_table(heterogeneity, colls_arch_hca);
+      MV2_set_allgatherv_tuning_table(heterogeneity, colls_arch_hca);
     }
     if (mv2_use_osu_nb_collectives) {
       MV2_set_igather_tuning_table(heterogeneity);
@@ -1167,7 +1174,7 @@ int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
 
         PRINT_DEBUG(DEBUG_SHM_verbose>0, "Call MPIU_Calloc for %s\n", prefix);
 /* Ignoring optimal memory allocation for now */
-#if !defined(_X86_64_)
+#if !defined(__x86_64__)
 
 #define FSIZE_LIMIT 2147483640 /* 2G - c */
         {
@@ -1199,7 +1206,7 @@ int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
             }
             MPIU_Free(buf);
         }
-#endif                          /* !defined(_X86_64_) */
+#endif  /* !defined(__x86_64__) */
 
         PRINT_DEBUG(DEBUG_SHM_verbose>0, "Call lseek for %s\n", prefix);
         if (lseek(*fd, 0, SEEK_SET) != 0) {
@@ -2317,6 +2324,13 @@ void MV2_Read_env_vars(void)
         else
             mv2_use_old_bcast = 0;
     }
+    if ((value = getenv("MV2_ALLRED_USE_RING")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag > 0)
+            mv2_allred_use_ring = 1;
+        else
+            mv2_allred_use_ring = 0;
+    }
     if ((value = getenv("MV2_USE_OLD_ALLGATHER")) != NULL) {
         flag = (int) atoi(value);
         if (flag > 0)
@@ -2722,6 +2736,13 @@ void MV2_Read_env_vars(void)
 	}
     }
 
+    if ((value = getenv("MV2_ALLREDUCE_RING_ALGO_THRESHOLD")) != NULL) {
+        mv2_allreduce_ring_algo_threshold =
+            user_val_to_bytes(value, "MV2_ALLREDUCE_RING_ALGO_THRESHOLD");
+
+        if (mv2_allreduce_ring_algo_threshold < 0)
+            mv2_allreduce_ring_algo_threshold = 0;
+    }
     if ((value = getenv("MV2_ALLREDUCE_RED_SCAT_ALLGATHER_ALGO_THRESHOLD")) != NULL) {
         mv2_allreduce_red_scat_allgather_algo_threshold =
             user_val_to_bytes(value, "MV2_ALLREDUCE_RED_SCAT_ALLGATHER_ALGO_THRESHOLD");
@@ -2855,6 +2876,9 @@ void MV2_Read_env_vars(void)
     if ((value = getenv("MV2_TWO_LEVEL_COMM_THRESHOLD")) != NULL) {
         shmem_coll_count_threshold = atoi(value);
     }
+    if ((value = getenv("MV2_TWO_LEVEL_COMM_EARLY_INIT_THRESHOLD")) != NULL) {
+        mv2_two_level_comm_early_init_threshold = atoi(value);
+    }
 
     if(mv2_use_slot_shmem_coll == 0 || mv2_use_slot_shmem_bcast  ==0 
 #if defined(_MCST_SUPPORT_)
@@ -2864,7 +2888,13 @@ void MV2_Read_env_vars(void)
        /* Disable zero-copy bcast if slot-shmem, or slot-shmem-bcast params
         * are off, or when mcast is on */ 
        mv2_enable_zcpy_bcast = 0; 
-    } 
+    }
+
+#if ENABLE_PVAR_MV2
+    if((value = getenv("MV2_ENABLE_PVAR_TIMER")) !=NULL) {
+      mv2_enable_pvar_timer = atoi(value);
+    }
+#endif 
 
     /* Override MPICH2 default env values for Gatherv */
     MPIR_CVAR_GATHERV_INTER_SSEND_MIN_PROCS = 1024;
@@ -4269,7 +4299,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
             is_cxx_uop = 1;
         } else {
 #endif                          /* defined(HAVE_CXX_BINDING) */
-            if ((op_ptr->language == MPID_LANG_C)) {
+            if (op_ptr->language == MPID_LANG_C) {
                 uop = (MPI_User_function *) op_ptr->function.c_function;
             } else {
                 uop = (MPI_User_function *) op_ptr->function.f77_function;

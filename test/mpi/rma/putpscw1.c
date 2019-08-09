@@ -88,7 +88,7 @@ int main(int argc, char *argv[])
                      * transfering data, as a send/recv pair */
                     err = MTestCheckRecv(0, &recvtype);
                     if (err) {
-                        errs += errs;
+                        errs += err;
                     }
                 }
                 else {

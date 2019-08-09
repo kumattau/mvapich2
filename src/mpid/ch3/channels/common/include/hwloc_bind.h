@@ -26,7 +26,7 @@ typedef struct {
 } tab_socket_t;
 
 typedef enum {
-    POLICY_BUNCH,
+    POLICY_BUNCH = 0,
     POLICY_SCATTER,
     POLICY_HYBRID,
 } policy_type_t;

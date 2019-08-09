@@ -456,6 +456,7 @@ AC_ARG_ENABLE([mpit_pvars],
         nem      - All nemesis-related
         rma      - All rma-related
         mv2      - All mvapich2-related
+        mem      - All memory related
         all      - All variables above
 ],[],[enable_mpit_pvars=none])
 
@@ -804,7 +805,7 @@ AC_ARG_ENABLE([hybrid],
                               [enable hybrid communication channel])
               ],
               [],
-              [enable_hybrid=no])
+              [enable_hybrid=yes])
 
 AC_MSG_CHECKING([whether to enable header caching])
 
@@ -2056,11 +2057,13 @@ IFS=","
 for var in $enable_mpit_pvars ; do
     AS_CASE(["$var"],
             [mv2|yes],[enable_pvar_mv2=yes],
+            [mem],[enable_pvar_mem=yes],
             [nem],[enable_pvar_nem=yes],
             [recvq],[enable_pvar_recvq=yes],
             [rma],[enable_pvar_rma=yes],
             [all],
             [enable_pvar_mv2=yes
+	     enable_pvar_mem=yes
              enable_pvar_nem=yes
              enable_pvar_recvq=yes
              enable_pvar_rma=yes],
@@ -2078,6 +2081,14 @@ else
 fi
 AC_DEFINE_UNQUOTED(ENABLE_PVAR_MV2,$status_mv2_pvars,
           [Define to 1 to enable mvapich2-related MPI_T performance variables])
+
+if test -n "$enable_pvar_mem" ; then
+    status_mem_pvars=1
+else
+    status_mem_pvars=0
+fi
+AC_DEFINE_UNQUOTED(ENABLE_PVAR_MEM,$status_mem_pvars,
+          [Define to 1 to enable memory-related MPI_T performance variables])
 
 if test -n "$enable_pvar_nem" ; then
     status_nem_pvars=1

@@ -29,12 +29,8 @@ static inline int update_request(MPID_Request* sreq, MPL_IOV* iov, int count, in
     MPIDI_STATE_DECL(MPID_STATE_UPDATE_REQUEST);
     MPIDI_FUNC_ENTER(MPID_STATE_UPDATE_REQUEST);
     int mpi_errno = MPI_SUCCESS;
-    int i = 0;
 
-    for (i = 0; i < count; i++)
-    {
-        sreq->dev.iov[i] = iov[i];
-    }
+    MPIU_Memcpy(sreq->dev.iov, iov, count * sizeof(MPL_IOV));
 
     if (offset == 0)
     {
@@ -93,7 +89,10 @@ static inline int MPIDI_CH3_SMP_iSendv(MPIDI_VC_t * vc,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_SMP_ISENDV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_SMP_ISENDV);
     int mpi_errno = MPI_SUCCESS;
-    DEBUG_PRINT("Entering %s\n", FUNCNAME);
+
+    PRINT_DEBUG(DEBUG_SHM_verbose>1,
+            "dst: %d, sreq: %p, niov: %d, iov[0].buf: %p, iov[0].len: %d\n",
+            vc->pg_rank, sreq, n_iov, iov[0].MPL_IOV_BUF, iov[0].MPL_IOV_LEN);
 
     /* Connection already formed.  If send queue is empty attempt to send data,
      * queuing any unsent data. */
@@ -205,8 +204,11 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPL_IOV * iov,
     }
 
 #ifdef  _ENABLE_UD_
+if(rdma_enable_hybrid)
+{
     int len;
     Calculate_IOV_len(iov, n_iov, len);
+}
 #endif 
 
     /*CM code*/
@@ -247,7 +249,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPL_IOV * iov,
         
         if (pkt_len > MRAIL_MAX_EAGER_SIZE
 #ifdef _ENABLE_UD_
-         || (!(vc->mrail.state & MRAILI_RC_CONNECTED) && pkt_len > MRAIL_MAX_UD_SIZE)
+         || (rdma_enable_hybrid && (!(vc->mrail.state & MRAILI_RC_CONNECTED) && pkt_len > MRAIL_MAX_UD_SIZE))
 #endif
         ) {
             MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPL_IOV));
@@ -304,7 +306,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPL_IOV * iov,
 
         if (pkt_len > MRAIL_MAX_EAGER_SIZE
 #ifdef _ENABLE_UD_
-         || (!(vc->mrail.state & MRAILI_RC_CONNECTED) && pkt_len > MRAIL_MAX_UD_SIZE)
+         || (rdma_enable_hybrid && (!(vc->mrail.state & MRAILI_RC_CONNECTED) && pkt_len > MRAIL_MAX_UD_SIZE))
 #endif
         ) {
             MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPL_IOV));

@@ -173,13 +173,6 @@ int MPIDI_CH3_SHM_Win_free(MPID_Win ** win_ptr)
             MPIR_ERR_POP(mpi_errno);
 
         MPIU_SHMW_Hnd_finalize(&(*win_ptr)->shm_mutex_segment_handle);
-        /* if node_comm is not comm_self, it is a copy of shmcomm_ptr, let's release it here */
-        MPID_Comm *commself_ptr = NULL;
-        MPID_Comm_get_ptr( MPI_COMM_SELF, commself_ptr );
-        if (node_comm_ptr != commself_ptr) {
-            MPIR_Comm_release((*win_ptr)->node_comm_ptr);
-            (*win_ptr)->node_comm_ptr = NULL;
-        }
     }
 
     /* Free shared memory region for window info */
@@ -687,16 +680,6 @@ static int MPIDI_CH3I_Win_gather_info(void *base, MPI_Aint size, int disp_unit, 
     psm_prepost_1sc();
     MPIR_Barrier_impl((*win_ptr)->comm_ptr, &errflag);
 
-    if((*win_ptr)->comm_ptr->dev.ch.shmem_coll_ok == 1 && node_comm_ptr != NULL) {
-        /* make a copy of shmcomm_ptr to be used later for barrier
-         * NOTE: perform SHM-based collective on this communucator may result in undeterministic behavior */
-        MPIR_Comm_copy(node_comm_ptr, node_comm_ptr->local_size, &((*win_ptr)->node_comm_ptr));
-
-        mpi_errno = free_2level_comm((*win_ptr)->comm_ptr);
-        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-        node_comm_ptr = NULL;
-    }
-
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WIN_GATHER_INFO);
@@ -717,7 +700,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     int mpi_errno = MPI_SUCCESS;
     void **base_pp = (void **) base_ptr;
     int i, node_size, node_rank;
-    MPID_Comm *node_comm_ptr;
+    MPID_Comm *node_comm_ptr = NULL;
     MPI_Aint *node_sizes;
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     int noncontig = FALSE;

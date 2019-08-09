@@ -72,4 +72,9 @@ extern int MPIR_Iallreduce_redscat_allgather(const void *sendbuf, void *recvbuf,
 extern int MPIR_Iallreduce_rec_dbl(const void *sendbuf, void *recvbuf, int count,
 				   MPI_Datatype datatype, MPI_Op op,
 				   MPID_Comm *comm_ptr, MPID_Sched_t s);
+#if defined (_SHARP_SUPPORT_)
+extern int MPIR_Sharp_Iallreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
+                    MPI_Datatype datatype, MPI_Op op,
+                    MPID_Comm * comm_ptr, int *errflag, MPID_Request **req);
+#endif /*defined (_SHARP_SUPPORT_)*/
 #endif

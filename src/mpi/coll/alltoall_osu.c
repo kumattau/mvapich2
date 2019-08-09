@@ -20,7 +20,14 @@
 #include <math.h>
 #include <unistd.h>
 #include "coll_shmem.h"
+#include "common_tuning.h"
 #include "alltoall_tuning.h"
+
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_alltoall_inplace);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_alltoall_bruck);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_alltoall_rd);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_alltoall_sd);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_alltoall_pw);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_inplace);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_bruck);
@@ -113,6 +120,7 @@ int MPIR_Alltoall_inplace_MV2(
     MPID_Comm *comm_ptr,
     MPIR_Errflag_t *errflag )
 {
+    MPIR_TIMER_START(coll,alltoall,inplace);
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoall_inplace, 1);
     int          comm_size, i, j;
     MPI_Aint     recvtype_extent;
@@ -121,7 +129,11 @@ int MPIR_Alltoall_inplace_MV2(
     int rank;
     MPI_Status status;
  
-    if (recvcount == 0) return MPI_SUCCESS;
+    if (recvcount == 0) 
+    {
+      MPIR_TIMER_END(coll,alltoall,inplace);
+      return MPI_SUCCESS;
+    }
     
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -190,6 +202,7 @@ int MPIR_Alltoall_inplace_MV2(
     
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+    MPIR_TIMER_END(coll,alltoall,inplace);
     return (mpi_errno);
 }
 
@@ -210,6 +223,7 @@ int MPIR_Alltoall_bruck_MV2(
                             MPID_Comm *comm_ptr,
                             MPIR_Errflag_t *errflag )
 {
+    MPIR_TIMER_START(coll,alltoall,bruck);
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoall_bruck, 1);
     int          comm_size, i, pof2;
     MPI_Aint     sendtype_extent, recvtype_extent;
@@ -222,7 +236,11 @@ int MPIR_Alltoall_bruck_MV2(
     MPI_Datatype newtype;
     void *tmp_buf;
     
-    if (recvcount == 0) return MPI_SUCCESS;
+    if (recvcount == 0) 
+    {
+      MPIR_TIMER_END(coll,alltoall,bruck);
+      return MPI_SUCCESS;
+    }
     
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -246,6 +264,8 @@ int MPIR_Alltoall_bruck_MV2(
     if (!tmp_buf) {
         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE,
                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
+        
+        MPIR_TIMER_END(coll,alltoall,bruck);
         return mpi_errno;
     }
         /* --END ERROR HANDLING-- */
@@ -277,6 +297,8 @@ int MPIR_Alltoall_bruck_MV2(
     if (!displs) {
         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE,
                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
+        
+        MPIR_TIMER_END(coll,alltoall,bruck);
         return mpi_errno;
     }
         /* --END ERROR HANDLING-- */
@@ -349,6 +371,8 @@ int MPIR_Alltoall_bruck_MV2(
     if (!tmp_buf) {
         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
+        
+        MPIR_TIMER_END(coll,alltoall,bruck);
         return mpi_errno;
     }
         /* --END ERROR HANDLING-- */
@@ -386,7 +410,7 @@ int MPIR_Alltoall_bruck_MV2(
 fn_fail:
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
-    
+    MPIR_TIMER_END(coll,alltoall,bruck);
     return (mpi_errno);
     
 }
@@ -407,6 +431,7 @@ int MPIR_Alltoall_ALG_MV2(
                             MPID_Comm *comm_ptr,
                             MPIR_Errflag_t *errflag )
 {
+    MPIR_TIMER_START(coll,alltoall,rd);
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoall_rd, 1);
     int          comm_size;
     MPI_Aint     sendtype_extent, recvtype_extent;
@@ -418,7 +443,11 @@ int MPIR_Alltoall_ALG_MV2(
     MPI_Aint sendtype_true_extent, sendbuf_extent, sendtype_true_lb;
     int p;
     
-    if (recvcount == 0) return MPI_SUCCESS;
+    if (recvcount == 0) 
+    {
+      MPIR_TIMER_END(coll,alltoall,rd);
+      return MPI_SUCCESS;
+    }
     
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -473,6 +502,7 @@ fn_fail:
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
     MPIU_CHKLMEM_FREEALL();
+    MPIR_TIMER_END(coll,alltoall,rd);
     return (mpi_errno);
 
 }
@@ -520,6 +550,7 @@ int MPIR_Alltoall_Scatter_dest_MV2(
                             MPID_Comm *comm_ptr,
                             MPIR_Errflag_t *errflag )
 {
+    MPIR_TIMER_START(coll,alltoall,sd);
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoall_sd, 1);
     int          comm_size, i, j;
     MPI_Aint     sendtype_extent = 0, recvtype_extent = 0;
@@ -531,7 +562,11 @@ int MPIR_Alltoall_Scatter_dest_MV2(
 
 
     
-    if (recvcount == 0) return MPI_SUCCESS;
+    if (recvcount == 0) 
+    {
+      MPIR_TIMER_END(coll,alltoall,sd);
+      return MPI_SUCCESS;
+    }
     
     MPID_Datatype_get_size_macro(sendtype, sendtype_size);
     nbytes = sendtype_size * sendcount;
@@ -632,7 +667,7 @@ int MPIR_Alltoall_Scatter_dest_MV2(
 fn_fail:
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
-    
+    MPIR_TIMER_END(coll,alltoall,sd);
     return (mpi_errno);
     
 }
@@ -653,6 +688,7 @@ int MPIR_Alltoall_pairwise_MV2(
                             MPID_Comm *comm_ptr,
                             MPIR_Errflag_t *errflag )
 {
+    MPIR_TIMER_START(coll,alltoall,pw);
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoall_pw, 1);
     int          comm_size, i, pof2;
     MPI_Aint     sendtype_extent, recvtype_extent;
@@ -661,7 +697,11 @@ int MPIR_Alltoall_pairwise_MV2(
     int src, dst, rank;
     MPI_Status status;
     
-    if (recvcount == 0) return MPI_SUCCESS;
+    if (recvcount == 0) 
+    {
+      MPIR_TIMER_END(coll,alltoall,pw);
+      return MPI_SUCCESS;
+    }
     
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -732,7 +772,7 @@ int MPIR_Alltoall_pairwise_MV2(
 fn_fail:
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
-    
+    MPIR_TIMER_END(coll,alltoall,pw);
     return (mpi_errno);
     
 }
@@ -799,21 +839,15 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
         }
         if (likely(mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
             /* for small messages, force Bruck or RD */
-            if (local_size < 16 && nbytes < 32) {
+            if (comm_size * nbytes < 512 && local_size < 16 && nbytes < 32) {
                MV2_Alltoall_function = MPIR_Alltoall_RD_MV2; 
             } else { 
                 MV2_Alltoall_function = MPIR_Alltoall_bruck_MV2;
             }
             goto skip_tuning_tables;
         }
-        do {
-            if (local_size == mv2_alltoall_indexed_table_ppn_conf[i]) {
-                conf_index = i;
-                partial_sub_ok = 1;
-                break;
-            }
-            i++;
-        } while(i < mv2_alltoall_indexed_num_ppn_conf);
+
+        FIND_PPN_INDEX  (alltoall, local_size,conf_index, partial_sub_ok)
     }
     
     if (partial_sub_ok != 1) {
@@ -946,14 +980,7 @@ int MPIR_Alltoall_tune_intra_MV2(
             conf_index = 0;
             goto conf_check_end;
         }
-        do {
-            if (local_size == mv2_alltoall_table_ppn_conf[i]) {
-                conf_index = i;
-                partial_sub_ok = 1;
-                break;
-            }
-            i++;
-        } while(i < mv2_alltoall_num_ppn_conf);
+        FIND_PPN_INDEX  (alltoall, local_size,conf_index, partial_sub_ok)
     }
 
     if (partial_sub_ok != 1) {

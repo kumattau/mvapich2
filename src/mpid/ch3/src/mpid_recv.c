@@ -18,6 +18,9 @@
 
 #include "mpidimpl.h"
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2,unexpected_recvs_rendezvous);
+MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL_EXTERN(MV2,mv2_pt2pt_mpid_recv); 
+
 #undef FUNCNAME
 #define FUNCNAME MPID_Recv
 #undef FCNAME
@@ -26,6 +29,8 @@ int MPID_Recv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int t
 	      MPID_Comm * comm, int context_offset,
 	      MPI_Status * status, MPID_Request ** request)
 {
+    MPIR_T_PVAR_COUNTER_BUCKET_INC(MV2,mv2_pt2pt_mpid_recv,count,datatype);
+
     /* FIXME: in the common case, we want to simply complete the message
        and make as few updates as possible.
        Note in addition that this routine is used only by MPI_Recv (a
@@ -115,6 +120,7 @@ int MPID_Recv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int t
 	MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_MSGQ_MUTEX);
 	MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomemreq");
     }
+    MPIDI_Request_set_type(rreq, MPIDI_REQUEST_TYPE_RECV);
 
 #ifdef _ENABLE_CUDA_
     if (rdma_enable_cuda) {
@@ -209,6 +215,7 @@ int MPID_Recv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int t
 	}
 	else if (MPIDI_Request_get_msg_type(rreq) == MPIDI_REQUEST_RNDV_MSG)
 	{
+        MPIR_T_PVAR_COUNTER_INC(MV2, unexpected_recvs_rendezvous, 1);
 #if defined(CHANNEL_MRAIL)
         MPIDI_Comm_get_vc(comm, rreq->dev.match.parts.rank, &vc);
         mpi_errno = MPIDI_CH3_RecvRndv( vc, rreq );

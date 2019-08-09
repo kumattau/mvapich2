@@ -27,6 +27,8 @@
 
 #define MV2_COLL_TUNING_START_TABLE(_cname, _nconf)                             \
 {                                                                               \
+    colls_arch_hca[_cname].arch_type = table_arch_tmp;                     \
+    colls_arch_hca[_cname].hca_type = table_hca_tmp;                       \
     int idx = -1, nconf = _nconf;                                               \
     mv2_##_cname##_indexed_num_ppn_conf = nconf;                                \
     mv2_##_cname##_indexed_thresholds_table = MPIU_Malloc(                      \
@@ -44,6 +46,7 @@
   mv2_##_cname##_indexed_table_ppn_conf[idx] = _ppn;                            \
   mv2_size_##_cname##_indexed_tuning_table[idx] = _size;                        \
   table_ptrs[idx] = tmp_##_cname##_ppn;                                         \
+    
 
 #if defined(_SMP_CMA_)
 #define MV2_COLL_TUNING_ADD_CONF_CMA(_cname, _ppn, _size, _name)                \
@@ -82,6 +85,33 @@
     MPIU_Free(table_ptrs);                                          \
     return 0;                                                       \
 }
+
+#define FIND_PPN_INDEX(_cname, _locsize,_confindx,_parflag)             \
+{                                                                       \
+    int i=0;                                                            \
+    do {                                                                \
+        if (_locsize == mv2_##_cname##_indexed_table_ppn_conf[i]) {     \
+            _confindx=i;                                                \
+            _parflag=1;                                                 \
+            break;                                                      \
+        } else if (i < mv2_##_cname##_indexed_num_ppn_conf-1) {         \
+            if (_locsize > mv2_##_cname##_indexed_table_ppn_conf[i] &&  \
+                _locsize < mv2_##_cname##_indexed_table_ppn_conf[i+1]) { \
+                _confindx=i+1;                                          \
+                _parflag=1;                                             \
+                break;                                                  \
+            }                                                           \
+        } else if (i == mv2_##_cname##_indexed_num_ppn_conf-1) {        \
+            if (_locsize > mv2_##_cname##_indexed_table_ppn_conf[i]) {  \
+                _confindx=i;                                            \
+                _parflag=1;                                             \
+                break;                                                  \
+            }                                                           \
+        }                                                               \
+        i++;                                                            \
+    } while(i < mv2_##_cname##_indexed_num_ppn_conf);                   \
+}                                                                       
+
 /* defined enum for right hand side values used in mv2 collective algorithms
  selection. */
 enum mv2_bcast_tuning

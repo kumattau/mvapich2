@@ -637,7 +637,11 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
         MRAILI_Init_vc(vc);
         if (mv2_use_eager_fast_send &&
             !(SMP_INIT && (vc->smp.local_nodes >= 0))) {
-            vc->eager_fast_fn = mv2_eager_fast_send;
+            if (likely(rdma_use_coalesce)) {
+                vc->eager_fast_fn = mv2_eager_fast_coalesce_send;
+            } else {
+                vc->eager_fast_fn = mv2_eager_fast_send;
+            }
         }
     }
 

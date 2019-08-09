@@ -17,6 +17,9 @@
 
 #include "mpidimpl.h"
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2,unexpected_recvs_rendezvous);
+MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL_EXTERN(MV2,mv2_pt2pt_mpid_irecv);
+
 #undef FUNCNAME
 #define FUNCNAME MPID_Irecv
 #undef FCNAME
@@ -25,6 +28,8 @@ int MPID_Irecv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int 
 	       MPID_Comm * comm, int context_offset,
                MPID_Request ** request)
 {
+    MPIR_T_PVAR_COUNTER_BUCKET_INC(MV2,mv2_pt2pt_mpid_irecv,count,datatype);
+
     MPID_Request * rreq;
     int found;
     int mpi_errno = MPI_SUCCESS;
@@ -107,6 +112,7 @@ int MPID_Irecv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int 
 	MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_MSGQ_MUTEX);
 	MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomemreq");
     }
+    MPIDI_Request_set_type(rreq, MPIDI_REQUEST_TYPE_IRECV);
 
 #ifdef _ENABLE_CUDA_
     int device_buf = 0;
@@ -201,7 +207,8 @@ int MPID_Irecv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int 
 	}
 	else if (MPIDI_Request_get_msg_type(rreq) == MPIDI_REQUEST_RNDV_MSG)
 	{
-	    MPIDI_Comm_get_vc_set_active(comm, rreq->dev.match.parts.rank, &vc);
+	 MPIR_T_PVAR_COUNTER_INC(MV2, unexpected_recvs_rendezvous, 1);   
+         MPIDI_Comm_get_vc_set_active(comm, rreq->dev.match.parts.rank, &vc);
 
 #ifdef _ENABLE_CUDA_
         if (rdma_enable_cuda) {

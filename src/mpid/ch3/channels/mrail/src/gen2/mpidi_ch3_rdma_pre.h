@@ -38,6 +38,7 @@
     union {                     \
         uint32_t smp_index;     \
         uint32_t rank;          \
+        uint64_t vc_addr;       \
     } src;                      
 #else
 #define VC_SRC_INFO \
@@ -83,7 +84,8 @@ typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
     MRAILI_Protocol_t   protocol;
     /* This is required for telling the receiver
      * when to mark the recv as complete */
-    uint8_t            weight_rail[MAX_NUM_HCAS];
+    uint8_t             weight_rail[MAX_NUM_HCAS];
+    uint8_t             reqtype;
 #ifdef _ENABLE_UD_
     uint8_t             hca_index;
     uint32_t            rndv_qpn;
@@ -166,8 +168,9 @@ struct dreg_entry;
         void     *remote_addr;          \
         uint32_t rkey[MAX_NUM_HCAS];    \
         uint8_t  nearly_complete;       \
-        uint8_t  num_rdma_read_completions;       \
-        uint32_t completion_counter;   \
+        uint32_t  local_complete;        \
+        uint32_t  remote_complete;       \
+        uint32_t  num_rdma_read_completions;       \
         double  initial_weight[MAX_NUM_SUBRAILS];   \
         double  stripe_start_time;   \
         double  stripe_finish_time[MAX_NUM_SUBRAILS];   \

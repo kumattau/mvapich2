@@ -79,9 +79,12 @@ extern MPIDI_VC_t *mv2_read_progress_pending_vc;
 extern int mv2_eager_fast_send(MPIDI_VC_t* vc, const void *buf,
                                 MPIDI_msg_sz_t data_sz, int rank, int tag,
                                 MPID_Comm *comm, int context_offset, MPID_Request **sreq_p);
+extern int mv2_eager_fast_coalesce_send(MPIDI_VC_t* vc, const void *buf,
+                                MPIDI_msg_sz_t data_sz, int rank, int tag,
+                                MPID_Comm *comm, int context_offset, MPID_Request **sreq_p);
 extern int mv2_eager_fast_rfp_send(MPIDI_VC_t* vc, const void *buf,
                                 MPIDI_msg_sz_t data_sz, int rank, int tag,
-                                MPID_Comm *comm, int context_offset);
+                                MPID_Comm *comm, int context_offset, MPID_Request **sreq_p);
 extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
                                 MPIDI_msg_sz_t data_sz, int rank, int tag,
                                 MPID_Comm *comm, int context_offset, MPID_Request **sreq_p);
@@ -127,7 +130,11 @@ extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
         /* Re-enable direct send */                                     \
         if (mv2_use_eager_fast_send &&                                  \
             !(SMP_INIT && (vc->smp.local_nodes >= 0))) {                \
-            vc->eager_fast_fn = mv2_eager_fast_send;                    \
+            if (likely(rdma_use_coalesce)) {                            \
+                vc->eager_fast_fn = mv2_eager_fast_coalesce_send;       \
+            } else {                                                    \
+                vc->eager_fast_fn = mv2_eager_fast_send;                \
+            }                                                           \
         }                                                               \
     }                                                                   \
 }
@@ -165,7 +172,11 @@ extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
         /* Re-enable direct send */                                     \
         if (mv2_use_eager_fast_send &&                                  \
             !(SMP_INIT && (vc->smp.local_nodes >= 0))) {                \
-            vc->eager_fast_fn = mv2_eager_fast_send;                    \
+            if (likely(rdma_use_coalesce)) {                            \
+                vc->eager_fast_fn = mv2_eager_fast_coalesce_send;       \
+            } else {                                                    \
+                vc->eager_fast_fn = mv2_eager_fast_send;                \
+            }                                                           \
         }                                                               \
     }                                                                   \
 }
@@ -201,7 +212,11 @@ extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
         /* Re-enable direct send */                                         \
         if (mv2_use_eager_fast_send &&                                      \
             !(SMP_INIT && (vc->smp.local_nodes >= 0))) {                    \
-            vc->eager_fast_fn = mv2_eager_fast_send;                        \
+            if (likely(rdma_use_coalesce)) {                            \
+                vc->eager_fast_fn = mv2_eager_fast_coalesce_send;       \
+            } else {                                                    \
+                vc->eager_fast_fn = mv2_eager_fast_send;                \
+            }                                                           \
         }                                                                   \
     }                                                                       \
 }
@@ -458,8 +473,9 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
 #define MPIDI_CH3I_SMP_SendQ_enqueue(vc, req)                            \
 {                                                                        \
     /* MT - not thread safe! */                                          \
-    MPIDI_DBG_PRINTF((50, FCNAME, "SendQ_enqueue vc=%08p req=0x%08x",    \
-                  vc, req->handle));                                     \
+    PRINT_DEBUG(DEBUG_SHM_verbose>1,                                     \
+            "SendQ_enqueue vc: %p, dst: %d, req: %p, type: %d, ch.reqtype: %d\n", \
+            vc, vc->pg_rank, req, MPIDI_Request_get_type(req), req->ch.reqtype);  \
     req->dev.next = NULL;                                                \
     MPIR_Request_add_ref(req);                                           \
     if (vc->smp.sendq_tail != NULL)                                      \
@@ -481,8 +497,9 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
 #define MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, req)                            \
 {                                                                             \
     /* MT - not thread safe! */                                               \
-    MPIDI_DBG_PRINTF((50, FCNAME, "SendQ_enqueue_head vc=%08p req=0x%08x",    \
-                  vc, req->handle));                                          \
+    PRINT_DEBUG(DEBUG_SHM_verbose>1,                                          \
+            "SendQ_enqueue_head vc: %p, dst: %d, req: %p, type: %d, ch.reqtype: %d\n", \
+            vc, vc->pg_rank, req, MPIDI_Request_get_type(req), req->ch.reqtype);       \
     MPIR_Request_add_ref(req);                                                \
     req->dev.next = vc->smp.sendq_head;                                       \
     if (vc->smp.sendq_tail == NULL)                                           \
@@ -498,8 +515,9 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
 {                                                                             \
     MPID_Request *req = vc->smp.sendq_head;                                   \
     /* MT - not thread safe! */                                               \
-    MPIDI_DBG_PRINTF((50, FCNAME, "SendQ_dequeue vc=%08p req=0x%08x",         \
-                  vc, vc->smp.sendq_head));                                   \
+    PRINT_DEBUG(DEBUG_SHM_verbose>1,                                          \
+            "SendQ_dequeue vc: %p, dst: %d, req: %p, type: %d, ch.reqtype: %d\n",   \
+            vc, vc->pg_rank, req, MPIDI_Request_get_type(req), req->ch.reqtype);    \
     vc->smp.sendq_head = vc->smp.sendq_head->dev.next;                        \
     if (vc->smp.sendq_head == NULL)                                           \
     {                                                                         \

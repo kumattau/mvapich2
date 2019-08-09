@@ -23,8 +23,12 @@
 #include <cr.h>
 #endif
 
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_barrier_pairwise);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_barrier_shmem);
+
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_pairwise);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_shmem);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_subcomm);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_pairwise_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_pairwise_bytes_recv);
@@ -37,7 +41,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_count_recv);
 
 static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
-
+    MPIR_TIMER_START(coll,barrier,pairwise);
     int size, rank;
     int d, dst, src;
     int mpi_errno = MPI_SUCCESS;
@@ -50,7 +54,7 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errfl
         return MPI_SUCCESS;
 
     rank = comm_ptr->rank;
-
+ 
     /*  N2_prev = greatest power of two < size of Comm  */
     int N2_prev = comm_ptr->dev.ch.gpof2;
     int surfeit = size - N2_prev;
@@ -93,6 +97,7 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errfl
                                      comm_ptr, MPI_STATUS_IGNORE, errflag);
     }
 
+    MPIR_TIMER_END(coll,barrier,pairwise);
     return mpi_errno;
 
 }
@@ -100,6 +105,7 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errfl
 static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
 
+    MPIR_TIMER_START(coll,barrier,shmem);
     int mpi_errno = MPI_SUCCESS;
 
     MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
@@ -136,6 +142,7 @@ static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
                                             shmem_comm_rank);
     }
 
+    MPIR_TIMER_END(coll,barrier,shmem);
     return mpi_errno;
 
 }
@@ -207,6 +214,7 @@ int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 int MPIR_Barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
+    MPIR_T_PVAR_COMM_COUNTER_INC(MV2,mv2_coll_barrier_subcomm,1,comm_ptr);
     mpi_errno = MPIR_Barrier_intra_MV2(comm_ptr, errflag);
     if (mpi_errno)
         MPIR_ERR_POP(mpi_errno);

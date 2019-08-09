@@ -72,6 +72,8 @@ extern int                  rdma_credit_preserve;
 extern int                  rdma_rq_size;
 extern unsigned long        rdma_dreg_cache_limit;
 extern int                  rdma_rndv_protocol;
+extern int                  smp_rndv_protocol;
+extern int                  rdma_rndv_immediate;
 extern int                  rdma_r3_threshold;
 extern int                  rdma_r3_threshold_nocache;
 extern int                  rdma_max_r3_pending_data;

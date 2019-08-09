@@ -25,6 +25,8 @@ typedef enum _send_stat_ {
 cudaEvent_t *send_events = NULL, *recv_event = NULL;
 int send_events_count = 0;
 
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_alltoall_cuda);
+
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_cuda_intra_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_cuda_intra_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_cuda_intra_count_send);
@@ -71,6 +73,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     MPID_Comm *comm_ptr, 
     MPIR_Errflag_t *errflag )
 {
+    MPIR_TIMER_START(coll,alltoall,cuda);
     cudaError_t cudaerr = cudaSuccess;
     int mpi_errno=MPI_SUCCESS;
     int dst, rank, comm_size;
@@ -135,6 +138,8 @@ int MPIR_Alltoall_CUDA_intra_MV2(
             if(cudaerr != cudaSuccess) {
                 mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
                         __LINE__, MPI_ERR_OTHER, "**nomem", 0);
+
+                MPIR_TIMER_END(coll,alltoall,cuda);
                 return mpi_errno;
             }
         }
@@ -146,6 +151,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
         if(cudaerr != cudaSuccess) {
             mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
                     __LINE__, MPI_ERR_OTHER, "**nomem", 0);
+            MPIR_TIMER_END(coll,alltoall,cuda);
             return mpi_errno;
         }
     }
@@ -155,6 +161,8 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     if (!sendreq) {
         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
+        
+        MPIR_TIMER_END(coll,alltoall,cuda);
         return mpi_errno;
     }
 
@@ -162,6 +170,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     if (!request_ptrs) {
         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
+        MPIR_TIMER_END(coll,alltoall,cuda);
         return mpi_errno;
     }
 
@@ -169,6 +178,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     if (!recvreq) {
         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
+        MPIR_TIMER_END(coll,alltoall,cuda);
         return mpi_errno;
     }
 
@@ -176,6 +186,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     if (!sendstat) {
         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
+        MPIR_TIMER_END(coll,alltoall,cuda);
         return mpi_errno;
     }
 
@@ -183,6 +194,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     if (!recvstat) {
         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
+        MPIR_TIMER_END(coll,alltoall,cuda);
         return mpi_errno;
     }
 
@@ -190,6 +202,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     if (NULL == send_complete) {
         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
+        MPIR_TIMER_END(coll,alltoall,cuda);
         return mpi_errno;
     }
     MPIU_Memset(send_complete, 0, sizeof(send_stat)*num_sbufs);
@@ -386,7 +399,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
  fn_fail:    
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
-    
+    MPIR_TIMER_END(coll,alltoall,cuda);
     return (mpi_errno);
 }
 #endif /*#ifdef _ENABLE_CUDA_*/

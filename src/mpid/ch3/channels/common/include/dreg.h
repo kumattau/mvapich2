@@ -65,6 +65,7 @@ struct dreg_entry {
     struct ibv_mr *memhandle[MAX_NUM_HCAS];
 
     int refcount;
+    int in_deregister_mr_array;
 
     /* page number, e.g. address >> DREG_PAGEBITS */
     unsigned long  npages;

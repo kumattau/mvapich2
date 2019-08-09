@@ -3,6 +3,50 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.3.2 (08/09/2019)
+
+* Features and Enhancements (since 2.3.1):
+    - Improved performance for inter-node communication
+    - Improved performance for Gather, Reduce, and Allreduce with cyclic
+      hostfile
+        - Thanks to X-ScaleSolutions for the patch
+    - Improved performance for intra-node point-to-point communication
+    - Add support for Mellanox HDR adapters
+    - Add support for Cascade lake systems
+    - Add support for Microsoft Azure platform
+    - Add support for new NUMA-aware hybrid binding policy
+    - Add support for AMD EPYC Rome architecture
+    - Improved multi-rail selection logic
+    - Enhanced heterogeniety detection logic
+    - Enhanced point-to-point and collective tuning for AMD EPYC Rome,
+      Frontera@TACC, Mayer@Sandia, Pitzer@OSC, Summit@ORNL, Lassen@LLNL, and
+      Sierra@LLNL systems
+    - Enhanced point-to-point and collective tuning for Microsoft Azure
+    - Enhance output of MV2_SHOW_CPU_BINDING to include binding policy
+    - Add multiple PVARs and CVARs for point-to-point and collective operations
+ 
+* Bug Fixes (since 2.3.1):
+    - Fix issue with support for DDN Infinite Memory Engine (IME)
+        - Thanks to Judit Planas @EPFL for reporting the issue
+    - Fix issue when compiling with PGI 19.x
+        - Thanks to Timothy S. Carlson @PNNL for reporting the issue
+    - Fix issue with Infiniband build when ib_uverbs module is not loaded
+        - Thanks to Nicolas Morey-Chaisemartin @SUSE for reporting and
+          providing the patch
+    - Fix issues with DPM support
+        - Thanks to Kenneth McElvain@UC Berkeley for reporting the issues
+    - Fix issue with handling datatype based collectives
+    - Fix hang in Get accumulate
+    - Fix to honor scheduler/administrator reservations for CPU binding
+    - Fix issue with CPU binding for non-power-of-two processes
+    - Fix HCA detection logic to select correct tuning tables for single
+      node scenarios
+    - Fix segfault when freeing removed duplicate communicator
+    - Fix issues in handling very large messages with CMA
+    - Fix issue with very large message point-to-point communication
+    - Fix issue with registration cache on large number of nodes
+    - Fix compilation warnings and memory leaks
+
 MVAPICH2 2.3.1 (03/01/2019)
 
 * Features and Enhancements (since 2.3):

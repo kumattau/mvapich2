@@ -348,19 +348,33 @@ int rdma_find_active_port(struct ibv_context *context,
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
-                           int *num_usable_hcas)
+                           struct ibv_device **usable_dev_list, int *num_usable_hcas)
 {
     int i = 0;
+    int j = 0;
     int hca_type = 0;
-    int network_type = MV2_NETWORK_CLASS_UNKNOWN;
+    int network_type = MV2_HCA_UNKWN;
     int num_ib_cards = 0;
     int num_iwarp_cards = 0;
     int num_unknwn_cards = 0;
 
-    dev_list = ibv_get_device_list(&num_devices);
-
     for (i = 0; i < num_devices; ++i) {
         hca_type = mv2_get_hca_type(dev_list[i]);
+	    PRINT_DEBUG(DEBUG_INIT_verbose>1, "HCA %s type = %s\n", dev_list[i]->name,
+                    mv2_get_hca_name(hca_type));
+        if (network_type <= hca_type) {
+            network_type=hca_type;
+        }
+    }
+    for (i = 0; i < num_devices; ++i) {
+        hca_type = mv2_get_hca_type(dev_list[i]);
+        if (network_type != hca_type) {
+            continue;
+        }
+        usable_dev_list[j] = dev_list[i];
+	    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Usable HCA %d = %s. Type = %s\n",
+                    j, dev_list[i]->name, mv2_get_hca_name(hca_type));
+        j++;
         if (MV2_IS_IB_CARD(hca_type)) {
             num_ib_cards++;
         } else if (MV2_IS_IWARP_CARD(hca_type)) {
@@ -368,26 +382,21 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
         } else {
             num_unknwn_cards++;
         }
-        if (MV2_IS_QLE_CARD(hca_type)) {
-            PRINT_ERROR("QLogic IB card detected in system\n");
+        if (MV2_IS_QLE_CARD(hca_type) || MV2_IS_INTEL_CARD(hca_type)) {
+            PRINT_ERROR("QLogic IB cards or Intel Omni-Path detected in system.\n");
             PRINT_ERROR("Please re-configure the library with the"
                         " '--with-device=ch3:psm' configure option"
-                        " for best performance\n");
+                        " for best performance and functionality.\n");
         }
     }
 
     if (num_ib_cards && (num_ib_cards >= num_iwarp_cards)) {
-        network_type = MV2_NETWORK_CLASS_IB;
         *num_usable_hcas = num_ib_cards;
     } else if (num_iwarp_cards && (num_ib_cards < num_iwarp_cards)) {
-        network_type = MV2_NETWORK_CLASS_IWARP;
         *num_usable_hcas = num_iwarp_cards;
     } else {
-        network_type = MV2_NETWORK_CLASS_UNKNOWN;
         *num_usable_hcas = num_unknwn_cards;
     }
-
-    ibv_free_device_list(dev_list);
 
     return network_type;
 }
@@ -415,17 +424,9 @@ int rdma_skip_network_card(mv2_iba_network_classes network_type,
                            struct ibv_device *ib_dev)
 {
     int skip = 0;
-    int hca_type = 0;
 
-    hca_type = mv2_get_hca_type(ib_dev);
-
-    if ((network_type == MV2_NETWORK_CLASS_IB) && (MV2_IS_IWARP_CARD(hca_type))) {
+    if (network_type != mv2_get_hca_type(ib_dev)) {
         skip = 1;
-    } else if ((network_type == MV2_NETWORK_CLASS_IWARP) &&
-               (MV2_IS_IB_CARD(hca_type))) {
-        skip = 1;
-    } else {
-        skip = 0;
     }
 
     return skip;
@@ -514,7 +515,9 @@ int ring_rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
   fn_exit:
     /* Clean up before exit */
-    ibv_free_device_list(dev_list);
+    if (dev_list) {
+        ibv_free_device_list(dev_list);
+    }
     return is_device_opened;
 }
 
@@ -544,9 +547,8 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     int mpi_errno = MPI_SUCCESS;
     struct ibv_device *ib_dev = NULL;
     struct ibv_device **dev_list = NULL;
-#ifdef RDMA_CM
+    struct ibv_device **usable_dev_list = MPIU_Malloc(sizeof(struct ibv_device *)*MAX_NUM_HCAS);
     int network_type = MV2_NETWORK_CLASS_UNKNOWN;
-#endif /*RDMA_CM*/
 
 #ifdef CRC_CHECK
     gen_crc_table();
@@ -556,11 +558,10 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
     dev_list = ibv_get_device_list(&num_devices);
 
-#ifdef RDMA_CM
     network_type = rdma_find_network_type(dev_list, num_devices,
-                                          &num_usable_hcas);
+                                          usable_dev_list, &num_usable_hcas);
 
-    if (network_type == MV2_NETWORK_CLASS_UNKNOWN) {
+    if (network_type == MV2_HCA_UNKWN) {
         if (num_usable_hcas) {
             PRINT_ERROR("Unknown HCA type: this build of MVAPICH2 does not"
                         "fully support the HCA found on the system (try with"
@@ -574,38 +575,37 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                                       "**fail %s", "No IB device found");
         }
     }
-#else
-    num_usable_hcas = num_devices;
-#endif /*RDMA_CM*/
 
-retry_hca_open:
-    for (i = 0; i < num_devices; i++) {
-#ifdef RDMA_CM
-        if (rdma_skip_network_card(network_type, dev_list[i])) {
+    PRINT_DEBUG(DEBUG_INIT_verbose, "Selected HCA type = %s, Usable HCAs = %d\n",
+                mv2_get_hca_name(network_type), num_usable_hcas);
+    for (i = 0; i < num_usable_hcas; i++) {
+        if (rdma_skip_network_card(network_type, usable_dev_list[i])) {
             /* Skip HCA's that don't match with network type */
+            PRINT_DEBUG(DEBUG_INIT_verbose, "1. Skipping HCA %s since type does not match."
+                        "Selected: %s; Current: %s\n",
+                        usable_dev_list[i]->name, mv2_get_hca_name(network_type),
+                        mv2_get_hca_name(mv2_get_hca_type(usable_dev_list[i])));
             continue;
         }
-#endif /*RDMA_CM*/
 
-        if ((rdma_multirail_usage_policy == MV2_MRAIL_BINDING) &&
-            (!first_attempt_to_bind_failed)) {
+        if (rdma_multirail_usage_policy == MV2_MRAIL_BINDING) {
             /* Bind a process to a HCA */
             if (mrail_use_default_mapping) {
                 mrail_user_defined_p2r_mapping =
                     rdma_local_id % num_usable_hcas;
             }
-            ib_dev = dev_list[mrail_user_defined_p2r_mapping];
+            ib_dev = usable_dev_list[mrail_user_defined_p2r_mapping];
         } else if (!strncmp(rdma_iba_hcas[i], RDMA_IBA_NULL_HCA, 32)) {
             /* User hasn't specified any HCA name
              * We will use the first available HCA(s) */
-            ib_dev = dev_list[i];
+            ib_dev = usable_dev_list[i];
         } else {
             /* User specified HCA(s), try to look for it */
             j = 0;
-            while (dev_list[j]) {
-                if (!strncmp(ibv_get_device_name(dev_list[j]),
+            while (usable_dev_list[j]) {
+                if (!strncmp(ibv_get_device_name(usable_dev_list[j]),
                              rdma_iba_hcas[rdma_num_hcas], 32)) {
-                    ib_dev = dev_list[j];
+                    ib_dev = usable_dev_list[j];
                     break;
                 }
                 j++;
@@ -614,7 +614,9 @@ retry_hca_open:
 
         if (!ib_dev) {
             /* Clean up before exit */
-            ibv_free_device_list(dev_list);
+            if (dev_list) {
+                ibv_free_device_list(dev_list);
+            }
             MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s", "No IB device found");
         }
@@ -624,7 +626,9 @@ retry_hca_open:
         proc->nic_context[rdma_num_hcas] = ibv_open_device(ib_dev);
         if (!proc->nic_context[rdma_num_hcas]) {
             /* Clean up before exit */
-            ibv_free_device_list(dev_list);
+            if (dev_list) {
+                ibv_free_device_list(dev_list);
+            }
             MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "%s %d", "Failed to open HCA number",
                                       rdma_num_hcas);
@@ -634,6 +638,8 @@ retry_hca_open:
                                             proc->ib_dev[rdma_num_hcas])) {
             /* No active port, skip HCA */
             ibv_close_device(proc->nic_context[rdma_num_hcas]);
+            PRINT_DEBUG(DEBUG_INIT_verbose,"Skipping HCA %s since it does not have an active port\n",
+                        usable_dev_list[i]->name);
             continue;
         }
 
@@ -641,14 +647,16 @@ retry_hca_open:
             ibv_alloc_pd(proc->nic_context[rdma_num_hcas]);
         if (!proc->ptag[rdma_num_hcas]) {
             /* Clean up before exit */
-            ibv_free_device_list(dev_list);
+            if (dev_list) {
+                ibv_free_device_list(dev_list);
+            }
             MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
                                       "**fail", "%s%d",
                                       "Failed to alloc pd number ",
                                       rdma_num_hcas);
         }
 
-        PRINT_DEBUG(DEBUG_INIT_verbose, "HCA %d/%d = %s\n", rdma_num_hcas+1,
+        PRINT_DEBUG(DEBUG_INIT_verbose,"HCA %d/%d = %s\n", rdma_num_hcas+1,
                     rdma_num_req_hcas, proc->ib_dev[rdma_num_hcas]->name);
         rdma_num_hcas++;
         if ((rdma_multirail_usage_policy == MV2_MRAIL_BINDING) ||
@@ -660,10 +668,6 @@ retry_hca_open:
     }
 
     if (unlikely(rdma_num_hcas == 0)) {
-        if (!first_attempt_to_bind_failed) {
-            first_attempt_to_bind_failed = 1;
-            goto retry_hca_open;
-        }
         MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
                                   "**fail", "%s %d",
                                   "No active HCAs found on the system!!!",
@@ -672,7 +676,10 @@ retry_hca_open:
 
   fn_exit:
     /* Clean up before exit */
-    ibv_free_device_list(dev_list);
+    MPIU_Free(usable_dev_list);
+    if (dev_list) {
+        ibv_free_device_list(dev_list);
+    }
     return mpi_errno;
 
   fn_fail:
@@ -1568,9 +1575,12 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
     PRINT_DEBUG(DEBUG_XRC_verbose > 0, "MRAILI_Init_vc %d\n", vc->pg_rank);
 #endif
 #ifdef _ENABLE_UD_
-    if (vc->mrail.state & MRAILI_UD_CONNECTED) {
-        MRAILI_RC_Enable(vc);
-        return;
+    if(rdma_enable_hybrid)
+    {
+            if (vc->mrail.state & MRAILI_UD_CONNECTED) {
+                    MRAILI_RC_Enable(vc);
+                    return;
+            }
     }
 #endif
 

@@ -117,7 +117,9 @@ static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
            write */
         MPIDI_CH3I_SMP_write_contig(vc, reqtype, buf, data_sz, rank, 
                 tag, comm, context_offset, &nb);
-        DEBUG_PRINT("ch3_smp_contigsend: writev returned %d bytes\n", nb);
+        PRINT_DEBUG(DEBUG_SHM_verbose>1,
+                "dst: %d, reqtype: %d, data_sz: %d, writev returned %d bytes\n",
+                vc->pg_rank, reqtype, data_sz, nb);
 
         /* send all or NULL */
         if( !nb ) {
@@ -131,6 +133,7 @@ static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
             }
             MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
             vc->smp.send_active = sreq;
+            PRINT_DEBUG(DEBUG_SHM_verbose>1, "Enqueueing sreq: %p to vc: %d\n", sreq, vc->pg_rank);
         }
     } else {
         /* sendQ not empty, enqueue request, fallback MPIDI_CH3_PKT_EAGER_SEND */
@@ -140,6 +143,7 @@ static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
             MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");
         }
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
+        PRINT_DEBUG(DEBUG_SHM_verbose>1, "Enqueueing sreq: %p to vc: %d\n", sreq, vc->pg_rank);
     }
 
     *sreq_p = sreq;

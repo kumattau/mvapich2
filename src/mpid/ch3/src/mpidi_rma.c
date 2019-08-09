@@ -211,10 +211,12 @@ int MPID_Win_free(MPID_Win ** win_ptr)
     MPIU_Free((*win_ptr)->rank_mapping);
 #endif /* CHANNEL_PSM */
 
+#ifndef _OSU_MVAPICH_
     comm_ptr = (*win_ptr)->comm_ptr;
     mpi_errno = MPIR_Comm_free_impl(comm_ptr);
     if (mpi_errno)
         MPIR_ERR_POP(mpi_errno);
+#endif
 
     if ((*win_ptr)->basic_info_table != NULL)
         MPIU_Free((*win_ptr)->basic_info_table);

@@ -30,7 +30,7 @@
 /* SMP user parameters*/
 
 extern int                  g_smp_eagersize;
-extern size_t               s_smpi_length_queue;
+extern size_t               s_smp_queue_length;
 extern int                  s_smp_num_send_buffer;
 extern int                  s_smp_batch_size;
 extern int                  s_smp_block_size;
@@ -92,7 +92,7 @@ typedef struct polling_set_element {
 #define SMPI_AVAIL(a)   \
  ((a & 0xFFFFFFFFFFFFFFF8) - SMPI_CACHE_LINE_SIZE)
 
-#elif defined(_X86_64_) && defined(_AMD_QUAD_CORE_)
+#elif defined(__x86_64__) && defined(_AMD_QUAD_CORE_)
 
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \
@@ -100,7 +100,7 @@ typedef struct polling_set_element {
 #define SMPI_AVAIL(a)   \
  ((a & 0xFFFFFFFFFFFFFFF8) - SMPI_CACHE_LINE_SIZE)
 
-#elif defined(_X86_64_)
+#elif defined(__x86_64__)
 
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \

@@ -22,7 +22,7 @@
 
 /* HCA Types */
 #define MV2_HCA_UNKWN   0
-#define MV2_HCA_ANY     (UINT32_MAX)
+#define MV2_HCA_ANY     (UINT16_MAX)
 
 #define MV2_HCA_TYPE_IB
 
@@ -43,18 +43,35 @@
 /* Mellanox Cards */
 typedef enum {
         MV2_HCA_LIST_START=1,
+/* Chelsio Cards */
+        MV2_HCA_IWARP_TYPE_START,
+        MV2_HCA_CHLSIO_START,
+        MV2_HCA_CHELSIO_T3,
+        MV2_HCA_CHELSIO_T4,
+        MV2_HCA_CHLSIO_END,
+
+/* Intel iWarp Cards */
+        MV2_HCA_INTEL_IWARP_START,
+        MV2_HCA_INTEL_NE020,
+        MV2_HCA_INTEL_IWARP_END,
+        MV2_HCA_IWARP_TYPE_END,
+        MV2_HCA_LIST_END,
+
+/* Mellanox IB HCAs */
         MV2_HCA_IB_TYPE_START,
         MV2_HCA_MLX_START,
+        MV2_HCA_MLX_PCI_X,
         MV2_HCA_MLX_PCI_EX_SDR,
         MV2_HCA_MLX_PCI_EX_DDR,
         MV2_HCA_MLX_CX_SDR,
         MV2_HCA_MLX_CX_DDR,
         MV2_HCA_MLX_CX_QDR,
         MV2_HCA_MLX_CX_FDR,
-        MV2_HCA_MLX_CX_EDR,
-        MV2_HCA_MLX_PCI_X,
         MV2_HCA_MLX_CX_CONNIB,
+        MV2_HCA_MLX_CX_EDR,
+        MV2_HCA_MLX_CX_HDR,
         MV2_HCA_MLX_END,
+        MV2_HCA_IB_TYPE_END,
 
 /* Qlogic Cards */
         MV2_HCA_QLGIC_START,
@@ -71,21 +88,7 @@ typedef enum {
         MV2_HCA_INTEL_START,
         MV2_HCA_INTEL_HFI1,
         MV2_HCA_INTEL_END,
-        MV2_HCA_IB_TYPE_END,
 
-/* Chelsio Cards */
-        MV2_HCA_IWARP_TYPE_START,
-        MV2_HCA_CHLSIO_START,
-        MV2_HCA_CHELSIO_T3,
-        MV2_HCA_CHELSIO_T4,
-        MV2_HCA_CHLSIO_END,
-
-/* Intel iWarp Cards */
-        MV2_HCA_INTEL_IWARP_START,
-        MV2_HCA_INTEL_NE020,
-        MV2_HCA_INTEL_IWARP_END,
-        MV2_HCA_IWARP_TYPE_END,
-        MV2_HCA_LIST_END,
 } mv2_hca_types_list;
 
 
@@ -116,7 +119,7 @@ typedef enum {
  * 2001 - 3000 - IBM architectures
  */
 #define MV2_ARCH_UNKWN  0
-#define MV2_ARCH_ANY    (UINT32_MAX)
+#define MV2_ARCH_ANY    (UINT16_MAX)
 
 /* Intel Architectures */
 typedef enum {
@@ -146,6 +149,8 @@ typedef enum {
         MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28,
         MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36,
         MV2_ARCH_INTEL_PLATINUM_8160_2S_48,
+        MV2_ARCH_INTEL_PLATINUM_8260_2S_48,
+        MV2_ARCH_INTEL_PLATINUM_8280_2S_56,
         MV2_ARCH_INTEL_PLATINUM_8170_2S_52,
         MV2_ARCH_INTEL_PLATINUM_GENERIC,
         MV2_ARCH_INTEL_GOLD_6132_2S_28,
@@ -165,7 +170,8 @@ typedef enum {
         MV2_ARCH_AMD_OPTERON_6136_32,
         MV2_ARCH_AMD_OPTERON_6276_64,
         MV2_ARCH_AMD_BULLDOZER_4274HE_16,
-	MV2_ARCH_AMD_EPYC_7551_64,
+    	MV2_ARCH_AMD_EPYC_7551_64,
+        MV2_ARCH_AMD_EPYC_7742_128,
         MV2_ARCH_AMD_END,
 /* IBM Architectures */
         MV2_ARCH_IBM_START,
@@ -175,20 +181,23 @@ typedef enum {
         MV2_ARCH_IBM_END,
 /* ARM Architectures */
         MV2_ARCH_ARM_START,
-        MV2_ARCH_ARM_CAVIUM_V8,
+        MV2_ARCH_ARM_CAVIUM_V8_2S_28,
+        MV2_ARCH_ARM_CAVIUM_V8_2S_32,
         MV2_ARCH_ARM_END,
         MV2_ARCH_LIST_END, 
 } mv2_proc_arch_list;
 
 typedef uint64_t mv2_arch_hca_type;
-typedef uint32_t mv2_arch_type;
-typedef uint32_t mv2_hca_type;
+typedef uint16_t mv2_arch_type;
+typedef uint16_t mv2_hca_type;
+typedef uint16_t mv2_arch_num_cores;
+typedef uint16_t mv2_arch_reserved;  /* reserved 16-bits for future use */
 
-#define NUM_HCA_BITS (32)
-#define NUM_ARCH_BITS (32)
+#define NUM_HCA_BITS (16)
+#define NUM_ARCH_BITS (16)
 
-#define MV2_GET_ARCH(_arch_hca) ((_arch_hca) >> NUM_HCA_BITS)
-#define MV2_GET_HCA(_arch_hca) (UINT32_MAX & (_arch_hca))
+#define MV2_GET_ARCH(_arch_hca) ((_arch_hca) >> 32)
+#define MV2_GET_HCA(_arch_hca) (((_arch_hca) << 32) >> 48)
 
 /* CPU Family */
 typedef enum{
@@ -208,9 +217,40 @@ typedef enum{
     mv2_num_rail_4,
 } mv2_multirail_info_type;
 
+
 #define MV2_IS_ARCH_HCA_TYPE(_arch_hca, _arch, _hca) \
     mv2_is_arch_hca_type(_arch_hca, _arch, _hca)
 
+enum collectives {
+    allgather = 0,
+    allreduce,
+    alltoall,
+    alltoallv,
+    bcast,
+    gather,
+    reduce,
+    scatter,
+    colls_max
+};
+
+static char collective_names[colls_max][12] = {
+    "Allgather",
+    "Allreduce",
+    "Alltoall",
+    "Alltoallv",
+    "Broadcast",
+    "Gather",
+    "Reduce",
+    "Scatter"
+};
+
+struct coll_info {
+    mv2_hca_type                 hca_type;
+    mv2_arch_type                arch_type;
+};
+
+extern mv2_arch_type table_arch_tmp;
+extern mv2_hca_type  table_hca_tmp;
 
 /* ************************ FUNCTION DECLARATIONS ************************** */
 
