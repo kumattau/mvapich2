@@ -17,16 +17,16 @@
 #if defined(__GNUC__)
 /* can't use -ansi for vxworks ccppc or this will fail with a syntax error
  * */
-#define STBAR()  asm volatile ("dcs": : :"memory")     /* ": : :" for C++ */
-#define READBAR() asm volatile ("dcs": : :"memory")
-#define WRITEBAR() asm volatile ("dcs": : :"memory")
+#define STBAR()  asm volatile ("eieio": : :"memory")     /* ": : :" for C++ */
+#define READBAR() asm volatile ("lwsync": : :"memory")
+#define WRITEBAR() asm volatile ("eieio": : :"memory")
 
 #elif  defined(__IBMC__) || defined(__IBMCPP__) /* !defined(__GNUC__) */
-extern void __iospace_eieio(void);
+extern void __iospace_sync(void);
 extern void __iospace_sync(void);
 #define STBAR()   __iospace_sync ()
 #define READBAR() __iospace_sync ()
-#define WRITEBAR() __iospace_eieio ()
+#define WRITEBAR() __iospace_sync ()
 
 #elif defined(__PGIC__) /* PGI */
 #define STBAR()  asm volatile ("lwsync": : :"memory")     /* ": : :" for C++ */

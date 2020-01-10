@@ -78,11 +78,14 @@ int MPIDI_CH3I_set_affinity(struct MPIDI_PG * pg, int pg_rank);
 
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 extern hwloc_topology_t topology;
+extern hwloc_topology_t topology_whole;
 int smpi_load_hwloc_topology(void);
+int smpi_load_hwloc_topology_whole(void);
 int smpi_destroy_hwloc_topology(void);
 int smpi_unlink_hwloc_topology_file(void);
 #else
 static hwloc_topology_t topology = NULL;
+static hwloc_topology_t topology_whole = NULL;
 static inline int smpi_load_hwloc_topology(void)
 {
     if (!topology) {
@@ -92,10 +95,23 @@ static inline int smpi_load_hwloc_topology(void)
         hwloc_topology_load(topology);
     }
 }
+static inline int smpi_load_hwloc_topology_whole(void)
+{
+    if (!topology_whole) {
+        hwloc_topology_init(&topology_whole);
+        hwloc_topology_set_flags(topology_whole, HWLOC_TOPOLOGY_FLAG_IO_DEVICES);
+        hwloc_topology_set_flags(topology_whole, HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM);
+        hwloc_topology_load(topology_whole);
+    }    
+}
 static inline int smpi_destroy_hwloc_topology(void)
 {
     if (topology) {
         hwloc_topology_destroy(topology);
+    }
+    
+    if (topology_whole) {
+        hwloc_topology_destroy(topology_whole);
     }
 }
 #endif

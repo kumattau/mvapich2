@@ -12,7 +12,7 @@
 
 include $(top_srcdir)/src/mpid/ch3/channels/common/src/util/Makefile.mk
 
-if BUILD_MRAIL_GEN2
+if BUILD_LIB_CR
 AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/common/src/ft
 mpi_core_sources += src/mpid/ch3/channels/common/src/ft/cr.c
 endif

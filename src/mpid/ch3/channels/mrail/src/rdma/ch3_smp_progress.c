@@ -660,7 +660,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
 
         MPID_Request* rreq = NULL;
         MPID_Request_get_ptr(((MPIDI_CH3_Pkt_rndv_r3_data_t*) pkt)->receiver_req_id, rreq);
-        PRINT_DEBUG(DEBUG_RNDV_verbose>1, "R3 data received from: %d, rreq: %08x\n", vc->pg_rank, rreq);
+        PRINT_DEBUG(DEBUG_RNDV_verbose>1, "R3 data received from: %d, rreq: %p\n", vc->pg_rank, rreq);
         vc->smp.recv_active = rreq;
         goto fn_exit;
     } else if (pkt->type == MPIDI_CH3_PKT_RPUT_FINISH) {
@@ -775,7 +775,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
         while (vc->smp.send_active != NULL) {
                 MPID_Request *req = vc->smp.send_active;
                 PRINT_DEBUG(DEBUG_SHM_verbose>1,
-                        "smp send active, vc->rank: %d, req: %08x, type: %d, ch.reqtype: %d\n",
+                        "smp send active, vc->rank: %d, req: %p, type: %d, ch.reqtype: %d\n",
                         vc->pg_rank, req, MPIDI_Request_get_type(req), req->ch.reqtype);
 
                 if(req->dev.iov_offset >= req->dev.iov_count) {
@@ -860,7 +860,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
             if (nb > 0)
             {
                 PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                        "Wrote R3 data, dest: %d, req: %08x, bytes: %d\n",
+                        "Wrote R3 data, dest: %d, req: %p, bytes: %d\n",
                         vc->pg_rank, req, nb);
                     if (MPIDI_CH3I_Request_adjust_iov(req, nb))
                     {
@@ -887,7 +887,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
                             	  MPIDI_CH3I_SMP_SendQ_dequeue(vc);
 							  }
                               PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                                      "Dequeue request from sendq: %08x, now head %08x\n",
+                                      "Dequeue request from sendq: %p, now head %p\n",
                                       req, vc->smp.sendq_head);
 #ifdef CKPT
 						      MPIDI_CH3I_MRAILI_Pkt_comm_header* p = 
@@ -1050,9 +1050,9 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
 
         if (vc->smp.recv_active)
         {
-            struct MPID_Request * req = vc->smp.recv_active;
+            struct MPID_Request * req ATTRIBUTE((unused)) = vc->smp.recv_active;
             PRINT_DEBUG(DEBUG_SHM_verbose>1,
-                    "smp recv active, rank: %d, req: %08x, type: %d, ch.reqtype: %d, pkt_type: %d\n",
+                    "smp recv active, rank: %d, req: %p, type: %d, ch.reqtype: %d, pkt_type: %d\n",
                     vc->pg_rank, req, MPIDI_Request_get_type(req), req->ch.reqtype, vc->smp.recv_current_pkt_type);
             poll_flag = 1;
 #if defined(_ENABLE_CUDA_)
@@ -1140,7 +1140,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
 
             if (nb > 0) {
                 PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                        "Read %d bytes from rank: %d, req: %08x, cma: %d, limic: %d\n",
+                        "Read %lu bytes from rank: %d, req: %p, cma: %d, limic: %d\n",
                         nb, vc->pg_rank, vc->smp.recv_active, use_cma, use_limic);
                 if (MPIDI_CH3I_Request_adjust_iov(vc->smp.recv_active, nb)) {
 #if defined(_ENABLE_CUDA_)
@@ -1599,7 +1599,7 @@ void MPIDI_CH3I_set_smp_only()
             return;
         }
         g_smpi.only_one_device = 1;
-        SMP_ONLY = 0;
+        SMP_ONLY = 1;
     }
 }
 
@@ -5583,7 +5583,7 @@ int MPIDI_CH3I_SMP_do_cma_get(MPIDI_VC_t *vc, const void *src, void *dst, ssize_
 
     pid = MPIDI_CH3I_SMP_get_pid(vc);
     PRINT_DEBUG(DEBUG_RNDV_verbose > 0,
-            "CMA read from rank: %d, pid: %ld, src: %p, dst: %p, len: %ld\n",
+            "CMA read from rank: %d, pid: %d, src: %p, dst: %p, len: %ld\n",
             vc->pg_rank, pid, src, dst, len);
 
     do {
@@ -5630,7 +5630,7 @@ int MPIDI_CH3I_SMP_do_cma_put(MPIDI_VC_t *vc, const void *src, void *dst, ssize_
 
     pid = MPIDI_CH3I_SMP_get_pid(vc);
     PRINT_DEBUG(DEBUG_RNDV_verbose > 0,
-            "CMA write to rank: %d, pid: %ld, src: %p, dst: %p, len: %ld\n",
+            "CMA write to rank: %d, pid: %d, src: %p, dst: %p, len: %ld\n",
             vc->pg_rank, pid, src, dst, len);
 
     do {

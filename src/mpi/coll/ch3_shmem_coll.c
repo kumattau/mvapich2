@@ -70,13 +70,16 @@
 #include "ired_scat_tuning.h"
 #include "iallgatherv_tuning.h"
 #include "ibarrier_tuning.h"
-#ifdef MRAIL_GEN2_INTERFACE
+#if defined(CKPT)
 #include <cr.h>
 #endif
 #if defined(_ENABLE_CUDA_)
 #include "datatype.h"
 #endif
 #include "debug_utils.h"
+#if defined(_MCST_SUPPORT_)
+#include "ibv_mcast.h"
+#endif
 
 /* 
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -288,6 +291,12 @@ int zcpy_knomial_factor = 2;
 int mv2_intra_node_knomial_factor = 4;
 int mv2_shmem_coll_spin_count = 5;
 
+int mv2_enable_socket_aware_collectives = 1;
+int mv2_use_socket_aware_allreduce = 1;
+int mv2_use_socket_aware_sharp_allreduce = 0;
+int mv2_use_socket_aware_barrier = 1;
+int mv2_socket_aware_allreduce_max_msg = 2048;
+int mv2_socket_aware_allreduce_min_msg = 1;
 int mv2_tune_parameter = 0;
 /* Runtime threshold for scatter */
 int mv2_user_scatter_small_msg = 0;
@@ -415,8 +424,10 @@ int mv2_bcast_short_msg = MPIR_BCAST_SHORT_MSG;
 int mv2_bcast_large_msg = MPIR_BCAST_LARGE_MSG;
 
 /* after these threshold, force ring algorithm */
-int mv2_allreduce_red_scat_allgather_algo_threshold = 524288;
-int mv2_allreduce_ring_algo_threshold = 1024*1024;
+int mv2_allreduce_red_scat_allgather_algo_threshold = 2*1024*1024;
+int mv2_allreduce_red_scat_allgather_algo_ppn_threshold = 8;
+int mv2_allreduce_ring_algo_threshold = 2*1024*1024;
+int mv2_allreduce_ring_algo_ppn_threshold = 8;
 int mv2_allgather_ring_algo_threshold = 131072;
 int mv2_allgather_cyclic_algo_threshold = 1024;
 int mv2_allreduce_cyclic_algo_threshold = 1024*1024;
@@ -436,7 +447,7 @@ int mv2_use_pipelined_bcast = 1;
 int bcast_segment_size = 8192;
 int ibcast_segment_size = 8192;
 
-int mv2_allred_use_ring = 0;
+int mv2_allred_use_ring = 1;
 
 static char *mv2_kvs_name;
 
@@ -541,6 +552,26 @@ int MV2_collectives_arch_init(int heterogeneity, struct coll_info *colls_arch_hc
     }
 #endif
 
+#if defined(_MCST_SUPPORT_)
+    char *value = NULL;
+    /* Disable mcast for any system other than Frontera by default */
+    if (rdma_enable_mcast &&
+        ((value = getenv("MV2_USE_MCAST")) == NULL) &&
+#if defined(RDMA_CM)
+        ((value = getenv("MV2_USE_RDMA_CM_MCAST")) == NULL) &&
+#endif /*defined(RDMA_CM)*/
+        !(MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+          MV2_ARCH_INTEL_PLATINUM_8280_2S_56, MV2_HCA_MLX_CX_EDR))) {
+        rdma_enable_mcast = 0;
+#if defined(RDMA_CM)
+        rdma_use_rdma_cm_mcast = 0;
+#endif /*defined(RDMA_CM)*/
+        MPIU_Free(mcast_ctx);
+        PRINT_DEBUG(DEBUG_MCST_verbose,"Disable mcast by default on this"
+                " architecture. Set MV2_USE_MCAST=1 to avoid this behavior\n");
+    }
+#endif
+
     MV2_Read_env_vars();
     
     if (mv2_use_osu_collectives) {
@@ -569,17 +600,7 @@ int MV2_collectives_arch_init(int heterogeneity, struct coll_info *colls_arch_hc
       MV2_set_iallgatherv_tuning_table(heterogeneity);
       MV2_set_ibarrier_tuning_table(heterogeneity);
     }
-    if (mv2_use_osu_collectives) {
-        if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
-                        MV2_ARCH_IBM_POWER8, MV2_HCA_MLX_CX_EDR) ||
-             MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
-                            MV2_ARCH_IBM_POWER9, MV2_HCA_MLX_CX_EDR)) {
-            /* on open power systems do not use Bcast_Shmem */
-           MV2_Bcast_Shmem_Based_function = &MPIR_Knomial_Bcast_intra_node_MV2; 
-        } else {
-           MV2_Bcast_Shmem_Based_function = &MPIR_Shmem_Bcast_MV2; 
-        }
-    }
+
     /* Functions to set collective algorithm based on MPI_T CVAR */
     if (mv2_use_osu_collectives) {
         mpi_errno = mv2_set_gather_collective_algorithm();
@@ -1843,9 +1864,6 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
         WRITEBAR();
     }
 
-    MV2_INC_NUM_UNEXP_RECV();
-    MPID_Progress_test();
-    MV2_DEC_NUM_UNEXP_RECV();
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_BCAST);
 }
 
@@ -2736,12 +2754,25 @@ void MV2_Read_env_vars(void)
 	}
     }
 
+    if ((value = getenv("MV2_ALLREDUCE_RING_ALGO_PPN_THRESHOLD")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag >= 1) {
+            mv2_allreduce_ring_algo_ppn_threshold = flag;
+        }
+    }
     if ((value = getenv("MV2_ALLREDUCE_RING_ALGO_THRESHOLD")) != NULL) {
         mv2_allreduce_ring_algo_threshold =
             user_val_to_bytes(value, "MV2_ALLREDUCE_RING_ALGO_THRESHOLD");
 
         if (mv2_allreduce_ring_algo_threshold < 0)
             mv2_allreduce_ring_algo_threshold = 0;
+    }
+
+    if ((value = getenv("MV2_ALLREDUCE_RED_SCAT_ALLGATHER_ALGO_PPN_THRESHOLD")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag >= 1) {
+            mv2_allreduce_red_scat_allgather_algo_ppn_threshold = flag;
+        }
     }
     if ((value = getenv("MV2_ALLREDUCE_RED_SCAT_ALLGATHER_ALGO_THRESHOLD")) != NULL) {
         mv2_allreduce_red_scat_allgather_algo_threshold =
@@ -2880,21 +2911,41 @@ void MV2_Read_env_vars(void)
         mv2_two_level_comm_early_init_threshold = atoi(value);
     }
 
-    if(mv2_use_slot_shmem_coll == 0 || mv2_use_slot_shmem_bcast  ==0 
-#if defined(_MCST_SUPPORT_)
-        || rdma_enable_mcast  == 1
-#endif /* #if defined(_MCST_SUPPORT_) */ 
-      ) { 
+    if(mv2_use_slot_shmem_coll == 0 || mv2_use_slot_shmem_bcast  == 0) { 
        /* Disable zero-copy bcast if slot-shmem, or slot-shmem-bcast params
-        * are off, or when mcast is on */ 
+        * are off  */ 
        mv2_enable_zcpy_bcast = 0; 
     }
 
 #if ENABLE_PVAR_MV2
-    if((value = getenv("MV2_ENABLE_PVAR_TIMER")) !=NULL) {
+    if ((value = getenv("MV2_ENABLE_PVAR_TIMER")) !=NULL) {
       mv2_enable_pvar_timer = atoi(value);
     }
 #endif 
+
+    if ((value = getenv("MV2_ENABLE_SOCKET_AWARE_COLLECTIVES")) !=NULL) {
+        mv2_enable_socket_aware_collectives = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_SOCKET_AWARE_ALLREDUCE")) !=NULL) {
+        mv2_use_socket_aware_allreduce = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_SOCKET_AWARE_SHARP_ALLREDUCE")) !=NULL) {
+        mv2_use_socket_aware_sharp_allreduce = !!atoi(value);                   
+    }
+
+    if ((value = getenv("MV2_USE_SOCKET_AWARE_BARRIER")) !=NULL) {
+        mv2_use_socket_aware_barrier = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_SOCKET_AWARE_ALLREDUCE_MAX_MSG")) !=NULL) {
+        mv2_socket_aware_allreduce_max_msg = atoi(value);
+    }
+
+    if ((value = getenv("MV2_SOCKET_AWARE_ALLREDUCE_MIN_MSG")) !=NULL) {
+        mv2_socket_aware_allreduce_min_msg = atoi(value);
+    }
 
     /* Override MPICH2 default env values for Gatherv */
     MPIR_CVAR_GATHERV_INTER_SSEND_MIN_PROCS = 1024;

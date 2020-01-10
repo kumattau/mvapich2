@@ -36,7 +36,7 @@ static int MPIR_Iallgatherv_tune_helper_MV2(const void *sendbuf, int sendcount, 
                                             MPI_Datatype recvtype, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int is_homogeneous;
+    int is_homogeneous ATTRIBUTE((unused));
     int comm_size;
 
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
@@ -74,7 +74,7 @@ int MPIR_Iallgatherv_intra_MV2(const void *sendbuf, int sendcount, MPI_Datatype 
                                MPI_Datatype recvtype, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int comm_size, is_homogeneous;
+    int comm_size, is_homogeneous ATTRIBUTE((unused));
     int i;
     MPI_Aint recvtype_size, nbytes;
     

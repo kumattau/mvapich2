@@ -190,7 +190,7 @@ cvars:
     - name        : USE_MCAST
       category    : CH3
       type        : int
-      default     : 0
+      default     : 1
       class       : none
       verbosity   : MPI_T_VERBOSITY_USER_BASIC
       scope       : MPI_T_SCOPE_ALL_EQ

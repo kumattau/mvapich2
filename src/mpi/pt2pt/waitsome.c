@@ -95,7 +95,7 @@ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
     int n_active;
     int n_inactive;
     int active_flag;
-    int rc;
+    int rc=0;
     int disabled_anysource = FALSE;
     int mpi_errno = MPI_SUCCESS;
     MPIU_CHKLMEM_DECL(1);

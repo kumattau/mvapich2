@@ -108,7 +108,7 @@ MPID_Request * MPID_Request_create(void)
         req->dev.user_buf          = NULL;
         req->dev.OnDataAvail       = NULL;
         req->dev.OnFinal           = NULL;
-        req->dev.datatype          = NULL;
+        req->dev.datatype          = 0;
         req->dev.drop_data         = FALSE;
         req->dev.tmpbuf            = NULL;
         req->dev.ext_hdr_ptr       = NULL;

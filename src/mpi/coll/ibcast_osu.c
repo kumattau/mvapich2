@@ -33,7 +33,7 @@ static int MPIR_Ibcast_tune_helper_MV2(void *buffer, int count, MPI_Datatype dat
                                        int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int comm_size, is_homogeneous;
+    int comm_size, is_homogeneous ATTRIBUTE((unused));
 
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
 
@@ -74,7 +74,7 @@ static int MPIR_Ibcast_tune_helper_MV2(void *buffer, int count, MPI_Datatype dat
 int MPIR_Ibcast_intra_MV2(void *buffer, int count, MPI_Datatype datatype, int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int comm_size, is_homogeneous;
+    int comm_size, is_homogeneous ATTRIBUTE((unused));
     MPI_Aint type_size, nbytes;
     
     int two_level_ibcast = 1;

@@ -20,6 +20,15 @@
 #include "cm.h"
 #include "dreg.h"
 #include "debug_utils.h"
+#include "ibv_mcast.h"
+#include "mv2_utils.h"
+
+#include <sys/socket.h>
+#include <ifaddrs.h>
+#include <net/if.h>   
+#include "rdma_impl.h"
+#include "ibv_param.h"
+#include <arpa/inet.h>
 
 #undef DEBUG_PRINT
 #ifdef DEBUG
@@ -37,6 +46,96 @@ do {                                                          \
 extern int g_atomics_support;
 
 extern int MPIDI_Get_num_nodes();
+
+#if defined(RDMA_CM)
+ip_address_enabled_devices_t * ip_address_enabled_devices = NULL;
+int num_ip_enabled_devices = 0;
+
+/*
+ * Iterate over available interfaces
+ * and determine verbs capable ones and return their ip addresses and names.
+ * Input : 1) num_interfaces: number of available devices 
+ * Output: 1) Array of ip_address_enabled_devices_t which contains ip_address
+ *         and device_name for each device 
+ *         2) num_interfaces: `number of devices with ip addresses
+ *  
+ */
+int mv2_get_verbs_ips_dev_names(int *num_interfaces, ip_address_enabled_devices_t * ip_address_enabled_devices)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int i = 0, max_ips = 0, ret = 0;
+    char *ip = NULL, *dev_name = NULL;
+    struct ifaddrs *ifaddr = NULL, *ifa;
+    struct rdma_cm_id *cm_id = NULL;
+    struct rdma_event_channel *ch = NULL;
+    struct sockaddr_in *sin = NULL;
+    struct ibv_port_attr port_attr;
+    
+    max_ips = *num_interfaces;
+    ret = getifaddrs(&ifaddr);
+    if (ret) {
+        MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "getifaddrs error %d\n", errno);
+    }
+
+    for (ifa = ifaddr; ifa != NULL && i < max_ips; ifa = ifa->ifa_next) {
+        PRINT_DEBUG(DEBUG_RDMACM_verbose,"Searching ip\n");
+        if (ifa->ifa_addr != NULL
+            && ifa->ifa_addr->sa_family == AF_INET
+            && ifa->ifa_flags & IFF_UP
+            && !(ifa->ifa_flags & IFF_LOOPBACK)
+            && !(ifa->ifa_flags & IFF_POINTOPOINT)
+        ) {
+            ch =  rdma_create_event_channel();
+            if(!ch) {
+                MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                        "rdma_create_event_channel error %d\n", errno);
+            }
+
+            if (rdma_create_id(ch, &cm_id, NULL, RDMA_PS_TCP)) {
+                MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                        "rdma_create_id error %d\n", errno);
+            }
+
+            PRINT_DEBUG(DEBUG_RDMACM_verbose,"ip: %s\n", ip);
+            sin = (struct sockaddr_in *) ifa->ifa_addr;
+            ip = inet_ntoa(sin->sin_addr);
+            
+            ret = rdma_bind_addr(cm_id, ifa->ifa_addr);
+            if (ret == 0 && cm_id->verbs != 0) {
+                dev_name = (char *) ibv_get_device_name(cm_id->verbs->device);
+                /* Skip interfaces that are not in active state */
+                if (dev_name && (!ibv_query_port(cm_id->verbs, cm_id->port_num, &port_attr))
+                    && port_attr.state == IBV_PORT_ACTIVE) {
+                    strcpy(ip_address_enabled_devices[i].ip_address,ip);
+                    strcpy(ip_address_enabled_devices[i].device_name,dev_name);
+                    PRINT_DEBUG(DEBUG_RDMACM_verbose,"Active: dev_name: %s, port: %d, ip: %s\n",
+                                dev_name, cm_id->port_num, ip);
+                    i++;
+                } else {
+                    PRINT_DEBUG(DEBUG_RDMACM_verbose,"Not Active (%d): dev_name: %s, port: %d, ip: %s\n",
+                                port_attr.state, dev_name, cm_id->port_num, ip);
+                }
+            }
+
+            skip:
+            PRINT_DEBUG(DEBUG_RDMACM_verbose, "i: %d, interface: %s, device: %s, ip: %s, verbs: %d\n",
+                                            i, ifa->ifa_name, dev_name, ip, !!cm_id->verbs);
+
+            rdma_destroy_id(cm_id); cm_id = NULL;
+            rdma_destroy_event_channel(ch); ch = NULL;
+            dev_name = NULL;
+        }
+    }
+
+    *num_interfaces = i;
+fn_fail:
+    freeifaddrs(ifaddr); ifaddr = NULL;
+
+    return mpi_errno;
+}
+#endif /*defined(RDMA_CM)*/
+
 int qp_required(MPIDI_VC_t * vc, int my_rank, int dst_rank)
 {
     int qp_reqd = 1;
@@ -382,7 +481,7 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
         } else {
             num_unknwn_cards++;
         }
-        if (MV2_IS_QLE_CARD(hca_type) || MV2_IS_INTEL_CARD(hca_type)) {
+        if ((MV2_IS_QLE_CARD(hca_type) || MV2_IS_INTEL_CARD(hca_type)) && !mv2_suppress_hca_warnings) {
             PRINT_ERROR("QLogic IB cards or Intel Omni-Path detected in system.\n");
             PRINT_ERROR("Please re-configure the library with the"
                         " '--with-device=ch3:psm' configure option"
@@ -427,6 +526,26 @@ int rdma_skip_network_card(mv2_iba_network_classes network_type,
 
     if (network_type != mv2_get_hca_type(ib_dev)) {
         skip = 1;
+    }
+
+    return skip;
+}
+
+
+int rdma_skip_network_card_without_ip(ip_address_enabled_devices_t * ip_address_enabled_devices,
+                                        int num_devs,int *ip_index, struct ibv_device *ib_dev)
+{
+    int skip = 1, index = 0;
+    for (index = 0; index < num_devs; index++) {
+        PRINT_DEBUG(DEBUG_INIT_verbose>1, "dev name %s, ip %s index %d\n",
+                    ip_address_enabled_devices[index].device_name,
+                    ip_address_enabled_devices[index].ip_address, index);
+        if (!strcmp(ip_address_enabled_devices[index].device_name,
+                    ibv_get_device_name(ib_dev))){
+             *ip_index = index;
+              skip = 0;
+              break;
+        }
     }
 
     return skip;
@@ -543,13 +662,12 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     int i = 0, j = 0;
     int num_devices = 0;
     int num_usable_hcas = 0;
-    int first_attempt_to_bind_failed = 0;
     int mpi_errno = MPI_SUCCESS;
     struct ibv_device *ib_dev = NULL;
     struct ibv_device **dev_list = NULL;
     struct ibv_device **usable_dev_list = MPIU_Malloc(sizeof(struct ibv_device *)*MAX_NUM_HCAS);
     int network_type = MV2_NETWORK_CLASS_UNKNOWN;
-
+    int total_ips = 0, ip_index = 0;
 #ifdef CRC_CHECK
     gen_crc_table();
 #endif
@@ -558,12 +676,14 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
     dev_list = ibv_get_device_list(&num_devices);
 
+
     network_type = rdma_find_network_type(dev_list, num_devices,
                                           usable_dev_list, &num_usable_hcas);
 
     if (network_type == MV2_HCA_UNKWN) {
         if (num_usable_hcas) {
-            PRINT_ERROR("Unknown HCA type: this build of MVAPICH2 does not"
+            PRINT_INFO((mv2_suppress_hca_warnings==0),
+			"Unknown HCA type: this build of MVAPICH2 does not"
                         "fully support the HCA found on the system (try with"
                         " other build options)\n");
         } else {
@@ -575,13 +695,45 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                                       "**fail %s", "No IB device found");
         }
     }
+#if defined(_MCST_SUPPORT_) && defined(RDMA_CM)
+    total_ips = num_devices;
+    ip_address_enabled_devices = MPIU_Malloc(num_devices * sizeof(ip_address_enabled_devices_t));
+    if (!ip_address_enabled_devices) {
+        MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_NO_MEM, goto fn_fail,
+                "**fail", "**fail %s",
+                "Failed to allocate resources for "
+                "multicast");
+    }
+    MPIU_Memset(ip_address_enabled_devices, 0,
+                num_devices * sizeof(ip_address_enabled_devices_t));
+    mpi_errno = mv2_get_verbs_ips_dev_names(&total_ips, ip_address_enabled_devices);
+    if (mpi_errno) {
+        MPIR_ERR_POP(mpi_errno);
+    }
+    num_ip_enabled_devices = total_ips;
+    PRINT_DEBUG(DEBUG_MCST_verbose, "total ips %d\n",total_ips); 
+    if (rdma_use_rdma_cm_mcast == 1 && num_ip_enabled_devices == 0) {
+        PRINT_ERROR("No IP enabled device found. Disabling rdma_cm multicast\n");
+        rdma_use_rdma_cm_mcast = 0;
+    }
+    if (rdma_use_rdma_cm_mcast == 1) {
+       if (rdma_multirail_usage_policy == MV2_MRAIL_BINDING) {
+           PRINT_INFO((MPIDI_Process.my_pg_rank == 0),"[Warning] Setting the"
+                 "  multirail policy to MV2_MRAIL_SHARING since RDMA_CM based multicast"
+                 "  is enabled.\n");
+       }
+       rdma_multirail_usage_policy = MV2_MRAIL_SHARING;
+   }
+#endif /*defined(_MCST_SUPPORT_) && defined(RDMA_CM)*/
+    
 
     PRINT_DEBUG(DEBUG_INIT_verbose, "Selected HCA type = %s, Usable HCAs = %d\n",
                 mv2_get_hca_name(network_type), num_usable_hcas);
+    
     for (i = 0; i < num_usable_hcas; i++) {
         if (rdma_skip_network_card(network_type, usable_dev_list[i])) {
             /* Skip HCA's that don't match with network type */
-            PRINT_DEBUG(DEBUG_INIT_verbose, "1. Skipping HCA %s since type does not match."
+            PRINT_DEBUG(DEBUG_INIT_verbose, "Skipping HCA %s since type does not match."
                         "Selected: %s; Current: %s\n",
                         usable_dev_list[i]->name, mv2_get_hca_name(network_type),
                         mv2_get_hca_name(mv2_get_hca_type(usable_dev_list[i])));
@@ -621,6 +773,29 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                                       "**fail %s", "No IB device found");
         }
 
+#if defined(_MCST_SUPPORT_) && defined(RDMA_CM)
+        /* Only node leader, i.e. local rank 0, will have to worry about using
+         * an IB interface with an IP address */
+        /* We don't need to skip the HCA as we change the multi rail policy to rail sharing 
+         * if RDMA_CM mcast is enabled*/
+        if (rdma_use_rdma_cm_mcast == 1 && 
+			rdma_skip_network_card_without_ip(ip_address_enabled_devices, total_ips, &ip_index, ib_dev)) {
+		/* If the user has specified the use of some HCAs through
+		 * MV2_IBA_HCA, then make sure that we don't skip
+		 * them automatically. We should honor the request and disable
+		 * RDMA_CM based multicast instead after displaying a warning.
+		 * TODO: This does not handle the multirail scenario correctly. */
+		if (!strncmp(ibv_get_device_name(ib_dev),
+					rdma_iba_hcas[rdma_num_hcas], 32)) {
+			PRINT_ERROR("User specified HCA %s does not have an IP address."
+					" Disabling RDMA_CM based multicast.\n",
+					rdma_iba_hcas[j]);
+			rdma_use_rdma_cm_mcast = 0;
+		}
+
+	}
+#endif /*defined(_MCST_SUPPORT_) && defined(RDMA_CM)*/
+
         proc->ib_dev[rdma_num_hcas] = ib_dev;
 
         proc->nic_context[rdma_num_hcas] = ibv_open_device(ib_dev);
@@ -658,6 +833,24 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
         PRINT_DEBUG(DEBUG_INIT_verbose,"HCA %d/%d = %s\n", rdma_num_hcas+1,
                     rdma_num_req_hcas, proc->ib_dev[rdma_num_hcas]->name);
+        
+#if defined(_MCST_SUPPORT_) && defined(RDMA_CM)
+        if (rdma_use_rdma_cm_mcast == 1 && !rdma_skip_network_card_without_ip(
+                                                     ip_address_enabled_devices,total_ips, &ip_index, ib_dev)){
+            /* We need to know the index of the first ip_address for doing mcast.
+             * Has to be changed for multirail mcast. */
+            mcast_ctx = MPIU_Malloc(sizeof(mcast_context_t));
+            if (!mcast_ctx) {
+                MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_NO_MEM, goto fn_fail,
+                        "**fail", "**fail %s",
+                        "Failed to allocate resources for "
+                        "multicast");
+            }
+            mcast_ctx->ip_index = ip_index;
+            mcast_ctx->selected_rail = rdma_num_hcas;
+            PRINT_DEBUG(DEBUG_MCST_verbose>2,"Mcast context created. ip indx %d, mcast rail %d\n", ip_index, rdma_num_hcas);
+        }
+#endif /*defined(_MCST_SUPPORT_) && defined(RDMA_CM)*/
         rdma_num_hcas++;
         if ((rdma_multirail_usage_policy == MV2_MRAIL_BINDING) ||
             (rdma_num_req_hcas == rdma_num_hcas)) {
@@ -666,8 +859,15 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             break;
         }
     }
-
+    
     if (unlikely(rdma_num_hcas == 0)) {
+#if defined(_MCST_SUPPORT_) && defined(RDMA_CM)
+        if (rdma_use_rdma_cm_mcast == 1 && rdma_local_id == 0) {
+            PRINT_ERROR("No HCA on the node has an IP address."
+                        " Disabling RDMA_CM based multicast.\n");
+            rdma_use_rdma_cm_mcast = 0;
+        }
+#endif /*defined(_MCST_SUPPORT_) && defined(RDMA_CM)*/
         MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
                                   "**fail", "%s %d",
                                   "No active HCAs found on the system!!!",
@@ -2233,16 +2433,9 @@ int get_pkey_index(uint16_t pkey, int hca_num, int port_num, uint16_t * ix)
 
 void set_pkey_index(uint16_t * pkey_index, int hca_num, int port_num)
 {
-    char * value = NULL;
-    if ((value = getenv("MV2_DEFAULT_PKEY")) != NULL) {
-        rdma_default_pkey =
-            (uint16_t) strtol(value, (char **) NULL, 0) & PKEY_MASK;
-    }
-
     if (rdma_default_pkey == RDMA_DEFAULT_PKEY) {
         *pkey_index = rdma_default_pkey_ix;
-    } else if (!get_pkey_index(rdma_default_pkey, hca_num, port_num, pkey_index)
-) {
+    } else if (!get_pkey_index(rdma_default_pkey, hca_num, port_num, pkey_index)) {
         ibv_error_abort(GEN_EXIT_ERR,
                         "Can't find PKEY INDEX according to given PKEY\n");
     }

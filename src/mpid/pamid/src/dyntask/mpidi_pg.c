@@ -561,7 +561,7 @@ static int MPIDI_getConnInfoKVS( int rank, char *buf, int bufsize, MPIDI_PG_t *p
     char key[MPIDI_MAX_KVS_KEY_LEN];
     int  mpi_errno = MPI_SUCCESS, rc, pmi_errno;
 
-    rc = MPL_snprintf(key, MPIDI_MAX_KVS_KEY_LEN, "P%d-businesscard", rank );
+    rc = MPL_snprintf(key, MPIDI_MAX_KVS_KEY_LEN, "Pbusinesscard-%d", rank );
     if (rc < 0 || rc > MPIDI_MAX_KVS_KEY_LEN) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomem");
     }

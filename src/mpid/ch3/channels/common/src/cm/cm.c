@@ -2484,6 +2484,10 @@ int MPIDI_CH3I_CM_Connect_self(MPIDI_VC_t * vc)
     int i;
     cm_msg msg;
 
+    if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE) {
+        return MPI_SUCCESS;
+    }
+
     /*TODO: XRC and CHECKPOINT cases yet to be handled*/
 #if defined(RDMA_CM)
     /* Trap into the RDMA_CM connection initiation */

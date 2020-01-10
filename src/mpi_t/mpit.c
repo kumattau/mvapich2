@@ -5,6 +5,7 @@
  */
 
 #include "mpiimpl.h"
+#include "debug_utils.h"
 
 int MPIR_T_init_balance = 0;
 
@@ -26,6 +27,7 @@ name2index_hash_t *cvar_hash;
 name2index_hash_t *pvar_hashs[MPIR_T_PVAR_CLASS_NUMBER];
 
 int sub_comm_counter_idx = 0;
+int sub_comm_timer_idx = 0;
 
 /* Create an enum.
  * IN: enum_name, name of the enum
@@ -370,7 +372,6 @@ void MPIR_T_PVAR_REGISTER_impl(
     pvar_table_entry_t *pvar;
     int pvar_idx;
     int seq = varclass - MPIR_T_PVAR_CLASS_FIRST;
-
     /* Check whether this is a replicated pvar, whose name is unique per class */
     HASH_FIND_STR(pvar_hashs[seq], name, hash_entry);
 
@@ -412,10 +413,18 @@ void MPIR_T_PVAR_REGISTER_impl(
         HASH_ADD_KEYPTR(hh, pvar_hashs[seq], hash_entry->name,
                         strlen(hash_entry->name), hash_entry); 
         if(pvar->bind == MPI_T_BIND_MPI_COMM)
-         {
-                pvar->sub_comm_index = sub_comm_counter_idx;
-                sub_comm_counter_idx+=count;
-         }
+        {      
+                switch(pvar->varclass)
+                {
+                  case MPI_T_PVAR_CLASS_TIMER   : pvar->sub_comm_timer_index = sub_comm_timer_idx; 
+      						  sub_comm_timer_idx+=count;
+                                                  break;
+                  case MPI_T_PVAR_CLASS_COUNTER : pvar->sub_comm_index = sub_comm_counter_idx;
+                                                  sub_comm_counter_idx+=count; 
+                                                  break;
+                  default : fprintf(stderr, "PVAR Class not implemented");  
+                }
+        }
 	/* Add the pvar to a category */
         MPIR_T_cat_add_pvar(cat, utarray_len(pvar_table)-1);
     }

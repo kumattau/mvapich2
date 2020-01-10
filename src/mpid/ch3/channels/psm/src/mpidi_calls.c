@@ -198,7 +198,9 @@ inline void MPIDI_CH3_Progress_start(MPID_Progress_state *pstate)
 
 void MPIDI_CH3_Progress_end(MPID_Progress_state *pstate)
 {
-
+  _psm_enter_;
+    PSM_POLL(psmdev_cw.ep);
+  _psm_exit_;
 }
 
 #undef FUNCNAME

@@ -123,10 +123,6 @@ extern int MPIR_Pipelined_Bcast_MV2(void *buffer,
                                     MPI_Datatype datatype,
                                     int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
-extern  int (*MV2_Bcast_Shmem_Based_function) (void *buffer, int count, MPI_Datatype datatype,
-                                      int root, MPID_Comm * comm_ptr,
-                                      MPIR_Errflag_t *errflag);
-
 /* Use for intra-node in case of two lvl algo */
 extern int MPIR_Shmem_Bcast_MV2(void *buffer,
                                 int count,

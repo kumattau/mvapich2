@@ -56,6 +56,33 @@ elif test "x$with_pmi" = "xpmi2/simple" -o "x$with_pmi" = "xpmi2"; then
     AC_CHECK_FUNCS([PMI2_Iallgather_wait], [AC_DEFINE([HAVE_PMI2_SHMEM_IALLGATHER_WAIT], [1], [Define if pmi client supports PMI2_Iallgather_wait])])
     AC_CHECK_FUNCS([PMI2_SHMEM_Iallgather], [AC_DEFINE([HAVE_PMI2_SHMEM_IALLGATHER], [1], [Define if pmi client supports PMI2_SHMEM_Iallgather])])
     AC_CHECK_FUNCS([PMI2_SHMEM_Iallgather_wait], [AC_DEFINE([HAVE_PMI2_SHMEM_IALLGATHER_WAIT], [1], [Define if pmi client supports PMI2_SHMEM_Iallgather_wait])])
+elif test "x$with_pmi" = "xpmix"; then
+    AC_ARG_WITH([pmix],
+        [AS_HELP_STRING([--with-pmix=@<:@Path to pmix library@:>@],
+                           [Specify path to PMIX installation])
+        ],
+        [AS_CASE([$with_pmix],
+            [yes|no], [AC_MSG_FAILURE([--with-pmix must be passed a path])],
+            [CPPFLAGS="$CPPFLAGS -I$with_pmix/include"]
+            [LDFLAGS="$LDFLAGS -Wl,-rpath,$with_pmix/lib -L$with_pmix/lib"])
+        ],
+        [with_pmix=no])
+
+    if test "x$with_pmix" != "xno"; then
+        AC_CHECK_FILE([$with_pmix/include/pmix.h], [found pmix.h for PMIx], [AC_MSG_ERROR([could not find pmix.h for PMIx. Please use --with-pmix to point to the correct location. Configure aborted])])
+        AC_CHECK_LIB([pmix], [PMIx_Init],
+                     [PAC_PREPEND_FLAG([-lpmix],[LIBS])
+                      PAC_PREPEND_FLAG([-Wl,-rpath,$with_pmix/lib -L$with_pmix/lib -lpmix], [WRAPPER_LIBS])
+                      AC_DEFINE([USE_PMIX_API], [1], [Define if PMIx client supports PMIx])],
+                     [AC_MSG_ERROR([could not find the PMIx libpmix. Please use --with-pmix to point to the correct location. Configure aborted])])
+    else
+        AC_CHECK_HEADER([pmix.h], [], [AC_MSG_ERROR([could not find pmix.h. Please use --with-pmix to point to the correct location. Configure aborted])])
+        AC_CHECK_LIB([pmix], [PMIx_Init],
+                 [PAC_PREPEND_FLAG([-lpmix],[LIBS])
+                  PAC_PREPEND_FLAG([-lpmix], [WRAPPER_LIBS])
+                  AC_DEFINE([USE_PMIX_API], [1], [Define if PMIx client supports PMIx])],
+                 [AC_MSG_ERROR([could not find the slurm libpmix. Please use --with-pmix to point to the correct location. Configure aborted])])
+    fi
 else
     AC_MSG_ERROR([Selected PMI ($with_pmi) is not compatible with slurm])
 fi

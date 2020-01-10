@@ -225,7 +225,7 @@ int MPIDI_CH3_PktHandler_SMP_RTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 
         if (found) {
             PRINT_DEBUG(DEBUG_RNDV_verbose>1, "posted request found, "
-                    "rreq: %08x, rank: %d, tag: %d, context: %d, protocol: %d, recv_sz: %llu\n",
+                    "rreq: %p, rank: %d, tag: %d, context: %d, protocol: %d, recv_sz: %ld\n",
                     rreq, rreq->dev.match.parts.rank, rreq->dev.match.parts.tag, 
                     rreq->dev.match.parts.context_id, rreq->mrail.protocol, rreq->dev.recv_data_sz);
         } else if (MPID_cc_get(rreq->cc) == 0) {
@@ -245,12 +245,32 @@ int MPIDI_CH3_PktHandler_SMP_RTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         set_request_info(rreq, rts_pkt, MPIDI_REQUEST_RNDV_MSG);
         mv2_select_rndv_protocol(vc, rreq, rts_pkt);
         PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                "Saved RTS, sreq: %08x, rank: %d, tag: %d, context: %d, protocol: %d, data_sz: %llu\n",
+                "Saved RTS, sreq: %08x, rank: %d, tag: %d, context: %d, protocol: %d, data_sz: %ld\n",
                 rts_pkt->sender_req_id, rts_pkt->match.parts.rank, rts_pkt->match.parts.tag, 
                 rts_pkt->match.parts.context_id, rts_pkt->rndv.protocol, rts_pkt->data_sz);
     }
 
     if (found) {
+#if defined (_ENABLE_CUDA_)
+        /* Fallback to R3 for heterogenous transfer, i.e., H-D and D-H
+         * TODO: may consider support RGET/RPUT for such case */
+        if (rdma_enable_cuda && (rts_pkt->rndv.cuda_transfer_mode != rreq->mrail.cuda_transfer_mode)) {
+            rreq->mrail.protocol = rts_pkt->rndv.protocol = MV2_RNDV_PROTOCOL_R3;
+        }
+#if defined (HAVE_CUDA_IPC)
+        /*initialize IPC buffers if not initialized*/
+        if (rdma_enable_cuda &&
+            rdma_cuda_ipc &&
+            rdma_cuda_dynamic_init &&
+            (rreq->mrail.cuda_transfer_mode != NONE ||
+             rts_pkt->rndv.cuda_transfer_mode != NONE) &&
+             vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
+                if (cuda_initialized) {
+                    cudaipc_init_dynamic (vc);
+                }
+        }
+#endif /* defined (HAVE_CUDA_IPC) */
+#endif /* defined (_ENABLE_CUDA_) */
 
         if(MV2_RNDV_PROTOCOL_RGET == rts_pkt->rndv.protocol) {
 
@@ -266,6 +286,22 @@ int MPIDI_CH3_PktHandler_SMP_RTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
                 MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
             }
 
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+            if  (rdma_enable_cuda && rdma_cuda_ipc
+                    && rts_pkt->rndv.cuda_transfer_mode != NONE) {
+                /*revert to RGET if using IPC and rdma is possible*/
+                if (MV2_RNDV_PROTOCOL_RPUT == rreq->mrail.protocol) {
+                    rreq->mrail.protocol = MV2_RNDV_PROTOCOL_RGET;
+                }
+                if (MV2_RNDV_PROTOCOL_RGET == rreq->mrail.protocol) {
+                    if (MPIDI_CH3I_MRAIL_Rndv_transfer_cuda_ipc (vc, rreq, rts_pkt)) {
+                        *rreqp = NULL;
+                        goto fn_exit;
+                    }
+                }
+            }
+#endif
+
             if (!rdma_rndv_immediate) {
                 RENDEZVOUS_IN_PROGRESS(vc, rreq);
                 rreq->mrail.nearly_complete = 0;
@@ -280,6 +316,9 @@ int MPIDI_CH3_PktHandler_SMP_RTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         } 
         
         if (MV2_RNDV_PROTOCOL_RPUT == rts_pkt->rndv.protocol ||
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+            MV2_RNDV_PROTOCOL_CUDAIPC == rts_pkt->rndv.protocol ||
+#endif
             MV2_RNDV_PROTOCOL_R3   == rts_pkt->rndv.protocol) {
 
             MPID_Request * cts_req;
@@ -306,14 +345,22 @@ int MPIDI_CH3_PktHandler_SMP_RTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
             } else {
                 cts_pkt->recv_sz = rreq->dev.segment_size;
             }
-
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+            if (rdma_enable_cuda && (rdma_cuda_ipc && cudaipc_stage_buffered &&
+                    rreq->mrail.cuda_transfer_mode != NONE &&
+                    vc->smp.can_access_peer == CUDA_IPC_ENABLED) ||
+                    (rreq->mrail.protocol == MV2_RNDV_PROTOCOL_CUDAIPC)
+               ) {
+                mpi_errno = MPIDI_CH3_Prepare_rndv_cts_cuda(vc, cts_pkt, rreq);
+            } else
+#endif
             mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
             if (mpi_errno != MPI_SUCCESS) {
                 MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
             }
 
             PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                    "sending CTS to rank: %d, buf_addr: %p, recv_sz: %llu, protocol: %d\n",
+                    "sending CTS to rank: %d, buf_addr: %p, recv_sz: %ld, protocol: %d\n",
                     vc->pg_rank, cts_pkt->rndv.buf_addr, cts_pkt->recv_sz, cts_pkt->rndv.protocol);
 
             MPID_THREAD_CS_ENTER(POBJ, vc->pobj_mutex);
@@ -330,8 +377,14 @@ int MPIDI_CH3_PktHandler_SMP_RTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     } else {
         MV2_INC_NUM_POSTED_RECV();
         PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                "unexpected request allocated, rreq: %08x, sreq: %08x\n",
+                "unexpected request allocated, rreq: %p, sreq: %08x\n",
                 rreq, rts_pkt->sender_req_id);
+#if defined(_ENABLE_CUDA_)
+        /*If cuda is enabled, the pkt size is large, allocate
+          a buffer and then copy the rts packet*/
+        rreq->dev.pending_pkt = MPIU_Malloc(sizeof(MPIDI_CH3_Pkt_rndv_req_to_send_t));
+        MPIU_Memcpy(rreq->dev.pending_pkt, rts_pkt, sizeof(MPIDI_CH3_Pkt_rndv_req_to_send_t));
+#endif
         MPIU_Memcpy(&rreq->ch.pkt, pkt, sizeof(MPIDI_CH3_Pkt_t));
         MPIDI_CH3_Progress_signal_completion();
     }
@@ -357,7 +410,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
     
 #if defined(CHANNEL_MRAIL)
     PRINT_DEBUG(DEBUG_RNDV_verbose,
-            "received RTS, sreq: %08x, rank: %d, tag: %d, context: %d, protocol: %d, data_sz: %llu\n",
+            "received RTS, sreq: %08x, rank: %d, tag: %d, context: %d, protocol: %d, data_sz: %ld\n",
             rts_pkt->sender_req_id, rts_pkt->match.parts.rank, rts_pkt->match.parts.tag, 
             rts_pkt->match.parts.context_id, rts_pkt->rndv.protocol, rts_pkt->data_sz);
 
@@ -373,7 +426,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
               rts_pkt->match.parts.context_id, rts_pkt->data_sz));
     MPIU_DBG_MSGPKT(vc,rts_pkt->match.parts.tag,rts_pkt->match.parts.context_id,
 		    rts_pkt->match.parts.rank,rts_pkt->data_sz,
-		    "ReceivedRndv");
+            "ReceivedRndv");
 
     MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_POBJ_MSGQ_MUTEX);
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&rts_pkt->match, &found);
@@ -414,21 +467,6 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"posted request found");	
         MPIR_T_PVAR_COUNTER_INC(MV2, expected_recvs_rendezvous, 1);	
 #if defined(CHANNEL_MRAIL)
-#if defined (_ENABLE_CUDA_) && defined (HAVE_CUDA_IPC)
-        /*initialize IPC buffers if not initialized*/
-        if (rdma_enable_cuda && 
-            rdma_cuda_ipc &&
-            rdma_cuda_dynamic_init &&
-            vc->smp.local_rank != -1 &&
-            (rreq->mrail.cuda_transfer_mode != NONE || 
-             rts_pkt->rndv.cuda_transfer_mode != NONE) &&
-             vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
-                if (cuda_initialized) {
-                    cudaipc_init_dynamic (vc);
-                }
-        }
-#endif
-
         if(MPIDI_CH3_RNDV_PROTOCOL_IS_READ(rts_pkt)) {
 
             mpi_errno = MPIDI_CH3U_Post_data_receive_found(rreq);
@@ -442,26 +480,6 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
             if (mpi_errno != MPI_SUCCESS) {
                 MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
             }
-
-#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-            if  (vc->smp.local_rank != -1
-                && rdma_enable_cuda
-                && rdma_cuda_ipc
-                && rts_pkt->rndv.cuda_transfer_mode != NONE) {
- 
-                /*revert to RGET if using IPC and rdma is possible*/
-                if (MV2_RNDV_PROTOCOL_RPUT == rreq->mrail.protocol) {
-                    rreq->mrail.protocol = MV2_RNDV_PROTOCOL_RGET;
-                }
- 
-                if (MV2_RNDV_PROTOCOL_RGET == rreq->mrail.protocol) {
-                    if (MPIDI_CH3I_MRAIL_Rndv_transfer_cuda_ipc (vc, rreq, rts_pkt)) {
-                        *rreqp = NULL;
-                        goto fn_exit;
-                    }
-                }
-            } 
-#endif
 
             if (MV2_RNDV_PROTOCOL_RGET == rreq->mrail.protocol) {
                 mpi_errno = MPIDI_CH3_Rndv_transfer(vc,
@@ -514,16 +532,9 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
 
 #if defined(_ENABLE_CUDA_)
         if (rdma_enable_cuda  &&
-            ((rreq->mrail.cuda_transfer_mode != NONE &&
+            (rreq->mrail.cuda_transfer_mode != NONE &&
                 (vc->smp.local_nodes == -1)) 
-#ifdef HAVE_CUDA_IPC
-            || (rdma_cuda_ipc && cudaipc_stage_buffered && 
-                rreq->mrail.cuda_transfer_mode != NONE && 
-                vc->smp.can_access_peer == CUDA_IPC_ENABLED) ||
-                (rreq->mrail.protocol == MV2_RNDV_PROTOCOL_CUDAIPC) 
-            
-#endif
-           ))
+           )
         {
     	    mpi_errno = MPIDI_CH3_Prepare_rndv_cts_cuda(vc, cts_pkt, rreq);
         } else
@@ -600,6 +611,14 @@ int MPIDI_CH3_PktHandler_SMP_CTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPID_Request_get_ptr(cts_pkt->sender_req_id, sreq);
     MPIU_Assert(sreq != NULL);
 
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+    /* if receiver has set protocol to MV2_RNDV_PROTOCOL_CUDAIPC
+     * revert protocol to MV2_RNDV_PROTOCOL_CUDAIPC */
+    if (cts_pkt->rndv.protocol == MV2_RNDV_PROTOCOL_CUDAIPC &&
+        sreq->mrail.protocol != MV2_RNDV_PROTOCOL_CUDAIPC) {
+        MPIDI_CH3I_MRAIL_Revert_rndv_cuda_ipc_buffered (vc, sreq);
+    }
+#endif
     recv_size = cts_pkt->recv_sz;
     for (i = 0; i < sreq->dev.iov_count ; i ++) {
         if (recv_size < sreq->dev.iov[i].MPL_IOV_LEN) {
@@ -895,32 +914,6 @@ int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
             MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
         }
 
-#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-        if  (vc->smp.local_rank != -1
-            && rdma_enable_cuda
-            && rdma_cuda_ipc
-            && rts_pkt->rndv.cuda_transfer_mode != NONE) {
-
-            if (rdma_cuda_dynamic_init && 
-                vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
-                if (cuda_initialized) {
-                    cudaipc_init_dynamic (vc);
-                }
-            }
-
-            /*revert to RGET if using IPC and rdma is possible*/
-            if (MV2_RNDV_PROTOCOL_RPUT == rreq->mrail.protocol) {
-                rreq->mrail.protocol = MV2_RNDV_PROTOCOL_RGET;
-            }
-
-            if (MV2_RNDV_PROTOCOL_RGET == rreq->mrail.protocol) {
-                if (MPIDI_CH3I_MRAIL_Rndv_transfer_cuda_ipc (vc, rreq, rts_pkt)) {
-                    goto fn_exit;
-                }
-            }
-        }
-#endif
-
         if (MV2_RNDV_PROTOCOL_RGET == rreq->mrail.protocol) {
            mpi_errno = MPIDI_CH3_Rndv_transfer(vc,
                     NULL, rreq, NULL, rts_pkt);
@@ -933,21 +926,6 @@ int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
         }
         /*else send back CTS with R3 protocol and fallback*/
     } 
-
-#if defined (_ENABLE_CUDA_) && defined (HAVE_CUDA_IPC)
-    /*initialize IPC buffers if not initialized*/
-    if (rdma_enable_cuda &&
-        rdma_cuda_ipc &&
-        rdma_cuda_dynamic_init &&
-        vc->smp.local_rank != -1 &&
-        (rreq->mrail.cuda_transfer_mode != NONE ||
-         rreq->mrail.protocol == MV2_RNDV_PROTOCOL_CUDAIPC) && 
-        vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
-            if (cuda_initialized) {
-                cudaipc_init_dynamic (vc);
-            }
-    }
-#endif
 
     mpi_errno = MPIDI_CH3_iStartRndvTransfer (vc, rreq);
 

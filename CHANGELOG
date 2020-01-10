@@ -3,6 +3,36 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.3.3 (01/09/2019)
+
+* Features and Enhancements (since 2.3.2):
+    - Enhanced performance for intra-node collective operations
+    - Add support for PMIx protocol for SLURM and JSM process managers
+    - Add support for RDMA_CM based multicast group creation
+    - Enhance point-to-point and collective tunings for Fulhame@EPCC,
+      Catalyst@ARM, Mayer@Sandia, and Frontera@TACC
+    - Update default cache line size on x86_64 platforms to 64 bytes
+    - Enhance spread mapping to use even distribution of ranks
+    - Add multiple MPI_T PVARs and CVARs for point-to-point and collective
+      operations
+    - Add support for sub-communicator level MPI_T PVARs
+    - Added architecture detection support for Marvel QEDR RoCE HCA
+    - Add runtime parameter 'MV2_SUPPRESS_HCA_WARNINGS' to suppress HCA warnings
+    - Update to hwloc 1.11.13
+
+* Bug Fixes (since 2.3.2):
+    - Fix error in reading MV2_NUM_SA_QUERY_RETRIES
+        - Thanks to Alexander Melnikov for reporting the issue and providing
+          the patch
+    - Fix build issues with ch3:sock
+        - Thanks to Georg Geiser <Georg.Geiser@dlr.de> for reporting the issue
+    - Fix issue in invalid memory reference when accessing comm_ptr during
+      MPID_Win_free
+        - Thanks to Karl Schulz for reporting the issue
+    - Fix build issues with CLANG compilers on POWER9
+    - Fix clang optimizing out valloc and calloc calls
+    - Fix compilation warnings and memory leaks
+
 MVAPICH2 2.3.2 (08/09/2019)
 
 * Features and Enhancements (since 2.3.1):

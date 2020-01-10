@@ -113,6 +113,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         && (((value = getenv("MV2_USE_RoCE")) == NULL) || !!!atoi(value))
 #if defined(_MCST_SUPPORT_)
         && (((value = getenv("MV2_USE_MCAST")) == NULL) || !!!atoi(value))
+        && rdma_enable_mcast != 1
 #endif /*defined(_MCST_SUPPORT_)*/
        )
     {
@@ -596,7 +597,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
 
 #if defined(_MCST_SUPPORT_)
-    if (rdma_enable_mcast) {
+    if (!SMP_ONLY && rdma_enable_mcast) {
         mv2_rdma_init_timers = 1;
         /* TODO : Is there a better way to seed? */
         srand(time(NULL) * pg_rank);
@@ -606,13 +607,43 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             comm_table[p] = NULL;
         }
         /* init mcast context */
-        mcast_ctx = MPIU_Malloc (sizeof(mcast_context_t));
+        if (mcast_ctx == NULL) {
+            mcast_ctx = MPIU_Malloc (sizeof(mcast_context_t));
+            if (mcast_ctx == NULL) {
+                MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_NO_MEM, goto fn_fail,
+                        "**fail", "**fail %s",
+                        "Failed to allocate resources for multicast");
+            }
+            mcast_ctx->selected_rail = 0;
+            PRINT_DEBUG(DEBUG_MCST_verbose>1,"mcast using default rail:"
+                    " %d\n",mcast_ctx->selected_rail);
+        }
         mcast_ctx->init_list = NULL;
+#if defined(RDMA_CM) 
+        if(rdma_use_rdma_cm_mcast == 1){
+            int ret = 0;
+            mcast_ctx->src_addr = (struct sockaddr *) &(mcast_ctx->src_in);
+            PRINT_DEBUG(DEBUG_MCST_verbose>1,"RDMA CM mcast source ip"
+                   " address:%s\n",ip_address_enabled_devices[mcast_ctx->ip_index].ip_address);
+            
+            ret = mv2_rdma_cm_mcst_get_addr_info(ip_address_enabled_devices[mcast_ctx->ip_index].ip_address,
+                    (struct sockaddr *) &mcast_ctx->src_in);
+            if(ret){
+                if(MPIDI_Process.my_pg_rank == 0) { 
+                    PRINT_ERROR("[Warning]: get src addr failed: not using rdma cm"
+                            " based mcast\n");
+                }
+                rdma_use_rdma_cm_mcast = 0;
+            }
+        }
+#endif /* #if defined(RDMA_CM) */
         mcast_ctx->ud_ctx = mv2_mcast_prepare_ud_ctx();
         if (mcast_ctx->ud_ctx == NULL) {
-            PRINT_ERROR("Error in create multicast UD context for multicast\n");
-            exit(EXIT_FAILURE);
+            MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
+                    "**fail", "**fail %s",
+                    "Error in create multicast UD context for multicast");
         }
+        PRINT_DEBUG(DEBUG_MCST_verbose,"Created multicast UD context \n");
     }
 #endif
 

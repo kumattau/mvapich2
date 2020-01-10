@@ -610,7 +610,7 @@ int MPIDI_PG_SetConnInfo( int rank, const char *connString )
 
     MPIU_Assert(pg_world->connData);
     
-    len = MPL_snprintf(key, sizeof(key), "P%d-businesscard", rank);
+    len = MPL_snprintf(key, sizeof(key), "Pbusinesscard-%d", rank);
     if (len < 0 || len > sizeof(key)) {
 	MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**snprintf",
 			     "**snprintf %d", len);
@@ -669,7 +669,7 @@ static int getConnInfoKVS( int rank, char *buf, int bufsize, MPIDI_PG_t *pg )
     char key[MPIDI_MAX_KVS_KEY_LEN];
     int  mpi_errno = MPI_SUCCESS, rc, pmi_errno;
 
-    rc = MPL_snprintf(key, MPIDI_MAX_KVS_KEY_LEN, "P%d-businesscard", rank );
+    rc = MPL_snprintf(key, MPIDI_MAX_KVS_KEY_LEN, "Pbusinesscard-%d", rank );
     if (rc < 0 || rc > MPIDI_MAX_KVS_KEY_LEN) {
 	MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomem");
     }

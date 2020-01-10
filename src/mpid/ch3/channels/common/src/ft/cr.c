@@ -1672,7 +1672,7 @@ int CR_IBU_Rebuild_network()
             }
         } else {
             /* Exchange the information about HCA_lid and qp_num. */
-            sprintf(mv2_pmi_key, "ud_info_%08d", pg_rank);
+            sprintf(mv2_pmi_key, "ud_info-%08d", pg_rank);
             if (!use_iboeth) {
                 sprintf(mv2_pmi_val, "%08x:%08x", mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
                         ud_qpn_self);
@@ -1714,7 +1714,7 @@ int CR_IBU_Rebuild_network()
                     continue;
                 }
 
-                sprintf(mv2_pmi_key, "ud_info_%08d", i);
+                sprintf(mv2_pmi_key, "ud_info-%08d", i);
 
                 if (UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen) != 0) {
                     CR_ERR_ABORT("UPMI_KVS_GET failed\n");

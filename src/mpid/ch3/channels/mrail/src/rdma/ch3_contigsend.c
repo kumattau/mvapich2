@@ -118,7 +118,7 @@ static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
         MPIDI_CH3I_SMP_write_contig(vc, reqtype, buf, data_sz, rank, 
                 tag, comm, context_offset, &nb);
         PRINT_DEBUG(DEBUG_SHM_verbose>1,
-                "dst: %d, reqtype: %d, data_sz: %d, writev returned %d bytes\n",
+                "dst: %d, reqtype: %d, data_sz: %ld, writev returned %d bytes\n",
                 vc->pg_rank, reqtype, data_sz, nb);
 
         /* send all or NULL */

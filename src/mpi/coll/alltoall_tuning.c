@@ -557,6 +557,26 @@ int MV2_set_alltoall_tuning_table(int heterogeneity, struct coll_info *colls_arc
       MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 56, 4, GEN2_CMA__MAYER__56PPN)
       MV2_COLL_TUNING_FINISH_TABLE (alltoall)
     }
+    else if(MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                    MV2_ARCH_ARM_CAVIUM_V8_2S_32, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+      /* Catalyst */
+      MV2_COLL_TUNING_START_TABLE  (alltoall, 7)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  3, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 1,  3, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 2,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 2,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 4,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 4,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 8,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 8,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 16, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 16, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 32, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 32, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 64, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__64PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 64, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__64PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (alltoall)
+    }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 				    MV2_ARCH_ARM_CAVIUM_V8_2S_28, MV2_HCA_MLX_CX_FDR) && !heterogeneity) {
       /* ARM system at Hartree Center */

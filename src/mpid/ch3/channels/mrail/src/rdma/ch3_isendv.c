@@ -91,7 +91,7 @@ static inline int MPIDI_CH3_SMP_iSendv(MPIDI_VC_t * vc,
     int mpi_errno = MPI_SUCCESS;
 
     PRINT_DEBUG(DEBUG_SHM_verbose>1,
-            "dst: %d, sreq: %p, niov: %d, iov[0].buf: %p, iov[0].len: %d\n",
+            "dst: %d, sreq: %p, niov: %d, iov[0].buf: %p, iov[0].len: %lu\n",
             vc->pg_rank, sreq, n_iov, iov[0].MPL_IOV_BUF, iov[0].MPL_IOV_LEN);
 
     /* Connection already formed.  If send queue is empty attempt to send data,

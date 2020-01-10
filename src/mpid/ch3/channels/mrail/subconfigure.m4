@@ -763,5 +763,6 @@ AS_CASE([$with_rdma],
     AM_CONDITIONAL([BUILD_USE_PGI], [`$CXX -V 2>&1 | grep pgc++ > /dev/null 2>&1`])
     AM_CONDITIONAL([BUILD_LIB_CH3AFFINITY], [test X$build_mrail = Xyes])
     AM_CONDITIONAL([BUILD_LIB_SCR], [test X$with_scr = Xyes])
+    AM_CONDITIONAL([BUILD_LIB_CR], [test X$enable_ckpt = Xyes])
 ])dnl end _BODY
 [#] end of __file__

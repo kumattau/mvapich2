@@ -102,7 +102,7 @@ typedef struct polling_set_element {
 
 #elif defined(__x86_64__)
 
-#define SMPI_CACHE_LINE_SIZE 128
+#define SMPI_CACHE_LINE_SIZE 64
 #define SMPI_ALIGN(a)                                               \
 ((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFFFFFFFFFF8)
 #define SMPI_AVAIL(a)   \

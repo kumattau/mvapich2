@@ -77,7 +77,7 @@ int MPIR_Alltoallv_intra_scatter_MV2(const void *sendbuf,
                              MPI_Datatype recvtype,
                              MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
-    int comm_size, i, j;
+    int comm_size, i, j ;
     MPI_Aint send_extent, recv_extent;
     int mpi_errno = MPI_SUCCESS;
     int src, dst, rank;
@@ -456,7 +456,6 @@ int MPIR_Alltoallv_index_tuned_intra_MV2(const void *sendbuf,
                              MPI_Datatype recvtype,
                              MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
-    int i;
     int mpi_errno=MPI_SUCCESS;
     int partial_sub_ok = 0;
     int conf_index = 0;

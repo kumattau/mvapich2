@@ -216,8 +216,9 @@ typedef struct {
     /* Description of the pvar */
     const char *desc;
 
-    //Index (used only if pvar is at sub communicator level)
+    //Indexes (used only if pvar is at sub communicator level)
     int sub_comm_index;
+    int sub_comm_timer_index;
 } pvar_table_entry_t;
 
 /*
@@ -722,6 +723,74 @@ extern int num_counter_pvar_buckets;
     } while(0)  
 #else
    #define MPIR_T_PVAR_COMM_COUNTER_INC_impl(name_, inc_,comm)
+#endif
+
+#define MPIR_T_PVAR_TIMER_START_VAR_impl(ptr_) \
+    do { \
+        MPID_Wtime(&((ptr_)->curstart)); \
+        (ptr_)->count++; \
+    } while (0)
+#define MPIR_T_PVAR_TIMER_END_VAR_impl(ptr_) \
+    do { \
+        MPID_Time_t tmp; \
+        MPID_Wtime(&tmp); \
+        MPID_Wtime_acc(&((ptr_)->curstart), &tmp, &((ptr_)->total)); \
+    } while (0)
+
+
+#if ENABLE_PVAR_MV2
+#define MPIR_T_PVAR_COMM_TIMER_START_impl(name_,comm) \
+    do { \
+        if(mv2_enable_pvar_timer) {\
+            name2index_hash_t *hash_entry;\
+            pvar_table_entry_t *pvar;\
+            int pvar_idx;\
+            int seq = MPI_T_PVAR_CLASS_TIMER - MPIR_T_PVAR_CLASS_FIRST;\
+            int counter_seq = MPI_T_PVAR_CLASS_COUNTER - MPIR_T_PVAR_CLASS_FIRST;\
+            char *name = QUOTE(name_);\
+            HASH_FIND_STR(pvar_hashs[seq],name, hash_entry);\
+            if (hash_entry != NULL) {\
+                pvar_idx = hash_entry->idx;\
+                pvar = (pvar_table_entry_t *)utarray_eltptr(pvar_table, pvar_idx);\
+                if(comm->sub_comm_timers!=NULL) {\
+                    MPID_Wtime(&((comm->sub_comm_timers[pvar->sub_comm_timer_index]).curstart)); \
+                    (comm->sub_comm_timers[pvar->sub_comm_timer_index]).count++; \
+                }\
+            }\
+            HASH_FIND_STR(pvar_hashs[counter_seq],name, hash_entry);\
+            if (hash_entry != NULL) {\
+                pvar_idx = hash_entry->idx;\
+                pvar = (pvar_table_entry_t *)utarray_eltptr(pvar_table, pvar_idx);\
+                if(comm->sub_comm_counters!=NULL) {\
+                    comm->sub_comm_counters[pvar->sub_comm_index]+=1;\
+                }\
+            }\
+        } \
+    } while(0) 
+#define MPIR_T_PVAR_COMM_TIMER_END_impl(name_,comm) \
+    do { \
+        if(mv2_enable_pvar_timer) {\
+            name2index_hash_t *hash_entry;\
+            pvar_table_entry_t *pvar;\
+            int pvar_idx;\
+            int seq = MPI_T_PVAR_CLASS_TIMER - MPIR_T_PVAR_CLASS_FIRST;\
+            char *name = QUOTE(name_);\
+            HASH_FIND_STR(pvar_hashs[seq],name, hash_entry);\
+            if (hash_entry != NULL) {\
+                pvar_idx = hash_entry->idx;\
+                pvar = (pvar_table_entry_t *)utarray_eltptr(pvar_table, pvar_idx);\
+                if(comm->sub_comm_timers!=NULL && comm->sub_comm_counters!=NULL) {\
+                    MPID_Time_t tmp; \
+                    MPID_Wtime(&tmp); \
+                    MPID_Wtime_acc(&((comm->sub_comm_timers[pvar->sub_comm_timer_index]).curstart), &tmp,\
+                            &((comm->sub_comm_timers[pvar->sub_comm_timer_index]).total)); \
+                }\
+            }\
+        } \
+    } while(0)  
+#else
+   #define MPIR_T_PVAR_COMM_TIMER_START_impl(name_,comm)
+   #define MPIR_T_PVAR_COMM_TIMER_END_impl(name_,comm)
 #endif
 
 #define MPIR_T_PVAR_COUNTER_ADDR_impl(name_) \

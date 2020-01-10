@@ -36,7 +36,7 @@ pipeline {
                                         checkout scm
 					script {
 						gitRepoURL = sh (script: 'git config --get remote.origin.url', returnStdout: true).trim()
-						gitBranch = sh (script: 'if test "$BRANCH_NAME"; then echo $BRANCH_NAME; else git branch | cut -c3-; fi', returnStdout: true).trim()
+						gitBranch = sh (script: 'if test "$BRANCH_NAME"; then echo $BRANCH_NAME; else git rev-parse --abbrev-ref HEAD; fi', returnStdout: true).trim()
 					}
                                         sh 'contrib/ci.inria.fr/job-0-tarball.sh '+gitBranch
                                         script {
@@ -58,25 +58,35 @@ pipeline {
 		stage('Check') {
 			steps {
 				script {
-					labelToSelect = 'unix'
-					listOfNodeNames = jenkins.model.Jenkins.instance.nodes.collect {
-					  node -> node.getLabelString().contains(labelToSelect) ? node.name : null
+					listOfNodeNames = []
+					if (env.NO_UNIX != 'true') {
+						labelToSelect = 'unix'
+						listOfNodeNames = jenkins.model.Jenkins.instance.nodes.collect {
+						  node -> node.getLabelString().contains(labelToSelect) ? node.name : null
+						}
+						listOfNodeNames.removeAll(Collections.singleton(null))
 					}
-					listOfNodeNames.removeAll(Collections.singleton(null))
-					listOfNodeNames.push('MinGW')
-					listOfNodeNames.push('SonarQube Scanner')
-					listOfNodeNames.push('Embedded')
+					if (env.NO_MINGW != 'true') {
+						listOfNodeNames.push('MinGW')
+					}
+					if (env.NO_SONAR != 'true') {
+						listOfNodeNames.push('SonarQube Scanner')
+					}
+					if (env.NO_EMBEDDED != 'true') {
+						listOfNodeNames.push('Embedded')
+					}
 
 					def p = listOfNodeNames.collectEntries {
 					[ (it): {
 						if (it == 'MinGW') {
-							node('windows') {
+							node('mingw') {
 								dir('check-mingw') {
 									unstash 'tarballgz'
 									unstash 'scripts-mingw'
 									bat 'job-3-mingw.bat '+tarballgz
 									archiveArtifacts artifacts: "*.zip", fingerprint: true, onlyIfSuccessful: true
-									deleteDir()
+									if (env.KEEP_WORKING_DIRECTORY != 'true')
+										deleteDir()
 								}
 							}
 						} else if (it == 'SonarQube Scanner') {
@@ -85,7 +95,8 @@ pipeline {
 									unstash 'tarballgz'
 									unstash 'script-sonarscanner'
 									sh 'chmod 755 job-3-sonarscanner.sh && ./job-3-sonarscanner.sh '+gitRepoURL+' '+gitBranch+' '+tarballgz
-									deleteDir()
+									if (env.KEEP_WORKING_DIRECTORY != 'true')
+										deleteDir()
 								}
 							}
 						} else if (it == 'Embedded') {
@@ -94,7 +105,8 @@ pipeline {
 									unstash 'tarballgz'
 									unstash 'script-embedded'
 									sh 'chmod 755 job-3-embedded.sh && ./job-3-embedded.sh '+tarballgz
-									deleteDir()
+									if (env.KEEP_WORKING_DIRECTORY != 'true')
+										deleteDir()
 								}
 							}
 						} else {
@@ -103,7 +115,8 @@ pipeline {
 									unstash 'tarballgz'
 									unstash 'script-unix-debug'
 									sh 'chmod 755 job-3-debug.sh && ./job-3-debug.sh '+tarballgz
-									deleteDir()
+									if (env.KEEP_WORKING_DIRECTORY != 'true')
+										deleteDir()
 								}
 							}
 						}

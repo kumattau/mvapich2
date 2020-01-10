@@ -241,7 +241,12 @@ extern uint32_t ud_drop_packet_rate;
 #endif
 #endif
 #if defined(_MCST_SUPPORT_)
+extern uint32_t mcast_bcast_min_msg;
+extern uint32_t mcast_bcast_max_msg;
 extern uint8_t rdma_enable_mcast;
+#if defined(RDMA_CM)
+extern uint8_t rdma_use_rdma_cm_mcast;
+#endif /*defined(RDMA_CM)*/
 extern uint8_t mcast_enable_rel;
 extern uint8_t mcast_use_mcast_nack;
 extern uint16_t mcast_window_size;
@@ -466,6 +471,9 @@ typedef enum mv2_env_param_id {
     MV2_USE_QOS,
     /* collectives */
     MV2_USE_MCAST,
+    MV2_USE_RDMA_CM_MCAST,
+    MV2_MCAST_BCAST_MIN_MSG,
+    MV2_MCAST_BCAST_MAX_MSG,
     MV2_ALLGATHER_BRUCK_THRESHOLD,
     MV2_ALLGATHER_RD_THRESHOLD,
     MV2_ALLGATHER_REVERSE_RANKING,
@@ -516,6 +524,12 @@ typedef enum mv2_env_param_id {
     MV2_USE_TWO_LEVEL_GATHER,
     MV2_USE_TWO_LEVEL_SCATTER,
     MV2_USE_XOR_ALLTOALL,
+    MV2_ENABLE_SOCKET_AWARE_COLLECTIVES,
+    MV2_USE_SOCKET_AWARE_ALLREDUCE,
+    MV2_USE_SOCKET_AWARE_BARRIER,
+    MV2_USE_SOCKET_AWARE_SHARP_ALLREDUCE,
+    MV2_SOCKET_AWARE_ALLREDUCE_MAX_MSG,
+    MV2_SOCKET_AWARE_ALLREDUCE_MIN_MSG,
     /* ckpt */
     MV2_CKPT_AGGRE_MIG_ROLE,
     MV2_CKPT_AGGREGATION_BUFPOOL_SIZE,
@@ -797,7 +811,7 @@ extern int dreg_max_use_count;
 #endif /* _RDMA_PARAM_H */
 
 /* default values of CVARs */
-#define USE_MCAST_DEFAULT_FLAG           0
+#define USE_MCAST_DEFAULT_FLAG           1
 #define DEFAULT_NUM_PORTS                1
 #define DEFAULT_NUM_QP_PER_PORT          1
 #define DEFAULT_COALESCE_THRESHOLD       6

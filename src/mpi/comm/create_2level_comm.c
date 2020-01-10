@@ -61,8 +61,7 @@ void clear_2level_comm (MPID_Comm* comm_ptr)
 #endif
 }
 
-#if defined(_SMP_LIMIC_)    
-int free_limic_comm (MPID_Comm* shmem_comm_ptr )
+int free_limic_comm (MPID_Comm* shmem_comm_ptr)
 {
     int intra_comm_rank = -1;
     int mpi_errno=MPI_SUCCESS;
@@ -70,10 +69,10 @@ int free_limic_comm (MPID_Comm* shmem_comm_ptr )
     MPID_Comm *intra_sock_comm_ptr=NULL; 
     MPID_Comm *intra_sock_leader_comm_ptr=NULL; 
 
-    MPID_Comm_get_ptr((shmem_comm_ptr->dev.ch.intra_sock_comm), intra_sock_comm_ptr );
-    MPID_Comm_get_ptr((shmem_comm_ptr->dev.ch.intra_sock_leader_comm), intra_sock_leader_comm_ptr );
+    MPID_Comm_get_ptr(shmem_comm_ptr->dev.ch.intra_sock_comm, intra_sock_comm_ptr);
+    MPID_Comm_get_ptr(shmem_comm_ptr->dev.ch.intra_sock_leader_comm, intra_sock_leader_comm_ptr);
 
-    if (intra_sock_comm_ptr != NULL)  { 
+    if (intra_sock_comm_ptr != NULL) { 
         PMPI_Comm_rank(shmem_comm_ptr->dev.ch.intra_sock_comm, &intra_comm_rank);
         if(intra_comm_rank == 0) {
             if(shmem_comm_ptr->dev.ch.socket_size !=NULL) {
@@ -81,13 +80,20 @@ int free_limic_comm (MPID_Comm* shmem_comm_ptr )
             }
         }
     }
-    if (intra_sock_comm_ptr != NULL)  { 
+    if (intra_sock_comm_ptr != NULL) { 
         mpi_errno = MPIR_Comm_release(intra_sock_comm_ptr);
         if (mpi_errno != MPI_SUCCESS) { 
             goto fn_fail;
         } 
     }
     if (intra_sock_leader_comm_ptr != NULL)  { 
+
+        //If shmem coll ok is set to 1 for a socket leader communicator of size 1 (for correctness), set it back to 0
+        //to prevent segmentation faults while releasing the communicator
+        if(intra_sock_leader_comm_ptr->local_size == 1 && intra_sock_leader_comm_ptr->dev.ch.shmem_coll_ok == 1)
+        {
+            intra_sock_leader_comm_ptr->dev.ch.shmem_coll_ok = 0;
+        }
         mpi_errno = MPIR_Comm_release(intra_sock_leader_comm_ptr);
         if (mpi_errno != MPI_SUCCESS) { 
             goto fn_fail;
@@ -103,8 +109,28 @@ int free_limic_comm (MPID_Comm* shmem_comm_ptr )
     fn_fail:
        goto fn_exit;
 }
-#endif /* #if defined(_SMP_LIMIC_)  */ 
 
+int free_intra_sock_comm (MPID_Comm* comm_ptr)
+{
+    int mpi_errno;
+    MPID_Comm *shmem_comm_ptr = NULL;
+    MPID_Comm *global_sock_leader_comm_ptr = NULL;
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_comm_ptr );
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.global_sock_leader_comm, global_sock_leader_comm_ptr);
+
+    if (global_sock_leader_comm_ptr != NULL)  {
+        mpi_errno = MPIR_Comm_release(global_sock_leader_comm_ptr);
+        if (mpi_errno != MPI_SUCCESS) {
+            goto fn_fail;
+        }
+    } 
+
+    /*Reuse limic comm free since some variables are common between these comms */
+    mpi_errno = free_limic_comm(shmem_comm_ptr);
+
+    fn_exit : return mpi_errno;
+    fn_fail : goto fn_exit;
+}
 
 int free_2level_comm (MPID_Comm* comm_ptr)
 {
@@ -155,6 +181,10 @@ int free_2level_comm (MPID_Comm* comm_ptr)
         free_limic_comm(shmem_comm_ptr);
     } 
 #endif /* #if defined(_SMP_LIMIC_) */ 
+
+    if(comm_ptr->dev.ch.use_intra_sock_comm == 1) {
+        free_intra_sock_comm(comm_ptr);
+    }
 
 #if defined(_MCST_SUPPORT_)
     if (local_rank == 0 && comm_ptr->dev.ch.is_mcast_ok) {
@@ -509,6 +539,382 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
     return (mpi_errno);
 }
 #endif
+
+int create_intra_sock_comm(MPI_Comm comm)
+{    
+    static const char FCNAME[] = "create_intra_sock_comm";
+    int socket_bound = -1;
+    int numCoresSocket = 0;
+    int numSocketsNode = 0;
+    int* intra_socket_leader_map=NULL;
+    int* intra_sock_leader_group=NULL;
+    int intra_comm_rank=0, intra_comm_size=0;
+    int intra_leader_comm_size=0, intra_leader_comm_rank=0;
+    int ok_to_create_intra_sock_comm=1, i=0;
+    int output_flag = 0;
+    int my_local_size, my_local_id;
+    int mpi_errno = MPI_SUCCESS;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
+    int global_size               = 0;
+    int global_socket_leader_cnt  = 0;
+    int* global_sock_leader_group  = NULL;
+    int* global_socket_leader_map  = NULL;
+    MPID_Comm *comm_ptr = NULL;
+    MPID_Comm_get_ptr(comm, comm_ptr);
+    MPI_Group subgroup2;
+    MPID_Group *group_ptr=NULL;
+    MPID_Comm *shmem_ptr=NULL;
+    MPID_Comm *intra_sock_commptr=NULL;
+    MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_ptr);
+    mpi_errno = PMPI_Comm_rank(comm_ptr->dev.ch.shmem_comm, &my_local_id);
+    if (mpi_errno) {
+        MPIR_ERR_POP(mpi_errno);
+    }
+
+    comm_ptr->dev.ch.use_intra_sock_comm = 0;
+    mpi_errno = PMPI_Comm_size(comm_ptr->dev.ch.shmem_comm, &my_local_size);
+    if (mpi_errno) {
+        MPIR_ERR_POP(mpi_errno);
+    }
+
+    if (mv2_enable_socket_aware_collectives) {
+        MPI_Group comm_group1;
+        int is_uniform;
+        int err = get_socket_bound_info(&socket_bound, &numSocketsNode, &numCoresSocket, &is_uniform);
+        int output_err = 0;
+        mpi_errno = MPIR_Allreduce_impl(&err, &output_err, 1,
+                                            MPI_INT, MPI_LOR, comm_ptr,
+                                            &errflag);
+        if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+        }
+
+        if (output_err != 0) {
+
+            PRINT_INFO(comm_ptr->rank == 0, "Failed to get correct process to socket binding info."
+                                            "Proceeding by disabling socket aware collectives support.");
+            return MPI_SUCCESS;
+        }
+
+        comm_ptr->dev.ch.my_sock_id = socket_bound;
+        int intra_socket_leader_id=-1;
+        int intra_socket_leader_cnt=0;
+        if (ok_to_create_intra_sock_comm) {
+            /*Create communicator for intra socket communication*/
+            mpi_errno = PMPI_Comm_split(comm_ptr->dev.ch.shmem_comm, socket_bound,
+                    my_local_id, &(shmem_ptr->dev.ch.intra_sock_comm));
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            PMPI_Comm_rank(shmem_ptr->dev.ch.intra_sock_comm, &intra_comm_rank);
+            PMPI_Comm_size(shmem_ptr->dev.ch.intra_sock_comm, &intra_comm_size);
+            /* allocate a shared region for each socket */
+            int mv2_shmem_coll_blk_stat = -1;
+            int input_flag = 0;
+            if (intra_comm_rank == 0){
+                lock_shmem_region();
+                mv2_shmem_coll_blk_stat = MPIDI_CH3I_SHMEM_Coll_get_free_block();
+                if (mv2_shmem_coll_blk_stat >= 0) {
+                    input_flag = 1;
+                }
+                unlock_shmem_region();
+            } else {
+                input_flag = 1;
+            }
+
+            mpi_errno = MPIR_Allreduce_impl(&input_flag, &output_flag, 1,
+                                            MPI_INT, MPI_LAND, comm_ptr,
+                                            &errflag);
+
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            if (!output_flag) {
+                /* None of the shmem-coll-blocks are available. We cannot support
+                   shared-memory collectives for this communicator */
+                PRINT_DEBUG(DEBUG_SHM_verbose > 1,"Not enough shared memory regions."
+                                                  " Cannot support socket aware collectives\n");
+                if (intra_comm_rank == 0 && mv2_shmem_coll_blk_stat >= 0) {
+                    /*release the slot if it is aquired */
+                    lock_shmem_region();
+                    MPIDI_CH3I_SHMEM_Coll_Block_Clear_Status(mv2_shmem_coll_blk_stat);
+                    unlock_shmem_region();
+                }
+                goto fn_fail;
+            }
+
+            MPID_Comm_get_ptr(shmem_ptr->dev.ch.intra_sock_comm,
+                    intra_sock_commptr );
+
+            mpi_errno = MPIR_Bcast_impl (&mv2_shmem_coll_blk_stat, 1,
+                    MPI_INT, 0, intra_sock_commptr, &errflag);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            intra_sock_commptr->dev.ch.shmem_comm_rank = mv2_shmem_coll_blk_stat;
+            if (intra_comm_rank == 0) {
+                intra_socket_leader_id=1;
+            }
+
+            /*Creating intra-socket leader group*/
+            intra_socket_leader_map = MPIU_Malloc(sizeof(int)*my_local_size);
+            if (NULL == intra_socket_leader_map){
+                mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                        FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                        "memory allocation failed", strerror(errno));
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            /*initialize the intra_socket_leader_map*/
+            memset(intra_socket_leader_map, -1, global_size);
+
+            mpi_errno = MPIR_Allgather_impl(&intra_socket_leader_id, 1, MPI_INT,
+                    intra_socket_leader_map, 1, MPI_INT, shmem_ptr, &errflag);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            for (i=0; i<my_local_size; i++) {
+                if (intra_socket_leader_map[i] == 1)
+                    intra_socket_leader_cnt++;
+            }
+
+            intra_sock_leader_group = MPIU_Malloc(sizeof(int) *
+                    intra_socket_leader_cnt);
+            if (NULL == intra_sock_leader_group) {
+                mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                        FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                        "memory allocation failed", strerror(errno));
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            /*Assuming homogeneous system, where every socket has same number
+              of cores */
+            int j=0;
+            for (i=0;i<my_local_size;i++) {
+                if (intra_socket_leader_map[i] == 1) { 
+                    /*i here actually is the my_local_id for which
+                       intra_sock_rank == 0*/
+                    intra_sock_leader_group[j++] = i;
+                }
+            }
+
+            /*Resuing comm_group and subgroup1 variables for creation of 
+              intra socket leader comm*/
+            mpi_errno = PMPI_Comm_group(comm_ptr->dev.ch.shmem_comm, &comm_group1);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            mpi_errno = PMPI_Group_incl(comm_group1, intra_socket_leader_cnt,
+                    intra_sock_leader_group, &subgroup2);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            /*Creating intra_sock_leader communicator*/
+            mpi_errno = PMPI_Comm_create(comm_ptr->dev.ch.shmem_comm, subgroup2,
+                    &(shmem_ptr->dev.ch.intra_sock_leader_comm));
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            if (intra_comm_rank == 0) {
+                mpi_errno = PMPI_Comm_rank(shmem_ptr->dev.ch.intra_sock_leader_comm,
+                        &intra_leader_comm_rank);
+                if (mpi_errno) {
+                    MPIR_ERR_POP(mpi_errno);
+                }
+                mpi_errno = PMPI_Comm_size(shmem_ptr->dev.ch.intra_sock_leader_comm,
+                        &intra_leader_comm_size);
+                if (mpi_errno) {
+                    MPIR_ERR_POP(mpi_errno);
+                }
+            }
+
+            /*Check if all the data in sockets are of uniform size*/
+            if (intra_comm_rank == 0) {
+                int array_index=0;
+
+                shmem_ptr->dev.ch.socket_size = MPIU_Malloc(sizeof(int)*
+                        intra_leader_comm_size);
+                mpi_errno = PMPI_Allgather(&intra_comm_size, 1, MPI_INT,
+                        shmem_ptr->dev.ch.socket_size, 1, MPI_INT,
+                        shmem_ptr->dev.ch.intra_sock_leader_comm);
+                if (mpi_errno) {
+                    MPIR_ERR_POP(mpi_errno);
+                }
+                shmem_ptr->dev.ch.is_socket_uniform = 1;
+                for (array_index=0; array_index < intra_leader_comm_size;
+                        array_index++) {
+                    if (shmem_ptr->dev.ch.socket_size[0] !=
+                            shmem_ptr->dev.ch.socket_size[array_index]) {
+                        shmem_ptr->dev.ch.is_socket_uniform = 0;
+                        break;
+                    }
+                }
+            }
+
+            MPID_Group_get_ptr( subgroup2, group_ptr );
+            if (group_ptr != NULL) {
+                mpi_errno = PMPI_Group_free(&subgroup2);
+                if (mpi_errno) {
+                    MPIR_ERR_POP(mpi_errno);
+                }
+            }
+            mpi_errno=PMPI_Group_free(&comm_group1);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            /* create comm between all the sock leaders across all nodes */
+            mpi_errno = PMPI_Comm_size(comm, &global_size);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            global_socket_leader_map = MPIU_Malloc(sizeof(int)*global_size);
+            if (NULL == global_socket_leader_map) {
+                mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                        FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                        "memory allocation failed", strerror(errno));
+                MPIR_ERR_POP(mpi_errno);
+            }
+            /* initialize the global_socket_leader_map */
+            memset(global_socket_leader_map, -1, global_size);
+            mpi_errno = MPIR_Allgather_impl(&intra_socket_leader_id, 1, MPI_INT,
+                    global_socket_leader_map, 1, MPI_INT, comm_ptr, &errflag);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+
+            for (i=0;i<global_size;i++) {
+                if (global_socket_leader_map[i] == 1)
+                    global_socket_leader_cnt++;
+            }
+
+            global_sock_leader_group = MPIU_Malloc(sizeof(int) *
+                    global_socket_leader_cnt);
+            if (NULL == global_sock_leader_group){
+                mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                        FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                        "memory allocation failed", strerror(errno));
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            /* Create the list of global sock leaders ranks */
+            j=0;
+            for (i=0;i<global_size;i++) {
+                if (global_socket_leader_map[i] == 1)
+                    global_sock_leader_group[j++] = i;
+            }
+
+            mpi_errno = PMPI_Comm_group(comm, &comm_group1);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            mpi_errno = PMPI_Group_incl(comm_group1, global_socket_leader_cnt,
+                                        global_sock_leader_group, &subgroup2);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            /*Creating global_sock_leader communicator*/
+            mpi_errno = PMPI_Comm_create(comm, subgroup2,
+                                        &(comm_ptr->dev.ch.global_sock_leader_comm));
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            MPID_Group_get_ptr( subgroup2, group_ptr );
+            if (group_ptr != NULL) {
+                mpi_errno = PMPI_Group_free(&subgroup2);
+                if (mpi_errno) {
+                    MPIR_ERR_POP(mpi_errno);
+                }
+            }
+            mpi_errno=PMPI_Group_free(&comm_group1);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+
+            comm_ptr->dev.ch.use_intra_sock_comm=1;
+
+            MPID_Comm *global_sock_leader_ptr;
+            MPID_Comm *intra_sock_comm_ptr=NULL;
+            MPID_Comm *intra_sock_leader_comm_ptr=NULL;
+
+            MPID_Comm_get_ptr(shmem_ptr->dev.ch.intra_sock_comm, 
+                              intra_sock_comm_ptr);
+            MPID_Comm_get_ptr(shmem_ptr->dev.ch.intra_sock_leader_comm, 
+                              intra_sock_leader_comm_ptr);
+            MPID_Comm_get_ptr(comm_ptr->dev.ch.global_sock_leader_comm, 
+                              global_sock_leader_ptr);
+#if defined (_SHARP_SUPPORT_)
+            if (global_sock_leader_ptr != NULL) {
+                global_sock_leader_ptr->dev.ch.sharp_coll_info = NULL;
+            }
+            if (intra_sock_comm_ptr != NULL) {
+                intra_sock_comm_ptr->dev.ch.sharp_coll_info = NULL;
+            }
+            if (intra_sock_leader_comm_ptr != NULL) {
+                intra_sock_leader_comm_ptr->dev.ch.sharp_coll_info = NULL;
+            }
+#endif
+
+            if (intra_comm_rank == 0) {
+
+                if (intra_sock_leader_comm_ptr != NULL &&
+                    intra_sock_leader_comm_ptr->dev.ch.shmem_coll_ok == 0) {
+                    intra_sock_leader_comm_ptr->dev.ch.tried_to_create_leader_shmem = 1;
+                    mpi_errno = create_2level_comm(shmem_ptr->dev.ch.intra_sock_leader_comm,
+                                                    intra_sock_leader_comm_ptr->local_size, 
+                                                    intra_sock_leader_comm_ptr->rank);
+                    if (mpi_errno == MPI_SUCCESS && intra_sock_leader_comm_ptr->local_size == 1) {
+                        intra_sock_leader_comm_ptr->dev.ch.shmem_coll_ok = 1;
+                    }
+                }
+
+                int local_leader_shmem_status = intra_sock_leader_comm_ptr->dev.ch.shmem_coll_ok;
+                int global_leader_shmem_status = 0;
+                int allred_flag = mv2_use_socket_aware_allreduce;
+                mv2_use_socket_aware_allreduce = 0;
+                mpi_errno = MPIR_Allreduce_impl(&local_leader_shmem_status, &global_leader_shmem_status, 1,
+                        MPI_INT, MPI_LAND, global_sock_leader_ptr, &errflag);
+                mv2_use_socket_aware_allreduce = allred_flag;
+                if (mpi_errno) {
+                    MPIR_ERR_POP(mpi_errno);
+                }
+                if (global_leader_shmem_status == 0) {
+                    intra_sock_leader_comm_ptr->dev.ch.shmem_coll_ok = 0;    
+                }
+            }
+        }
+    }
+
+fn_exit:
+    if (intra_socket_leader_map != NULL) {
+        MPIU_Free(intra_socket_leader_map);
+    }
+    if (intra_sock_leader_group != NULL) {
+        MPIU_Free(intra_sock_leader_group);
+    }
+    if (global_socket_leader_map != NULL) {
+        MPIU_Free(global_socket_leader_map);
+    }
+    if (global_sock_leader_group != NULL) {
+        MPIU_Free(global_sock_leader_group);
+    }
+    return mpi_errno;
+fn_fail:
+    free_intra_sock_comm(comm_ptr);
+    goto fn_exit;
+}
 
 int create_allgather_comm(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
@@ -873,7 +1279,7 @@ int create_mcast_comm (MPI_Comm comm, int size, int my_rank)
     MPID_Comm_get_ptr(comm, comm_ptr);
     MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_ptr);
     MPID_Comm_get_ptr(comm_ptr->dev.ch.leader_comm, leader_ptr);
-
+    
     mpi_errno = PMPI_Comm_rank(comm_ptr->dev.ch.shmem_comm, &my_local_id);
     if(mpi_errno) {
        MPIR_ERR_POP(mpi_errno);
@@ -890,16 +1296,14 @@ int create_mcast_comm (MPI_Comm comm, int size, int my_rank)
                 mcast_setup_success = 1;
             }   
         }
-    }
 
-    if (leader_group_size >= mcast_num_nodes_threshold && rdma_enable_mcast) {
         int leader_rank;
         int status = 0;
         int mcast_status[2] = {0, 0}; /* status, comm_id */
         if(comm_ptr->dev.ch.leader_comm != MPI_COMM_NULL) { 
             PMPI_Comm_rank(comm_ptr->dev.ch.leader_comm, &leader_rank); 
             if (leader_rank == 0 && mcast_setup_success) {
-                /* wait for comm ready */
+                /* Wait for comm ready */
                 status = mv2_mcast_progress_comm_ready(comm_ptr);
             }
         } 
@@ -938,6 +1342,7 @@ int create_mcast_comm (MPI_Comm comm, int size, int my_rank)
             rdma_enable_mcast = 0;
             mv2_ud_destroy_ctx(mcast_ctx->ud_ctx);
             MPIU_Free(mcast_ctx);
+            PRINT_DEBUG(DEBUG_MCST_verbose,"mcast setup failed on comm world, disabling mcast\n");
         }
 	
     }
@@ -1059,6 +1464,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
             MPIDI_CH3I_SHMEM_Coll_Block_Clear_Status(mv2_shmem_coll_blk_stat); 
             unlock_shmem_region();
         }
+        comm_ptr->dev.ch.shmem_coll_ok = -1; 
         goto fn_exit;
     }
 
@@ -1304,6 +1710,18 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
         }
     }
 #endif  /* #if defined(_SMP_LIMIC_) */ 
+
+    if(mv2_enable_socket_aware_collectives)
+    {
+        //tried_to_create_leader_shmem exists to ensure socket-aware comms aren't recursively created 
+        //unnecessarily (which would cause memory leaks)
+        if(comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.tried_to_create_leader_shmem == 0) {
+            mpi_errno = create_intra_sock_comm(comm);
+            if(mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
+    }
 
     fn_exit:
        MPIU_Free(shmem_group);

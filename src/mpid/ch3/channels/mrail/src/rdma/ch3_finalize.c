@@ -75,7 +75,15 @@ int MPIDI_CH3_Finalize()
             mpi_errno = MPIDI_CH3I_RDMA_finalize();
         }
 
-        if(mpi_errno) MPIR_ERR_POP(mpi_errno);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+#if defined(RDMA_CM)
+        if (ip_address_enabled_devices) {
+            /* This is used by both rdma_cm code and the mcast code */
+            MPIU_Free(ip_address_enabled_devices);
+        }
+#endif /*defined(RDMA_CM)*/
     }
 
 #ifdef CKPT

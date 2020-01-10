@@ -23,7 +23,6 @@
 #include "bcast_tuning.h"
 #define INTRA_NODE_ROOT 0
 
-
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_binomial);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_scatter_doubling_allgather);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_scatter_ring_allgather);
@@ -45,6 +44,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_internode);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_knomial_intranode);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_mcast_internode);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_pipelined);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_subcomm);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_binomial_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_scatter_for_bcast_bytes_send);
@@ -106,10 +106,6 @@ int (*MV2_Bcast_function) (void *buffer, int count, MPI_Datatype datatype,
                            int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag) = NULL;
 
 int (*MV2_Bcast_intra_node_function) (void *buffer, int count, MPI_Datatype datatype,
-                                      int root, MPID_Comm * comm_ptr,
-                                      MPIR_Errflag_t *errflag) = NULL;
-
-int (*MV2_Bcast_Shmem_Based_function) (void *buffer, int count, MPI_Datatype datatype,
                                       int root, MPID_Comm * comm_ptr,
                                       MPIR_Errflag_t *errflag) = NULL;
 
@@ -1576,16 +1572,20 @@ int MPIR_Mcast_inter_node_MV2(void *buffer,
     leader_comm_rank = comm_ptr->dev.ch.leader_rank[rank];
     leader_rank = comm_ptr->dev.ch.leader_map[rank];
     leader_of_root = comm_ptr->dev.ch.leader_map[root];
-
+    MPI_Aint true_lb, true_extent;
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    
     /* If there is only one process, return */
     if (comm_size == 1)
         goto fn_exit;
-
+   
     MPID_Datatype_get_extent_macro(datatype, extent);
     nbytes = (MPIDI_msg_sz_t) (count) * (extent);
-
+    PRINT_DEBUG(DEBUG_MCST_verbose > 3,
+                "Calling mcast msg of size %ld fragment size %ld\n",
+                nbytes, MAX_MCAST_FRAGMENT_SIZE);
     for (pos = 0; pos < nbytes; pos += MAX_MCAST_FRAGMENT_SIZE) {
-        buf = (char *) buffer + pos;
+        buf = (char *) buffer + true_lb + pos;
         len = MIN(nbytes - pos, MAX_MCAST_FRAGMENT_SIZE);
 
         if (leader_rank == leader_of_root) {
@@ -1602,7 +1602,7 @@ int MPIR_Mcast_inter_node_MV2(void *buffer,
                 bcast_info->win_head++;
                 mv2_mcast_flush_sendwin(&bcast_info->send_window);
                 bcast_info->win_tail = bcast_info->win_head - 1;
-                PRINT_DEBUG(DEBUG_MCST_verbose > 4,
+                PRINT_DEBUG(DEBUG_MCST_verbose > 4,    
                             "sendwindow full. tail set to :%u\n", bcast_info->win_tail);
                 MPIU_Assert(bcast_info->send_window.head == NULL);
             }
@@ -2025,6 +2025,8 @@ static int MPIR_Bcast_tune_inter_node_helper_MV2(void *buffer,
     int rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
+    MPI_Aint type_size; 
+    MPIDI_msg_sz_t nbytes=0;
     MPI_Comm shmem_comm, leader_comm;
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     int local_rank, local_size, global_rank = -1;
@@ -2046,6 +2048,8 @@ static int MPIR_Bcast_tune_inter_node_helper_MV2(void *buffer,
 
     leader_of_root = comm_ptr->dev.ch.leader_map[root];
     leader_root = comm_ptr->dev.ch.leader_rank[leader_of_root];
+    MPID_Datatype_get_size_macro(datatype, type_size);
+    nbytes = (MPIDI_msg_sz_t) (count) * (type_size);
 
 #ifdef CHANNEL_MRAIL_GEN2
     if(&MPIR_Pipelined_Bcast_Zcpy_MV2 == MV2_Bcast_function) { 
@@ -2082,7 +2086,7 @@ static int MPIR_Bcast_tune_inter_node_helper_MV2(void *buffer,
         }
     }
 #if defined(_MCST_SUPPORT_)
-    if (comm_ptr->dev.ch.is_mcast_ok) {
+    if (MV2_SELECT_MCAST_BASED_BCAST(comm_ptr, nbytes)) {
         mpi_errno = MPIR_Mcast_inter_node_MV2(buffer, count, datatype, root, comm_ptr,
                                               errflag);
         if (mpi_errno == MPI_SUCCESS) {
@@ -2200,7 +2204,7 @@ static int MPIR_Bcast_inter_node_helper_MV2(void *buffer,
         }
     }
 #if defined(_MCST_SUPPORT_)
-    if (comm_ptr->dev.ch.is_mcast_ok) {
+    if (MV2_SELECT_MCAST_BASED_BCAST(comm_ptr, nbytes)) {
         mpi_errno = MPIR_Mcast_inter_node_MV2(buffer, count, datatype,
                                               root, comm_ptr, errflag);
         if (mpi_errno == MPI_SUCCESS) {
@@ -2367,7 +2371,7 @@ int MPIR_Bcast_intra_MV2(void *buffer,
         && mv2_enable_shmem_bcast == 1
         && (two_level_bcast == 1
 #if defined(_MCST_SUPPORT_)
-            || comm_ptr->dev.ch.is_mcast_ok
+            || MV2_SELECT_MCAST_BASED_BCAST(comm_ptr, nbytes)
 #endif
         )) {
 
@@ -2502,7 +2506,6 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
     int local_size = 0;
     int partial_sub_ok = 0;
     int conf_index = 0;
-    int i;
     int table_min_comm_size = 0;
     int table_max_comm_size = 0;
     int table_min_inter_size = 0;
@@ -2571,7 +2574,6 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
         shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
-        i = 0;
         if (mv2_bcast_indexed_table_ppn_conf[0] == -1) {
             // Indicating user defined tuning
             conf_index = 0;
@@ -2728,12 +2730,7 @@ conf_check_end:
 
     /* Check if we will use a two level algorithm or not */
     two_level_bcast =
-#if defined(_MCST_SUPPORT_)
-        mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].is_two_level_bcast[inter_node_algo_index] 
-        || comm_ptr->dev.ch.is_mcast_ok;
-#else
         mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].is_two_level_bcast[inter_node_algo_index];
-#endif
 
     if (MV2_Bcast_function == &MPIR_Knomial_Bcast_inter_node_wrapper_MV2 &&  
             two_level_bcast != 1) {
@@ -2744,7 +2741,11 @@ conf_check_end:
 
 skip_tuning_tables:
 #if defined CHANNEL_MRAIL_GEN2
-    if (mv2_enable_zcpy_bcast == 0) { 
+    if (mv2_bcast_indexed_table_ppn_conf[0] != -1 && (mv2_enable_zcpy_bcast == 0 
+#if defined(_MCST_SUPPORT_)
+        || MV2_SELECT_MCAST_BASED_BCAST(comm_ptr, nbytes) 
+#endif
+        )) {
         MV2_Bcast_intra_node_function = &MPIR_Shmem_Bcast_MV2;
         MV2_Bcast_function = &MPIR_Knomial_Bcast_inter_node_wrapper_MV2;
         two_level_bcast = 1;
@@ -3021,12 +3022,7 @@ int MPIR_Bcast_tune_intra_MV2(void *buffer,
 
     /* Check if we will use a two level algorithm or not */
     two_level_bcast =
-#if defined(_MCST_SUPPORT_)
-        mv2_bcast_thresholds_table[range].is_two_level_bcast[range_threshold] 
-        || comm_ptr->dev.ch.is_mcast_ok;
-#else
         mv2_bcast_thresholds_table[range].is_two_level_bcast[range_threshold];
-#endif
     if (comm_ptr->dev.ch.shmem_coll_ok != 1) {
         if(nbytes < MPICH_LARGE_MSG_COLLECTIVE_SIZE) { 
             mpi_errno = MPIR_Bcast_intra(buffer, count, datatype, root, 
@@ -3151,7 +3147,7 @@ int MPIR_Bcast_MV2(void *buf, int count, MPI_Datatype datatype,
                    int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
-
+    MPIR_T_PVAR_COMM_COUNTER_INC(MV2,mv2_coll_bcast_subcomm,1,comm_ptr);
 #ifdef _ENABLE_CUDA_
     MPI_Aint datatype_extent;
     MPID_Datatype_get_extent_macro(datatype, datatype_extent);

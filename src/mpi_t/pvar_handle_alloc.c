@@ -92,7 +92,76 @@ int MPIR_T_pvar_handle_alloc_impl(MPI_T_pvar_session session, int pvar_index,
     else if (is_watermark)
         hnd->flags |= MPIR_T_PVAR_FLAG_WATERMARK;
 
-    hnd->addr = info->addr;
+    #if ENABLE_PVAR_MV2
+    if(info->bind == MPI_T_BIND_MPI_COMM)
+    {
+        int is_mpi_initialized = 1;
+        if(OPA_load_int(&MPIR_Process.mpich_state) != MPICH_POST_INIT)
+        {
+            is_mpi_initialized = 0;    
+        }
+        if(!is_mpi_initialized)
+        {
+            if(info->varclass == MPI_T_PVAR_CLASS_COUNTER)
+            {
+                fprintf(stderr, "Error : MPI_T_pvar_handle_alloc called on PVAR "
+                        "COUNTER %s bound to MPI_Comm before MPI_Init is "
+                        "complete\n", info->name);
+            }
+            else if(info->varclass == MPI_T_PVAR_CLASS_TIMER)
+            {
+                fprintf(stderr, "Error : MPI_T_pvar_handle_alloc called on PVAR "
+                        "TIMER %s bound to MPI_Comm before MPI_Init is " 
+                        "complete\n", info->name);  
+            }
+            /* Fall back to global address that the PVAR is stored in. This value 
+             * will never be incremented since the handle is invalid. The 
+             * statement below exists only to ensure nothing weird happens when 
+             * reading the PVAR*/
+            hnd->addr = info->addr;
+        }
+        else
+        {
+            int rank;
+            int is_invalid_obj_handle = 0;
+            PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
+            MPID_Comm *comm = NULL;
+            if(obj_handle != NULL)
+            {
+                MPID_Comm_get_ptr(*(MPI_Comm*) obj_handle, comm);
+            }
+            if(comm == NULL || obj_handle == NULL)
+            {
+                MPID_Comm_get_ptr(MPI_COMM_WORLD, comm);
+                is_invalid_obj_handle = 1;
+            }
+            if(info->varclass == MPI_T_PVAR_CLASS_COUNTER)
+            {
+                if(rank == 0 && is_invalid_obj_handle)
+                {
+                    fprintf(stderr, "PVAR COUNTER %s is bound to MPI_COMM. Using "
+                            "MPI_COMM_WORLD as default since invalid obj_handle is "
+                            "specified in MPI_T_pvar_handle_alloc\n", info->name);
+                }
+                hnd->addr = &(comm->sub_comm_counters[info->sub_comm_index]);
+            }
+            else if(info->varclass == MPI_T_PVAR_CLASS_TIMER)
+            {
+                if(rank == 0 && is_invalid_obj_handle)
+                {
+                    fprintf(stderr, "PVAR TIMER %s is bound to MPI_COMM. Using "
+                            "MPI_COMM_WORLD as default since invalid obj_handle is "
+                            "specified in MPI_T_pvar_handle_alloc\n", info->name);
+                }
+                hnd->addr = &(comm->sub_comm_timers[info->sub_comm_timer_index]);
+            }
+        }
+    }
+    else
+    #endif
+    {
+        hnd->addr = info->addr;
+    }
     hnd->datatype = info->datatype;
     hnd->count = cnt;
     hnd->varclass = info->varclass;

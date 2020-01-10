@@ -1241,7 +1241,7 @@ static int _rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
 
     /* Be sure to use different keys for different processes */
     MPIU_Memset(attr_buff, 0, IBA_PMI_ATTRLEN * sizeof(char));
-    snprintf(attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2_%04d", pg_rank);
+    snprintf(attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2-%04d", pg_rank);
 
     /* put the kvs into PMI */
     MPIU_Strncpy(mv2_pmi_key, attr_buff, mv2_pmi_max_keylen);
@@ -1266,7 +1266,7 @@ static int _rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
         /* Use the key to extract the value */
         MPIU_Memset(attr_buff, 0, IBA_PMI_ATTRLEN * sizeof(char));
         MPIU_Memset(val_buff, 0, IBA_PMI_VALLEN * sizeof(char));
-        snprintf(attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2_%04d", j);
+        snprintf(attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2-%04d", j);
         MPIU_Strncpy(mv2_pmi_key, attr_buff, mv2_pmi_max_keylen);
 
         ret = UPMI_KVS_GET(kvsname, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);

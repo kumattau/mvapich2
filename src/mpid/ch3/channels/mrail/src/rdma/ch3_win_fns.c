@@ -699,7 +699,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
 {
     int mpi_errno = MPI_SUCCESS;
     void **base_pp = (void **) base_ptr;
-    int i, node_size, node_rank;
+    int i=0, node_size=0, node_rank=0;
     MPID_Comm *node_comm_ptr;
     MPI_Aint *node_sizes;
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;

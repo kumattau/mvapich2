@@ -147,7 +147,7 @@ int MPID_Win_free(MPID_Win ** win_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     int in_use;
-    MPID_Comm *comm_ptr;
+    MPID_Comm *comm_ptr = (*win_ptr)->comm_ptr;
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     MPIDI_STATE_DECL(MPID_STATE_MPID_WIN_FREE);
 
@@ -178,7 +178,7 @@ int MPID_Win_free(MPID_Win ** win_ptr)
             MPIR_ERR_POP(mpi_errno);
     }
 
-    mpi_errno = MPIR_Barrier_impl((*win_ptr)->comm_ptr, &errflag);
+    mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
     if (mpi_errno)
         MPIR_ERR_POP(mpi_errno);
 
@@ -211,12 +211,11 @@ int MPID_Win_free(MPID_Win ** win_ptr)
     MPIU_Free((*win_ptr)->rank_mapping);
 #endif /* CHANNEL_PSM */
 
-#ifndef _OSU_MVAPICH_
-    comm_ptr = (*win_ptr)->comm_ptr;
     mpi_errno = MPIR_Comm_free_impl(comm_ptr);
     if (mpi_errno)
         MPIR_ERR_POP(mpi_errno);
-#endif
+    
+    (*win_ptr)->comm_ptr = NULL;
 
     if ((*win_ptr)->basic_info_table != NULL)
         MPIU_Free((*win_ptr)->basic_info_table);

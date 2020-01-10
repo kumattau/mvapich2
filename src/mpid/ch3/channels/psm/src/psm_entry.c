@@ -19,7 +19,7 @@
 #include "mv2_utils.h"
 #include <mv2_arch_hca_detect.h>
 #include <upmi.h>
-
+#include "coll_shmem.h"
 extern int g_mv2_num_cpus;
 
 volatile unsigned int MPIDI_CH3I_progress_completion_count = 0; //ODOT: what is this ?
@@ -199,10 +199,19 @@ void mv2_print_env_info(struct coll_info *colls_arch_hca)
     fprintf(stderr, "\tHFI Eagersize                  : %d\n",
             mv2_hfi_rndv_thresh);
     fprintf(stderr, "\t%s                  : %s %s\n", "Tuning Table:", mv2_get_arch_name(colls_arch_hca[0].arch_type), mv2_get_hca_name(colls_arch_hca[0].hca_type));
-    fprintf(stderr,
-            "---------------------------------------------------------------------\n");
+    fprintf(stderr, "---------------------------------------------------------------------\n");
+    
+    if (g_mv2_show_env_info >= 2) {
+        fprintf(stderr, "\tMV2_ENABLE_SOCKET_AWARE_COLLECTIVES  : %d\n", mv2_enable_socket_aware_collectives);
+        fprintf(stderr, "\tMV2_USE_SOCKET_AWARE_ALLREDUCE       : %d\n", mv2_use_socket_aware_allreduce);
+        fprintf(stderr, "\tMV2_USE_SOCKET_AWARE_BARRIER         : %d\n", mv2_use_socket_aware_barrier);
+        fprintf(stderr, "\tMV2_USE_SOCKET_AWARE_SHARP_ALLREDUCE : %d\n", mv2_use_socket_aware_sharp_allreduce);
+        fprintf(stderr, "\tMV2_SOCKET_AWARE_ALLREDUCE_MIN_MSG   : %d\n", mv2_socket_aware_allreduce_min_msg);
+        fprintf(stderr, "\tMV2_SOCKET_AWARE_ALLREDUCE_MAX_MSG   : %d\n", mv2_socket_aware_allreduce_max_msg);
+        fprintf(stderr, "---------------------------------------------------------------------\n");
+    }
 
-    if (atoi(getenv("MV2_SHOW_ENV_INFO")) >= 3) {
+    if (g_mv2_show_env_info >= 3) {
         fprintf(stderr, "\nCollective Tuning Tables\n");
         fprintf(stderr, "\t%-20s %-40s %-40s\n", "Collective", "Architecture", "Interconnect");
         for(i = 0; i < colls_max; i++) {
@@ -576,7 +585,7 @@ static int psm_detect_heterogeneity(mv2_arch_hca_type myarch, int pg_size, int p
     }
 
     PRINT_DEBUG(DEBUG_CM_verbose>1, "my arch_hca_type = %016lx\n", myarch);
-    MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_ahkey_%d", pg_rank);
+    MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_ahkey-%d", pg_rank);
     MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen, "%016lx", myarch);
 
     if(UPMI_KVS_PUT(kvsid, mv2_pmi_key, mv2_pmi_val) != UPMI_SUCCESS) {
@@ -591,7 +600,7 @@ static int psm_detect_heterogeneity(mv2_arch_hca_type myarch, int pg_size, int p
 
     for (i = 0; i < pg_size; i++) {
         if (i != pg_rank) {
-            MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_ahkey_%d", i);
+            MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_ahkey-%d", i);
             mpi_errno = UPMI_KVS_GET(kvsid, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
             if(mpi_errno != UPMI_SUCCESS) {
                 MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_getfailed");
@@ -626,7 +635,7 @@ static int psm_start_epid_exchange(PSM_EPID_T myid, int pg_size, int pg_rank)
     }
 
     PRINT_DEBUG(DEBUG_CM_verbose>1, "[%d] my epid = %lu\n", pg_rank, myid);
-    MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey_%d", pg_rank);
+    MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey-%d", pg_rank);
     MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen, "%lu", myid);
     if(UPMI_KVS_PUT(kvsid, mv2_pmi_key, mv2_pmi_val) != UPMI_SUCCESS) {
         MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_putfailed");
@@ -672,7 +681,7 @@ int psm_connect_peer(int peer)
     if (unlikely(psmdev_cw.pg_rank == peer)) {
         epidlist[0] = psmdev_cw.epid;
     } else {
-        MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey_%d", peer);
+        MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey-%d", peer);
         if(UPMI_KVS_GET(kvsid, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen) != UPMI_SUCCESS) {
             MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_getfailed");
         }
@@ -724,7 +733,7 @@ static int psm_connect_alltoall(PSM_EPADDR_T *addrs, int pg_size, int pg_rank)
 
     PRINT_DEBUG(DEBUG_CM_verbose>0, "Looking up epids\n");
     for (i=0; i<pg_size; i++) {
-        MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey_%d", i);
+        MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "pmi_epidkey-%d", i);
         if(UPMI_KVS_GET(kvsid, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen) != UPMI_SUCCESS) {
             MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_getfailed");
         }

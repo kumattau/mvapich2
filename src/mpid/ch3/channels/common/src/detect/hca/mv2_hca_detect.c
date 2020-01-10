@@ -49,6 +49,7 @@ cvars:
 === END_MPI_T_CVAR_INFO_BLOCK ===
 */
 
+int mv2_suppress_hca_warnings = 0;
 extern int g_mv2_num_cpus;
 static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
 
@@ -63,6 +64,7 @@ static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
 #define MV2_STR_CXGB3        "cxgb3"
 #define MV2_STR_CXGB4        "cxgb4"
 #define MV2_STR_NES0         "nes0"
+#define MV2_STR_QEDR         "qedr"
 
 #if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
 MPI_T_cvar_handle mv2_force_hca_type_handle = NULL;
@@ -81,8 +83,11 @@ typedef struct _mv2_hca_types_log_t{
     char *hca_name;
 }mv2_hca_types_log_t;
 
-#define MV2_HCA_LAST_ENTRY -1
-static mv2_hca_types_log_t mv2_hca_types_log[] = {
+#define MV2_HCA_LAST_ENTRY MV2_HCA_LIST_END
+static mv2_hca_types_log_t mv2_hca_types_log[] = 
+{
+    /*Unknown */
+    {MV2_HCA_UNKWN,         "MV2_HCA_UNKWN"},
 
     /* Mellanox Cards */
     {MV2_HCA_MLX_PCI_EX_SDR,"MV2_HCA_MLX_PCI_EX_SDR"},
@@ -113,8 +118,10 @@ static mv2_hca_types_log_t mv2_hca_types_log[] = {
     /* Intel iWarp Cards */
     {MV2_HCA_INTEL_NE020,   "MV2_HCA_INTEL_NE020"},
 
-    /*Unknown */
-    {MV2_HCA_UNKWN,         "MV2_HCA_UNKWN"},
+    /* Marvel RoCE Cards */
+    {MV2_HCA_MARVEL_QEDR,   "MV2_HCA_MARVEL_QEDR"},
+
+    /* Last Entry */
     {MV2_HCA_LAST_ENTRY,    "MV2_HCA_LAST_ENTRY"},
 };
 
@@ -202,6 +209,7 @@ int mv2_check_hca_type(mv2_hca_type type, int rank)
         type == MV2_HCA_CHLSIO_START      || type == MV2_HCA_CHLSIO_END      ||
         type == MV2_HCA_INTEL_IWARP_START || type == MV2_HCA_INTEL_IWARP_END ||
         type == MV2_HCA_QLGIC_START       || type == MV2_HCA_QLGIC_END       ||
+        type == MV2_HCA_MARVEL_START       || type == MV2_HCA_MARVEL_END       ||
         type == MV2_HCA_INTEL_START       || type == MV2_HCA_INTEL_END) {
 
         PRINT_INFO((rank==0), "Wrong value specified for MV2_FORCE_HCA_TYPE\n");
@@ -217,6 +225,8 @@ int mv2_check_hca_type(mv2_hca_type type, int rank)
                     MV2_HCA_CHLSIO_START, MV2_HCA_CHLSIO_END);
         PRINT_INFO((rank==0), "For QLogic Cards: Please enter value greater than %d and less than %d\n",
                     MV2_HCA_QLGIC_START, MV2_HCA_QLGIC_END);
+        PRINT_INFO((rank==0), "For Marvel Cards: Please enter value greater than %d and less than %d\n",
+                    MV2_HCA_MARVEL_START, MV2_HCA_MARVEL_END);
         PRINT_INFO((rank==0), "For Intel Cards: Please enter value greater than %d and less than %d\n",
                     MV2_HCA_INTEL_START, MV2_HCA_INTEL_END);
         return 1;
@@ -239,6 +249,10 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
 
     UPMI_GET_RANK(&my_rank);
 
+    if ((value = getenv("MV2_SUPPRESS_HCA_WARNINGS")) != NULL) {
+        mv2_suppress_hca_warnings = !!atoi(value);
+    }
+
 #if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
     int cvar_forced = mv2_set_force_hca_type();
     if (cvar_forced) {
@@ -259,7 +273,7 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
 
     dev_name = (char*) ibv_get_device_name( ib_dev );
 
-    if (!dev_name) {
+    if ((!dev_name) && !mv2_suppress_hca_warnings) {
         PRINT_INFO((my_rank==0), "**********************WARNING***********************\n");
         PRINT_INFO((my_rank==0), "Failed to automatically detect the HCA architecture.\n");
         PRINT_INFO((my_rank==0), "This may lead to subpar communication performance.\n");
@@ -346,11 +360,14 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
     } else if (!strncmp(dev_name, MV2_STR_NES0, 4)) {
         hca_type = MV2_HCA_INTEL_NE020;
 
+    } else if (!strncmp(dev_name, MV2_STR_QEDR, 4)) {
+        hca_type = MV2_HCA_MARVEL_QEDR;
+
     } else {
         hca_type = MV2_HCA_UNKWN;
     }    
 
-    if (hca_type == MV2_HCA_UNKWN) {
+    if ((hca_type == MV2_HCA_UNKWN) && !mv2_suppress_hca_warnings) {
         PRINT_INFO((my_rank==0), "**********************WARNING***********************\n");
         PRINT_INFO((my_rank==0), "Failed to automatically detect the HCA architecture.\n");
         PRINT_INFO((my_rank==0), "This may lead to subpar communication performance.\n");
@@ -370,6 +387,9 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 
     UPMI_GET_RANK(&my_rank);
     
+    if ((value = getenv("MV2_SUPPRESS_HCA_WARNINGS")) != NULL) {
+        mv2_suppress_hca_warnings = !!atoi(value);
+    }
 #if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
     int cvar_forced = mv2_set_force_hca_type();
     if (cvar_forced) {
@@ -390,7 +410,7 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 
     dev_name = (char*) ibv_get_device_name( dev );
 
-    if (!dev_name) {
+    if ((!dev_name) && !mv2_suppress_hca_warnings) {
         PRINT_INFO((my_rank==0), "**********************WARNING***********************\n");
         PRINT_INFO((my_rank==0), "Failed to automatically detect the HCA architecture.\n");
         PRINT_INFO((my_rank==0), "This may lead to subpar communication performance.\n");
@@ -553,13 +573,16 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
     } else if (!strncmp(dev_name, MV2_STR_NES0, 4)) {
         hca_type = MV2_HCA_INTEL_NE020;
 
+    } else if (!strncmp(dev_name, MV2_STR_QEDR, 4)) {
+        hca_type = MV2_HCA_MARVEL_QEDR;
+
     } else {
         hca_type = MV2_HCA_UNKWN;
     }    
 #ifdef HAVE_LIBIBUMAD
     last_type = hca_type;
 #endif /* #ifdef HAVE_LIBIBUMAD */
-    if (hca_type == MV2_HCA_UNKWN) {
+    if ((hca_type == MV2_HCA_UNKWN) && !mv2_suppress_hca_warnings) {
         PRINT_INFO((my_rank==0), "**********************WARNING***********************\n");
         PRINT_INFO((my_rank==0), "Failed to automatically detect the HCA architecture.\n");
         PRINT_INFO((my_rank==0), "This may lead to subpar communication performance.\n");
@@ -576,6 +599,9 @@ mv2_hca_type mv2_get_hca_type(void *dev)
 
     UPMI_GET_RANK(&my_rank);
 
+    if ((value = getenv("MV2_SUPPRESS_HCA_WARNINGS")) != NULL) {
+        mv2_suppress_hca_warnings = !!atoi(value);
+    }
 #if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
     int cvar_forced = mv2_set_force_hca_type();
     if (cvar_forced) {

@@ -71,7 +71,7 @@
 
 #elif defined(__x86_64__)
 
-#define SHMEM_CACHE_LINE_SIZE 128
+#define SHMEM_CACHE_LINE_SIZE 64
 #define SHMEM_ALIGN(a)                                    \
 ((a + SHMEM_CACHE_LINE_SIZE + 7) & 0xFFFFFFFFFFFFFFF8)
 #define SHMEM_AVAIL(a)                                    \
@@ -260,6 +260,12 @@ extern void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int, int, int);
 extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
 
 
+extern int mv2_enable_socket_aware_collectives;
+extern int mv2_use_socket_aware_barrier;
+extern int mv2_use_socket_aware_allreduce;
+extern int mv2_use_socket_aware_sharp_allreduce;
+extern int mv2_socket_aware_allreduce_max_msg;
+extern int mv2_socket_aware_allreduce_min_msg;
 /* Use inside bcast_osu.c */
 typedef struct bcast_ring_allgather_shm_packet
 {
@@ -287,6 +293,8 @@ extern int  mv2_bcast_two_level_system_size;
 extern int  mv2_alltoall_inplace_old;
 extern int  mv2_use_scatter_dest_alltoallv;
 
+extern int mv2_allreduce_ring_algo_ppn_threshold;
+extern int  mv2_allreduce_red_scat_allgather_algo_ppn_threshold;
 extern int  mv2_allreduce_red_scat_allgather_algo_threshold;
 extern int  mv2_allreduce_ring_algo_threshold;
 extern int  mv2_allgather_ring_algo_threshold;
@@ -536,6 +544,7 @@ extern int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **file
                                 char *prefix, int *fd, size_t file_size);
 #endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_PSM)
 static inline int Cyclic_Rank_list_mapper(MPID_Comm * comm_ptr, int idx)
 {
     return comm_ptr->dev.ch.rank_list[idx];
@@ -545,6 +554,7 @@ static inline int Bunch_Rank_list_mapper(MPID_Comm * comm_ptr, int idx)
 {
     return idx;
 };
+#endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_PSM) */
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_num_shmem_coll_calls);
 

@@ -55,8 +55,15 @@ do {                                                          \
 
 #define ERROR_EPSILON (0.00000001)
 
+#define DEVICE_NAME_LENGTH 10
+#define IP_ADDRESS_LENGTH 32
 /* cluster size */
 enum {VERY_SMALL_CLUSTER, SMALL_CLUSTER, MEDIUM_CLUSTER, LARGE_CLUSTER};
+
+typedef struct ip_address_enabled_devices_t {
+    char device_name[DEVICE_NAME_LENGTH];
+    char ip_address[IP_ADDRESS_LENGTH];
+}ip_address_enabled_devices_t;
 
 typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     /* keep all rdma implementation specific global variable in a
@@ -186,14 +193,15 @@ typedef struct win_element
 
 extern win_elem_t *mv2_win_list;
 
+extern int mv2_get_verbs_ips_dev_names(int *num_interfaces,  ip_address_enabled_devices_t * mv2_get_verbs_ips_dev_names );
 extern mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
 extern int (*perform_blocking_progress) (int hca_num, int num_cqs);
 extern void (*handle_multiple_cqs) (int num_cqs, int cq_choice, int is_send_completion);
 extern int (*MPIDI_CH3I_MRAILI_Cq_poll) (vbuf **vbuf_handle,
         MPIDI_VC_t * vc_req, int receiving, int is_blocking);
 extern int (*check_cq_overflow) (MPIDI_VC_t *c, int rail);
-
-
+extern ip_address_enabled_devices_t * ip_address_enabled_devices;
+extern int num_ip_enabled_devices;
 #define GEN_EXIT_ERR     -1     /* general error which forces us to abort */
 #define GEN_ASSERT_ERR   -2     /* general assert error */
 #define IBV_RETURN_ERR   -3     /* gen2 function return error */

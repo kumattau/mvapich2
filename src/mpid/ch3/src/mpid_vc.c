@@ -785,7 +785,7 @@ static int publish_node_id(MPIDI_PG_t *pg, int our_pg_rank)
     if (pg->size > 1)
     {
         memset(key, 0, key_max_sz);
-        MPL_snprintf(key, key_max_sz, "hostname[%d]", our_pg_rank);
+        MPL_snprintf(key, key_max_sz, "hostname-%d", our_pg_rank);
 
         pmi_errno = UPMI_KVS_PUT(kvs_name, key, MPIU_hostname);
         MPIR_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
@@ -1092,7 +1092,7 @@ static int publish_host_id(MPIDI_PG_t *pg, int our_pg_rank)
     if (pg->size > 1)
     {
         memset(key, 0, key_max_sz);
-        MPL_snprintf(key, key_max_sz, "hostname[%d]", our_pg_rank);
+        MPL_snprintf(key, key_max_sz, "hostname-%d", our_pg_rank);
 
         pmi_errno = UPMI_KVS_PUT(kvs_name, key, val);
         MPIR_ERR_CHKANDJUMP1(pmi_errno != UPMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
@@ -1210,7 +1210,7 @@ int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
     /* Exchange host info through PMI */
     for (i = 0; i < pg->size; ++i) {
         memset(key, 0, key_max_sz);
-        MPL_snprintf(key, key_max_sz, "hostname[%d]", i);
+        MPL_snprintf(key, key_max_sz, "hostname-%d", i);
 
         if (i == our_pg_rank) {
             host_ids[i] = my_host_id;
@@ -1508,7 +1508,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         else
         {
             memset(key, 0, key_max_sz);
-            MPL_snprintf(key, key_max_sz, "hostname[%d]", i);
+            MPL_snprintf(key, key_max_sz, "hostname-%d", i);
 
             pmi_errno = UPMI_KVS_GET(kvs_name, key, node_names[g_max_node_id], key_max_sz);
             MPIR_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);

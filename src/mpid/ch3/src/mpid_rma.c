@@ -289,6 +289,7 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
 
 #ifdef _OSU_MVAPICH_	
     win_comm_ptr = comm_ptr;
+    MPIR_Comm_add_ref(win_comm_ptr);
 #else
     mpi_errno = MPIR_Comm_dup_impl(comm_ptr, &win_comm_ptr);
     if (mpi_errno)

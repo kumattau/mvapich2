@@ -1789,7 +1789,6 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
     int local_size = 0;
     int partial_sub_ok = 0;
     int conf_index = 0;
-    int i;
     int table_min_comm_size = 0;
     int table_max_comm_size = 0;
     int table_min_inter_size = 0;
@@ -1877,7 +1876,6 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
         shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
-        i = 0;
         if (mv2_reduce_indexed_table_ppn_conf[0] == -1) {
             // Indicating user defined tuning
             conf_index = 0;

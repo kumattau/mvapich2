@@ -48,7 +48,7 @@ int MPID_MRAIL_RndvSend (
     MPIDI_FUNC_ENTER(MPID_STATE_MRAIL_RNDVSEND);
 	
     PRINT_DEBUG(DEBUG_RNDV_verbose,
-            "Rndv Send to rank: %d, tag: %d, context: %d, buf: %p, size: %llu, contig: %d\n",
+            "Rndv Send to rank: %d, tag: %d, context: %d, buf: %p, size: %ld, contig: %d\n",
             rank, tag, comm->context_id + context_offset, buf, data_sz, dt_contig);
     MPIU_DBG_MSG_D(CH3_OTHER,VERBOSE,
 		   "sending rndv RTS, data_sz=" MPIDI_MSG_SZ_FMT, data_sz);
@@ -167,7 +167,7 @@ int MPID_MRAIL_RndvRecv (MPIDI_VC_t* vc, MPID_Request* rreq)
        to send a CTS message to the remote process. */
     
     PRINT_DEBUG(DEBUG_RNDV_verbose,
-            "Rndv Recv from rank: %d, tag: %d, context: %d, buf: %p, size: %llu\n",
+            "Rndv Recv from rank: %d, tag: %d, context: %d, buf: %p, size: %ld\n",
             rreq->dev.match.parts.rank, rreq->dev.match.parts.tag,
             rreq->dev.match.parts.context_id, rreq->dev.user_buf, rreq->dev.recv_data_sz);
 

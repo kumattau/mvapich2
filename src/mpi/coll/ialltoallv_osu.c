@@ -39,7 +39,7 @@ static int MPIR_Ialltoallv_tune_helper_MV2(const void *sendbuf, const int sendco
                                            MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int is_homogeneous;
+    int is_homogeneous ATTRIBUTE((unused));
 
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
 
@@ -70,7 +70,7 @@ int MPIR_Ialltoallv_intra_MV2(const void *sendbuf, const int sendcounts[], const
                               MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int comm_size, is_homogeneous;
+    int comm_size, is_homogeneous ATTRIBUTE((unused));
     MPI_Aint recvtype_size, nbytes;
     
     int two_level_ialltoallv = 1;

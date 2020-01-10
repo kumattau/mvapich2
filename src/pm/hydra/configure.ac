@@ -524,7 +524,7 @@ fi
 
 AC_ARG_WITH(hydra-ckpointlib, [  --with-hydra-ckpointlib=name - Checkpointing Library (blcr)],
 			   [ hydra_ckpointlib_list=$withval ],
-			   [ hydra_ckpointlib_list=blcr ])
+			   [ hydra_ckpointlib_list=none ])
 AC_MSG_CHECKING(checkpointing library)
 
 if test "$have_pthreads" != "yes" -a "$hydra_ckpointlib_list" != "none" ; then

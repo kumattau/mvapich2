@@ -278,7 +278,7 @@ int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
             vc->smp.send_active = sreq;
 
             PRINT_DEBUG(DEBUG_SHM_verbose>1,
-                    "send to %d delayed, request enqueued: %p, type: %d, pkt_sz: %d, ch.reqtype: %d\n",
+                    "send to %d delayed, request enqueued: %p, type: %d, pkt_sz: %ld, ch.reqtype: %d\n",
                     vc->pg_rank, sreq, MPIDI_Request_get_type(sreq), pkt_sz, sreq->ch.reqtype);
         }
 #if defined(DEBUG)
@@ -295,7 +295,7 @@ int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
 
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
         PRINT_DEBUG(DEBUG_SHM_verbose>1,
-                "send to %d delayed, request enqueued: %p, type: %d, pkt_sz: %d, ch.reqtype: %d\n",
+                "send to %d delayed, request enqueued: %p, type: %d, pkt_sz: %ld, ch.reqtype: %d\n",
                 vc->pg_rank, sreq, MPIDI_Request_get_type(sreq), pkt_sz, sreq->ch.reqtype);
 #ifdef CKPT  
 		MPIDI_CH3I_MRAILI_Pkt_comm_header* p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)pkt;

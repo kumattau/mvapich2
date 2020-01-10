@@ -24,7 +24,7 @@
 #include "dreg.h"
 #include "rdma_cm.h"
 #include "cm.h"
-
+#include "mv2_utils.h"
 #ifdef RDMA_CM
 #include <sys/socket.h>
 #include <ifaddrs.h>
@@ -1231,7 +1231,7 @@ int rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
         }
     }
     
-    sprintf(rank, "ip%d", pg_rank);
+    sprintf(rank, "ip-%d", pg_rank);
 #ifdef _MULTI_SUBNET_SUPPORT_
     int k = 0;
     if (mv2_rdma_cm_multi_subnet_support) {
@@ -1281,7 +1281,7 @@ int rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
 
     for (i = 0; i < pg_size; i++) {
         if (i != pg_rank) {
-            sprintf(rank, "ip%d", i);
+            sprintf(rank, "ip-%d", i);
             MPIU_Strncpy(mv2_pmi_key, rank, 16);
             mpi_errno = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
             if (mpi_errno != UPMI_SUCCESS) {
@@ -1357,86 +1357,23 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_cm_get_verbs_ip(int *num_interfaces)
 {
+    int index = 0;
     int mpi_errno = MPI_SUCCESS;
-    int i = 0, max_ips = 0, ret = 0;
-    char *ip = NULL, *dev_name = NULL;
-    struct ifaddrs *ifaddr = NULL, *ifa;
-    struct rdma_cm_id *cm_id = NULL;
-    struct rdma_event_channel *ch = NULL;
-    struct sockaddr_in *sin = NULL;
     char *value = getenv("MV2_IBA_HCA");
-    struct ibv_port_attr port_attr;
-
-    MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_GET_VERBS_IP);
-    MPIDI_FUNC_ENTER(MPID_STATE_RDMA_CM_GET_VERBS_IP);
-
-    max_ips = rdma_num_hcas * rdma_num_ports;
-    rdma_cm_local_ips = MPIU_Malloc(max_ips * sizeof(int));
-
-    ret = getifaddrs(&ifaddr);
-    if (ret) {
-        MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "getifaddrs error %d\n", errno);
-    }
-
-    for (ifa = ifaddr; ifa != NULL && i < max_ips; ifa = ifa->ifa_next) {
-
-        if (ifa->ifa_addr != NULL
-            && ifa->ifa_addr->sa_family == AF_INET
-            && ifa->ifa_flags & IFF_UP
-            && !(ifa->ifa_flags & IFF_LOOPBACK)
-            && !(ifa->ifa_flags & IFF_POINTOPOINT)
-        ) {
-            ch =  rdma_create_event_channel();
-            if(!ch) {
-                MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                        "rdma_create_event_channel error %d\n", errno);
+ 
+    *num_interfaces = num_ip_enabled_devices;
+    rdma_cm_local_ips = MPIU_Malloc((rdma_num_hcas*rdma_num_ports) * sizeof(int));
+    for(index = 0; index < (*num_interfaces); index++){
+        if (value && ip_address_enabled_devices[index].device_name) {
+            if(strstr(value, ip_address_enabled_devices[index].device_name) == NULL) {
+                continue;
             }
-
-            if (rdma_create_id(ch, &cm_id, NULL, RDMA_PS_TCP)) {
-                MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                        "rdma_create_id error %d\n", errno);
-            }
-
-            sin = (struct sockaddr_in *) ifa->ifa_addr;
-            ip = inet_ntoa(sin->sin_addr);
-
-            ret = rdma_bind_addr(cm_id, ifa->ifa_addr);
-            if (ret == 0 && cm_id->verbs != 0) {
-                dev_name = (char *) ibv_get_device_name(cm_id->verbs->device);
-                if (value && dev_name) {
-                    if(strstr(value, dev_name) == NULL) {
-                        goto skip;
-                    }
-                }
-                /* Skip interfaces that are not in active state */
-                if ((!ibv_query_port(cm_id->verbs, cm_id->port_num, &port_attr))
-                    && port_attr.state == IBV_PORT_ACTIVE) {
-                    rdma_cm_local_ips[i] = inet_addr(ip);
-                    PRINT_DEBUG(DEBUG_RDMACM_verbose,"Active: dev_name: %s, port: %d, ip: %s\n",
-                                dev_name, cm_id->port_num, ip);
-                    i++;
-                } else {
-                    PRINT_DEBUG(DEBUG_RDMACM_verbose,"Not Active (%d): dev_name: %s, port: %d, ip: %s\n",
-                                port_attr.state, dev_name, cm_id->port_num, ip);
-                }
-            }
-
-            skip:
-            PRINT_DEBUG(DEBUG_RDMACM_verbose, "i: %d, interface: %s, device: %s, ip: %s, verbs: %d\n",
-                                            i, ifa->ifa_name, dev_name, ip, !!cm_id->verbs);
-
-            rdma_destroy_id(cm_id); cm_id = NULL;
-            rdma_destroy_event_channel(ch); ch = NULL;
-            dev_name = NULL;
         }
+        PRINT_DEBUG(DEBUG_RDMACM_verbose, "Assigning ip of: device %s, ip address %s\n", ip_address_enabled_devices[index].device_name,ip_address_enabled_devices[index].ip_address);
+        rdma_cm_local_ips[index] = inet_addr(ip_address_enabled_devices[index].ip_address);
     }
 
-    *num_interfaces = i;
-fn_fail:
-    freeifaddrs(ifaddr); ifaddr = NULL;
 
-    MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_GET_VERBS_IP);
     return mpi_errno;
 }
 

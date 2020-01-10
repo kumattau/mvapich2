@@ -334,7 +334,7 @@ int MPIDI_CH3I_Seg_commit(MPID_nem_seg_ptr_t memory, int num_local, int local_ra
 
             /* post name of shared file */
             MPIU_Assert (MPID_nem_mem_region.local_procs[0] == MPID_nem_mem_region.rank);
-            MPL_snprintf (key, key_max_sz, "sharedFilename[%i]", MPID_nem_mem_region.rank);
+            MPL_snprintf (key, key_max_sz, "sharedFilename-%i", MPID_nem_mem_region.rank);
 
             mpi_errno = MPIU_SHMW_Hnd_get_serialized_by_ref(memory->hnd, &serialized_hnd);
             if (mpi_errno != MPI_SUCCESS) MPIR_ERR_POP (mpi_errno);
@@ -364,7 +364,7 @@ int MPIDI_CH3I_Seg_commit(MPID_nem_seg_ptr_t memory, int num_local, int local_ra
             MPIR_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
 
             /* get name of shared file */
-            MPL_snprintf (key, key_max_sz, "sharedFilename[%i]", MPID_nem_mem_region.local_procs[0]);
+            MPL_snprintf (key, key_max_sz, "sharedFilename-%i", MPID_nem_mem_region.local_procs[0]);
             pmi_errno = UPMI_KVS_GET (kvs_name, key, val, val_max_sz);
             MPIR_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
 

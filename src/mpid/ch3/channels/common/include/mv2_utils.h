@@ -19,8 +19,8 @@
 
 #ifndef _MV2_UTILS_H
 #define _MV2_UTILS_H
-
 /****Function Declarations****/
 int user_val_to_bytes(char* value, const char* param); //Takes care of 'K', 'M' and 'G' present in user parameters
+
 
 #endif

@@ -30,9 +30,11 @@ int MPIDI_CH3U_Handle_send_req(MPIDI_VC_t * vc, MPID_Request * sreq, int *comple
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_HANDLE_SEND_REQ);
 
+#if defined(CHANNEL_MRAIL)
     PRINT_DEBUG(DEBUG_SHM_verbose>1,
             "vc: %p, rank: %d, sreq: %p, type: %d, onDataAvail: %p\n",
             vc, vc->pg_rank, sreq, MPIDI_Request_get_type(sreq), sreq->dev.OnDataAvail);
+#endif /*defined(CHANNEL_MRAIL)*/
 
     /* Use the associated function rather than switching on the old ca field */
     /* Routines can call the attached function directly */

@@ -155,7 +155,16 @@ void mvapich2_mem_unhook(void *ptr, size_t size)
 #pragma GCC optimize ("O0")
 #endif
 
+/* For clang we have to use __attribute__((optnone)) to disable optimizing out of 
+ * calloc and valloc calls while leave the GCC opimize ("O0") to take care of 
+ * other compilers that use GCC backend. In future, if need arises we may need 
+ * compiler specific disabling of optimizations. 
+ */
+#ifdef __clang__ 
+__attribute__((optnone)) int mvapich2_minit()
+#else
 int mvapich2_minit()
+#endif
 {
     void *ptr_malloc = NULL;
     void *ptr_calloc = NULL;

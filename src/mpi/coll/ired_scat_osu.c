@@ -159,7 +159,7 @@ static int MPIR_Ireduce_scatter_tune_helper_MV2(const void *sendbuf, void *recvb
                                         MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int is_homogeneous;
+    int is_homogeneous ATTRIBUTE((unused));
     int is_commutative;
     int total_count, i;
     int comm_size;
@@ -226,7 +226,7 @@ int MPIR_Ireduce_scatter_intra_MV2(const void *sendbuf, void *recvbuf, const int
                                         MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int comm_size, is_homogeneous, i;
+    int comm_size, is_homogeneous  ATTRIBUTE((unused)), i;
     MPI_Aint sendtype_size, nbytes;
     
     int two_level_ireduce_scatter = 1;

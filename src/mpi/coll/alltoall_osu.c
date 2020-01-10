@@ -730,8 +730,9 @@ int MPIR_Alltoall_pairwise_MV2(
     /* Is comm_size a power-of-two? */
     i = 1;
     while (i < comm_size)
+    {
         i *= 2;
-    
+    }
         if (i == comm_size && mv2_use_xor_alltoall == 1) {
         pof2 = 1;
     } else  {
@@ -797,7 +798,6 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
     int partial_sub_ok = 0;
     int conf_index = 0;
     int local_size = -1;
-    int i;
     int comm_size_index = 0;
     int inter_node_algo_index = 0;
     int table_min_comm_size = 0;
@@ -831,7 +831,6 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
         shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
-        i = 0;
         if (mv2_alltoall_indexed_table_ppn_conf[0] == -1) {
             /* Indicating user defined tuning */
             conf_index = 0;
@@ -959,7 +958,6 @@ int MPIR_Alltoall_tune_intra_MV2(
     int partial_sub_ok = 0;
     int conf_index = 0;
     int local_size = -1;
-    int i;
     MPI_Comm shmem_comm;
     MPID_Comm *shmem_commptr=NULL;
     comm_size = comm_ptr->local_size;
@@ -974,7 +972,6 @@ int MPIR_Alltoall_tune_intra_MV2(
         shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;
-        i = 0;
         if (mv2_alltoall_table_ppn_conf[0] == -1) {
             /* Indicating user defined tuning */
             conf_index = 0;

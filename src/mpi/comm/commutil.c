@@ -138,16 +138,17 @@ int MPIR_Comm_init(MPID_Comm * comm_p)
     comm_p->dev.ch.node_disps  = NULL;
     comm_p->dev.ch.rank_list   = NULL;
 
-#if defined(_SMP_LIMIC)    
-    comm_p->dev.ch.socket_size=MPI_COMM_NULL;
+    comm_p->dev.ch.socket_size=0;
     comm_p->dev.ch.use_intra_sock_comm=0;
     comm_p->dev.ch.is_socket_uniform=0;
+    comm_p->dev.ch.tried_to_create_leader_shmem=0;
     comm_p->dev.ch.intra_sock_comm=MPI_COMM_NULL;
     comm_p->dev.ch.intra_sock_leader_comm=MPI_COMM_NULL;
-#endif /*defined(_SMP_LIMIC) */
+    comm_p->dev.ch.global_sock_leader_comm=MPI_COMM_NULL;
 
 #if ENABLE_PVAR_MV2
     comm_p->sub_comm_counters = NULL;
+    comm_p->sub_comm_timers = NULL;
 #endif
 
 #endif /* _OSU_MVAPICH_ */
@@ -260,6 +261,9 @@ int MPIR_Setup_intercomm_localcomm(MPID_Comm * intercomm_ptr)
     localcomm_ptr->dev.ch.shmem_comm = MPI_COMM_NULL;
     localcomm_ptr->dev.ch.leader_comm = MPI_COMM_NULL;
     localcomm_ptr->dev.ch.allgather_comm = MPI_COMM_NULL;
+    localcomm_ptr->dev.ch.intra_sock_comm=MPI_COMM_NULL;
+    localcomm_ptr->dev.ch.intra_sock_leader_comm=MPI_COMM_NULL;
+    localcomm_ptr->dev.ch.global_sock_leader_comm=MPI_COMM_NULL;
 #endif /* _OSU_MVAPICH_ */
 
 
@@ -596,7 +600,21 @@ int MPIR_Comm_commit(MPID_Comm * comm)
 
 #if ENABLE_PVAR_MV2
     extern int sub_comm_counter_idx;
-    comm->sub_comm_counters = (unsigned long long *)MPIU_Calloc(sub_comm_counter_idx, sizeof(unsigned long long));
+    extern int sub_comm_timer_idx;
+    comm->sub_comm_counters = (unsigned long long *)MPIU_Malloc(sub_comm_counter_idx * sizeof(unsigned long long));
+    comm->sub_comm_timers = (pvar_timer_t *)MPIU_Malloc(sub_comm_timer_idx * sizeof(pvar_timer_t));
+    int i = 0;
+
+    for(i = 0; i < sub_comm_counter_idx; i++)
+    {
+        comm->sub_comm_counters[i] = 0;    
+    }
+
+    for(i = 0; i < sub_comm_timer_idx; i++)
+    {
+        memset(&((comm->sub_comm_timers[i]).total), 0, sizeof(MPID_Time_t));
+        (comm->sub_comm_timers[i]).count = 0;
+    }
 #endif
 
     /* It's OK to relax these assertions, but we should do so very
@@ -1053,6 +1071,10 @@ int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr)
         {
            MPIU_Free(comm_ptr->sub_comm_counters);
         }
+        if(comm_ptr->sub_comm_timers)
+        {
+            MPIU_Free(comm_ptr->sub_comm_timers);
+        } 
         #endif
  
         /* free the intra/inter-node communicators, if they exist */

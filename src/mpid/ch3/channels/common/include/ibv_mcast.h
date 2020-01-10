@@ -23,7 +23,8 @@
 #define MCAST_QP (0xFFFFFF)
 #define MCAST_MAX_UMAD_RETRIES (8)
 #define SA_CLASS_VERSION (2)
-
+#define MCAST_NUM_THRESHOLD (8)
+#define MCAST_MIN_THRESHOLD (2)
 
 #define GID_FMT "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x\n"
 
@@ -76,6 +77,12 @@ typedef struct mcast_info {
     // TODO: can we handle differently?
     mcast_init_info_t *init_info;
     mcast_grp_info_t grp_info;
+#if defined(RDMA_CM)
+    struct sockaddr_storage dst_in;
+    struct sockaddr     *dst_addr;
+    struct rdma_cm_id   *cma_id;
+    struct rdma_event_channel *channel;
+#endif /* #if defined(RDMA_CM) */
 } mcast_info_t;
 
 
@@ -103,9 +110,28 @@ typedef struct mcast_init_elem_t {
 typedef struct mcast_context_t {
     mcast_init_elem_t *init_list;
     mv2_ud_ctx_t *ud_ctx;
+    int selected_rail;
+#if defined(RDMA_CM)
+    int ip_index;
+    char *ip;
+    int         id;
+    uint32_t        remote_qpn;
+    uint32_t        remote_qkey;
+    struct ibv_pd       *pd;
+    struct ibv_cq       *cq;
+    struct ibv_mr       *mr;
+    struct ibv_ah       *ah;
+    void            *mem;
+    pthread_t       cmathread;
+    struct sockaddr_storage src_in;
+    struct sockaddr     *src_addr;
+#endif /* #if defined(RDMA_CM) */
 } mcast_context_t;
 
 extern mcast_context_t *mcast_ctx;
+ #if defined(RDMA_CM)
+   extern int mv2_rdma_cm_mcst_get_addr_info(char *dst, struct sockaddr *addr);
+ #endif  /* #if defined(RDMA_CM) */
 
 /* function return values */
 enum {
@@ -155,5 +181,10 @@ typedef enum {
     SUBN_ADM_COMPMASK_JOIN_STATE = (1ULL << 16),
 } subn_adm_component_mask;
 
+#define MV2_SELECT_MCAST_BASED_BCAST(_comm_ptr,_size)      \
+    (mv2_bcast_indexed_table_ppn_conf[0] != -1             \
+    && _comm_ptr->dev.ch.is_mcast_ok                      \
+    && _size >= mcast_bcast_min_msg                        \
+    && _size <= mcast_bcast_max_msg)
 
 #endif /* _IBV_MCAST_H_ */

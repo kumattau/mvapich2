@@ -600,6 +600,13 @@ static inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
             SET_PKT_LEN_HEADER(v, wc);
             SET_PKT_HEADER_OFFSET(v);
             p = v->pheader;
+#ifdef _MCST_SUPPORT_
+            if (IS_MCAST_MSG(p)) {
+                mv2_process_mcast_msg(v);
+                return T_CHANNEL_NO_ARRIVE;
+            }
+            else
+#endif
 #ifdef _ENABLE_UD_
 	    if(rdma_enable_hybrid)
 	    {
@@ -625,12 +632,6 @@ static inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
             PRINT_DEBUG(DEBUG_CHM_verbose>1,"Received from rank:%d seqnum :%d "
                     "ack:%d size:%zu type:%d trasport:%d \n",vc->pg_rank,
                     v->seqnum, p->acknum, v->content_size, p->type, v->transport);
-#ifdef _MCST_SUPPORT_
-            if (IS_MCAST_MSG(p)) {
-                mv2_process_mcast_msg(v);
-                return T_CHANNEL_NO_ARRIVE;
-            }
-#endif
 #ifdef _ENABLE_UD_
             if (v->transport == IB_TRANSPORT_UD)
             {
@@ -1110,7 +1111,7 @@ void async_thread(void *context)
         switch (event.event_type) {
             /* Fatal */
             case IBV_EVENT_CQ_ERR:
-                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on CQ %d\n",
+                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on CQ %p\n",
                                     ibv_event_type_str(event.event_type),
                                     event.element.cq);
                 break;

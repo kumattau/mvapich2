@@ -65,13 +65,14 @@ typedef struct {
     int     bcast_coll_count;
     int     scatter_coll_count;
     void    *shmem_info; /* intra node shmem info */
-#if defined(_SMP_LIMIC_)    
     MPI_Comm     intra_sock_comm;
     MPI_Comm     intra_sock_leader_comm;
+    MPI_Comm     global_sock_leader_comm;
     int*         socket_size;
     int          is_socket_uniform;
     int          use_intra_sock_comm;
-#endif
+    int          my_sock_id;
+    int          tried_to_create_leader_shmem;
 #if defined(_MCST_SUPPORT_)
     int     is_mcast_ok;
     void    *bcast_info;

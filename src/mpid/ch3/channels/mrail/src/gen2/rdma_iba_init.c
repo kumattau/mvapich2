@@ -237,7 +237,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
             }
         } else {
             /* Generate the key and value pair */
-            MPL_snprintf(rdmakey, 512, "ARCH-HCA-%08x", pg_rank);
+            MPL_snprintf(rdmakey, 512, "ARCHHCA-%d", pg_rank);
             buf = rdmavalue;
             sprintf(buf, "%016lx", my_arch_hca_type);
             buf += 16;
@@ -276,7 +276,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                     continue;
                 }
 
-                MPL_snprintf(rdmakey, 512, "ARCH-HCA-%08x", i);
+                MPL_snprintf(rdmakey, 512, "ARCHHCA-%d", i);
                 MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
 
                 error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
@@ -342,7 +342,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                     continue;
                 }
                 /* Generate the key and value pair */
-                MPL_snprintf(rdmakey, 512, "%08x-%08x", pg_rank, i);
+                MPL_snprintf(rdmakey, 512, "2-%d-%08x", pg_rank, i);
                 buf = rdmavalue;
 
                 for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
@@ -436,7 +436,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                 }
 
                 /* Generate the key */
-                MPL_snprintf(rdmakey, 512, "%08x-%08x", i, pg_rank);
+                MPL_snprintf(rdmakey, 512, "2-%d-%08x", i, pg_rank);
                 MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
 
                 error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
@@ -498,7 +498,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                     continue;
                 }
                 /* Generate the key and value pair */
-                MPL_snprintf(rdmakey, 512, "1-%08x-%08x", pg_rank, i);
+                MPL_snprintf(rdmakey, 512, "1-%d-%08x", pg_rank, i);
                 buf = rdmavalue;
 
                 for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
@@ -553,7 +553,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                 }
 
                 /* Generate the key */
-                MPL_snprintf(rdmakey, 512, "1-%08x-%08x", i, pg_rank);
+                MPL_snprintf(rdmakey, 512, "1-%d-%08x", i, pg_rank);
                 MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
                 error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
 
@@ -814,7 +814,10 @@ int MPIDI_CH3I_RDMA_finalize(void)
 #if defined(_MCST_SUPPORT_)
     if (rdma_enable_mcast) {
         mv2_ud_destroy_ctx(mcast_ctx->ud_ctx);
+    }
+    if (mcast_ctx) {
         MPIU_Free(mcast_ctx);
+        mcast_ctx = NULL;
     }
 #endif
 
@@ -1047,10 +1050,6 @@ static int mv2_xrc_init(MPIDI_PG_t * pg)
         sprintf(ufile, "mv2_xrc_%s_%d", pg->ch.kvs_name, getuid());
     }
 
-    if (ufile == NULL) {
-        ibv_error_abort(GEN_EXIT_ERR, "Can't get unique filename");
-    }
-
     for (i = 0; i < rdma_num_hcas; i++) {
         MPL_snprintf(xrc_file, 512, "/dev/shm/%s-%d", ufile, i);
         PRINT_DEBUG(DEBUG_XRC_verbose > 0, "Opening xrc file: %s\n", xrc_file);
@@ -1102,10 +1101,6 @@ static int mv2_xrc_unlink_file(MPIDI_PG_t * pg)
     if (!MPIDI_CH3I_Process.has_dpm) {
         memset(ufile, 0, sizeof(ufile));
         MPL_snprintf(ufile, 500, "mv2_xrc_%s_%d", pg->ch.kvs_name, getuid());
-    }
-
-    if (ufile == NULL) {
-        ibv_error_abort(GEN_EXIT_ERR, "Can't get unique filename");
     }
 
     for (i = 0; i < rdma_num_hcas; i++) {
@@ -1334,7 +1329,7 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
     MPIDI_FUNC_ENTER(MPIDI_CH3I_PMI_GET_INIT_INFO);
         
     MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen,
-                    "MV2-INIT-INFO-%08x", tgt_rank);
+                    "MV2INITINFO-%d", tgt_rank);
 
     if (mv2_use_pmi_ibarrier) {
         mpi_errno = UPMI_WAIT();
@@ -1493,7 +1488,7 @@ int MPIDI_CH3I_PMI_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
     pg_size = MPIDI_PG_Get_size(pg);
 
     /* Generate the key and value pair */
-    MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "MV2-INIT-INFO-%08x", pg_rank);
+    MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "MV2INITINFO-%d", pg_rank);
     if (use_iboeth) {
         MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
                       "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016" SCNx64,
@@ -1962,6 +1957,8 @@ int MPIDI_CH3I_CM_Finalize(void)
 #if defined(_MCST_SUPPORT_)
     if (rdma_enable_mcast) {
         mv2_ud_destroy_ctx(mcast_ctx->ud_ctx);
+    }
+    if (mcast_ctx) {
         MPIU_Free(mcast_ctx);
     }
 #endif
@@ -2371,7 +2368,10 @@ int MPIDI_CH3I_RDMA_CM_Finalize(void)
 #if defined(_MCST_SUPPORT_)
     if (rdma_enable_mcast) {
         mv2_ud_destroy_ctx(mcast_ctx->ud_ctx);
+    }
+    if (mcast_ctx) {
         MPIU_Free(mcast_ctx);
+        mcast_ctx = NULL;
     }
 #endif
 

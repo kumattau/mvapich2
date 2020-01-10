@@ -15,7 +15,10 @@
 
 #include "mpichconf.h"
 
-#ifdef USE_PMI2_API
+#ifdef USE_PMIX_API
+    #include <pmix.h>
+    #include <pmi.h>
+#elif USE_PMI2_API
     #include <pmi2.h>
 #else
     #include <pmi.h>

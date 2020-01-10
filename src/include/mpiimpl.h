@@ -1192,6 +1192,14 @@ int MPIR_Comm_map_dup(struct MPID_Comm *newcomm, struct MPID_Comm *src_comm,
                       MPIR_Comm_map_dir_t dir);
 int MPIR_Comm_map_free(struct MPID_Comm *comm);
 
+#if ENABLE_PVAR_MV2
+typedef struct pvar_timer_t{
+    MPID_Time_t total;
+    MPID_Time_t curstart;
+    unsigned long long count;
+} pvar_timer_t;
+#endif
+
 /*S
   MPID_Comm - Description of the Communicator data structure
 
@@ -1318,6 +1326,7 @@ typedef struct MPID_Comm {
     MPIR_Comm_map_t *mapper_tail;
 
 #if ENABLE_PVAR_MV2
+    pvar_timer_t *sub_comm_timers;
     unsigned long long *sub_comm_counters;
 #endif
 
@@ -1360,7 +1369,6 @@ static inline int MPIR_Comm_release(MPID_Comm * comm_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     int in_use;
-
     MPIR_Comm_release_ref(comm_ptr, &in_use);
     if (unlikely(!in_use)) {
         /* the following routine should only be called by this function and its

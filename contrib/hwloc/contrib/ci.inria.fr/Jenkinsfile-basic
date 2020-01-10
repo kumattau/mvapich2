@@ -26,7 +26,7 @@ pipeline {
 				node('autotools') {
 					checkout scm
 					script {
-						gitBranch = sh (script: 'if test "$BRANCH_NAME"; then echo $BRANCH_NAME; else git branch | cut -c3-; fi', returnStdout: true).trim()
+						gitBranch = sh (script: 'if test "$BRANCH_NAME"; then echo $BRANCH_NAME; else git rev-parse --abbrev-ref HEAD; fi', returnStdout: true).trim()
 					}
 					sh 'contrib/ci.inria.fr/job-0-tarball.sh '+gitBranch
 					script {
@@ -47,12 +47,17 @@ pipeline {
 		stage('Check') {
 			steps {
 				script {
-					labelToSelect = 'unix'
-					listOfNodeNames = jenkins.model.Jenkins.instance.nodes.collect {
-					  node -> node.getLabelString().contains(labelToSelect) ? node.name : null
+					listOfNodeNames = []
+					if (env.NO_UNIX != 'true') {
+						labelToSelect = 'unix'
+						listOfNodeNames = jenkins.model.Jenkins.instance.nodes.collect {
+						  node -> node.getLabelString().contains(labelToSelect) ? node.name : null
+						}
+						listOfNodeNames.removeAll(Collections.singleton(null))
 					}
-					listOfNodeNames.removeAll(Collections.singleton(null))
-					listOfNodeNames.push('VisualStudio')
+					if (env.NO_MSVC != 'true') {
+						listOfNodeNames.push('VisualStudio')
+					}
 
 					def p = listOfNodeNames.collectEntries {
 					[ (it): {
@@ -62,16 +67,18 @@ pipeline {
 									unstash 'tarballgz'
 									unstash 'script-unix-check'
 									sh 'chmod 755 job-1-check.sh && ./job-1-check.sh '+tarballgz
-									deleteDir()
+									if (env.KEEP_WORKING_DIRECTORY != 'true')
+										deleteDir()
 								}
 							}
 						} else {
-							node('windows') {
+							node('msvc') {
 								dir('check-msvc') {
 									unstash 'tarballgz'
 									unstash 'script-msvc'
 									bat 'job-1-visualstudio.bat '+tarballgz
-									deleteDir()
+									if (env.KEEP_WORKING_DIRECTORY != 'true')
+										deleteDir()
 								}
 							}
 						}

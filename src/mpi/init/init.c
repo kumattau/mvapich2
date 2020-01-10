@@ -213,6 +213,7 @@ int MPI_Init( int *argc, char ***argv )
         }
     }
 
+#if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_PSM)
     /* initialize the two level communicator for MPI_COMM_WORLD  */
     if (mv2_use_osu_collectives && 
             mv2_enable_shmem_collectives) {
@@ -237,6 +238,7 @@ int MPI_Init( int *argc, char ***argv )
             }
        } 
     }
+#endif /*defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_PSM)*/
 
     /* ... end of body of routine ... */
     MPID_MPI_INIT_FUNC_EXIT(MPID_STATE_MPI_INIT);

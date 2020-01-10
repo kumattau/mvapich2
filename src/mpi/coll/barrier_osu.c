@@ -19,12 +19,15 @@
 
 #include "mpiimpl.h"
 #include "coll_shmem.h"
-#ifdef MRAIL_GEN2_INTERFACE
+#include "coll_shmem_internal.h"
+#include "shmem_bar.h"
+#if defined(CKPT)
 #include <cr.h>
 #endif
 
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_barrier_pairwise);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_barrier_shmem);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_barrier_subcomm);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_pairwise);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_shmem);
@@ -147,6 +150,83 @@ static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 
 }
 
+static int MPIR_socket_aware_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    MPIU_Assert(comm_ptr->dev.ch.use_intra_sock_comm && comm_ptr->dev.ch.shmem_coll_ok == 1);
+    int mpi_errno = MPI_SUCCESS;
+    MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
+    int local_rank = -1, local_size = 0;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
+    PMPI_Comm_size(shmem_comm, &local_size);
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+    local_rank = shmem_commptr->rank;
+    local_size = shmem_commptr->local_size;
+
+    leader_comm = comm_ptr->dev.ch.leader_comm;
+    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+
+    int intra_sock_rank = -1, intra_sock_size;
+    MPID_Comm * intra_sock_commptr = NULL;
+    PMPI_Comm_rank(shmem_commptr->dev.ch.intra_sock_comm, &intra_sock_rank);
+    PMPI_Comm_size(shmem_commptr->dev.ch.intra_sock_comm, &intra_sock_size);
+    MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_comm, intra_sock_commptr);
+
+    int shmem_comm_rank = intra_sock_commptr->dev.ch.shmem_comm_rank;
+
+    if (local_size > 1) {
+        MPIDI_CH3I_SHMEM_COLL_Barrier_gather(intra_sock_size, intra_sock_rank,
+                                             shmem_comm_rank);
+    }
+
+    if (intra_sock_rank == 0) {
+
+        MPID_Comm *shmem_leader_commptr = NULL;
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_leader_comm,shmem_leader_commptr);
+        MPID_Comm *global_sock_leader_ptr=NULL;
+        MPID_Comm_get_ptr(comm_ptr->dev.ch.global_sock_leader_comm,global_sock_leader_ptr);
+
+        if(shmem_leader_commptr->dev.ch.shmem_coll_ok != 1)
+	    {
+	        /* Fall back to pt2pt pairwise algorithm */
+            mpi_errno = MPIR_Pairwise_Barrier_MV2(global_sock_leader_ptr, errflag);
+	    }
+        else
+        {
+            MPID_Comm *shmem_leader_shmemcomm = NULL;
+            MPID_Comm_get_ptr(shmem_leader_commptr->dev.ch.shmem_comm, shmem_leader_shmemcomm);
+            int leader_shmem_comm_rank=0, leader_size=0, leader_rank=0;
+
+            if(shmem_leader_commptr->local_size > 1)
+            {
+                leader_shmem_comm_rank = shmem_leader_shmemcomm->dev.ch.shmem_comm_rank;
+                leader_size = shmem_leader_commptr->local_size;
+                leader_rank = shmem_leader_commptr->rank;
+
+                MPIDI_CH3I_SHMEM_COLL_Barrier_gather(leader_size, leader_rank,
+                        leader_shmem_comm_rank);
+            }
+
+            if(local_rank == 0)
+            {
+                mpi_errno = MPIR_Pairwise_Barrier_MV2(leader_commptr, errflag);
+            }
+
+            if(shmem_leader_commptr->local_size > 1)
+            {
+                MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(leader_size, leader_rank,
+                        leader_shmem_comm_rank);
+            }
+        }
+    }
+
+    if (local_size > 1) {
+        MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(intra_sock_size, intra_sock_rank,
+                                            shmem_comm_rank);
+    }
+    return mpi_errno;
+}
+
 /* This is the default implementation of the barrier operation.  The
    algorithm is:
    
@@ -188,8 +268,12 @@ int MPIR_Barrier_intra_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
     if (mv2_enable_shmem_collectives && mv2_enable_shmem_barrier
         && comm_ptr->dev.ch.shmem_coll_ok == 1) {
 
-        mpi_errno = MPIR_shmem_barrier_MV2(comm_ptr, errflag);
-
+        if(mv2_use_socket_aware_barrier && comm_ptr->dev.ch.use_intra_sock_comm == 1) {
+            mpi_errno = MPIR_socket_aware_shmem_barrier_MV2(comm_ptr,errflag);
+        }
+        else {
+            mpi_errno = MPIR_shmem_barrier_MV2(comm_ptr, errflag);
+        }
     } else {
 
         mpi_errno = MPIR_Pairwise_Barrier_MV2(comm_ptr, errflag);
@@ -215,12 +299,13 @@ int MPIR_Barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
     MPIR_T_PVAR_COMM_COUNTER_INC(MV2,mv2_coll_barrier_subcomm,1,comm_ptr);
+    MPIR_T_PVAR_COMM_TIMER_START(MV2,mv2_coll_timer_barrier_subcomm,comm_ptr);
     mpi_errno = MPIR_Barrier_intra_MV2(comm_ptr, errflag);
     if (mpi_errno)
         MPIR_ERR_POP(mpi_errno);
-
-  fn_exit:
+fn_exit:
+    MPIR_T_PVAR_COMM_TIMER_END(MV2,mv2_coll_timer_barrier_subcomm,comm_ptr);
     return mpi_errno;
-  fn_fail:
+fn_fail:
     goto fn_exit;
 }

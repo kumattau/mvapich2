@@ -41,7 +41,6 @@ static inline MPID_Request * create_request(MPL_IOV * iov, int iov_count,
 					    int iov_offset, MPIU_Size_t nb)
 {
     MPID_Request * sreq;
-    int i;
     MPIDI_STATE_DECL(MPID_STATE_CREATE_REQUEST);
 
     MPIDI_FUNC_ENTER(MPID_STATE_CREATE_REQUEST);

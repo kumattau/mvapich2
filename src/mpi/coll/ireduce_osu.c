@@ -34,7 +34,7 @@ static int MPIR_Ireduce_tune_helper_MV2(const void *sendbuf, void *recvbuf, int 
                              MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int is_homogeneous, pof2, comm_size;
+    int is_homogeneous ATTRIBUTE((unused)), pof2, comm_size;
 
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
 
@@ -76,7 +76,7 @@ int MPIR_Ireduce_intra_MV2(const void *sendbuf, void *recvbuf, int count,
                              MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
     int mpi_errno = MPI_SUCCESS;
-    int comm_size, is_homogeneous;
+    int comm_size, is_homogeneous ATTRIBUTE((unused));
     MPI_Aint sendtype_size, nbytes;
     
     int two_level_ireduce = 1;

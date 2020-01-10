@@ -31,6 +31,10 @@
 #include "rdma_impl.h"
 #include "mv2_mpit_cvars.h"
 #endif
+
+#if defined(_MCST_SUPPORT_)
+#include "ibv_param.h"
+#endif
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
 
@@ -392,7 +396,7 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
 
             /* Frontera */
             if(NULL != strstr(model_name, INTEL_PLATINUM_8280_MODEL_NAME)) {
-                arch_type = MV2_ARCH_INTEL_PLATINUM_8280_2S_56; 
+                arch_type = MV2_ARCH_INTEL_PLATINUM_8280_2S_56;
             }
         }  else if(36 == num_cpus || 72 == num_cpus){
             if(NULL != strstr(model_name, INTEL_E5_2695_V4_MODEL_NAME)) {
@@ -622,9 +626,8 @@ int mv2_is_arch_hca_type(mv2_arch_hca_type arch_hca_type,
         mv2_arch_type arch_type, mv2_hca_type hca_type)
 {
     int ret;
-    uint16_t  my_num_cores, my_arch_type, my_hca_type;
+    uint16_t my_arch_type, my_hca_type;
     uint64_t mask = UINT16_MAX;
-    my_num_cores = (arch_hca_type & mask);
     arch_hca_type >>= 16;
     my_hca_type = arch_hca_type & mask;
     arch_hca_type >>= 16;
@@ -816,6 +819,91 @@ int numOfCoresPerSocket(int socket) { return 0; }
 int numofSocketsPerNode (void) { return 0; }
 int get_socket_bound(void) { return -1; }
 #endif /*#if defined(_SMP_LIMIC_)*/
+
+/* return a number with the value'th bit set */
+int find_bit_pos(int value)
+{
+  int pos = 1, tmp = 1;
+  if(value == 0) return 0;
+  while(tmp < value)
+  {
+    pos++;
+    tmp = tmp << 1;
+  }
+  return pos;
+}
+
+/* given a socket object, find the number of cores per socket.
+ *  * This could be useful on systems where cores-per-socket
+ *   * are not uniform */
+int get_core_count_per_socket (hwloc_topology_t topology, hwloc_obj_t obj, int depth) {
+    int i, count = 0;
+    if (obj->type == HWLOC_OBJ_CORE)
+        return 1;
+
+    for (i = 0; i < obj->arity; i++) {
+        count += get_core_count_per_socket (topology, obj->children[i], depth+1);
+    }
+    return count;
+}
+
+int get_socket_bound_info(int *socket_bound, int *num_sockets, int *num_cores_socket, int *is_uniform)
+{
+    hwloc_cpuset_t cpuset;
+    hwloc_obj_t socket;
+    int i,num_cores;
+    int err = -1;
+    smpi_load_hwloc_topology_whole();
+    *num_sockets = hwloc_get_nbobjs_by_type(topology_whole, HWLOC_OBJ_SOCKET);
+    num_cores = hwloc_get_nbobjs_by_type(topology_whole, HWLOC_OBJ_CORE);
+    pid_t pid = getpid();
+
+    hwloc_bitmap_t cpubind_set = hwloc_bitmap_alloc();
+
+    int result = hwloc_get_proc_cpubind(topology_whole, pid, cpubind_set, 0);
+    if(result == -1)
+    {
+        PRINT_DEBUG(DEBUG_SHM_verbose > 0, "Error in getting cpubinding of process\n");
+        return -1;
+    }
+
+    int topodepth = hwloc_get_type_depth (topology_whole, HWLOC_OBJ_SOCKET);
+    *is_uniform = 1;
+
+    for(i = 0; i < *num_sockets; i++)
+    {
+        socket = hwloc_get_obj_by_type(topology_whole, HWLOC_OBJ_SOCKET, i);
+        cpuset = socket->cpuset;
+        hwloc_obj_t obj = hwloc_get_obj_by_depth (topology_whole, topodepth, i); 
+        int num_cores_in_socket = get_core_count_per_socket (topology_whole, obj, topodepth);
+
+        if(num_cores_in_socket != (num_cores / (*num_sockets)))
+        {
+            *is_uniform = 0;
+        }
+       
+        hwloc_bitmap_t result_set = hwloc_bitmap_alloc();                                                  
+        hwloc_bitmap_and(result_set, cpuset, cpubind_set);                                                   
+        if(hwloc_bitmap_last(result_set) != -1)                                                              
+        {                                                                                           
+            *num_cores_socket = num_cores_in_socket;                                                
+            *socket_bound = i;                                                                      
+            PRINT_DEBUG(DEBUG_SHM_verbose > 0, "Socket : %d Num cores :%d" 
+                        " Num cores in socket: %d Num sockets : %d Uniform :%d"
+                        "\n",i,num_cores, *num_cores_socket, *num_sockets, 
+                        *is_uniform);
+            err = 0;                                                                                
+        }
+        hwloc_bitmap_free(result_set); 
+    }
+
+    //Socket aware collectives don't support non-uniform architectures yet
+    if(!*is_uniform)
+    {
+        err = 1;
+    }
+    return err;
+}
 
 #if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
 int mv2_set_force_arch_type()

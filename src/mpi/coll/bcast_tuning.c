@@ -618,19 +618,23 @@ int MV2_set_bcast_tuning_table(int heterogeneity, struct coll_info *colls_arch_h
     else if(MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
                     MV2_ARCH_INTEL_PLATINUM_8280_2S_56, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
       /* Frontera */
-      MV2_COLL_TUNING_START_TABLE  (bcast, 6)
-      MV2_COLL_TUNING_ADD_CONF     (bcast, 1,  2, GEN2_CMA__FRONTERA__1PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 1,  2, GEN2_CMA__FRONTERA__1PPN)
-      MV2_COLL_TUNING_ADD_CONF     (bcast, 2,  3, GEN2_CMA__FRONTERA__2PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 2,  3, GEN2_CMA__FRONTERA__2PPN)
-      MV2_COLL_TUNING_ADD_CONF     (bcast, 4,  4, GEN2_CMA__FRONTERA__4PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 4,  4, GEN2_CMA__FRONTERA__4PPN)
-      MV2_COLL_TUNING_ADD_CONF     (bcast, 8,  5, GEN2_CMA__FRONTERA__8PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 8,  5, GEN2_CMA__FRONTERA__8PPN)
-      MV2_COLL_TUNING_ADD_CONF     (bcast, 16, 5, GEN2_CMA__FRONTERA__16PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 16, 5, GEN2_CMA__FRONTERA__16PPN)
-      MV2_COLL_TUNING_ADD_CONF     (bcast, 28, 2, GEN2_CMA__FRONTERA__28PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 28, 2, GEN2_CMA__FRONTERA__28PPN)
+      MV2_COLL_TUNING_START_TABLE  (bcast, 8)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 1,  5, GEN2_CMA__FRONTERA__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 1,  5, GEN2_CMA__FRONTERA__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 2,  7, GEN2_CMA__FRONTERA__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 2,  7, GEN2_CMA__FRONTERA__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 4,  7, GEN2_CMA__FRONTERA__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 4,  7, GEN2_CMA__FRONTERA__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 8,  7, GEN2_CMA__FRONTERA__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 8,  7, GEN2_CMA__FRONTERA__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 16, 7, GEN2_CMA__FRONTERA__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 16, 7, GEN2_CMA__FRONTERA__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 28, 7, GEN2_CMA__FRONTERA__28PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 28, 7, GEN2_CMA__FRONTERA__28PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 32, 7, GEN2_CMA__FRONTERA__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 32, 7, GEN2_CMA__FRONTERA__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 56, 7, GEN2_CMA__FRONTERA__56PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 56, 7, GEN2_CMA__FRONTERA__56PPN)
       MV2_COLL_TUNING_FINISH_TABLE (bcast)
     }
     else if(MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
@@ -653,6 +657,26 @@ int MV2_set_bcast_tuning_table(int heterogeneity, struct coll_info *colls_arch_h
       MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 32, 4, GEN2_CMA__MAYER__32PPN)
       MV2_COLL_TUNING_ADD_CONF     (bcast, 56, 4, GEN2_CMA__MAYER__56PPN)
       MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 56, 4, GEN2_CMA__MAYER__56PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (bcast)
+    }
+    else if(MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                    MV2_ARCH_ARM_CAVIUM_V8_2S_32, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+      /* Catalyst */
+      MV2_COLL_TUNING_START_TABLE  (bcast, 7)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 1,  3, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 1,  3, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 2,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 2,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 4,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 4,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 8,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 8,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 16, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 16, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 32, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 32, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (bcast, 64, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__64PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (bcast, 64, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__64PPN)
       MV2_COLL_TUNING_FINISH_TABLE (bcast)
     }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
@@ -2398,7 +2422,7 @@ int MV2_internode_Bcast_is_define(char *mv2_user_bcast_inter, char *mv2_user_bca
 {
 
   if (mv2_use_indexed_tuning || mv2_use_indexed_bcast_tuning) {
-    int i;
+    int i=0;
     int nb_element = count_sep(mv2_user_bcast_inter) + 1;
 
     /* If one bcast tuning table is already defined */

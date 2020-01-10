@@ -99,6 +99,7 @@ int *obj_tree = NULL;
 policy_type_t mv2_binding_policy;
 level_type_t mv2_binding_level;
 hwloc_topology_t topology = NULL;
+hwloc_topology_t topology_whole = NULL;
 
 static int INTEL_XEON_DUAL_MAPPING[] = { 0, 1, 0, 1 };
 
@@ -130,7 +131,7 @@ int s_cpu_mapping_line_max = _POSIX2_LINE_MAX;
 static int custom_cpu_mapping_line_max = _POSIX2_LINE_MAX;
 char *cpu_mapping = NULL;
 char *xmlpath = NULL;
-
+char *whole_topology_xml_path = NULL;
 int ib_socket_bind = 0;
 
 #if defined(CHANNEL_MRAIL)
@@ -228,7 +229,7 @@ static void find_leastload_node(obj_attribute_type * tree, hwloc_obj_t original,
     num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
 
     /* One socket includes multi numanodes. */
-    if ((original->type == HWLOC_OBJ_SOCKET)) {
+    if (original->type == HWLOC_OBJ_SOCKET) {
         depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
         num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
         per = num_nodes / num_sockets;
@@ -273,7 +274,7 @@ static void find_leastload_socket(obj_attribute_type * tree, hwloc_obj_t origina
     num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
 
     /* One numanode includes multi sockets. */
-    if ((original->type == HWLOC_OBJ_NODE)) {
+    if (original->type == HWLOC_OBJ_NODE) {
         depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
         num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
         per = num_sockets / num_nodes;
@@ -318,7 +319,7 @@ static void find_leastload_core(obj_attribute_type * tree, hwloc_obj_t original,
     num_cores = hwloc_get_nbobjs_by_depth(topology, depth_cores);
 
     /* Core may have Socket or Numanode as direct parent. */
-    if ((original->type == HWLOC_OBJ_NODE)) {
+    if (original->type == HWLOC_OBJ_NODE) {
         depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
         num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
         per = num_cores / num_nodes;
@@ -363,7 +364,7 @@ static void find_leastload_pu(obj_attribute_type * tree, hwloc_obj_t original,
     num_pus = hwloc_get_nbobjs_by_depth(topology, depth_pus);
 
     /* Assume: pu only has core as direct parent. */
-    if ((original->type == HWLOC_OBJ_CORE)) {
+    if (original->type == HWLOC_OBJ_CORE) {
         depth_cores = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
         num_cores = hwloc_get_nbobjs_by_depth(topology, depth_cores);
         per = num_pus / num_cores;
@@ -2052,6 +2053,113 @@ fn_fail:
 #endif /*defined(CHANNEL_MRAIL)*/
 
 #undef FUNCNAME
+#define FUNCNAME SMPI_LOAD_HWLOC_TOPOLOGY_WHOLE
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+/* This function is the same as smpi_load_hwloc_topology,
+ * but has the HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM set. This is
+ * useful for certain launchers/clusters where processes don't 
+ * have a whole view of the system (like in the case of jsrun). 
+ * It's declared separately to avoid unnecessary overheads in
+ * smpi_load_hwloc_topology in cases where a full view of the
+ * system is not required. 
+ * */
+int smpi_load_hwloc_topology_whole(void)
+{
+    int bcast_topology = 1;
+    int mpi_errno = MPI_SUCCESS;
+    char *kvsname, *value;
+    char *hostname = NULL;
+    char *tmppath = NULL;
+    int uid, my_local_id;
+
+    MPIDI_STATE_DECL(SMPI_LOAD_HWLOC_TOPOLOGY_WHOLE);
+    MPIDI_FUNC_ENTER(SMPI_LOAD_HWLOC_TOPOLOGY_WHOLE);
+
+    if (topology_whole != NULL) {
+        goto fn_exit;
+    }
+
+    mpi_errno = hwloc_topology_init(&topology_whole);
+    hwloc_topology_set_flags(topology_whole,
+            HWLOC_TOPOLOGY_FLAG_IO_DEVICES   |
+            HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM |
+            HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM);
+
+    uid = getuid();
+    my_local_id = MPIDI_Process.my_pg->ch.local_process_id;
+    MPIDI_PG_GetConnKVSname(&kvsname);
+ 
+    if ((value = getenv("MV2_BCAST_HWLOC_TOPOLOGY")) != NULL) {
+        bcast_topology = !!atoi(value);
+    }
+
+    if (my_local_id < 0) {
+        if (MPIDI_Process.my_pg_rank == 0) {
+            PRINT_ERROR("WARNING! Invalid my_local_id: %d, Disabling hwloc topology broadcast\n", my_local_id);
+        }
+        bcast_topology = 0;
+    }
+
+    if (!bcast_topology) {
+        /* Each process loads topology individually */
+        mpi_errno = hwloc_topology_load(topology_whole);
+        goto fn_exit;
+    }
+
+    hostname = (char *) MPIU_Malloc(sizeof(char) * HOSTNAME_LENGTH);
+    tmppath = (char *) MPIU_Malloc(sizeof(char) * FILENAME_LENGTH);
+    whole_topology_xml_path = (char *) MPIU_Malloc(sizeof(char) * FILENAME_LENGTH);
+    if (hostname == NULL || tmppath == NULL || whole_topology_xml_path == NULL) {
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                                  "**nomem %s", "mv2_hwloc_topology_file");
+    }
+
+    if (gethostname(hostname, sizeof (char) * HOSTNAME_LENGTH) < 0) {
+        MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
+                                  "gethostname", strerror(errno));
+    }
+    sprintf(tmppath, "/tmp/mv2-hwloc-%s-%s-%d-whole.tmp", kvsname, hostname, uid);
+    sprintf(whole_topology_xml_path, "/tmp/mv2-hwloc-%s-%s-%d-whole.xml", kvsname, hostname, uid);
+
+    /* Local Rank 0 broadcasts topology using xml */
+    if (0 == my_local_id) {
+        mpi_errno = hwloc_topology_load(topology_whole);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+
+        mpi_errno = hwloc_topology_export_xml(topology_whole, tmppath);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+
+        if(rename(tmppath, whole_topology_xml_path) < 0) {
+            MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
+                                  "rename", strerror(errno));
+        }
+    } else {
+        while(access(whole_topology_xml_path, F_OK) == -1) {
+            usleep(1000);
+        }
+        mpi_errno = hwloc_topology_set_xml(topology_whole, whole_topology_xml_path);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+
+        mpi_errno = hwloc_topology_load(topology_whole);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+    }
+
+  fn_exit:
+    if (hostname) {
+        MPIU_Free(hostname);
+    }
+    if (tmppath) {
+        MPIU_Free(tmppath);
+    }
+    MPIDI_FUNC_EXIT(SMPI_LOAD_HWLOC_TOPOLOGY_WHOLE);
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
 #define FUNCNAME SMPI_LOAD_HWLOC_TOPOLOGY
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
@@ -2169,6 +2277,10 @@ int smpi_unlink_hwloc_topology_file(void)
         unlink(xmlpath);
     }
 
+    if (whole_topology_xml_path) {
+        unlink(whole_topology_xml_path);
+    }
+
     MPIDI_FUNC_EXIT(SMPI_UNLINK_HWLOC_TOPOLOGY_FILE);
     return mpi_errno;
 }
@@ -2187,9 +2299,19 @@ int smpi_destroy_hwloc_topology(void)
         hwloc_topology_destroy(topology);
         topology = NULL;
     }
+    
+    if (topology_whole)
+    {
+        hwloc_topology_destroy(topology_whole);
+        topology_whole = NULL;
+    }
 
     if (xmlpath) {
         MPIU_Free(xmlpath);
+    }
+
+    if (whole_topology_xml_path) {
+        MPIU_Free(whole_topology_xml_path);
     }
 
     MPIDI_FUNC_EXIT(SMPI_DESTROY_HWLOC_TOPOLOGY);
@@ -2608,7 +2730,7 @@ static int mv2_generate_implicit_cpu_mapping (int local_procs, int num_app_threa
     hwloc_obj_t obj;
 
     int i, j, k, l, curr, count, chunk, size, scanned, step, node_offset, node_base_pu;
-    int topodepth, num_physical_cores_per_socket, num_pu_per_socket;
+    int topodepth, num_physical_cores_per_socket ATTRIBUTE((unused)), num_pu_per_socket;
     int num_numanodes, num_pu_per_numanode;
     char mapping [s_cpu_mapping_line_max];
     
@@ -2707,17 +2829,40 @@ static int mv2_generate_implicit_cpu_mapping (int local_procs, int num_app_threa
             num_physical_cores = num_pu;
         }
         chunk = num_physical_cores / local_procs;
-        for (i = 0; i < local_procs; i++) {
-             for (k = curr; k < curr+chunk; k++) {
-                 for (l = 0; l < hw_threads_per_core; l++) {
-                    j += snprintf (mapping+j, _POSIX2_LINE_MAX, "%d,", 
-                            mv2_core_map[k * hw_threads_per_core + l]);
+
+        if (chunk > 1) {
+            for (i = 0; i < local_procs; i++) {
+                 for (k = curr; k < curr+chunk; k++) {
+                     for (l = 0; l < hw_threads_per_core; l++) {
+                        j += snprintf (mapping+j, _POSIX2_LINE_MAX, "%d,", 
+                                mv2_core_map[k * hw_threads_per_core + l]);
+                     }
                  }
-             }
-             mapping [--j] = '\0';
-             j += snprintf (mapping+j, _POSIX2_LINE_MAX, ":");
-             curr = (curr + chunk) % size;
-        } 
+                 mapping [--j] = '\0';
+                 j += snprintf (mapping+j, _POSIX2_LINE_MAX, ":");
+                 curr = (curr + chunk) % size;
+            } 
+        } else {
+            /* when MPI ranks are more than half-subscription but less than full-subcription, 
+             * instead of following the bunch strategy, try to spread-out the ranks evenly 
+             * across all the PUs available on all the sockets
+             */
+
+            int ranks_per_sock = local_procs / num_sockets;
+
+            curr = 0;
+            for (i = 0; i < num_sockets; i++) {
+                for (k = curr; k < curr+ranks_per_sock; k++) {
+                    for (l = 0; l < hw_threads_per_core; l++) {
+                        j += snprintf (mapping+j, _POSIX2_LINE_MAX, "%d,",
+                                mv2_core_map[k * hw_threads_per_core + l]);
+                    }
+                    mapping [--j] = '\0';
+                    j += snprintf (mapping+j, _POSIX2_LINE_MAX, ":");
+                }
+                curr = (curr + num_pu_per_socket * chunk) % size;
+            }
+        }
     } else if (mv2_hybrid_binding_policy == HYBRID_BUNCH) {
         /* Bunch mapping: Bind each MPI rank to a single phyical core of first
          * socket followed by second secket */
@@ -2797,15 +2942,21 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
     }
 
     arch_type = mv2_get_arch_type ();
-    /* set CPU_BINDING_POLICY=hybrid for Power, Skylake, and KNL */
+    /* set CPU_BINDING_POLICY=hybrid for Power, Skylake, Frontera, and KNL */
     if (arch_type == MV2_ARCH_IBM_POWER8 ||
         arch_type == MV2_ARCH_IBM_POWER9 ||
         arch_type == MV2_ARCH_INTEL_XEON_PHI_7250 ||
         arch_type == MV2_ARCH_INTEL_PLATINUM_8170_2S_52 ||
         arch_type == MV2_ARCH_INTEL_PLATINUM_8160_2S_48 ||
+        arch_type == MV2_ARCH_INTEL_PLATINUM_8280_2S_56 || /* frontera */
         arch_type == MV2_ARCH_AMD_EPYC_7551_64 /* EPYC */ ||
         arch_type == MV2_ARCH_AMD_EPYC_7742_128 /* rome */) {
         setenv ("MV2_CPU_BINDING_POLICY", "hybrid", 0);
+        
+        /* if system is Frontera, further force hybrid_binding_policy to spread */
+        if (arch_type == MV2_ARCH_INTEL_PLATINUM_8280_2S_56) {
+            setenv ("MV2_HYBRID_BINDING_POLICY", "spread", 0);
+        }
         
         /* if CPU is EPYC, further force hybrid_binding_policy to NUMA */
         if (arch_type == MV2_ARCH_AMD_EPYC_7551_64 ||

@@ -23,11 +23,12 @@
 #include "smp_smpi.h"
 #include "mv2_utils.h"
 #include "upmi.h"
+#include "ibv_mcast.h"
 #include <inttypes.h>
 #ifdef HAVE_ROMIO
 #include "romioconf.h"
 #endif
-
+#include "coll_shmem.h"
 
 /* Extra buffer space for header(s); used to adjust the eager-threshold */
 #define EAGER_THRESHOLD_ADJUST    0
@@ -229,11 +230,14 @@ uint32_t ud_drop_packet_rate = 0;
 #endif
 #if defined(_MCST_SUPPORT_)
 uint8_t rdma_enable_mcast = USE_MCAST_DEFAULT_FLAG;
+#if defined(RDMA_CM)
+uint8_t rdma_use_rdma_cm_mcast = USE_MCAST_DEFAULT_FLAG;
+#endif /*defined(RDMA_CM)*/
 uint8_t mcast_enable_rel = 1;
 uint8_t mcast_use_mcast_nack = 1;
 uint16_t mcast_window_size = 256;
 uint16_t mcast_drop_packet_rate = 0;
-uint32_t mcast_num_nodes_threshold = 8;
+uint32_t mcast_num_nodes_threshold = MCAST_NUM_THRESHOLD;
 uint32_t mcast_max_ud_recv_wqe = 2096;
 long mcast_retry_timeout = 500000;
 long mcast_max_retry_timeout = 20000000;
@@ -241,6 +245,8 @@ long mcast_comm_init_timeout = 10000;
 int mcast_comm_init_retries = 128;
 int mcast_nspin_threshold = 1200;
 int mcast_skip_loopback = 1;
+uint32_t mcast_bcast_min_msg = 1;
+uint32_t mcast_bcast_max_msg = 512 * 1024;
 #endif
 int mv2_use_eager_fast_send= 1;
 int mv2_rdma_fast_path_preallocate_buffers = 0;
@@ -253,7 +259,7 @@ int mv2_rdma_fast_path_preallocate_buffers = 0;
 int rdma_rq_size;
 int using_mpirun_rsh = 0;
 
-uint32_t mv2_srq_alloc_size = 4096;
+uint32_t mv2_srq_alloc_size = 32768;
 uint32_t mv2_srq_fill_size = 256;
 uint32_t mv2_srq_limit = 30;
 uint32_t mv2_max_r3_oust_send = 32;
@@ -1028,9 +1034,9 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             } else
 #endif
             {
-                g_smp_eagersize = 32768;
+                g_smp_eagersize = 16384;
             }
-            s_smp_queue_length = 262144;
+            s_smp_queue_length = 393216;
             s_smp_num_send_buffer = 16;
             s_smp_batch_size = 8;
             s_smp_block_size = 32768;
@@ -1532,6 +1538,41 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         rdma_num_nodes_in_job++;
     }
 
+#if defined(_MCST_SUPPORT_)
+    if ((value = getenv("MV2_USE_MCAST")) != NULL) {
+        rdma_enable_mcast = !!atoi(value);
+#if defined(RDMA_CM)
+        if (rdma_enable_mcast == 0) {
+            rdma_use_rdma_cm_mcast = 0;
+        }
+#endif /*defined(RDMA_CM)*/
+    } else if (rdma_num_nodes_in_job < mcast_num_nodes_threshold) {
+        /* Disable mcast by default when number of nodes less than 8 */
+        rdma_enable_mcast = 0;
+#if defined(RDMA_CM)
+        rdma_use_rdma_cm_mcast = 0;
+#endif /*defined(RDMA_CM)*/
+        PRINT_DEBUG(DEBUG_MCST_verbose,"Disabling mcast by default as the number"
+                " of nodes are less than %d. Set MV2_USE_MCAST=1 or "
+                " MV2_MCAST_NUM_NODES_THRESHOLD=%d to avoid this"
+                " behavior\n", mcast_num_nodes_threshold, mcast_num_nodes_threshold-1);
+    }
+#if defined(RDMA_CM)
+    if ((value = getenv("MV2_USE_RDMA_CM_MCAST")) != NULL) {
+        /* Set both values so that user only has to set MV2_USE_RDMA_CM_MCAST */
+        rdma_enable_mcast = rdma_use_rdma_cm_mcast = !!atoi(value);
+    } else if (rdma_num_nodes_in_job < mcast_num_nodes_threshold) {
+        /* Disable mcast by default when number of nodes less than 8 */
+        rdma_enable_mcast = 0;
+        rdma_use_rdma_cm_mcast = 0;
+        PRINT_DEBUG(DEBUG_MCST_verbose,"Disabling mcast by default as the number"
+                " of nodes are less than %d. Set MV2_USE_RDMA_CM_MCAST=1 or "
+                " MV2_MCAST_NUM_NODES_THRESHOLD=%d to avoid this"
+                " behavior\n", mcast_num_nodes_threshold, mcast_num_nodes_threshold-1);
+    }
+#endif /*defined(RDMA_CM)*/
+#endif /*defined(_MCST_SUPPORT_)*/
+
 #ifdef ENABLE_QOS_SUPPORT
     if ((value = getenv("MV2_USE_QOS")) != NULL) {
         rdma_use_qos = !!atoi(value);
@@ -1558,7 +1599,7 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #endif /* ENABLE_QOS_SUPPORT */
 
     if ((value = getenv("MV2_NUM_SA_QUERY_RETRIES")) != NULL) {
-        rdma_num_sa_query_retries = !!atoi(value);
+        rdma_num_sa_query_retries = atoi(value);
         if (rdma_num_sa_query_retries < RDMA_DEFAULT_NUM_SA_QUERY_RETRIES) {
             rdma_num_sa_query_retries = RDMA_DEFAULT_NUM_SA_QUERY_RETRIES;
         }
@@ -1816,7 +1857,8 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     if (proc->has_srq && proc->hca_type != MV2_HCA_QLGIC_PATH_HT &&
         proc->hca_type != MV2_HCA_QLGIC_QIB &&
         proc->hca_type != MV2_HCA_MLX_PCI_X &&
-        proc->hca_type != MV2_HCA_IBM_EHCA
+        proc->hca_type != MV2_HCA_IBM_EHCA &&
+        proc->hca_type != MV2_HCA_MARVEL_QEDR
 #if defined(RDMA_CM)
         && !proc->use_iwarp_mode
 #endif /* defined(RDMA_CM) */
@@ -1947,8 +1989,6 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                     "must be one of: RPUT, RGET, R3\n");
             smp_rndv_protocol = rdma_rndv_protocol;
         }
-    } else {
-        smp_rndv_protocol = rdma_rndv_protocol;
     }
 
     if ((value = getenv("MV2_R3_THRESHOLD")) != NULL) {
@@ -5447,12 +5487,6 @@ void rdma_set_default_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     mv2_multirail_info_type multirail_info = mv2_get_multirail_info();
 
-    if ((LARGE_CLUSTER == proc->cluster_size) ||
-        (MEDIUM_CLUSTER == proc->cluster_size)) {
-        rdma_default_max_send_wqe = 16;
-        rdma_max_inline_size = 0;
-    }
-
     /* Setting the default values; these values are fine-tuned for specific platforms
      * in the following code */
     rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
@@ -5837,7 +5871,9 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_DEFAULT_PSN")) != NULL) {
         rdma_default_psn = (uint32_t) atoi(value);
     }
-
+    if ((value = getenv("MV2_DEFAULT_PKEY")) != NULL) {
+        rdma_default_pkey = (uint16_t)strtol(value, (char **) NULL,0) & PKEY_MASK;
+    }
     if ((value = getenv("MV2_DEFAULT_MIN_RNR_TIMER")) != NULL) {
         rdma_default_min_rnr_timer = (uint8_t) atoi(value);
     }
@@ -5954,10 +5990,8 @@ void rdma_get_user_parameters(int num_proc, int me)
 #endif
 
 #endif
+
 #if defined(_MCST_SUPPORT_)
-    if ((value = getenv("MV2_USE_MCAST")) != NULL) {
-        rdma_enable_mcast = atoi(value);
-    }
     if ((value = getenv("MV2_MCAST_ENABLE_REL")) != NULL) {
         mcast_enable_rel = atoi(value);
     }
@@ -5965,7 +5999,15 @@ void rdma_get_user_parameters(int num_proc, int me)
         mcast_use_mcast_nack = atoi(value);
     }
     if ((value = getenv("MV2_MCAST_NUM_NODES_THRESHOLD")) != NULL) {
-        mcast_num_nodes_threshold = atoi(value);
+        int env_num_threshold = atoi(value);
+        if (env_num_threshold < MCAST_MIN_THRESHOLD) {
+            mcast_num_nodes_threshold = MCAST_MIN_THRESHOLD;
+            PRINT_INFO((MPIDI_Process.my_pg_rank == 0), "[Warning]:"
+                    " MV2_MCAST_NUM_NODES_THRESHOLD cannot be less than %d, setting it to %d\n",MCAST_MIN_THRESHOLD,MCAST_MIN_THRESHOLD);
+        }
+        else{
+             mcast_num_nodes_threshold = env_num_threshold;
+        }
     }
     if ((value = getenv("MV2_MCAST_MAX_RECV_WQE")) != NULL) {
         mcast_max_ud_recv_wqe = atoi(value);
@@ -5993,6 +6035,12 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
     if ((value = getenv("MV2_MCAST_SKIP_LOOPBACK")) != NULL) {
         mcast_skip_loopback = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_BCAST_MIN_MSG")) != NULL) {
+        mcast_bcast_min_msg = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_BCAST_MAX_MSG")) != NULL) {
+        mcast_bcast_max_msg = atoi(value);
     }
 #endif
 
@@ -6093,6 +6141,12 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
 
     if ((value = getenv("MV2_SRQ_MAX_SIZE")) != NULL) {
         mv2_srq_alloc_size = (uint32_t) atoi(value);
+#if defined(RDMA_CM)
+    } else if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
+        /* When using RDMA_CM, we cannot support very large SRQ. So, unless user
+         * set it, reduce the max_srq_size to 4K */
+        mv2_srq_alloc_size = 4096;
+#endif /*defined(RDMA_CM)*/
     }
 
     if ((value = getenv("MV2_SRQ_SIZE")) != NULL) {

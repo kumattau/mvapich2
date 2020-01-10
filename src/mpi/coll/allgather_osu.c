@@ -481,7 +481,6 @@ int MPIR_Allgather_DirectSpread_MV2(
         }
     }
 
-  fn_exit:
     MPIU_CHKLMEM_FREEALL();
   fn_fail:
     MPIR_TIMER_END(coll,allgather,directspread);

@@ -59,6 +59,11 @@ static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
             }
         }
     }
+    /* Use R3 for intra-node D-D transfer if CUDA IPC is not avaliable */
+    if (rdma_enable_cuda && IS_VC_SMP(vc) && sreq->mrail.cuda_transfer_mode != NONE) {
+        sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
+        goto fn_exit;
+    }
 #endif
 
     MPIDI_CH3I_MRAIL_Prepare_rndv(vc, sreq);
@@ -100,7 +105,7 @@ int MPIDI_CH3_iStartRndvMsg(MPIDI_VC_t * vc,
         MPIDI_CH3I_MRAIL_SET_PKT_RNDV(rndv_pkt, sreq);
 
         PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                "Sending RTS to: %d, sreq: %08x, protocol: %d, buf: %p, rndv_buf_alloc: %d\n",
+                "Sending RTS to: %d, sreq: %p, protocol: %d, buf: %p, rndv_buf_alloc: %d\n",
                 vc->pg_rank, sreq, sreq->mrail.protocol, sreq->mrail.rndv_buf, sreq->mrail.rndv_buf_alloc);
 
         if(1 == sreq->mrail.rndv_buf_alloc) {
@@ -127,7 +132,7 @@ int MPIDI_CH3_iStartRndvMsg(MPIDI_VC_t * vc,
         }
     } else {
         PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                "Enqueuing RNDV msg to rank %d, sreq: %08x\n", vc->pg_rank, sreq);
+                "Enqueuing RNDV msg to rank %d, sreq: %p\n", vc->pg_rank, sreq);
         MPIDI_CH3I_SendQ_enqueue(vc, sreq);
     }
 

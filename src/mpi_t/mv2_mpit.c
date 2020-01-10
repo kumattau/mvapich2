@@ -238,6 +238,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoall_cuda_count_recv);
 /*
 * Timers for mv2 (MVAPICH) allreduce algorithms
 */
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_subcomm);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_sharp);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_shm_rd);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_shm_rs);
@@ -608,6 +609,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgatherv_count_recv);
 /*
 * Timers for mv2 (MVAPICH) Barrier algorithms
 */
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_barrier_subcomm);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_barrier_pairwise);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_barrier_shmem);
 
@@ -2062,6 +2064,16 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     /* BEGIN: Register PVARs for allreduce algorithms */
 
     /* 1. Timer PVARs for allreduce*/
+
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_allreduce_subcomm,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_MPI_COMM,
+            MPIR_T_PVAR_FLAG_SUM,
+            "COLLECTIVE", /* category name */
+            "Total time spent by MV2 allreduce at sub-communicator level");
 
     MPIR_T_PVAR_TIMER_REGISTER_STATIC(
     		MV2,
@@ -4549,25 +4561,34 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     /* Begin: Register PVARs for Barrier algorithms */
 
     /* 1. Timer PVARs for Barrier */
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_barrier_subcomm,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_MPI_COMM,
+            MPIR_T_PVAR_FLAG_SUM,
+            "COLLECTIVE", /* category name */
+            "Total time spent by MV2 barrier at sub-communicator level");
 
     MPIR_T_PVAR_TIMER_REGISTER_STATIC(
-    		MV2,
-    		MPI_DOUBLE,
-    		mv2_coll_timer_barrier_pairwise,
-    		MPI_T_VERBOSITY_USER_BASIC,
-    		MPI_T_BIND_NO_OBJECT,
-    		MPIR_T_PVAR_FLAG_SUM,
-    		"COLLECTIVE", /* category name */
-    		"total time spent on the MV2 barrier_pairwise algorithm");
-	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
-			MV2,
-			MPI_DOUBLE,
-			mv2_coll_timer_barrier_shmem,
-			MPI_T_VERBOSITY_USER_BASIC,
-			MPI_T_BIND_NO_OBJECT,
-			MPIR_T_PVAR_FLAG_SUM,
-			"COLLECTIVE", /* category name */
-			"total time spent on the MV2 barrier_shmem algorithm");
+    	    MV2,
+    	    MPI_DOUBLE,
+    	    mv2_coll_timer_barrier_pairwise,
+            MPI_T_VERBOSITY_USER_BASIC,
+    	    MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+    	    "COLLECTIVE", /* category name */
+    	    "total time spent on the MV2 barrier_pairwise algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+	    MV2,
+	    MPI_DOUBLE,
+	    mv2_coll_timer_barrier_shmem,
+	    MPI_T_VERBOSITY_USER_BASIC,
+	    MPI_T_BIND_NO_OBJECT,
+	    MPIR_T_PVAR_FLAG_SUM,
+	    "COLLECTIVE", /* category name */
+	    "total time spent on the MV2 barrier_shmem algorithm");
 
     /* 2. Counter PVARs for Barrier */
 

@@ -218,7 +218,10 @@ int mv2_sharp_coll_init(sharp_conf_t *sharp_conf, int rank)
 
     mpi_errno = sharp_coll_init(init_spec, &(coll_sharp_component.sharp_coll_context));   
     if (mpi_errno != SHARP_COLL_SUCCESS) {
-        PRINT_ERROR("SHARP initialization failed. Continuing without SHARP support. Errno: %d (%s) \n", mpi_errno, sharp_coll_strerror(mpi_errno));
+        if(rank == 0)
+        {
+            PRINT_ERROR("SHARP initialization failed. Continuing without SHARP support. Errno: %d (%s) \n", mpi_errno, sharp_coll_strerror(mpi_errno));
+        }
         mpi_errno = MPI_ERR_INTERN;
         goto fn_exit;
     } 
@@ -297,7 +300,15 @@ static char * sharp_get_kvs_id ()
     int  i = 0;
     char * id_str = MPIU_Malloc(100);
     MPIU_Memset(id_str, 0, 100);
-    UPMI_KVS_GET_MY_NAME(id_str, 100); /* set kvsname as job id */
+    char KVSname[100] = {0};
+    UPMI_KVS_GET_MY_NAME(KVSname, 100); /* set kvsname as job id */
+    int kvs_offset = 4; //offset to skip kvs_
+    for (i = kvs_offset; i < 100; i++) {
+        if (KVSname[i] == '_') break; /* format is like kvs_906_storage03.cluster_26667_0 */
+        if (isdigit(KVSname[i])) {
+            id_str[i-kvs_offset] = KVSname[i];
+        }
+    }
     return id_str;
 }
 

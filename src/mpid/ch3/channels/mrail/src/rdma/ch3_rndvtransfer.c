@@ -426,15 +426,14 @@ static int MPIDI_CH3_CMA_Rendezvous_push(MPIDI_VC_t * vc,
     int mpi_errno = MPI_SUCCESS;
     int complete = 0, rail = -1;
     void *src, *dst;
-    ssize_t len, offset;
-    int type = MPIDI_Request_get_type(sreq);
-    int my_lrank = MPIDI_Process.my_pg->ch.local_process_id;
+    ssize_t len, offset  ATTRIBUTE((unused));
+    int type  ATTRIBUTE((unused)) = MPIDI_Request_get_type(sreq);
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_CMA_RNDV_PUSH);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_CMA_RNDV_PUSH);
 
     PRINT_DEBUG(DEBUG_RNDV_verbose>2,
-            "req type: %d, protocol: %d, partner_id: %08x, iov count: %d, offset %llu, len: %llu\n", 
+            "req type: %d, protocol: %d, partner_id: %08x, iov count: %d, offset %lu, len: %lu\n", 
             type, sreq->mrail.protocol, sreq->mrail.partner_id, sreq->dev.iov_count,
             sreq->dev.iov_offset, sreq->dev.iov[0].MPL_IOV_LEN);
 
@@ -508,7 +507,11 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_RNDV_PUSH);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_RNDV_PUSH);
 
-    if (sreq->mrail.protocol != MV2_RNDV_PROTOCOL_R3) {
+    if (sreq->mrail.protocol != MV2_RNDV_PROTOCOL_R3
+#if defined (_ENABLE_CUDA_)
+            && sreq->mrail.cuda_transfer_mode == NONE
+#endif
+       ) {
 #if defined(_SMP_CMA_)
         if(g_smp_use_cma) {
             return MPIDI_CH3_CMA_Rendezvous_push(vc, sreq);
@@ -571,7 +574,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
 #endif
 
     PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-            "Sending R3 Data to %d, sreq: %08x, partner: %08x, niov: %d, cma: %p, limic: %p\n",
+            "Sending R3 Data to %d, sreq: %p, partner: %08x, niov: %d, cma: %p, limic: %p\n",
             vc->pg_rank, sreq, sreq->mrail.partner_id, sreq->dev.iov_count,
             pkt_head.csend_req_id, pkt_head.send_req_id);
 
@@ -602,7 +605,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     }
 #endif
 
-    PRINT_DEBUG(DEBUG_RNDV_verbose>1, "R3 Data sent to %d, sreq: %08x\n", vc->pg_rank, sreq);
+    PRINT_DEBUG(DEBUG_RNDV_verbose>1, "R3 Data sent to %d, sreq: %p\n", vc->pg_rank, sreq);
     if (MPIDI_CH3I_SMP_SendQ_empty(vc)) {
 #if defined(_ENABLE_CUDA_)
         if (rdma_enable_cuda && s_smp_cuda_pipeline) {
@@ -613,7 +616,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
         vc->smp.send_current_pkt_type = SMP_RNDV_MSG;
         for (;;) {
             PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                    "sreq: %08x, iov count: %d, offset %d, len[0]: %d\n",
+                    "sreq: %p, iov count: %d, offset %lu, len[0]: %lu\n",
                     sreq, sreq->dev.iov_count, sreq->dev.iov_offset,
                     sreq->dev.iov[0].MPL_IOV_LEN);
 
@@ -665,7 +668,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
 
             if (nb > 0) {
                 PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                        "Wrote R3 data, dest: %d, sreq: %08x, bytes: %d\n",
+                        "Wrote R3 data, dest: %d, sreq: %p, bytes: %d\n",
                         vc->pg_rank, sreq, nb);
                 if (MPIDI_CH3I_Request_adjust_iov(sreq, nb)) {
 #if defined(_ENABLE_CUDA_)
@@ -692,7 +695,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                     vc->smp.send_current_pkt_type = SMP_RNDV_MSG_CONT;
                     MV2_INC_NUM_POSTED_SEND();
                     PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                            "Enqueue next R3 data, dest: %d, sreq: %08x\n",
+                            "Enqueue next R3 data, dest: %d, sreq: %p\n",
                             vc->pg_rank, sreq);
                     break;
                 }
@@ -702,7 +705,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                 vc->smp.send_active = sreq;
                 sreq->mrail.nearly_complete = 1;
                 PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                        "Enqueue R3 data, dest: %d, sreq: %08x\n",
+                        "Enqueue R3 data, dest: %d, sreq: %p\n",
                         vc->pg_rank, sreq);
                 break;
             }
@@ -712,7 +715,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
         sreq->mrail.nearly_complete = 1;
         PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                "Enqueue R3 data, dest: %d, sreq: %08x\n",
+                "Enqueue R3 data, dest: %d, sreq: %p\n",
                 vc->pg_rank, sreq);
     }
 
@@ -846,7 +849,6 @@ void MPIDI_CH3I_MRAILI_Process_rndv()
     MPID_Request *sreq;
     MPIDI_VC_t *pending_flowlist = NULL, *temp_vc = NULL;
     int need_vc_enqueue = 0;
-    int complete = 0;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_PROCESS_RNDV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PROCESS_RNDV);
@@ -887,12 +889,12 @@ void MPIDI_CH3I_MRAILI_Process_rndv()
 #endif
             MPIDI_CH3_Rendezvous_push(flowlist, sreq);
             PRINT_DEBUG(DEBUG_RNDV_verbose>1,
-                    "after rndv push, sreq: %08x, nearly_complete: %d, local_complete: %d, remote_complete: %d\n",
+                    "after rndv push, sreq: %p, nearly_complete: %d, local_complete: %d, remote_complete: %d\n",
                     sreq, sreq->mrail.nearly_complete, sreq->mrail.local_complete, sreq->mrail.remote_complete);
             if (1 != sreq->mrail.nearly_complete) {
                 break;
             }
-            PRINT_DEBUG(DEBUG_RNDV_verbose, "sreq: %08x, protocol: %d, "
+            PRINT_DEBUG(DEBUG_RNDV_verbose, "sreq: %p, protocol: %d, "
                     "nearly_complete: %d, local_complete: %d, remote_complete: %d\n", 
                     sreq, sreq->mrail.protocol, sreq->mrail.nearly_complete,
                     sreq->mrail.local_complete, sreq->mrail.remote_complete);
@@ -1083,7 +1085,7 @@ int MPIDI_CH3_Rendezvous_rget_send_finish(MPIDI_VC_t * vc,
 
     MPID_Request_get_ptr(rget_pkt->sender_req_id, sreq);
     PRINT_DEBUG(DEBUG_RNDV_verbose,
-            "Received RGET finish, sreq: %08x, protocol: %d, local: %d, remote: %d\n",
+            "Received RGET finish, sreq: %p, protocol: %d, local: %d, remote: %d\n",
             sreq, sreq->mrail.protocol, sreq->mrail.local_complete, sreq->mrail.remote_complete);
 
 #if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
@@ -1329,7 +1331,7 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RNDV_RPUT_FINISH);
 
     MPID_Request_get_ptr(rf_pkt->receiver_req_id, rreq);
-    PRINT_DEBUG(DEBUG_RNDV_verbose, "Received RPUT finish, rreq: %08x, protocol: %d, local: %d, remote: %d\n",
+    PRINT_DEBUG(DEBUG_RNDV_verbose, "Received RPUT finish, rreq: %p, protocol: %d, local: %d, remote: %d\n",
             rreq, rreq->mrail.protocol, rreq->mrail.local_complete, rreq->mrail.remote_complete);
 
 #if defined(_ENABLE_CUDA_)
@@ -1378,7 +1380,7 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
                                  __LINE__, MPI_ERR_OTHER, "**fail", 0);
     }
 
-    PRINT_DEBUG(DEBUG_RNDV_verbose, "rreq: %08x, complete: %d\n", rreq, complete);
+    PRINT_DEBUG(DEBUG_RNDV_verbose, "rreq: %p, complete: %d\n", rreq, complete);
     if (complete)
     {
         vc->ch.recv_active = NULL;

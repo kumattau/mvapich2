@@ -122,7 +122,6 @@ int MPI_Comm_free(MPI_Comm *comm)
 #   endif /* HAVE_ERROR_CHECKING */
 
     /* ... body of routine ...  */
-    
     mpi_errno = MPIR_Comm_free_impl(comm_ptr);
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
     

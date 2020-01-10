@@ -55,7 +55,6 @@ typedef enum {
         MV2_HCA_INTEL_NE020,
         MV2_HCA_INTEL_IWARP_END,
         MV2_HCA_IWARP_TYPE_END,
-        MV2_HCA_LIST_END,
 
 /* Mellanox IB HCAs */
         MV2_HCA_IB_TYPE_START,
@@ -89,6 +88,12 @@ typedef enum {
         MV2_HCA_INTEL_HFI1,
         MV2_HCA_INTEL_END,
 
+/* Marvel Cards */
+        MV2_HCA_MARVEL_START,
+        MV2_HCA_MARVEL_QEDR,
+        MV2_HCA_MARVEL_END,
+
+        MV2_HCA_LIST_END,
 } mv2_hca_types_list;
 
 
@@ -111,6 +116,10 @@ typedef enum {
 /* Check if given card is Intel card or not */
 #define MV2_IS_INTEL_CARD(_x) \
     ((_x) > MV2_HCA_INTEL_START && (_x) < MV2_HCA_INTEL_END)
+
+/* Check if given card is Marvel card or not */
+#define MV2_IS_MARVEL_CARD(_x) \
+    ((_x) > MV2_HCA_MARVEL_START && (_x) < MV2_HCA_MARVEL_END)
 
 /* Architecture Type 
  * Layout:
@@ -233,7 +242,7 @@ enum collectives {
     colls_max
 };
 
-static char collective_names[colls_max][12] = {
+static const char collective_names[colls_max][12] = {
     "Allgather",
     "Allreduce",
     "Alltoall",
@@ -251,6 +260,7 @@ struct coll_info {
 
 extern mv2_arch_type table_arch_tmp;
 extern mv2_hca_type  table_hca_tmp;
+extern int mv2_suppress_hca_warnings;
 
 /* ************************ FUNCTION DECLARATIONS ************************** */
 
