@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -120,6 +120,12 @@ extern int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
+extern int MPIR_Allreduce_socket_aware_two_level_MV2(const void *sendbuf,
+			     void *recvbuf,
+			     int count,
+			     MPI_Datatype datatype,
+			     MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
+
 /* shmem reduce used as the first reduce in allreduce */
 extern int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
                              void *recvbuf,
@@ -147,8 +153,7 @@ extern int MPIR_Allreduce_mcst_reduce_redscat_gather_MV2(const void *sendbuf,
 
 extern int MPIR_Allreduce_pt2pt_ring_wrapper_MV2(const void *sendbuf,
                             void *recvbuf, int count, MPI_Datatype datatype,
-                            MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag,
-                            int comm_size, int sendtype_size);
+                            MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
 
 extern int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
                              void *recvbuf,

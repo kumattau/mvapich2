@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,7 @@
 
 #include "mpidi_ch3_impl.h"
 #include "rdma_impl.h"
+#include "ibv_send_inline.h"
 
 #undef DEBUG_PRINT
 #define DEBUG_PRINT(args...)                                  \
@@ -91,7 +92,7 @@ static void MPIDI_CH3_SMP_iStartMsgv(MPIDI_VC_t * vc, MPL_IOV * iov,
  * request is allocated, the iovec and the first buffer pointed to by the
  * iovec (which is assumed to be a MPIDI_CH3_Pkt_t) are copied into the
  * request, and a pointer to the request is returned.  An error condition also
- * results in a request be allocated and the errror being returned in the
+ * results in a request be allocated and the error being returned in the
  * status field of the request.
  */
 
@@ -101,7 +102,7 @@ static void MPIDI_CH3_SMP_iStartMsgv(MPIDI_VC_t * vc, MPL_IOV * iov,
    memory for a request.  This seems like a flaw in the CH3 API. */
 
 /* NOTE - The completion action associated with a request created by
-   CH3_iStartMsgv() is alway MPIDI_CH3_CA_COMPLETE.  This implies that
+   CH3_iStartMsgv() is always MPIDI_CH3_CA_COMPLETE.  This implies that
    CH3_iStartMsgv() can only be used when the entire message can be described
    by a single iovec of size MPL_IOV_LIMIT. */
 #undef FUNCNAME

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -13,6 +13,9 @@
 #include "mpidi_ch3_impl.h"
 #include "upmi.h"
 #include "error_handling.h"
+#if !defined(SLURM_PMI_CLIENT) && !defined(JSM_PMI_CLIENT) && !defined(FLUX_PMI_CLIENT)
+#include "src/pm/hydra/include/hydra_config.h"
+#endif /* !defined(SLURM_PMI_CLIENT) && !defined(JSM_PMI_CLIENT) && !defined(FLUX_PMI_CLIENT) */
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Abort
@@ -26,7 +29,9 @@ int MPIDI_CH3_Abort(int exit_code, const char *error_msg)
     /* print backtrace */
     if (show_backtrace) print_backtrace();
     
+#if !defined(HAVE_PBS_PRO)
     UPMI_ABORT(exit_code, error_msg);
+#endif /* #if !defined(HAVE_PBS_PRO) */
 
     /* if abort returns for some reason, exit here */
 

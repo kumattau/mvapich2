@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -196,23 +196,23 @@ unsigned long eager_buffer_max_usage = 0;
 unsigned long rndv_buffer_max_usage = 0;
 
 #if defined(_ENABLE_CUDA_)
-int s_smp_cuda_pipeline = 1;
+int mv2_device_smp_pipeline = 1;
 int s_smp_h2h_block_size;
 #endif
 
 #if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-void **smp_cuda_region_base;
-void **smp_cuda_region_send;
-void **smp_cuda_region_recv;
-size_t *smp_cuda_region_head;
-int smp_cuda_region_size;
-int smp_cuda_eagersize;
-int s_smp_cuda_handle_cache = 0;
+void **smp_device_region_base;
+void **smp_device_region_send;
+void **smp_device_region_recv;
+size_t *smp_device_region_head;
+int smp_device_region_size;
+int smp_device_eagersize;
+int s_smp_device_handle_cache = 0;
 
-CUevent *sr_event;
-CUevent *sr_event_local;
-CUevent *loop_event;
-CUevent *loop_event_local;
+deviceEvent_t *sr_event;
+deviceEvent_t *sr_event_local;
+deviceEvent_t *loop_event;
+deviceEvent_t *loop_event_local;
 #endif
 
 #if defined(_SMP_CMA_)
@@ -458,7 +458,7 @@ static inline int MPIDI_CH3I_SMP_attach_shm_pool_inline()
           /* to clean up tmp shared file */
           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s",
-                   "error in shifting mmaped pool");
+                   "error in shifting mapped pool");
           goto cleanup_files;
        }
     }
@@ -503,8 +503,8 @@ static inline int MPIDI_CH3I_SMP_attach_shm_pool_inline()
 
 #if defined(_ENABLE_CUDA_)
     /*registering the regions with the GPU device if CUDA support is enabled*/
-    if (rdma_enable_cuda && cuda_initialized) {
-        ibv_cuda_register (g_smpi.send_buf_pool_ptr, g_size_pool);
+    if (mv2_enable_device && mv2_device_initialized) {
+        ibv_device_register (g_smpi.send_buf_pool_ptr, g_size_pool);
     }
 #endif
  
@@ -548,11 +548,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
             s_current_bytes[vc->smp.local_nodes] = 0;        
             smpi_complete_recv(vc->smp.local_nodes,
                     g_smpi.my_local_id,
-#if defined(_ENABLE_CUDA) && defined(HAVE_CUDA_IPC)
-                    sizeof(MPIDI_CH3_Pkt_eager_send_t));
-#else
                     s_total_bytes[vc->smp.local_nodes]);
-#endif
             s_total_bytes[vc->smp.local_nodes] = 0;
         }
         goto fn_exit;
@@ -576,7 +572,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
         {
             if (MPIDI_CH3I_Request_adjust_iov(sreq, nb)) {
                 MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
-                /* We have recived the expected fin message as part of the
+                /* We have received the expected fin message as part of the
                  * CMA/LiMIC based message transfer */
                 MV2_DEC_NUM_POSTED_RECV();
             }
@@ -706,7 +702,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
             vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
             if (MPIDI_CH3I_SMP_SendQ_empty(vc)) {
                 if (mv2_use_eager_fast_send) {
-                    vc->eager_fast_fn = mv2_smp_fast_write_contig;
+		    vc->use_eager_fast_fn = 1;
                 }
             }
         }
@@ -785,7 +781,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
                 }
 
 #if defined(_ENABLE_CUDA_)
-                if (rdma_enable_cuda && s_smp_cuda_pipeline) {
+                if (mv2_enable_device && mv2_device_smp_pipeline) {
                     /*as it is all data, we check the first iov to determine if the buffer is on device*/
                     iov_isdev = is_device_buffer((void *) req->dev.iov[req->dev.iov_offset].MPL_IOV_BUF);
                 }
@@ -808,7 +804,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
                                int is_cont = (vc->smp.send_current_pkt_type 
                                                == SMP_RNDV_MSG) ? 0 : 1;
                                mpi_errno = 
-                                   MPIDI_CH3I_SMP_writev_rndv_data_cuda(vc, 
+                                   MPIDI_CH3I_SMP_writev_rndv_data_device(vc,
                                      req, 
                                      req->dev.iov + req->dev.iov_offset,
                                      req->dev.iov_count - req->dev.iov_offset,
@@ -1015,7 +1011,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
         MPIDI_PG_Get_vc(pg, g_smpi.l2g_rank[from], &vc);
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-        if (rdma_enable_cuda && vc->smp.local_rank == -1) {
+        if (mv2_enable_device && vc->smp.local_rank == -1) {
             continue;
         }
 #endif
@@ -1056,7 +1052,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                     vc->pg_rank, req, MPIDI_Request_get_type(req), req->ch.reqtype, vc->smp.recv_current_pkt_type);
             poll_flag = 1;
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda && s_smp_cuda_pipeline) {
+            if (mv2_enable_device && mv2_device_smp_pipeline) {
                 /*as it is all data, we check the first iov to determine if the buffer is on device*/
                 iov_isdev = is_device_buffer((void *) vc->smp.recv_active->dev.iov
                         [vc->smp.recv_active->dev.iov_offset].MPL_IOV_BUF);
@@ -1067,7 +1063,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                 case SMP_RNDV_MSG:
 #if defined(_ENABLE_CUDA_)
                     if (iov_isdev) {
-                        mpi_errno = MPIDI_CH3I_SMP_readv_rndv_cuda(vc,
+                        mpi_errno = MPIDI_CH3I_SMP_readv_rndv_device(vc,
                                 vc->smp.recv_active,
                                 &vc->smp.recv_active->dev.iov
                                 [vc->smp.recv_active->dev.iov_offset],
@@ -1095,7 +1091,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                 case SMP_RNDV_MSG_CONT:
 #if defined(_ENABLE_CUDA_)
                     if (iov_isdev) {
-                        mpi_errno = MPIDI_CH3I_SMP_readv_rndv_cuda(vc,
+                        mpi_errno = MPIDI_CH3I_SMP_readv_rndv_device(vc,
                                 vc->smp.recv_active,
                                 &vc->smp.recv_active->dev.iov
                                 [vc->smp.recv_active->dev.iov_offset],
@@ -1294,7 +1290,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
         MPIDI_PG_Get_vc(pg, g_smpi.l2g_rank[from], &vc);
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-        if (rdma_enable_cuda && vc->smp.local_rank == -1) {
+        if (mv2_enable_device && vc->smp.local_rank == -1) {
             continue;
         }
 #endif
@@ -1321,7 +1317,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
         if (vc->smp.recv_active)
         {
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda && s_smp_cuda_pipeline) {
+            if (mv2_enable_device && mv2_device_smp_pipeline) {
                 /*as it is all data, we check the first iov to determine if the buffer is on device*/
                 iov_isdev = is_device_buffer((void *) vc->smp.recv_active->dev.iov
                            [vc->smp.recv_active->dev.iov_offset].MPL_IOV_BUF);
@@ -1333,7 +1329,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
             case SMP_RNDV_MSG:
 #if defined(_ENABLE_CUDA_)
                 if (iov_isdev) {
-                        mpi_errno = MPIDI_CH3I_SMP_readv_rndv_cuda(vc,
+                        mpi_errno = MPIDI_CH3I_SMP_readv_rndv_device(vc,
                             vc->smp.recv_active,
                             &vc->smp.recv_active->dev.iov
                                 [vc->smp.recv_active->dev.iov_offset],
@@ -1361,7 +1357,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
             case SMP_RNDV_MSG_CONT:
 #if defined(_ENABLE_CUDA_)
                 if (iov_isdev) {
-                        mpi_errno = MPIDI_CH3I_SMP_readv_rndv_cuda(vc,
+                        mpi_errno = MPIDI_CH3I_SMP_readv_rndv_device(vc,
                             vc->smp.recv_active,
                             &vc->smp.recv_active->dev.iov
                                 [vc->smp.recv_active->dev.iov_offset],
@@ -1590,7 +1586,7 @@ void MPIDI_CH3I_set_smp_only()
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     if (!rdma_use_smp) {
-        rdma_cuda_smp_ipc = 0;
+        mv2_device_use_smp_eager_ipc = 0;
     }
 #endif
 
@@ -1611,8 +1607,8 @@ void MPIDI_CH3I_SMP_Init_VC(MPIDI_VC_t *vc)
     vc->mrail.nextflow  = NULL;
     vc->mrail.inflow    = 0;
 #if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    vc->mrail.cudaipc_sreq_head = NULL;
-    vc->mrail.cudaipc_sreq_tail = NULL;
+    vc->mrail.device_ipc_sreq_head = NULL;
+    vc->mrail.device_ipc_sreq_tail = NULL;
 #endif
 }
 
@@ -1948,7 +1944,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
              * (SMPI_ALIGN(s_smp_queue_length + pagesize))));
 
 #if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    cu_ipc_len = sizeof(smpi_cu_ipc_attr) * g_smpi.num_local_nodes *
+    cu_ipc_len = sizeof(smpi_device_ipc_attr) * g_smpi.num_local_nodes *
         (g_smpi.num_local_nodes - 1);
     cu_ipc_offset = g_size_shmem;
     g_size_shmem += SMPI_ALIGN(cu_ipc_len);
@@ -2025,7 +2021,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
        /* to clean up tmp shared file */
        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                 FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", "%s", 
-                "error in shifting mmaped shmem");
+                "error in shifting mapped shmem");
        goto cleanup_files;
     }
 
@@ -2052,8 +2048,8 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
 #if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
 
-    g_smpi_shmem->cu_attrbs = (smpi_cu_ipc_attr**)
-        MPIU_Malloc(sizeof(smpi_cu_ipc_attr*)*g_smpi.num_local_nodes);
+    g_smpi_shmem->cu_attrbs = (smpi_device_ipc_attr**)
+        MPIU_Malloc(sizeof(smpi_device_ipc_attr*)*g_smpi.num_local_nodes);
 
 #endif
 
@@ -2081,10 +2077,10 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
 
         g_smpi_shmem->cu_attrbs[0] =
-                (smpi_cu_ipc_attr*)((char *)shmem +  cu_ipc_offset);
+                (smpi_device_ipc_attr*)((char *)shmem +  cu_ipc_offset);
 
         for (i = 1; i < g_smpi.num_local_nodes; ++i) {
-            g_smpi_shmem->cu_attrbs[i] = (smpi_cu_ipc_attr*)
+            g_smpi_shmem->cu_attrbs[i] = (smpi_device_ipc_attr*)
                 (g_smpi_shmem->cu_attrbs[i-1]+ g_smpi.num_local_nodes);
         }
 
@@ -2333,46 +2329,46 @@ fn_fail:
 }
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-void MPIDI_CH3I_SMP_cuda_ipc_init(MPID_Comm *comm_ptr)
+void MPIDI_CH3I_SMP_device_ipc_init(MPID_Comm *comm_ptr)
 {
     int err = MPI_SUCCESS;
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     int i, total_region_size;
-    cudaIpcMemHandle_t *handle_exchange;
-    cudaIpcMemHandle_t *smp_cuda_memhandle;
-    CUipcEventHandle *sr_eventhandle;
-    CUipcEventHandle *sr_eventhandle_local;
-    CUipcEventHandle *loop_eventhandle;
-    CUipcEventHandle *loop_eventhandle_local;
+    deviceIpcMemHandle_t *handle_exchange;
+    deviceIpcMemHandle_t *smp_cuda_memhandle;
+    deviceIpcEventHandle_t *sr_eventhandle;
+    deviceIpcEventHandle_t *sr_eventhandle_local;
+    deviceIpcEventHandle_t *loop_eventhandle;
+    deviceIpcEventHandle_t *loop_eventhandle_local;
     MPIDI_VC_t* vc = NULL;    
 
     MPIR_Barrier_impl(comm_ptr, &errflag);
 
-    total_region_size = smp_cuda_region_size * g_smpi.num_local_nodes;
+    total_region_size = smp_device_region_size * g_smpi.num_local_nodes;
 
-    smp_cuda_region_base = (void **)
+    smp_device_region_base = (void **)
         MPIU_Malloc(sizeof(void *)*g_smpi.num_local_nodes);
-    smp_cuda_region_send = (void **)
+    smp_device_region_send = (void **)
         MPIU_Malloc(sizeof(void *)*g_smpi.num_local_nodes);
-    smp_cuda_region_recv = (void **)
+    smp_device_region_recv = (void **)
         MPIU_Malloc(sizeof(void *)*g_smpi.num_local_nodes);
 
-    CUDA_CHECK(cudaMalloc(&smp_cuda_region_base[g_smpi.my_local_id], total_region_size));
+    MPIU_Malloc_Device(smp_device_region_base[g_smpi.my_local_id], total_region_size);
+    
+    smp_cuda_memhandle = (deviceIpcMemHandle_t *)
+        MPIU_Malloc(sizeof(deviceIpcMemHandle_t)*g_smpi.num_local_nodes);
+    MPIU_Device_IpcGetMemHandle(&smp_cuda_memhandle[g_smpi.my_local_id],
+                                smp_device_region_base[g_smpi.my_local_id]);
 
-    smp_cuda_memhandle = (cudaIpcMemHandle_t *)
-        MPIU_Malloc(sizeof(cudaIpcMemHandle_t)*g_smpi.num_local_nodes);
-    CUDA_CHECK(cudaIpcGetMemHandle(&smp_cuda_memhandle[g_smpi.my_local_id],
-            smp_cuda_region_base[g_smpi.my_local_id]));
-
-    handle_exchange = (cudaIpcMemHandle_t *)
-        MPIU_Malloc(sizeof(cudaIpcMemHandle_t)*comm_ptr->local_size);
+    handle_exchange = (deviceIpcMemHandle_t *)
+        MPIU_Malloc(sizeof(deviceIpcMemHandle_t)*comm_ptr->local_size);
     MPIU_Memcpy(&handle_exchange[comm_ptr->rank],
-            &smp_cuda_memhandle[g_smpi.my_local_id], sizeof(cudaIpcMemHandle_t));
+            &smp_cuda_memhandle[g_smpi.my_local_id], sizeof(deviceIpcMemHandle_t));
 
     /*Optimization needed - Try to combine all allgathers and alltoalls*/
 
     err = MPIR_Allgather_impl(MPI_IN_PLACE, 0,
-            MPI_BYTE, (void *)handle_exchange, sizeof(cudaIpcMemHandle_t),
+            MPI_BYTE, (void *)handle_exchange, sizeof(deviceIpcMemHandle_t),
             MPI_BYTE, comm_ptr, &errflag);
 
     if (err != MPI_SUCCESS) {
@@ -2380,90 +2376,86 @@ void MPIDI_CH3I_SMP_cuda_ipc_init(MPID_Comm *comm_ptr)
     }
 
     int g_rank;
-    smpi_cu_ipc_attr *ref;
+    smpi_device_ipc_attr *ref;
 
     for (i=0; i<g_smpi.num_local_nodes; i++) {
         MPIDI_Comm_get_vc(comm_ptr, i, &vc);
-        if (i == g_smpi.my_local_id || vc->smp.can_access_peer != CUDA_IPC_ENABLED) {
+        if (i == g_smpi.my_local_id || vc->smp.can_access_peer != MV2_DEVICE_IPC_ENABLED) {
             continue;
         }
 
         ref = (g_smpi_shmem->cu_attrbs[g_smpi.my_local_id] + i);
-        ref->cuda_head = 0;
-        ref->cuda_tail = 0;
+        ref->device_head = 0;
+        ref->device_tail = 0;
         g_rank = g_smpi.l2g_rank[i];
 
         MPIU_Memcpy(&smp_cuda_memhandle[i], &handle_exchange[g_rank],
-                sizeof(cudaIpcMemHandle_t));
-        CUDA_CHECK(cudaIpcOpenMemHandle(&smp_cuda_region_base[i], smp_cuda_memhandle[i],
-                cudaIpcMemLazyEnablePeerAccess));
+                sizeof(deviceIpcMemHandle_t));
+        MPIU_Device_IpcOpenMemHandle(&smp_device_region_base[i], smp_cuda_memhandle[i]);
 
-        smp_cuda_region_send[i] = (void *)
-            ((unsigned long) smp_cuda_region_base[g_smpi.my_local_id]
-             + i*smp_cuda_region_size);
-        smp_cuda_region_recv[i] = (void *)
-            ((unsigned long) smp_cuda_region_base[i]
-             + g_smpi.my_local_id*smp_cuda_region_size);
+        smp_device_region_send[i] = (void *)
+            ((unsigned long) smp_device_region_base[g_smpi.my_local_id]
+             + i*smp_device_region_size);
+        smp_device_region_recv[i] = (void *)
+            ((unsigned long) smp_device_region_base[i]
+             + g_smpi.my_local_id*smp_device_region_size);
 
     }
 
-    sr_event_local = (CUevent *) MPIU_Malloc(sizeof(CUevent)*comm_ptr->local_size);
-    loop_event_local = (CUevent *) MPIU_Malloc(sizeof(CUevent)*comm_ptr->local_size);
-    sr_eventhandle_local = (CUipcEventHandle *)
-        MPIU_Malloc(sizeof(CUipcEventHandle)*comm_ptr->local_size);
-    loop_eventhandle_local = (CUipcEventHandle *)
-        MPIU_Malloc(sizeof(CUipcEventHandle)*comm_ptr->local_size);
+    sr_event_local = (deviceEvent_t *) MPIU_Malloc(sizeof(deviceEvent_t)*comm_ptr->local_size);
+    loop_event_local = (deviceEvent_t *) MPIU_Malloc(sizeof(deviceEvent_t)*comm_ptr->local_size);
+    sr_eventhandle_local = (deviceIpcEventHandle_t *)
+        MPIU_Malloc(sizeof(deviceIpcEventHandle_t)*comm_ptr->local_size);
+    loop_eventhandle_local = (deviceIpcEventHandle_t *)
+        MPIU_Malloc(sizeof(deviceIpcEventHandle_t)*comm_ptr->local_size);
 
     for (i=0; i<g_smpi.num_local_nodes; i++) {
         MPIDI_Comm_get_vc(comm_ptr, i, &vc);
-        if (i == g_smpi.my_local_id || vc->smp.can_access_peer != CUDA_IPC_ENABLED) {
+        if (i == g_smpi.my_local_id || vc->smp.can_access_peer != MV2_DEVICE_IPC_ENABLED) {
             continue;
         }
 
         g_rank = g_smpi.l2g_rank[i];
 
-        CU_CHECK(cuEventCreate(&sr_event_local[g_rank], CU_EVENT_INTERPROCESS | CU_EVENT_DISABLE_TIMING));
-        CU_CHECK(cuEventRecord(sr_event_local[g_rank], 0));
-        CU_CHECK(cuIpcGetEventHandle(&sr_eventhandle_local[g_rank], sr_event_local[g_rank]));
-        CU_CHECK(cuEventCreate(&loop_event_local[g_rank], CU_EVENT_INTERPROCESS | CU_EVENT_DISABLE_TIMING));
-        CU_CHECK(cuEventRecord(loop_event_local[g_rank], 0));
-        CU_CHECK(cuIpcGetEventHandle(&loop_eventhandle_local[g_rank], loop_event_local[g_rank]));
+        MPIU_Device_EventCreateWithFlags(&sr_event_local[g_rank], MV2_DEVICE_FLAG(EventInterprocess) | MV2_DEVICE_FLAG(EventDisableTiming));
+        MPIU_Device_EventRecord(sr_event_local[g_rank], 0);
+        MPIU_Device_IpcGetEventHandle(&sr_eventhandle_local[g_rank], sr_event_local[g_rank]);
+        MPIU_Device_EventCreateWithFlags(&loop_event_local[g_rank], MV2_DEVICE_FLAG(EventInterprocess) | MV2_DEVICE_FLAG(EventDisableTiming));
+        MPIU_Device_EventRecord(loop_event_local[g_rank], 0);
+        MPIU_Device_IpcGetEventHandle(&loop_eventhandle_local[g_rank], loop_event_local[g_rank]);
     }
 
-    sr_event = (CUevent *) MPIU_Malloc(sizeof(CUevent)*comm_ptr->local_size);
-    loop_event = (CUevent *) MPIU_Malloc(sizeof(CUevent)*comm_ptr->local_size);
+    sr_event = (deviceEvent_t *) MPIU_Malloc(sizeof(deviceEvent_t)*comm_ptr->local_size);
+    loop_event = (deviceEvent_t *) MPIU_Malloc(sizeof(deviceEvent_t)*comm_ptr->local_size);
 
-    sr_eventhandle = (CUipcEventHandle *)
-        MPIU_Malloc(sizeof(CUipcEventHandle)*comm_ptr->local_size);
-    loop_eventhandle = (CUipcEventHandle *)
-        MPIU_Malloc(sizeof(CUipcEventHandle)*comm_ptr->local_size);
+    sr_eventhandle = (deviceIpcEventHandle_t *)
+        MPIU_Malloc(sizeof(deviceIpcEventHandle_t)*comm_ptr->local_size);
+    loop_eventhandle = (deviceIpcEventHandle_t *)
+        MPIU_Malloc(sizeof(deviceIpcEventHandle_t)*comm_ptr->local_size);
 
-    err = MPIR_Alltoall_impl((void *)sr_eventhandle_local, sizeof(CUipcEventHandle), MPI_BYTE,
-            (void *)sr_eventhandle, sizeof(CUipcEventHandle), MPI_BYTE,
+    err = MPIR_Alltoall_impl((void *)sr_eventhandle_local, sizeof(deviceIpcEventHandle_t), MPI_BYTE,
+            (void *)sr_eventhandle, sizeof(deviceIpcEventHandle_t), MPI_BYTE,
             comm_ptr, &errflag);
 
     if (err != MPI_SUCCESS) {
         smp_error_abort(SMP_EXIT_ERR,"sr eventhandle exchange using Allgather failed \n");
     }
 
-    unsigned int version = 0;
-    cuCtxGetApiVersion(NULL, &version);
-
     for (i=0; i<g_smpi.num_local_nodes; i++) {
         MPIDI_Comm_get_vc(comm_ptr, i, &vc);
-        if (i == g_smpi.my_local_id || vc->smp.can_access_peer != CUDA_IPC_ENABLED) {
+        if (i == g_smpi.my_local_id || vc->smp.can_access_peer != MV2_DEVICE_IPC_ENABLED) {
             continue;
         }
 
         g_rank = g_smpi.l2g_rank[i];
 
-        CU_CHECK(cuIpcOpenEventHandle(&sr_event[g_rank], sr_eventhandle[g_rank]));
-        CU_CHECK(cuEventRecord(sr_event[g_rank], 0));
+        MPIU_Device_IpcOpenEventHandle(&sr_event[g_rank], sr_eventhandle[g_rank]);
+        MPIU_Device_EventRecord(sr_event[g_rank], 0);
     }
 
     err =
-        MPIR_Alltoall_impl((void *)loop_eventhandle_local, sizeof(CUipcEventHandle),
-                MPI_BYTE, (void *)loop_eventhandle, sizeof(CUipcEventHandle), MPI_BYTE,
+        MPIR_Alltoall_impl((void *)loop_eventhandle_local, sizeof(deviceIpcEventHandle_t),
+                MPI_BYTE, (void *)loop_eventhandle, sizeof(deviceIpcEventHandle_t), MPI_BYTE,
                 comm_ptr, &errflag);
 
     if (err != MPI_SUCCESS) {
@@ -2472,14 +2464,14 @@ void MPIDI_CH3I_SMP_cuda_ipc_init(MPID_Comm *comm_ptr)
 
     for (i=0; i<g_smpi.num_local_nodes; i++) {
         MPIDI_Comm_get_vc(comm_ptr, i, &vc);
-        if (i == g_smpi.my_local_id || vc->smp.can_access_peer != CUDA_IPC_ENABLED) {
+        if (i == g_smpi.my_local_id || vc->smp.can_access_peer != MV2_DEVICE_IPC_ENABLED) {
             continue;
         }
 
         g_rank = g_smpi.l2g_rank[i];
 
-        CU_CHECK(cuIpcOpenEventHandle(&loop_event[g_rank], loop_eventhandle[g_rank]));
-        CU_CHECK(cuEventRecord(loop_event[g_rank], 0));
+        MPIU_Device_IpcOpenEventHandle(&loop_event[g_rank], loop_eventhandle[g_rank]);
+        MPIU_Device_EventRecord(loop_event[g_rank], 0);
     }
 
     if (handle_exchange != NULL) {
@@ -2620,66 +2612,66 @@ int MPIDI_CH3I_SMP_finalize()
 
 #if defined (_ENABLE_CUDA_)
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_CUDA_SMP_cuda_init
+#define FUNCNAME MPIDI_CH3I_CUDA_SMP_device_init
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-void MPIDI_CH3I_CUDA_SMP_cuda_init(MPIDI_PG_t *pg)
+void MPIDI_CH3I_CUDA_SMP_device_init(MPIDI_PG_t *pg)
 {
-    if (!cuda_initialized) { 
+    if (!mv2_device_initialized) {
         return;
     }
 
     if (mv2_shmem_pool_init) {
-        ibv_cuda_register (g_smpi.send_buf_pool_ptr, g_size_pool);
+        ibv_device_register (g_smpi.send_buf_pool_ptr, g_size_pool);
     }
 
 #if defined(HAVE_CUDA_IPC)
-    if (rdma_cuda_smp_ipc) {
-        MPIDI_CH3I_SMP_cuda_ipc_init(MPIR_Process.comm_world);
+    if (mv2_device_use_smp_eager_ipc) {
+        MPIDI_CH3I_SMP_device_ipc_init(MPIR_Process.comm_world);
     }
 #endif
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_SMP_cuda_finalize
+#define FUNCNAME MPIDI_CH3I_SMP_device_finalize
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-void MPIDI_CH3I_CUDA_SMP_cuda_finalize(MPIDI_PG_t *pg)
+void MPIDI_CH3I_CUDA_SMP_device_finalize(MPIDI_PG_t *pg)
 {
     int i;
     MPIDI_VC_t *vc = NULL;
 
-    if (!cuda_initialized) {
+    if (!mv2_device_initialized) {
         return;
     }
 
     if (mv2_shmem_pool_init) { 
-        ibv_cuda_unregister (g_smpi.send_buf_pool_ptr);
+        ibv_device_unregister (g_smpi.send_buf_pool_ptr);
     }
 
 #if defined(HAVE_CUDA_IPC)
-    if (SMP_INIT && rdma_cuda_smp_ipc) {
+    if (SMP_INIT && mv2_device_use_smp_eager_ipc) {
         for (i = 0; i < g_smpi.num_local_nodes; i++) {
             MPIDI_PG_Get_vc(pg, i, &vc);
-            if (i == g_smpi.my_local_id || vc->smp.can_access_peer != CUDA_IPC_ENABLED) {
+            if (i == g_smpi.my_local_id || vc->smp.can_access_peer != MV2_DEVICE_IPC_ENABLED) {
                 continue;
             }
 
-            CU_CHECK(cuEventDestroy(sr_event_local[i]));
-            CU_CHECK(cuEventDestroy(loop_event_local[i]));
-            CU_CHECK(cuEventDestroy(sr_event[i]));
-            CU_CHECK(cuEventDestroy(loop_event[i]));
-            CUDA_CHECK(cudaIpcCloseMemHandle(smp_cuda_region_base[i]));
+            MPIU_Device_EventDestroy(sr_event_local[i]);
+            MPIU_Device_EventDestroy(loop_event_local[i]);
+            MPIU_Device_EventDestroy(sr_event[i]);
+            MPIU_Device_EventDestroy(loop_event[i]);
+            MPIU_Device_IpcCloseMemHandle(smp_device_region_base[i]);
         }
 
-        if (smp_cuda_region_base) {
-            MPIU_Free(smp_cuda_region_base);
+        if (smp_device_region_base) {
+            MPIU_Free(smp_device_region_base);
         }
-        if (smp_cuda_region_send) {
-            MPIU_Free(smp_cuda_region_send);
+        if (smp_device_region_send) {
+            MPIU_Free(smp_device_region_send);
         }
-        if (smp_cuda_region_recv) {
-            MPIU_Free(smp_cuda_region_recv);
+        if (smp_device_region_recv) {
+            MPIU_Free(smp_device_region_recv);
         }
         if (sr_event_local) {
             MPIU_Free(sr_event_local);
@@ -2893,7 +2885,7 @@ fn_fail:
 }
 
 #if defined(_ENABLE_CUDA_)
-void smp_cuda_send_copy_complete(MPIDI_VC_t * vc, MPID_Request *req, void *ptr_flag) 
+void smp_device_send_copy_complete(MPIDI_VC_t * vc, MPID_Request *req, void *ptr_flag)
 {
     int mpi_errno = MPI_SUCCESS;
     int complete = 0;
@@ -2913,47 +2905,36 @@ void smp_cuda_send_copy_complete(MPIDI_VC_t * vc, MPID_Request *req, void *ptr_f
     }
 }
 
-void smp_cuda_send_copy_enqueue(MPIDI_VC_t * vc, MPID_Request *req, SEND_BUF_T *send_buf, 
+void smp_device_send_copy_enqueue(MPIDI_VC_t * vc, MPID_Request *req, SEND_BUF_T *send_buf,
         void *user_buf, size_t size, int is_last, volatile void *ptr_flag)
 {
-    cuda_event_t *cuda_event;
-    cudaError_t cuda_err = cudaSuccess; 
+    mv2_device_event_t *device_event;
 
     *((volatile int *) ptr_flag) = SMP_CBUF_PENDING;
     WRITEBAR();
 
     send_buf->len = size;
-    MPIU_Memcpy_CUDA_Async(send_buf->buf, user_buf, size, cudaMemcpyDeviceToHost, stream_d2h);
+    MPIU_Memcpy_Device_Async(send_buf->buf, user_buf, size, deviceMemcpyDeviceToHost, stream_d2h);
 
-    cuda_event = get_cuda_event();
-    if (cuda_event == NULL) {
-        allocate_cuda_event(&cuda_event);
-        /* add to the busy list */
-        cuda_event->is_query_done = 0;
-        CUDA_LIST_ADD(cuda_event,
-            busy_cuda_event_list_head, busy_cuda_event_list_tail);
-    }
-    cuda_event->op_type = SMP_SEND;
-    cuda_event->vc = vc;
-    cuda_event->smp_ptr = (void *) ptr_flag;
-    cuda_event->size = size;
+    device_event = get_device_event();
+    device_event->op_type = SMP_SEND;
+    device_event->vc = vc;
+    device_event->smp_ptr = (void *) ptr_flag;
+    device_event->size = size;
     if (is_last) { 
-        cuda_event->req = req;
+        device_event->req = req;
     } else {
-        cuda_event->req = NULL;
+        device_event->req = NULL;
     }
 
-    cuda_err = cudaEventRecord(cuda_event->event, stream_d2h);
-    if (cuda_err != cudaSuccess) {
-        smp_error_abort(SMP_EXIT_ERR,"cudaEventRecord failed\n"); 
-    }
+    MPIU_Device_EventRecord(device_event->event, stream_d2h);
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_SMP_writev_rndv_data_cuda
+#define FUNCNAME MPIDI_CH3I_SMP_writev_rndv_data_device
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIDI_CH3I_SMP_writev_rndv_data_cuda(MPIDI_VC_t * vc, MPID_Request *req, 
+int MPIDI_CH3I_SMP_writev_rndv_data_device(MPIDI_VC_t * vc, MPID_Request *req,
     const MPL_IOV * iov, const int n, int *num_bytes_ptr, int is_cont)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -3011,7 +2992,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data_cuda(MPIDI_VC_t * vc, MPID_Request *req,
         for (; i < n;) {
             if (pkt_avail >= (iov[i].MPL_IOV_LEN - offset)) {
                 if (i == n-1) is_last = 1;
-                smp_cuda_send_copy_enqueue(vc, req, send_buf,
+                smp_device_send_copy_enqueue(vc, req, send_buf,
                     (void *) ((unsigned long) iov[i].MPL_IOV_BUF + offset),
                     iov[i].MPL_IOV_LEN - offset, 
                     is_last, ptr_flag);
@@ -3020,7 +3001,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data_cuda(MPIDI_VC_t * vc, MPID_Request *req,
                 offset = 0;
                 ++i;
             } else if (pkt_avail > 0) {
-                smp_cuda_send_copy_enqueue(vc, req, send_buf,
+                smp_device_send_copy_enqueue(vc, req, send_buf,
                     (void *) ((unsigned long) iov[i].MPL_IOV_BUF + offset),
                     pkt_avail, is_last, ptr_flag);
                 offset += pkt_avail;
@@ -3099,8 +3080,8 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
         return;
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && s_smp_cuda_pipeline 
-        && req->mrail.cuda_transfer_mode == NONE) {
+    if (mv2_enable_device && mv2_device_smp_pipeline
+        && req->mrail.device_transfer_mode == NONE) {
         pkt_avail = s_smp_h2h_block_size;      
     } else 
 #endif
@@ -3118,7 +3099,7 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
     first_index = s_sh_buf_pool.free_head;
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         /*as it is all data, we check the first iov to determine if the buffer is on device*/
         iov_isdev = is_device_buffer((void *) iov[0].MPL_IOV_BUF);
     } 
@@ -3144,11 +3125,11 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
         if (offset != 0) {
 #if defined(_ENABLE_CUDA_) 
             if (iov_isdev) {
-                MPIU_Memcpy_CUDA(&send_buf->buf,
+                MPIU_Memcpy_Device(&send_buf->buf,
                             (void *) ((unsigned long) iov[i].MPL_IOV_BUF +
                             offset),
                             iov[i].MPL_IOV_LEN - offset, 
-                            cudaMemcpyDeviceToHost); 
+                            deviceMemcpyDeviceToHost);
             } else  
 #endif
             { 
@@ -3172,9 +3153,9 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
         } else {
 #if defined(_ENABLE_CUDA_) 
             if (iov_isdev) {
-                MPIU_Memcpy_CUDA(&send_buf->buf, iov[i].MPL_IOV_BUF,
+                MPIU_Memcpy_Device(&send_buf->buf, iov[i].MPL_IOV_BUF,
                         iov[i].MPL_IOV_LEN,
-                        cudaMemcpyDeviceToHost);
+                        deviceMemcpyDeviceToHost);
             } else  
 #endif
             {
@@ -3197,10 +3178,10 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
         } else if (pkt_avail > 0) {
 #if defined(_ENABLE_CUDA_) 
             if (iov_isdev) {
-                MPIU_Memcpy_CUDA(&send_buf->buf,
+                MPIU_Memcpy_Device(&send_buf->buf,
                     (void *) ((unsigned long) iov[i].MPL_IOV_BUF + offset),
                     pkt_avail,
-                    cudaMemcpyDeviceToHost);
+                    deviceMemcpyDeviceToHost);
             } else  
 #endif
             { 
@@ -3284,8 +3265,8 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
         return mpi_errno;
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && s_smp_cuda_pipeline 
-        && req->mrail.cuda_transfer_mode == NONE) {
+    if (mv2_enable_device && mv2_device_smp_pipeline
+        && req->mrail.device_transfer_mode == NONE) {
         pkt_avail = s_smp_h2h_block_size;     
     } else 
 #endif
@@ -3299,7 +3280,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
     }
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         /*as it is all data, we check the first iov to determine if the buffer is on device*/
         iov_isdev = is_device_buffer((void *) iov[0].MPL_IOV_BUF);
     } 
@@ -3323,11 +3304,11 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
         if (offset != 0) {
 #if defined(_ENABLE_CUDA_)
             if (iov_isdev) { 
-                MPIU_Memcpy_CUDA(&send_buf->buf,
+                MPIU_Memcpy_Device(&send_buf->buf,
                     (void *) ((unsigned long) iov[i].MPL_IOV_BUF +
                     offset),
                     iov[i].MPL_IOV_LEN - offset,
-                    cudaMemcpyDeviceToHost);
+                    deviceMemcpyDeviceToHost);
             } else 
 #endif
             {
@@ -3351,8 +3332,8 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
         } else {
 #if defined(_ENABLE_CUDA_)
             if (iov_isdev) {
-                MPIU_Memcpy_CUDA(&send_buf->buf, iov[i].MPL_IOV_BUF, 
-                        iov[i].MPL_IOV_LEN, cudaMemcpyDeviceToHost);
+                MPIU_Memcpy_Device(&send_buf->buf, iov[i].MPL_IOV_BUF,
+                        iov[i].MPL_IOV_LEN, deviceMemcpyDeviceToHost);
             } else 
 #endif
             {
@@ -3375,11 +3356,11 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
         } else if (pkt_avail > 0) {
 #if defined(_ENABLE_CUDA_)
             if (iov_isdev) { 
-                MPIU_Memcpy_CUDA(&send_buf->buf,
+                MPIU_Memcpy_Device(&send_buf->buf,
                     (void *) ((unsigned long) iov[i].MPL_IOV_BUF +
                     offset),
                     pkt_avail,
-                    cudaMemcpyDeviceToHost);
+                    deviceMemcpyDeviceToHost);
             } else 
 #endif
             {    
@@ -3450,8 +3431,8 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPL_IOV * iov,
     int rem_rank = 0, data_sz = 0;
     int buf_isdev = 0;
     int contig_avail = 0;
-    void *cuda_region_ptr = NULL;
-    smpi_cu_ipc_attr *my_base;
+    void *device_region_ptr = NULL;
+    smpi_device_ipc_attr *my_base;
     int cur_t,cur_h;
 #endif
 #endif
@@ -3468,7 +3449,7 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPL_IOV * iov,
 
     buf_isdev = is_device_buffer((void *) iov[1].MPL_IOV_BUF);
 
-    if (rdma_enable_cuda && rdma_cuda_smp_ipc && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+    if (mv2_enable_device && mv2_device_use_smp_eager_ipc && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
         if (buf_isdev && n == 2) {
             /*first iov is the header*/ 
             data_sz = len - iov[0].MPL_IOV_LEN;
@@ -3476,20 +3457,17 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPL_IOV * iov,
 
             rem_rank = vc->smp.local_nodes;
             my_base = g_smpi_shmem->cu_attrbs[g_smpi.my_local_id];
-            cur_h = ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_head;
-            cur_t = ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_tail;
+            cur_h = ((smpi_device_ipc_attr *)my_base + rem_rank)->device_head;
+            cur_t = ((smpi_device_ipc_attr *)my_base + rem_rank)->device_tail;
 
             if(cur_t > cur_h) {
                 contig_avail =  cur_t - cur_h;
             } else {
-                contig_avail =  smp_cuda_region_size - cur_h;
+                contig_avail =  smp_device_region_size - cur_h;
                 if (contig_avail < data_sz) {
                     cur_h = 0;
                     contig_avail = cur_t;
-                    if (cuStreamWaitEvent(0, loop_event_local[vc->pg_rank], 0) != CUDA_SUCCESS) {
-                        PRINT_ERROR("Error in cuStreamWaitEvent\n");
-                        exit(EXIT_FAILURE);
-                    }
+                    MPIU_Device_StreamWaitEvent(0, loop_event_local[vc->pg_rank], 0);
                 }
             }
 
@@ -3518,34 +3496,31 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPL_IOV * iov,
 
     for (i = 0; i < n; i++) {
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda) {
+        if (mv2_enable_device) {
             iov_isdev = is_device_buffer((void *) iov[i].MPL_IOV_BUF);
         }
 
         if (iov_isdev) {
 
 #if defined(HAVE_CUDA_IPC)
-            if (rdma_cuda_smp_ipc && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
-                cuda_region_ptr = (void *) ((unsigned long) smp_cuda_region_send[vc->smp.local_nodes]  + cur_h);
-                MPIU_Memcpy_CUDA(cuda_region_ptr,
+            if (mv2_device_use_smp_eager_ipc && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
+                device_region_ptr = (void *) ((unsigned long) smp_device_region_send[vc->smp.local_nodes]  + cur_h);
+                MPIU_Memcpy_Device(device_region_ptr,
                     (void *) ((unsigned long) iov[i].MPL_IOV_BUF),
                     iov[i].MPL_IOV_LEN,
-                    cudaMemcpyDefault);
-                if (cuEventRecord(sr_event[vc->pg_rank], 0) != CUDA_SUCCESS) {
-                    PRINT_ERROR("[%d] event record failed for rank : %d \n",MPIDI_Process.my_pg_rank, vc->pg_rank);
-                    smp_error_abort(SMP_EXIT_ERR,"Error in recording the event\n");
-                }
+                    deviceMemcpyDefault);
+                MPIU_Device_EventRecord(sr_event[vc->pg_rank], 0);
                 if(0 == cur_h) {
-                    ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_head = iov[i].MPL_IOV_LEN;
+                    ((smpi_device_ipc_attr *)my_base + rem_rank)->device_head = iov[i].MPL_IOV_LEN;
                 } else {
-                    ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_head += iov[i].MPL_IOV_LEN;
+                    ((smpi_device_ipc_attr *)my_base + rem_rank)->device_head += iov[i].MPL_IOV_LEN;
                 }       
             } else      
 #endif
             {
-                MPIU_Memcpy_CUDA((void *)ptr,
+                MPIU_Memcpy_Device((void *)ptr,
                     (void *) ((unsigned long) iov[i].MPL_IOV_BUF),
-                    iov[i].MPL_IOV_LEN, cudaMemcpyDeviceToHost);
+                    iov[i].MPL_IOV_LEN, deviceMemcpyDeviceToHost);
             } 
         } else 
 #endif
@@ -3562,7 +3537,7 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPL_IOV * iov,
           need of advancing ptr by iov_len as there is nothing being
           copied in the shared channel*/
         
-        if (rdma_cuda_smp_ipc && iov_isdev && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+        if (mv2_device_use_smp_eager_ipc && iov_isdev && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
            /*do nothing*/ 
         } else
 #endif
@@ -3601,8 +3576,8 @@ int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
 #if defined(HAVE_CUDA_IPC)
     int rem_rank = 0;
     int contig_avail = 0;
-    void *cuda_region_ptr = NULL;
-    smpi_cu_ipc_attr *my_base;
+    void *device_region_ptr = NULL;
+    smpi_device_ipc_attr *my_base;
     int cur_t,cur_h;
 #endif
 #endif
@@ -3612,24 +3587,22 @@ int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
 #if defined(_ENABLE_CUDA_)
     buf_isdev = is_device_buffer((void *) buf);
 #if defined(HAVE_CUDA_IPC)
-    if (rdma_enable_cuda && rdma_cuda_smp_ipc && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+    if (mv2_enable_device && mv2_device_use_smp_eager_ipc && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
         if (buf_isdev) {
             len = sizeof(MPIDI_CH3_Pkt_eager_send_t);
             rem_rank = vc->smp.local_nodes;
             my_base = g_smpi_shmem->cu_attrbs[g_smpi.my_local_id];
-            cur_h = ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_head;
-            cur_t = ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_tail;
+            cur_h = ((smpi_device_ipc_attr *)my_base + rem_rank)->device_head;
+            cur_t = ((smpi_device_ipc_attr *)my_base + rem_rank)->device_tail;
 
             if(cur_t > cur_h) {
                 contig_avail =  cur_t - cur_h; 
             } else {
-                contig_avail =  smp_cuda_region_size - cur_h;
+                contig_avail =  smp_device_region_size - cur_h;
                 if (contig_avail < data_sz) {
                     cur_h = 0;
                     contig_avail = cur_t;
-                    if (cuStreamWaitEvent(0, loop_event_local[vc->pg_rank], 0) != CUDA_SUCCESS) {
-                        smp_error_abort(SMP_EXIT_ERR,"Error in cuStreamWaitEvent\n");
-                    }
+                    MPIU_Device_StreamWaitEvent(0, loop_event_local[vc->pg_rank], 0);
                 }
             }
 
@@ -3665,7 +3638,7 @@ int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
         eager_pkt->sender_req_id            = MPI_REQUEST_NULL;
         eager_pkt->data_sz                  = data_sz;
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-        eager_pkt->in_cuda_region = 0;
+        eager_pkt->in_device_region = 0;
 #endif
 
         /* Set sequence number */
@@ -3678,27 +3651,24 @@ int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
 #if defined(_ENABLE_CUDA_)
         if (buf_isdev) {
 #if defined(HAVE_CUDA_IPC)
-            if (rdma_cuda_smp_ipc && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+            if (mv2_device_use_smp_eager_ipc && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
                 
-                eager_pkt->in_cuda_region = 1;
-                cuda_region_ptr = (void *) ((unsigned long) smp_cuda_region_send[vc->smp.local_nodes]  + cur_h);
-                MPIU_Memcpy_CUDA(cuda_region_ptr,
+                eager_pkt->in_device_region = 1;
+                device_region_ptr = (void *) ((unsigned long) smp_device_region_send[vc->smp.local_nodes]  + cur_h);
+                MPIU_Memcpy_Device(device_region_ptr,
                         buf, data_sz,
-                        cudaMemcpyDefault);
-    
-                if (cuEventRecord(sr_event[vc->pg_rank], 0) != CUDA_SUCCESS) {
-                    PRINT_ERROR("[%d] event record failed for rank : %d \n",MPIDI_Process.my_pg_rank, vc->pg_rank);
-                    smp_error_abort(SMP_EXIT_ERR,"Error in recording the event\n");
-                }
+                        deviceMemcpyDefault);
+
+                MPIU_Device_EventRecord(sr_event[vc->pg_rank], 0);
     
                 cur_h += data_sz;
-                ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_head = cur_h;
+                ((smpi_device_ipc_attr *)my_base + rem_rank)->device_head = cur_h;
     
             } else
 #endif
             { 
-                MPIU_Memcpy_CUDA((void *) ptr, buf, data_sz,
-                        cudaMemcpyDeviceToHost);
+                MPIU_Memcpy_Device((void *) ptr, buf, data_sz,
+                        deviceMemcpyDeviceToHost);
                 ptr = (volatile void *)((unsigned long) ptr + data_sz);
             }
         } else 
@@ -3751,8 +3721,8 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
 #if defined(HAVE_CUDA_IPC)
     int rem_rank = 0;
     int contig_avail = 0;
-    void *cuda_region_ptr = NULL;
-    smpi_cu_ipc_attr *my_base;
+    void *device_region_ptr = NULL;
+    smpi_device_ipc_attr *my_base;
     int cur_t,cur_h;
 #endif
 #endif
@@ -3765,25 +3735,22 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
 #if defined(_ENABLE_CUDA_)
     buf_isdev = is_device_buffer((void *) buf);
 #if defined(HAVE_CUDA_IPC)
-    if (rdma_enable_cuda && rdma_cuda_smp_ipc && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+    if (mv2_enable_device && mv2_device_use_smp_eager_ipc && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
         if (buf_isdev) {
             len = sizeof(MPIDI_CH3_Pkt_eager_send_t);
             rem_rank = vc->smp.local_nodes;
             my_base = g_smpi_shmem->cu_attrbs[g_smpi.my_local_id];
-            cur_h = ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_head;
-            cur_t = ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_tail;
+            cur_h = ((smpi_device_ipc_attr *)my_base + rem_rank)->device_head;
+            cur_t = ((smpi_device_ipc_attr *)my_base + rem_rank)->device_tail;
 
             if(cur_t > cur_h) {
                 contig_avail =  cur_t - cur_h; 
             } else {
-                contig_avail =  smp_cuda_region_size - cur_h;
+                contig_avail =  smp_device_region_size - cur_h;
                 if (contig_avail < data_sz) {
                     cur_h = 0;
                     contig_avail = cur_t;
-                    if (cuStreamWaitEvent(0, loop_event_local[vc->pg_rank], 0) != CUDA_SUCCESS) {
-                        PRINT_ERROR("Error in cuStreamWaitEvent\n");
-                        exit(EXIT_FAILURE);
-                    }
+                    MPIU_Device_StreamWaitEvent(0, loop_event_local[vc->pg_rank], 0);
                 }
             }
 
@@ -3822,7 +3789,7 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
     eager_pkt->sender_req_id    = MPI_REQUEST_NULL;
     eager_pkt->data_sz      = data_sz;
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    eager_pkt->in_cuda_region = 0;
+    eager_pkt->in_device_region = 0;
 #endif
 
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
@@ -3834,28 +3801,25 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
 #if defined(_ENABLE_CUDA_)
     if (buf_isdev) {
 #if defined(HAVE_CUDA_IPC)
-        if (rdma_cuda_smp_ipc && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+        if (mv2_device_use_smp_eager_ipc && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
             
-            eager_pkt->in_cuda_region = 1;
-            cuda_region_ptr = (void *) ((unsigned long) smp_cuda_region_send[vc->smp.local_nodes]  + cur_h);
-            MPIU_Memcpy_CUDA(cuda_region_ptr,
+            eager_pkt->in_device_region = 1;
+            device_region_ptr = (void *) ((unsigned long) smp_device_region_send[vc->smp.local_nodes]  + cur_h);
+            MPIU_Memcpy_Device(device_region_ptr,
                     buf, data_sz,
-                    cudaMemcpyDefault);
+                    deviceMemcpyDefault);
 
-            if (cuEventRecord(sr_event[vc->pg_rank], 0) != CUDA_SUCCESS) {
-                PRINT_ERROR("[%d] event record failed for rank : %d \n",MPIDI_Process.my_pg_rank, vc->pg_rank);
-                smp_error_abort(SMP_EXIT_ERR,"Error in recording the event\n");
-            }
+            MPIU_Device_EventRecord(sr_event[vc->pg_rank], 0);
 
             cur_h += data_sz;
-            ((smpi_cu_ipc_attr *)my_base + rem_rank)->cuda_head = cur_h;
+            ((smpi_device_ipc_attr *)my_base + rem_rank)->device_head = cur_h;
 
             *num_bytes_ptr += data_sz;
         } else
 #endif
         { 
-            MPIU_Memcpy_CUDA((void *) ptr, buf, data_sz,
-                    cudaMemcpyDeviceToHost);
+            MPIU_Memcpy_Device((void *) ptr, buf, data_sz,
+                    deviceMemcpyDeviceToHost);
             *num_bytes_ptr += data_sz;
             ptr = (volatile void *)((unsigned long) ptr + data_sz);
         }
@@ -3875,7 +3839,7 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
 }
 
 #if defined (_ENABLE_CUDA_)
-void smp_cuda_recv_copy_complete(MPIDI_VC_t * vc, MPID_Request *req, void *recv_buf_ptr)
+void smp_device_recv_copy_complete(MPIDI_VC_t * vc, MPID_Request *req, void *recv_buf_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     int complete = 0;
@@ -3894,48 +3858,37 @@ void smp_cuda_recv_copy_complete(MPIDI_VC_t * vc, MPID_Request *req, void *recv_
     }
 }
 
-void smp_cuda_recv_copy_enqueue(MPIDI_VC_t * vc, MPID_Request *req, 
+void smp_device_recv_copy_enqueue(MPIDI_VC_t * vc, MPID_Request *req,
         SEND_BUF_T *recv_buf, int recv_offset, void *user_buf, size_t size, 
         int is_last)
 {
-    cudaError_t cuda_err = cudaSuccess; 
-    cuda_event_t *cuda_event;
+    mv2_device_event_t *device_event;
 
-    MPIU_Memcpy_CUDA_Async(user_buf, 
+    MPIU_Memcpy_Device_Async(user_buf,
             (void *) ((char *)recv_buf->buf + recv_offset), 
             size, 
-            cudaMemcpyHostToDevice, 
+            deviceMemcpyHostToDevice,
             stream_h2d);
 
-    cuda_event = get_cuda_event();
-    if (cuda_event == NULL) {
-        allocate_cuda_event(&cuda_event);
-        /* add to the busy list */
-        cuda_event->is_query_done = 0;
-        CUDA_LIST_ADD(cuda_event,
-            busy_cuda_event_list_head, busy_cuda_event_list_tail);
-    }
-    cuda_event->op_type = SMP_RECV;
-    cuda_event->vc = vc;
-    cuda_event->smp_ptr = (void *) recv_buf;
-    cuda_event->size = size;
+    device_event = get_device_event();
+    device_event->op_type = SMP_RECV;
+    device_event->vc = vc;
+    device_event->smp_ptr = (void *) recv_buf;
+    device_event->size = size;
     if (is_last) { 
-        cuda_event->req = req;
+        device_event->req = req;
     } else {
-        cuda_event->req = NULL;
+        device_event->req = NULL;
     }
 
-    cuda_err = cudaEventRecord(cuda_event->event, stream_h2d);
-    if (cuda_err != cudaSuccess) {
-        smp_error_abort(SMP_EXIT_ERR,"cudaEventRecord failed\n"); 
-    }
+    MPIU_Device_EventRecord(device_event->event, stream_h2d);
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_SMP_readv_rndv_cuda
+#define FUNCNAME MPIDI_CH3I_SMP_readv_rndv_device
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIDI_CH3I_SMP_readv_rndv_cuda(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req, 
+int MPIDI_CH3I_SMP_readv_rndv_device(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
         const MPL_IOV * iov, const int iov_count, int index, 
         size_t *num_bytes_ptr, int is_cont)
 {
@@ -3990,7 +3943,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cuda(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
         if (!is_cont) { 
             READBAR();
             while(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) {
-               MV2_CUDA_PROGRESS();     
+               MV2_DEVICE_PROGRESS();
                READBAR();
             }
         } else {
@@ -4007,7 +3960,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cuda(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
             if (!is_cont) {
                 READBAR();
                 while(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) { 
-                   MV2_CUDA_PROGRESS();
+                   MV2_DEVICE_PROGRESS();
                    READBAR();
                 }
             } else {
@@ -4064,7 +4017,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cuda(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
             && current_index != -1;) {
 
             if (msglen > iov_len) {
-                smp_cuda_recv_copy_enqueue(recv_vc_ptr, req, recv_buf, recv_offset,
+                smp_device_recv_copy_enqueue(recv_vc_ptr, req, recv_buf, recv_offset,
                     (void *) ((unsigned long) iov[iov_off].MPL_IOV_BUF + buf_off),
                     iov_len, is_last);
 
@@ -4095,7 +4048,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cuda(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
                    is_last = 1; 
                 }
 
-                smp_cuda_recv_copy_enqueue(recv_vc_ptr, req, recv_buf, recv_offset,
+                smp_device_recv_copy_enqueue(recv_vc_ptr, req, recv_buf, recv_offset,
                     (void *) ((unsigned long) iov[iov_off].MPL_IOV_BUF + buf_off),
                     iov_len, is_last);
 
@@ -4120,7 +4073,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cuda(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
                 msglen = recv_buf->len;
                 current_buf = (void *) &recv_buf->buf;
             } else if (msglen > 0) {
-                smp_cuda_recv_copy_enqueue(recv_vc_ptr, req, recv_buf, recv_offset,
+                smp_device_recv_copy_enqueue(recv_vc_ptr, req, recv_buf, recv_offset,
                     (void *) ((unsigned long) iov[iov_off].MPL_IOV_BUF + buf_off),
                     msglen, is_last);
                 iov_len -= msglen;
@@ -4368,8 +4321,6 @@ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_DO_LIMIC_READ);
     return mpi_errno;
 
-fn_fail:
-    goto fn_exit;
 }
 #endif
 
@@ -4491,7 +4442,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov
     iov_len = iov[0].MPL_IOV_LEN;
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         /*as it is all data, we check the first iov to determine if the buffer is on device*/
         iov_isdev = is_device_buffer((void *) iov[0].MPL_IOV_BUF);
     }
@@ -4506,11 +4457,11 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov
         READBAR();
 #if defined(_ENABLE_CUDA_)
         if (iov_isdev) {  
-            MPIU_Memcpy_CUDA((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF 
+            MPIU_Memcpy_Device((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF
                         + buf_off),
                         (void *) current_buf, 
                         iov_len,
-                        cudaMemcpyHostToDevice);
+                        deviceMemcpyHostToDevice);
         } else
 #endif
         {
@@ -4556,11 +4507,11 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov
         READBAR();
 #if defined(_ENABLE_CUDA_)
         if (iov_isdev) {
-            MPIU_Memcpy_CUDA((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF 
+            MPIU_Memcpy_Device((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF
                         + buf_off),
                         (void *) current_buf, 
                         iov_len, 
-                        cudaMemcpyHostToDevice);
+                        deviceMemcpyHostToDevice);
         } else 
 #endif
         {
@@ -4610,11 +4561,11 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov
         READBAR();
 #if defined(_ENABLE_CUDA_)
         if (iov_isdev) {
-            MPIU_Memcpy_CUDA((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF 
+            MPIU_Memcpy_Device((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF
                         + buf_off),
                         (void *) current_buf, 
                         msglen,
-                        cudaMemcpyHostToDevice);
+                        deviceMemcpyHostToDevice);
         } else 
 #endif
         {
@@ -4750,7 +4701,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
     READBAR();
     while(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) {
 #if defined (_ENABLE_CUDA_)
-        MV2_CUDA_PROGRESS();
+        MV2_DEVICE_PROGRESS();
 #endif 
         READBAR();
     }
@@ -4765,7 +4716,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
     READBAR();
     while(*ptr_flag == SMP_CBUF_FREE || *ptr_flag == SMP_CBUF_PENDING) {
 #if defined (_ENABLE_CUDA_)
-        MV2_CUDA_PROGRESS();
+        MV2_DEVICE_PROGRESS();
 #endif         
         READBAR();
     }
@@ -4809,7 +4760,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
     iov_len = iov[0].MPL_IOV_LEN;
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         /*as it is all data, we check the first iov to determine if the buffer is on device*/
         iov_isdev = is_device_buffer((void *) iov[0].MPL_IOV_BUF);
     }
@@ -4825,11 +4776,11 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
         READBAR();
 #if defined(_ENABLE_CUDA_)
         if (iov_isdev) {
-            MPIU_Memcpy_CUDA((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF 
+            MPIU_Memcpy_Device((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF
                             + buf_off),
                         (void *) current_buf,   
                         iov_len, 
-                        cudaMemcpyHostToDevice); 
+                        deviceMemcpyHostToDevice);
         } else 
 #endif
         {
@@ -4869,11 +4820,11 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
         READBAR();
 #if defined(_ENABLE_CUDA_)
         if (iov_isdev) {
-            MPIU_Memcpy_CUDA((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF 
+            MPIU_Memcpy_Device((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF
                             + buf_off),
                         (void *) current_buf, 
                         iov_len,
-                        cudaMemcpyHostToDevice);
+                        deviceMemcpyHostToDevice);
         } else   
 #endif
         {
@@ -4934,11 +4885,11 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
         READBAR();
 #if defined(_ENABLE_CUDA_)
         if (iov_isdev) {
-            MPIU_Memcpy_CUDA((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF 
+            MPIU_Memcpy_Device((void *) ((unsigned long)iov[iov_off].MPL_IOV_BUF
                             + buf_off),
                         (void *) current_buf, 
                         msglen,
-                        cudaMemcpyHostToDevice);
+                        deviceMemcpyHostToDevice);
         } else 
 #endif
         {
@@ -5044,7 +4995,7 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
                 iov_off < iovlen
                 && s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0;) {
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda) {
+            if (mv2_enable_device) {
                 iov_isdev = is_device_buffer((void *) iov[iov_off].MPL_IOV_BUF);
             }
 #endif
@@ -5054,10 +5005,10 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
                 READBAR();
 #if defined(_ENABLE_CUDA_)
                 if (iov_isdev) {
-                    MPIU_Memcpy_CUDA((void *) iov[iov_off].MPL_IOV_BUF,
+                    MPIU_Memcpy_Device((void *) iov[iov_off].MPL_IOV_BUF,
                             (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
                             iov[iov_off].MPL_IOV_LEN,
-                            cudaMemcpyHostToDevice);
+                            deviceMemcpyHostToDevice);
                 } else 
 #endif
                 {
@@ -5082,10 +5033,10 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
                 READBAR();
 #if defined(_ENABLE_CUDA_)
                 if (iov_isdev) {
-                    MPIU_Memcpy_CUDA((void *) iov[iov_off].MPL_IOV_BUF,
+                    MPIU_Memcpy_Device((void *) iov[iov_off].MPL_IOV_BUF,
                             (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
                             s_current_bytes[recv_vc_ptr->smp.local_nodes],
-                            cudaMemcpyHostToDevice);
+                            deviceMemcpyHostToDevice);
                 } else 
 #endif
                 {
@@ -5170,7 +5121,7 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
                 iov_off < iovlen
                 && s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0;) {
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda) {
+            if (mv2_enable_device) {
                 iov_isdev = is_device_buffer((void *) iov[iov_off].MPL_IOV_BUF);
             }
 #endif
@@ -5180,10 +5131,10 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
                 WRITEBAR();
 #if defined(_ENABLE_CUDA_)
                 if (iov_isdev) {
-                    MPIU_Memcpy_CUDA((void *) ((unsigned long) iov[iov_off].
+                    MPIU_Memcpy_Device((void *) ((unsigned long) iov[iov_off].
                                 MPL_IOV_BUF + buf_off),
                             ptr, iov[iov_off].MPL_IOV_LEN - buf_off,
-                            cudaMemcpyHostToDevice);
+                            deviceMemcpyHostToDevice);
                 } else 
 #endif
                 {
@@ -5207,10 +5158,10 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
                 WRITEBAR();
 #if defined(_ENABLE_CUDA_)
                 if (iov_isdev) {
-                    MPIU_Memcpy_CUDA((void *) ((unsigned long) iov[iov_off].
+                    MPIU_Memcpy_Device((void *) ((unsigned long) iov[iov_off].
                                 MPL_IOV_BUF + buf_off),
                             ptr, s_current_bytes[recv_vc_ptr->smp.local_nodes],
-                            cudaMemcpyHostToDevice);
+                            deviceMemcpyHostToDevice);
                 } else  
 #endif
                 {

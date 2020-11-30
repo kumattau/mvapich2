@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2019, The Ohio State University. All rights
+ * Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -129,12 +129,13 @@ void UPMI_unlock(void) {
 }
 
 int UPMI_INIT( int *spawned ) {
-    int pmi_ret_val;
+    int pmi_ret_val = UPMI_SUCCESS;
     #ifdef USE_PMIX_API
+    memset(&myproc, 0, sizeof(myproc));
     rc = PMIx_Init(&myproc, NULL, 0);
     if(rc != PMIX_SUCCESS)
             return convert_err(rc);
-    pmix_value_t *val;
+    pmix_value_t *val = NULL;
     pmix_proc_t proc;
     pmix_info_t info[1];
     bool  val_optional = 1;
@@ -190,17 +191,16 @@ int UPMI_FINALIZE( void ) {
 
 int UPMI_GET_SIZE( int *size ) { 
     #ifdef USE_PMIX_API
-    pmix_value_t *val;
+    pmix_value_t *val = NULL;
     pmix_info_t info[1];
     bool  val_optional = 1;
     pmix_proc_t proc;
-    proc=myproc;
+    memcpy(&proc, &myproc, sizeof(myproc));
     proc.rank = PMIX_RANK_WILDCARD;
     PMIX_INFO_CONSTRUCT(&info[0]);
     PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, &val_optional, PMIX_BOOL);
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, info, 1, &val))) {
-        printf("Client ns %s rank %d: PMIx_Get job size failed: %d", myproc.nspace, myproc.rank, rc);
-        abort();
+            return convert_err(rc); 
     }
     *size= val->data.uint32;
     return convert_err(rc);
@@ -225,13 +225,13 @@ int UPMI_GET_RANK( int *rank ) {
 }
 
 int UPMI_GET_APPNUM( int *appnum ) { 
-    int pmi_ret_val;
+    int pmi_ret_val = UPMI_SUCCESS;
     #ifdef USE_PMIX_API
-    pmix_value_t *val;
+    pmix_value_t *val = NULL;
     pmix_info_t info[1];
     bool  val_optional = 1;
     pmix_proc_t proc;
-    proc=myproc;
+    memcpy(&proc, &myproc, sizeof(myproc));
     proc.rank = PMIX_RANK_WILDCARD;
     PMIX_INFO_CONSTRUCT(&info[0]);
     PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, &val_optional, PMIX_BOOL);
@@ -254,12 +254,13 @@ int UPMI_GET_APPNUM( int *appnum ) {
 }
 
 int UPMI_GET_UNIVERSE_SIZE( int *size ) { 
-    int pmi_ret_val;
+    int pmi_ret_val = UPMI_SUCCESS;
     #ifdef USE_PMIX_API
-    pmix_value_t *val;
+    pmix_value_t *val = NULL;
     pmix_info_t info[1];
     bool  val_optional = 1;
-    pmix_proc_t proc = myproc;
+    pmix_proc_t proc;
+    memcpy(&proc, &myproc, sizeof(myproc));
     proc.rank = PMIX_RANK_WILDCARD;
     PMIX_INFO_CONSTRUCT(&info[0]);
     PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, &val_optional, PMIX_BOOL);
@@ -503,7 +504,7 @@ int UPMI_KVS_GET_VALUE_LENGTH_MAX( int *length ) {
 }
 
 int UPMI_KVS_GET_MY_NAME( char kvsname[], int length ) {
-    int pmi_ret_val;
+    int pmi_ret_val = UPMI_SUCCESS;
     #ifdef USE_PMIX_API
     pmix_strncpy(kvsname, myproc.nspace, length-1);
     return UPMI_SUCCESS;
@@ -541,20 +542,20 @@ int UPMI_KVS_PUT( const char kvsname[], const char key[], const char value[] ) {
 }
 
 int UPMI_KVS_GET( const char kvsname[], const char key[], char value[], int length ) { 
-    int pmi_ret_val;
+    int pmi_ret_val = UPMI_SUCCESS;
     #ifdef USE_PMIX_API
-    pmix_value_t *val;
+    pmix_value_t *val = NULL;
     pmix_proc_t proc;
+    memcpy(&proc, &myproc, sizeof(myproc));
     if (!strcmp(key, ANL_MAPPING)) {
-            proc = myproc;
-            proc.rank = PMIX_RANK_WILDCARD;
-            if (PMIX_SUCCESS == PMIx_Get(&proc, PMIX_ANL_MAP, NULL, 0, &val) &&
-                    (NULL != val) && (PMIX_STRING == val->type)) {
-                    pmix_strncpy(value, val->data.string, length-1);
-                    return PMI_SUCCESS;
-            } else {
-                    return UPMI_FAIL;
-            }
+        proc.rank = PMIX_RANK_WILDCARD;
+        if (PMIX_SUCCESS == PMIx_Get(&proc, PMIX_ANL_MAP, NULL, 0, &val) &&
+            (NULL != val) && (PMIX_STRING == val->type)) {
+            pmix_strncpy(value, val->data.string, length-1);
+            return PMI_SUCCESS;
+        } else {
+            return UPMI_FAIL;
+        }
     }
     char *tmpkey=(char *) malloc(PMIX_MAX_KEYLEN);
     strcpy(tmpkey, key);
@@ -563,12 +564,13 @@ int UPMI_KVS_GET( const char kvsname[], const char key[], char value[], int leng
     proc.rank=atoi(token);
     rc = PMIx_Get(&proc, key, NULL, 0, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
-            if (PMIX_STRING != val->type) {
-                    rc = PMIX_ERROR;
-            } else if (NULL != val->data.string) {
-                    pmix_strncpy(value, val->data.string, length-1);
-            }
+        if (PMIX_STRING != val->type) {
+            rc = PMIX_ERROR;
+        } else if (NULL != val->data.string) {
+            pmix_strncpy(value, val->data.string, length-1);
+        }
     }
+    free(tmpkey);
     return convert_err(rc);
     #elif USE_PMI2_API
     int vallen;
@@ -725,3 +727,56 @@ int UPMI_JOB_SPAWN(int count,
     return pmi_ret_val;
 }
 
+int UPMI_GET_LOCAL_RANK(int rank, int *size) {
+    #ifdef USE_PMIX_API
+    pmix_value_t *val = NULL;
+    pmix_info_t info[1];
+    bool  val_optional = 1;
+    pmix_proc_t proc;
+    memcpy(&proc, &myproc, sizeof(myproc));
+    proc.rank = rank;
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, &val_optional, PMIX_BOOL);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_RANK, NULL, 0, &val))) {
+        return convert_err(rc);
+    }
+    *size= val->data.uint16;
+    return convert_err(rc);
+    #endif
+}
+
+int UPMI_GET_LOCAL_SIZE(int *size) {
+    #ifdef USE_PMIX_API
+    pmix_value_t *val = NULL;
+    pmix_info_t info[1];
+    bool  val_optional = 1;
+    pmix_proc_t proc;
+    memcpy(&proc, &myproc, sizeof(myproc));
+    proc.rank = PMIX_RANK_WILDCARD;
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, &val_optional, PMIX_BOOL);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_SIZE, NULL, 0, &val))) {
+        return convert_err(rc);
+    }
+    *size= val->data.uint32;
+    return convert_err(rc);
+    #endif
+}
+
+int UPMI_GET_LOWEST_RANK(int *rank) {
+    #ifdef USE_PMIX_API
+    pmix_value_t *val = NULL;
+    pmix_info_t info[1];
+    bool  val_optional = 1;
+    pmix_proc_t proc;
+    memcpy(&proc, &myproc, sizeof(myproc));
+    proc.rank = PMIX_RANK_WILDCARD;
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, &val_optional, PMIX_BOOL);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCALLDR, NULL, 0, &val))) {
+        return convert_err(rc);
+    }
+    *rank= val->data.uint32;
+    return convert_err(rc);
+    #endif
+}

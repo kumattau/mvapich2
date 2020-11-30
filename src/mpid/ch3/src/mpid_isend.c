@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -64,7 +64,7 @@ int MPID_Isend(const void * buf, MPI_Aint count, MPI_Datatype datatype, int rank
     int eager_threshold = -1;
 #endif
 #ifdef _ENABLE_CUDA_
-    int cuda_transfer_mode = NONE;
+    int device_transfer_mode = NONE;
 #endif 
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPID_ISEND);
@@ -129,22 +129,22 @@ skip_self_send:
     MPIDI_Datatype_get_info(count, datatype, dt_contig, data_sz, dt_ptr, 
 			                dt_true_lb);
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda) { 
+    if (mv2_enable_device) {
         if (is_device_buffer((void *)buf)) {
             /* buf is in the GPU device memory */
-            cuda_transfer_mode = DEVICE_TO_DEVICE;
+            device_transfer_mode = DEVICE_TO_DEVICE;
         } else {
             /* buf is in the main memory */
-            cuda_transfer_mode = NONE;
+            device_transfer_mode = NONE;
         }
     }
 #endif
 
 #ifdef USE_EAGER_SHORT
     if ((data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= vc->eager_fast_max_msg_sz) &&
-        vc->eager_fast_fn && dt_contig
+        vc->use_eager_fast_fn && dt_contig
 #ifdef _ENABLE_CUDA_
-        && cuda_transfer_mode == NONE
+        && device_transfer_mode == NONE
 #endif
 #ifdef CKPT
         && vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
@@ -226,37 +226,37 @@ skip_self_send:
             MPID_Progress_test();
     }
 #endif
-    /* FIXME: flow control: limit number of outstanding eager messsages 
+    /* FIXME: flow control: limit number of outstanding eager messages 
        containing data and need to be buffered by the receiver */
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         if(HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN &&
                 sreq->dev.datatype_ptr == NULL) {
             sreq->dev.datatype_ptr = dt_ptr;
             MPID_Datatype_add_ref(dt_ptr);
         }
-        sreq->mrail.cuda_transfer_mode = cuda_transfer_mode;
+        sreq->mrail.device_transfer_mode = device_transfer_mode;
 
         /*forces rndv for some IPC based CUDA transfers*/
 #ifdef HAVE_CUDA_IPC
         if (vc->smp.local_rank != -1 &&
-            sreq->mrail.cuda_transfer_mode != NONE &&
-            rdma_cuda_ipc) { 
+            sreq->mrail.device_transfer_mode != NONE &&
+            mv2_device_use_ipc) {
 
             /*initialize IPC buffered channel if not initialized*/
-            if (rdma_cuda_dynamic_init && 
-                cuda_initialized && 
-                vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
-                cudaipc_init_dynamic (vc);
+            if (mv2_device_dynamic_init &&
+                mv2_device_initialized &&
+                vc->smp.can_access_peer == MV2_DEVICE_IPC_UNINITIALIZED) {
+                device_ipc_init_dynamic (vc);
             }
 
-            if (vc->smp.can_access_peer == CUDA_IPC_ENABLED &&
-                cudaipc_stage_buffered &&
+            if (vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED &&
+                mv2_device_use_ipc_stage_buffer &&
                 dt_contig &&
-                data_sz >= rdma_cuda_ipc_threshold)  {
+                data_sz >= mv2_device_ipc_threshold)  {
                 /* force RNDV for CUDA transfers when buffered CUDA IPC is enabled or
-                 * if rdma_cuda_smp_ipc is set off */
-                if (!rdma_cuda_smp_ipc) {
+                 * if mv2_device_use_smp_eager_ipc is set off */
+                if (!mv2_device_use_smp_eager_ipc) {
                     goto rndv_send;
                 }
             }
@@ -266,10 +266,10 @@ skip_self_send:
         /*forces rndv for non IPC based CUDA transfers*/
         if (SMP_INIT && 
             vc->smp.local_rank != -1 &&
-            sreq->mrail.cuda_transfer_mode != NONE) {
+            sreq->mrail.device_transfer_mode != NONE) {
 #ifdef HAVE_CUDA_IPC
-            if (rdma_cuda_ipc == 0 || 
-                vc->smp.can_access_peer != CUDA_IPC_ENABLED) 
+            if (mv2_device_use_ipc == 0 ||
+                vc->smp.can_access_peer != MV2_DEVICE_IPC_ENABLED)
 #endif
             {
                 goto rndv_send;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -523,7 +523,7 @@ int MPIDI_nem_ib_recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
         }
 
         /* set flag to mark that FP setup is failed/rejected. 
-        we sholdn't try further on this vc */
+        we shouldn't try further on this vc */
         VC_FIELD(vc, connection)->rfp.rdma_failed = 1;
 
     } else if (pkt->reply_data == RDMA_FP_SUCCESS) {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -572,13 +572,13 @@ void ibcli_main_exit()
     g_exit = 1;
 }
 
-/// a client initiates connection to server, exchange qp_endpoint infor
+/// a client initiates connection to server, exchange qp_endpoint info
 int exchange_with_server(char *srvname, int srvport, struct ib_connection *conn)
 {
     char msg[128];
 
     struct sockaddr_in srv_addr;
-    struct hostent *hp;         // get srv's addr infor
+    struct hostent *hp;         // get srv's addr info
 
     int cli_sock = socket(AF_INET, SOCK_STREAM, 0);
 

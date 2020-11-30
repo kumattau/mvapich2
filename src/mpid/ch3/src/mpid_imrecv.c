@@ -136,7 +136,7 @@ int MPID_Imrecv(void *buf, int count, MPI_Datatype datatype,
             /* there should never be outstanding completion events for an unexpected
              * recv without also having a "pending recv" */
             MPIU_Assert(recv_pending);
-            /* The data is still being transfered across the net.  We'll
+            /* The data is still being transferred across the net.  We'll
                leave it to the progress engine to handle once the
                entire message has arrived. */
             if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN)

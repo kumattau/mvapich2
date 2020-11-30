@@ -192,11 +192,15 @@ static HYD_status control_cb(int fd, HYD_event_t events, void *userp)
     struct HYD_proxy *proxy, *tproxy;
     struct HYD_pmcd_pmi_pg_scratch *pg_scratch;
     char *buf;
+    int is_dpm_signal = 0;
     HYD_status status = HYD_SUCCESS;
 
     HYDU_FUNC_ENTER();
 
     proxy = (struct HYD_proxy *) userp;
+
+    if (proxy->pg->pgid)
+            is_dpm_signal = 1;
 
     if (fd == STDIN_FILENO) {
         HYD_pmcd_init_header(&hdr);
@@ -244,8 +248,9 @@ static HYD_status control_cb(int fd, HYD_event_t events, void *userp)
         HYDU_ERR_POP(status, "error cleaning up proxy connection\n");
 
         /* If any of the processes was killed with a signal, cleanup
-         * the remaining processes */
-        if (HYD_server_info.user_global.auto_cleanup) {
+         * the remaining processes. This should be done just for non-dynamically
+         * spawned processes */
+        if (HYD_server_info.user_global.auto_cleanup && (!is_dpm_signal)) {
             for (i = 0; i < proxy->proxy_process_count; i++) {
                 if (!WIFEXITED(proxy->exit_status[i])) {
                     int code = proxy->exit_status[i];

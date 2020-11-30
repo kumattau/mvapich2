@@ -6,6 +6,7 @@
  */
 
 #include "mpiimpl.h"
+#include "helper_fns.h"
 
 
 #undef FUNCNAME

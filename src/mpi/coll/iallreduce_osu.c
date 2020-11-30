@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -88,7 +88,7 @@ int MPIR_Sharp_Iallreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
         reduce_spec.rbuf_desc.type          = SHARP_DATA_BUFFER;
         reduce_spec.rbuf_desc.buffer.mem_handle = NULL;    
     } else {
-        /* NOT implementated in Sharp */
+        /* NOT implemented in Sharp */
         mpi_errno = SHARP_COLL_ENOT_SUPP;
         goto fn_fail;
     }

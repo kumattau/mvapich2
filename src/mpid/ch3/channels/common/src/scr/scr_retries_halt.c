@@ -46,7 +46,7 @@ int print_usage()
 }
 
 struct arglist {
-  char* dir; /* direcotry containing halt file */
+  char* dir; /* directory containing halt file */
 };
 
 int process_args(int argc, char **argv, struct arglist* args)

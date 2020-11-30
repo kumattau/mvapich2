@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -67,6 +67,7 @@ static inline void mv2_ud_ext_sendq_queue(message_queue_t *q, vbuf *v)
     }
     q->tail = v;
     q->count++;
+    rdma_global_ext_sendq_size++;
     PRINT_DEBUG(DEBUG_UD_verbose>1,"queued to ext send queue, queue len:%d seqnum:%d\n", q->count, v->seqnum);
 }
 
@@ -79,6 +80,7 @@ static inline void mv2_ud_ext_window_add(message_queue_t *q, vbuf *v)
         (q->tail)->extwin_msg.next = v;
     }
     q->tail = v;
+    rdma_global_ext_sendq_size++;
     q->count++;
 }
 

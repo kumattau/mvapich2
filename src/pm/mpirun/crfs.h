@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -33,7 +33,7 @@ enum {
 
 #define MAX_HOSTNAME_LENGTH    64
 /**
-this struct contains all infor needed to do a migration.
+this struct contains all info needed to do a migration.
 **/
 typedef struct mig_info_s {
     /// input::

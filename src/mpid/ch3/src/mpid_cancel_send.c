@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -139,7 +139,7 @@ int MPID_Cancel_send(MPID_Request * sreq)
                conflict with release of the RTS request if the CTS is received
 	       (see handling of a rendezvous CTS packet in
                MPIDI_CH3U_Handle_recv_pkt()).  
-	       MPID_Request_fetch_and_clear_rts_sreq() is used to gurantee 
+	       MPID_Request_fetch_and_clear_rts_sreq() is used to guarantee 
 	       that atomicity. */
 #if defined(CHANNEL_MRAIL)
 	    /* OSU-MPI2 finishes rndv request with extra step */

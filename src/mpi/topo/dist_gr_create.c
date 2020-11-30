@@ -7,6 +7,7 @@
 
 #include "mpiimpl.h"
 #include "topo.h"
+#include "helper_fns.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_Dist_graph_create */
 #if defined(HAVE_PRAGMA_WEAK)

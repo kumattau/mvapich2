@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,6 +25,7 @@
 #include "rdma_cm.h"
 #include "cm.h"
 #include "mv2_utils.h"
+#include "ibv_send_inline.h"
 #ifdef RDMA_CM
 #include <sys/socket.h>
 #include <ifaddrs.h>
@@ -122,7 +123,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             }
 
             do {
-                ret = rdma_resolve_route(cma_id, rdma_cm_arp_timeout*exp_factor);
+                ret = rdma_ops.resolve_route(cma_id, rdma_cm_arp_timeout*exp_factor);
                 if (ret) {
                     connect_attempts++;
                     exp_factor *= 2;
@@ -158,7 +159,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             }
     
             if (rank < 0 || rail_index < 0) {
-                PRINT_DEBUG(DEBUG_RDMACM_verbose,"Unexpected error occured\n");
+                PRINT_DEBUG(DEBUG_RDMACM_verbose,"Unexpected error occurred\n");
             }
 
             rdma_cm_create_qp(vc, rail_index);
@@ -219,7 +220,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                         ((uint64_t *) conn_param.private_data)[offset+1],
                         ((uint64_t *) conn_param.private_data)[offset+2]);
 
-                ret = rdma_connect(cma_id, &conn_param);
+                ret = rdma_ops.connect(cma_id, &conn_param);
                 connect_attempts++;
                 if (ret) {
                     usleep(rdma_cm_connect_retry_interval*exp_factor);
@@ -274,7 +275,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             gotvc      = (MPIDI_VC_t*) ((uint64_t *) event->private_data)[offset];
 #endif
 
-            PRINT_DEBUG(DEBUG_RDMACM_verbose,"Passive side recieved connect request: [%d] :[%d]" 
+            PRINT_DEBUG(DEBUG_RDMACM_verbose,"Passive side received connect request: [%d] :[%d]" 
             " [vc: %p], vc->pg_rank = %d\n", rank, rail_index, gotvc, gotvc->pg_rank);
     
             MPIDI_PG_Find(MPIDI_Process.my_pg->id, &pg_tmp);
@@ -294,7 +295,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             {
                 PRINT_DEBUG(DEBUG_RDMACM_verbose,"Passive size rejecting connect request: "
                     "Crossing connection requests expected\n");
-                ret = rdma_reject(cma_id, NULL, 0);
+                ret = rdma_ops.reject(cma_id, NULL, 0);
                 if (ret) {
                     MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                         "rdma_reject error: %d\n", ret);
@@ -347,7 +348,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             conn_param.private_data_len = tmplen;
             conn_param.private_data = MPIU_Malloc(conn_param.private_data_len);
             ((uint64_t *) conn_param.private_data)[offset] = (uint64_t) vc;
-            ret = rdma_accept(cma_id, &conn_param);
+            ret = rdma_ops.accept(cma_id, &conn_param);
             if (ret) {
                 MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                         "rdma_accept error: %d\n", ret);
@@ -416,11 +417,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                              pg_rank, rank);
                          if (mv2_use_eager_fast_send &&
                              !(SMP_INIT && (vc->smp.local_nodes >= 0))) {
-                             if (likely(rdma_use_coalesce)) {
-                                 vc->eager_fast_fn = mv2_eager_fast_coalesce_send;
-                             } else {
-                                 vc->eager_fast_fn = mv2_eager_fast_send;
-                             }
+			     vc->use_eager_fast_fn = 1;
                          }
                      }
                  }
@@ -444,11 +441,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                              "%d->%d\n", pg_rank, rank);
                              if (mv2_use_eager_fast_send &&
                                  !(SMP_INIT && (vc->smp.local_nodes >= 0))) {
-                                 if (likely(rdma_use_coalesce)) {
-                                     vc->eager_fast_fn = mv2_eager_fast_coalesce_send;
-                                 } else {
-                                     vc->eager_fast_fn = mv2_eager_fast_send;
-                                 }
+				 vc->use_eager_fast_fn = 1;
                              }
                          }
                      }
@@ -462,7 +455,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
               * times even before the sem_wait is called. This is causing the
               * process to exit rdma_cm_connect_all even before the connections
               * have been fully established. The cause for the generation of the
-              * events is still unclear. The first two conditions chceking
+              * events is still unclear. The first two conditions checking
               * if the counters are non-zero are to catch this corner case.
               */
              if (rdma_cm_connected_count && rdma_cm_num_expected_connections &&
@@ -482,7 +475,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                 "RDMA CM Route error: rdma cma event %d, error %d, Retrying\n",
                     event->event, event->status);
             /* If rdma_resolve_route failed, retry */
-	    ret = rdma_resolve_route(cma_id, rdma_cm_arp_timeout*exp_factor);
+	    ret = rdma_ops.resolve_route(cma_id, rdma_cm_arp_timeout*exp_factor);
         break;
         case RDMA_CM_EVENT_CONNECT_ERROR:
             MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -516,7 +509,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
 
         default:
             PRINT_DEBUG(DEBUG_RDMACM_verbose,"%s: Caught unhandled rdma cm event - %s\n",
-                __FUNCTION__, rdma_event_str(event->event));
+                __FUNCTION__, rdma_ops.event_str(event->event));
         break;
     }
 fn_fail:
@@ -537,10 +530,10 @@ void *cm_thread(void *arg)
     while (1) {
 
         event = NULL;
-        mpi_errno = rdma_get_cm_event(proc->cm_channel, &event);
+        mpi_errno = rdma_ops.get_cm_event(proc->cm_channel, &event);
         if (rdma_cm_finalized) {
             if (event != NULL) {
-                rdma_ack_cm_event(event);
+                rdma_ops.ack_cm_event(event);
             }
             return NULL;
         }
@@ -557,7 +550,7 @@ void *cm_thread(void *arg)
             MPICM_unlock();
         }
 
-        rdma_ack_cm_event(event);
+        rdma_ops.ack_cm_event(event);
     }
 fn_fail:
     return NULL;
@@ -699,18 +692,18 @@ static int bind_listen_port(int pg_rank, int pg_size)
         hints.ai_port_space = RDMA_PS_TCP;
         hints.ai_flags = RAI_NUMERICHOST | RAI_FAMILY | RAI_PASSIVE;
 
-        if (rdma_getaddrinfo(rdma_cm_ipv6_addr, NULL, &hints, &rdma_addr)) {
+        if (rdma_ops.getaddrinfo(rdma_cm_ipv6_addr, NULL, &hints, &rdma_addr)) {
             MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s",
                             "Could not get transport independent address translation\n");
         }
-        if (rdma_bind_addr(proc->cm_listen_id, rdma_addr->ai_src_addr)) {
-            rdma_freeaddrinfo(rdma_addr);
+        if (rdma_ops.bind_addr(proc->cm_listen_id, rdma_addr->ai_src_addr)) {
+            rdma_ops.freeaddrinfo(rdma_addr);
             MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s",
                             "Binding to local IPv6 address failed\n");
         }
         rdma_base_listen_sid[pg_rank] = ((struct sockaddr_ib *)
                                          (&proc->cm_listen_id->route.addr.src_addr))->sib_sid;
-        rdma_freeaddrinfo(rdma_addr);
+        rdma_ops.freeaddrinfo(rdma_addr);
     } else
 #endif /*_MULTI_SUBNET_SUPPORT_*/
     {
@@ -724,7 +717,7 @@ static int bind_listen_port(int pg_rank, int pg_size)
         sin.sin_addr.s_addr = 0;
         sin.sin_port = rdma_base_listen_port[pg_rank];
 
-        ret = rdma_bind_addr(proc->cm_listen_id, (struct sockaddr *) &sin);
+        ret = rdma_ops.bind_addr(proc->cm_listen_id, (struct sockaddr *) &sin);
 
         while (ret)
         {
@@ -735,7 +728,7 @@ static int bind_listen_port(int pg_rank, int pg_size)
             }
 
             sin.sin_port = rdma_base_listen_port[pg_rank];
-            ret = rdma_bind_addr(proc->cm_listen_id, (struct sockaddr *) &sin);
+            ret = rdma_ops.bind_addr(proc->cm_listen_id, (struct sockaddr *) &sin);
             PRINT_DEBUG(DEBUG_RDMACM_verbose,"[%d] Port bind failed - %d. retrying %d\n",
                         pg_rank, rdma_base_listen_port[pg_rank], count++);
             if (count > 1000){
@@ -745,7 +738,7 @@ static int bind_listen_port(int pg_rank, int pg_size)
         }
     }
 
-    ret = rdma_listen(proc->cm_listen_id, 2 * (pg_size) * rdma_num_rails);
+    ret = rdma_ops.listen(proc->cm_listen_id, 2 * (pg_size) * rdma_num_rails);
     if (ret) {
         MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                         "**fail", "rdma_listen failed: %d\n", ret);
@@ -781,7 +774,7 @@ int ib_init_rdma_cm(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
         "sem_init", strerror(errno));
     }
 
-    if (!(proc->cm_channel = rdma_create_event_channel()))
+    if (!(proc->cm_channel = rdma_ops.create_event_channel()))
     {
         MPIR_ERR_SETFATALANDJUMP1(
             mpi_errno,
@@ -841,7 +834,7 @@ int ib_init_rdma_cm(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
         int j = 0;
         for (i = 0; i < rdma_num_hcas; i++) {
             for (j = 1; j <= rdma_num_ports; j++) {
-                if (ibv_query_gid(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i], j,
+                if (ibv_ops.query_gid(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i], j,
                                     rdma_default_gid_index,
                                     &mv2_MPIDI_CH3I_RDMA_Process.gids[i][j-1])) {
                     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
@@ -866,7 +859,7 @@ int ib_init_rdma_cm(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     }
 
     /* Create the listen cm_id */
-    ret = rdma_create_id(proc->cm_channel, 
+    ret = rdma_ops.create_id(proc->cm_channel, 
         &proc->cm_listen_id, proc, RDMA_PS_TCP);
     if (ret) {
         MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER,
@@ -974,7 +967,7 @@ int rdma_cm_get_contexts() {
                 struct rdma_addrinfo *rdma_addr = NULL, hints;
                 char rdma_cm_ipv6_addr[128];
 
-                ret = rdma_create_id(proc->cm_channel, &tmpcmid, proc, RDMA_PS_TCP);
+                ret = rdma_ops.create_id(proc->cm_channel, &tmpcmid, proc, RDMA_PS_TCP);
                 if (ret) {
                     MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                             "rdma_create_id error %d\n", ret);
@@ -991,16 +984,16 @@ int rdma_cm_get_contexts() {
                 hints.ai_port_space = RDMA_PS_TCP;
                 hints.ai_flags = RAI_NUMERICHOST | RAI_FAMILY;
 
-                if (rdma_getaddrinfo(rdma_cm_ipv6_addr, NULL, &hints, &rdma_addr)) {
+                if (rdma_ops.getaddrinfo(rdma_cm_ipv6_addr, NULL, &hints, &rdma_addr)) {
                     MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s",
                             "Could not get transport independent address translation\n");
                 }
                 ((struct sockaddr_ib *) (rdma_addr->ai_dst_addr))->sib_sid =
                  ((struct sockaddr_ib *) (&tmpcmid->route.addr.dst_addr))->sib_sid;
 
-                ret = rdma_resolve_addr(tmpcmid, NULL, rdma_addr->ai_dst_addr,
+                ret = rdma_ops.resolve_addr(tmpcmid, NULL, rdma_addr->ai_dst_addr,
                                         rdma_cm_arp_timeout);
-                rdma_freeaddrinfo(rdma_addr);
+                rdma_ops.freeaddrinfo(rdma_addr);
                 if (ret) {
                     MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                             "rdma_resolve_addr error %d\n", ret);
@@ -1010,7 +1003,7 @@ int rdma_cm_get_contexts() {
 
                 proc->nic_context[i] = tmpcmid->verbs;
 
-                rdma_destroy_id(tmpcmid);
+                rdma_ops.destroy_id(tmpcmid);
                 tmpcmid = NULL;
             }
         }
@@ -1018,7 +1011,7 @@ int rdma_cm_get_contexts() {
 #endif /*_MULTI_SUBNET_SUPPORT_*/
     {
         for (i = 0; i < rdma_num_hcas*rdma_num_ports; i++) {
-            ret = rdma_create_id(proc->cm_channel, &tmpcmid, proc, RDMA_PS_TCP);
+            ret = rdma_ops.create_id(proc->cm_channel, &tmpcmid, proc, RDMA_PS_TCP);
             if (ret) {
                 MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                         "rdma_create_id error %d\n", ret);
@@ -1027,7 +1020,7 @@ int rdma_cm_get_contexts() {
             MPIU_Memset(&sin, 0, sizeof(sin));
             sin.sin_family = AF_INET;
             sin.sin_addr.s_addr = rdma_cm_local_ips[i];
-            ret = rdma_resolve_addr(tmpcmid, NULL, (struct sockaddr *) &sin,
+            ret = rdma_ops.resolve_addr(tmpcmid, NULL, (struct sockaddr *) &sin,
                     rdma_cm_arp_timeout);
 
             if (ret) {
@@ -1039,7 +1032,7 @@ int rdma_cm_get_contexts() {
 
             proc->nic_context[i] = tmpcmid->verbs;
 
-            rdma_destroy_id(tmpcmid);
+            rdma_ops.destroy_id(tmpcmid);
             tmpcmid = NULL;
         }
     }
@@ -1095,7 +1088,7 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
         init_attr.cap.max_recv_wr = rdma_default_max_recv_wqe;
     }
 
-    ret = rdma_create_qp(cmid, proc->ptag[hca_index], &init_attr);
+    ret = rdma_ops.create_qp(cmid, proc->ptag[hca_index], &init_attr);
     if (ret){
         ibv_va_error_abort(IBV_RETURN_ERR,
                 "Error creating qp on hca %d using rdma_cm."
@@ -1364,15 +1357,15 @@ int rdma_cm_get_verbs_ip(int *num_interfaces)
     *num_interfaces = num_ip_enabled_devices;
     rdma_cm_local_ips = MPIU_Malloc((rdma_num_hcas*rdma_num_ports) * sizeof(int));
     for(index = 0; index < (*num_interfaces); index++){
-        if (value && ip_address_enabled_devices[index].device_name) {
-            if(strstr(value, ip_address_enabled_devices[index].device_name) == NULL) {
+        if (value != NULL && ip_address_enabled_devices != NULL &&
+            strstr(value, ip_address_enabled_devices[index].device_name) == NULL) {
                 continue;
-            }
         }
-        PRINT_DEBUG(DEBUG_RDMACM_verbose, "Assigning ip of: device %s, ip address %s\n", ip_address_enabled_devices[index].device_name,ip_address_enabled_devices[index].ip_address);
+        PRINT_DEBUG(DEBUG_RDMACM_verbose, "Assigning ip of: device %s,\
+        ip address %s\n", ip_address_enabled_devices[index].device_name,\
+        ip_address_enabled_devices[index].ip_address);
         rdma_cm_local_ips[index] = inet_addr(ip_address_enabled_devices[index].ip_address);
     }
-
 
     return mpi_errno;
 }
@@ -1435,7 +1428,7 @@ int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int offset, int rail_index){
     /* store VC used for connection in the context, 
      * so we get back vc at event callbacks 
      */
-    mpi_errno = rdma_create_id(proc->cm_channel, 
+    mpi_errno = rdma_ops.create_id(proc->cm_channel, 
         &(vc->mrail.rails[rail_index].cm_ids), vc, RDMA_PS_TCP);
     if (mpi_errno) {
         MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -1458,7 +1451,7 @@ int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int offset, int rail_index){
         hints.ai_port_space = RDMA_PS_TCP;
         hints.ai_flags = RAI_NUMERICHOST | RAI_FAMILY | RAI_PASSIVE;
 
-        if (rdma_getaddrinfo(rdma_cm_ipv6_src_addr, NULL, &hints, &src_rdma_addr)) {
+        if (rdma_ops.getaddrinfo(rdma_cm_ipv6_src_addr, NULL, &hints, &src_rdma_addr)) {
             MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s",
                             "Could not get transport independent address translation\n");
         }
@@ -1476,19 +1469,19 @@ int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int offset, int rail_index){
         hints.ai_src_len  = src_rdma_addr->ai_src_len;
         hints.ai_src_addr = src_rdma_addr->ai_src_addr;
 
-        if (rdma_getaddrinfo(rdma_cm_ipv6_dst_addr, NULL, &hints, &dst_rdma_addr)) {
+        if (rdma_ops.getaddrinfo(rdma_cm_ipv6_dst_addr, NULL, &hints, &dst_rdma_addr)) {
             MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s",
                             "Could not get transport independent address translation\n");
         }
         ((struct sockaddr_ib *) (dst_rdma_addr->ai_dst_addr))->sib_sid =
                                             rdma_base_listen_sid[offset];
 
-        mpi_errno = rdma_resolve_addr(vc->mrail.rails[rail_index].cm_ids,
+        mpi_errno = rdma_ops.resolve_addr(vc->mrail.rails[rail_index].cm_ids,
                                 dst_rdma_addr->ai_src_addr,
                                 dst_rdma_addr->ai_dst_addr,
                                 rdma_cm_arp_timeout);
-        rdma_freeaddrinfo(src_rdma_addr);
-        rdma_freeaddrinfo(dst_rdma_addr);
+        rdma_ops.freeaddrinfo(src_rdma_addr);
+        rdma_ops.freeaddrinfo(dst_rdma_addr);
         PRINT_DEBUG(DEBUG_RDMACM_verbose,"Active connect initiated for %d"
                     " [ip: %s:%016lx] [rail %d]\n", vc->pg_rank, rdma_cm_ipv6_dst_addr,
                     rdma_base_listen_sid[vc->pg_rank], rail_index);
@@ -1501,7 +1494,7 @@ int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int offset, int rail_index){
         sin.sin_addr.s_addr = rdma_cm_host_list[offset];
         sin.sin_port = rdma_base_listen_port[vc->pg_rank];
 
-        mpi_errno = rdma_resolve_addr(vc->mrail.rails[rail_index].cm_ids, NULL,
+        mpi_errno = rdma_ops.resolve_addr(vc->mrail.rails[rail_index].cm_ids, NULL,
                                 (struct sockaddr *) &sin, rdma_cm_arp_timeout);
         PRINT_DEBUG(DEBUG_RDMACM_verbose,"Active connect initiated for %d"
                     " [ip: %d:%d] [rail %d]\n", vc->pg_rank, rdma_cm_host_list[offset],
@@ -1533,7 +1526,7 @@ int rdma_cm_init_pd_cq()
     for (; i < rdma_num_hcas; ++i)
     {
         /* Allocate the protection domain for the HCA */
-        proc->ptag[i] = ibv_alloc_pd(proc->nic_context[i]);
+        proc->ptag[i] = ibv_ops.alloc_pd(proc->nic_context[i]);
 
         if (!proc->ptag[i]) {
             MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -1544,7 +1537,7 @@ int rdma_cm_init_pd_cq()
         if(rdma_use_blocking)
         {
             proc->comp_channel[i] =
-               ibv_create_comp_channel(proc->nic_context[i]);
+               ibv_ops.create_comp_channel(proc->nic_context[i]);
 
             if (!proc->comp_channel[i]) {
                 MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -1556,7 +1549,7 @@ int rdma_cm_init_pd_cq()
                 (proc->cluster_size != VERY_SMALL_CLUSTER)) {
                 /* Allocate the completion queue handle for the HCA */
                 /* Trac #423 */
-                proc->send_cq_hndl[i] = ibv_create_cq(
+                proc->send_cq_hndl[i] = ibv_ops.create_cq(
                     proc->nic_context[i],
                     rdma_default_max_cq_size,
                     NULL,
@@ -1567,7 +1560,7 @@ int rdma_cm_init_pd_cq()
                    /*Falling back to smaller cq size if creation failed*/ 
                     if(rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE) {
                        rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
-                       proc->send_cq_hndl[i] = ibv_create_cq(
+                       proc->send_cq_hndl[i] = ibv_ops.create_cq(
                                 proc->nic_context[i],
                                 rdma_default_max_cq_size,
                                 NULL,
@@ -1588,7 +1581,7 @@ int rdma_cm_init_pd_cq()
                             "**fail %s", "Request notify for CQ failed\n");
                 }
 
-                proc->recv_cq_hndl[i] = ibv_create_cq(
+                proc->recv_cq_hndl[i] = ibv_ops.create_cq(
                     proc->nic_context[i],
                     rdma_default_max_cq_size,
                     NULL,
@@ -1605,7 +1598,7 @@ int rdma_cm_init_pd_cq()
                                      "**fail %s", "Request notify for CQ failed\n");
                 }
             } else {
-                proc->cq_hndl[i] = ibv_create_cq(
+                proc->cq_hndl[i] = ibv_ops.create_cq(
                     proc->nic_context[i],
                     rdma_default_max_cq_size,
                     NULL,
@@ -1617,7 +1610,7 @@ int rdma_cm_init_pd_cq()
                     if((rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE) 
                              && MV2_IS_CHELSIO_IWARP_CARD(proc->hca_type)) {
                         rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
-                        proc->send_cq_hndl[i] = ibv_create_cq(
+                        proc->send_cq_hndl[i] = ibv_ops.create_cq(
                                 proc->nic_context[i],
                                 rdma_default_max_cq_size,
                                 NULL,
@@ -1646,7 +1639,7 @@ int rdma_cm_init_pd_cq()
                 (proc->cluster_size != VERY_SMALL_CLUSTER)) {
                 /* Allocate the completion queue handle for the HCA */
                 /* Trac #423*/
-                proc->send_cq_hndl[i] = ibv_create_cq(
+                proc->send_cq_hndl[i] = ibv_ops.create_cq(
                     proc->nic_context[i],
                     rdma_default_max_cq_size,
                     NULL,
@@ -1657,7 +1650,7 @@ int rdma_cm_init_pd_cq()
                     /*Falling back to smaller cq size if creation failed*/
                     if(rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE) {
                         rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
-                        proc->send_cq_hndl[i] = ibv_create_cq(
+                        proc->send_cq_hndl[i] = ibv_ops.create_cq(
                                 proc->nic_context[i],
                                 rdma_default_max_cq_size,
                                 NULL,
@@ -1673,7 +1666,7 @@ int rdma_cm_init_pd_cq()
                     }
                 }
     
-                proc->recv_cq_hndl[i] = ibv_create_cq(
+                proc->recv_cq_hndl[i] = ibv_ops.create_cq(
                     proc->nic_context[i],
                     rdma_default_max_cq_size,
                     NULL,
@@ -1685,7 +1678,7 @@ int rdma_cm_init_pd_cq()
                             "**fail %s", "Error allocating CQ");
                 }
             } else {
-                proc->cq_hndl[i] = ibv_create_cq(
+                proc->cq_hndl[i] = ibv_ops.create_cq(
                     proc->nic_context[i],
                     rdma_default_max_cq_size,
                     NULL,
@@ -1697,7 +1690,7 @@ int rdma_cm_init_pd_cq()
                     if((rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE)
                         && MV2_IS_CHELSIO_IWARP_CARD(proc->hca_type)) {
                         rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
-                        proc->cq_hndl[i] = ibv_create_cq(
+                        proc->cq_hndl[i] = ibv_ops.create_cq(
                                 proc->nic_context[i],
                                 rdma_default_max_cq_size,
                                 NULL,
@@ -1780,8 +1773,8 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
                 (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE)) {
                 for (rail_index = 0; rail_index < rdma_num_rails; rail_index++){
                     if (vc->mrail.rails[rail_index].cm_ids != NULL) {
-                        rdma_disconnect(vc->mrail.rails[rail_index].cm_ids);
-                        rdma_destroy_qp(vc->mrail.rails[rail_index].cm_ids);
+                        rdma_ops.disconnect(vc->mrail.rails[rail_index].cm_ids);
+                        rdma_ops.destroy_qp(vc->mrail.rails[rail_index].cm_ids);
                     }
                     vc->mrail.rails[rail_index].cm_ids = NULL;
                 }
@@ -1790,17 +1783,17 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
     
         for (i = 0; i < rdma_num_hcas; i++) {
             if (mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]) {
-                ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+                ibv_ops.destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
                 mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i] = NULL;
             }
 
             if (mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]) {
-                ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
+                ibv_ops.destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
                 mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i] = NULL;
             }
 
             if (mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]) {
-                ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
+                ibv_ops.destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
                 mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i] = NULL;
             }
 
@@ -1828,12 +1821,12 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
                     mv2_MPIDI_CH3I_RDMA_Process.async_thread[i] = 0;
                 }
                 if (mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i]){
-                    ibv_destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
+                    ibv_ops.destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
                     mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i] = NULL;
                 }
             }
             if(rdma_use_blocking) {
-                ibv_destroy_comp_channel(
+                ibv_ops.destroy_comp_channel(
                     mv2_MPIDI_CH3I_RDMA_Process.comp_channel[i]);
                 mv2_MPIDI_CH3I_RDMA_Process.comp_channel[i] = NULL;
             }
@@ -1846,7 +1839,7 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
                 (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE)) {
                 for (rail_index = 0; rail_index < rdma_num_rails; rail_index++){
                     if (vc->mrail.rails[rail_index].cm_ids != NULL) {
-                        rdma_destroy_id(vc->mrail.rails[rail_index].cm_ids);
+                        rdma_ops.destroy_id(vc->mrail.rails[rail_index].cm_ids);
                         vc->mrail.rails[rail_index].cm_ids = NULL;
                     }
                 }
@@ -1856,9 +1849,9 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
     }
 
     if (proc->cm_listen_id) {
-        rdma_destroy_id(proc->cm_listen_id);
+        rdma_ops.destroy_id(proc->cm_listen_id);
         rdma_cm_finalized = 1;
-        rdma_destroy_event_channel(mv2_MPIDI_CH3I_RDMA_Process.cm_channel);
+        rdma_ops.destroy_event_channel(mv2_MPIDI_CH3I_RDMA_Process.cm_channel);
 
         pthread_cancel(proc->cmthread);
         pthread_join(proc->cmthread, NULL);

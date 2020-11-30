@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -119,7 +119,7 @@ static int process_line (char * const lineptr)
     }
 
     if (setenv(key, value, 0)) {
-        config_error.msg = "Error seting environment variable";
+        config_error.msg = "Error setting environment variable";
         return -1;
     }
 
@@ -222,7 +222,9 @@ int read_user_config (unsigned long * crc)
          * Open and process configuration file
          */
         if ((config_file = fopen(user_config, "r"))) {
-            return read_config(config_file, crc);
+            report_fopen_error = read_config(config_file, crc);
+            report_fopen_error = fclose(config_file);
+            return report_fopen_error;
         } else if (report_fopen_error) {
             config_error.msg = strerror(errno);
             return -1;
@@ -237,6 +239,7 @@ int read_user_config (unsigned long * crc)
  */
 int read_system_config (unsigned long * crc)
 {
+    int err = 0;
     char const * ignore = getenv("MV2_IGNORE_SYSTEM_CONFIG");
     FILE * config_file;
 
@@ -262,7 +265,9 @@ int read_system_config (unsigned long * crc)
      * Open and process configuration file
      */
     if ((config_file = fopen(MV2_SYSTEM_CONFIG, "r"))) {
-        return read_config(config_file, crc);
+        err = read_config(config_file, crc);
+        err = fclose(config_file);
+        return err;
     }
 
     return 0;

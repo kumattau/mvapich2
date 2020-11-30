@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -82,14 +82,14 @@ static int hca_check(int rank) {
     /* char names[UMAD_MAX_DEVICES][UMAD_CA_NAME_LEN]; */
     struct ibv_device **dev_list = NULL;
     int num_devices;
-    dev_list = ibv_get_device_list(&num_devices);
+    dev_list = ibv_ops.get_device_list(&num_devices);
   /*    umad_init(); */
 
 
     for (hcan=0; hcan<rdma_num_hcas; hcan++) {
         /* umad_ca_t ca; */
         char *ca_name;
-        ca_name = (char *)ibv_get_device_name(dev_list[hcan]);
+        ca_name = (char *)ibv_ops.get_device_name(dev_list[hcan]);
         printf ("device_name: %s\n",ca_name);
         /*
         ret = umad_get_ca(ca_name, &ca);
@@ -112,7 +112,7 @@ static int hca_check(int rank) {
     }
 
     if (dev_list) {
-        ibv_free_device_list(dev_list);
+        ibv_ops.free_device_list(dev_list);
     }
     return mpi_errno;
 }

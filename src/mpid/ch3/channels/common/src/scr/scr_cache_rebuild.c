@@ -613,7 +613,7 @@ static int scr_distribute_files(scr_filemap* map, const scr_reddesc* red, int id
         scr_unlink_rank(map, id, dst_rank);
       }
 
-      /* sending to and/or recieving from another node */
+      /* sending to and/or receiving from another node */
       if (send_rank != MPI_PROC_NULL || recv_rank != MPI_PROC_NULL) {
         /* have someone to send to or receive from */
         int have_outgoing = 0;

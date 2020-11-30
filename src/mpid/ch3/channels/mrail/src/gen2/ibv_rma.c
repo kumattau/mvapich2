@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -46,7 +46,7 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
                 				    MPL_IOV *iov)
 {
     /* This function will register the local buf, send rdma write to target, and send
-     * get_resp_kt as rput finsh. Currently, we assume the local buffer is contiguous,
+     * get_resp_kt as rput finish. Currently, we assume the local buffer is contiguous,
      * datatype cases will be considered later */
     MPIDI_msg_sz_t nbytes;
     int rail;

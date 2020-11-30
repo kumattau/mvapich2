@@ -174,7 +174,7 @@ int process_args(int argc, char **argv, struct arglist* args)
   return 1;
 }
 
-/* checks whether specifed file exists, is readable, and is complete */
+/* checks whether specified file exists, is readable, and is complete */
 static int scr_bool_have_file(
   const scr_filemap* map,
   int id,

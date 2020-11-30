@@ -90,7 +90,7 @@
        cell.  I.e., how much of a cell would need to be sent over a
        network.
 
-   FIXME: Simplify this maddness!  Maybe something like this:
+   FIXME: Simplify this madness!  Maybe something like this:
 
        typedef struct mpich_pkt {
            header_field1;

@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -80,11 +80,11 @@ int MPIR_Pack_impl(const void *inbuf,
 
     if (contig) {
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && inbuf_isdev) {
-            MPIU_Memcpy_CUDA((void *) ((char *)outbuf + *position),
+        if (mv2_enable_device && inbuf_isdev) {
+            MPIU_Memcpy_Device((void *) ((char *)outbuf + *position),
                     (void *) ((char *)inbuf + dt_true_lb),
                     data_sz,
-                    cudaMemcpyDeviceToHost);
+                    deviceMemcpyDeviceToHost);
         } else
 #endif
         {
@@ -118,7 +118,7 @@ int MPIR_Pack_impl(const void *inbuf,
         MPID_Datatype *dt_ptr;
         MPID_Datatype_get_ptr(datatype, dt_ptr);
         last = data_sz;
-        MPID_Segment_pack_cuda(segp, first, &last, dt_ptr, 
+        MPID_Segment_pack_device(segp, first, &last, dt_ptr,
                         (void *) ((char *) outbuf + *position));
     } else 
 #endif

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -59,6 +59,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoall_count_recv);
+
 
 /* This is the default implementation of alltoall. The algorithm is:
    
@@ -472,6 +473,14 @@ int MPIR_Alltoall_ALG_MV2(
 
     sendbuf_extent = sendcount * comm_size *
         (MPIR_MAX(sendtype_true_extent, sendtype_extent));
+
+    if (mv2_alltoall_rd_max_msg_size < sendbuf_extent) {
+        /* avoid using RD Allgather based Alltoall for large messages */
+        return MPIR_Alltoall_pairwise_MV2 (sendbuf, sendcount, sendtype,
+                recvbuf, recvcount, recvtype,
+                comm_ptr, errflag );
+    }
+
     MPIU_CHKLMEM_MALLOC(tmp_buf, void *, sendbuf_extent*comm_size, mpi_errno, "tmp_buf");
 
     /* adjust for potential negative lower bound in datatype */
@@ -558,7 +567,7 @@ int MPIR_Alltoall_Scatter_dest_MV2(
     int dst, rank;
     MPID_Request **reqarray;
     MPI_Status *starray;
-    int sendtype_size, nbytes;
+    MPI_Aint sendtype_size, nbytes;
 
 
     
@@ -792,7 +801,8 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
     MPID_Comm *comm_ptr, 
     MPIR_Errflag_t *errflag )
 {
-    int sendtype_size, recvtype_size, nbytes, comm_size;
+    int sendtype_size, recvtype_size, comm_size;
+    MPI_Aint nbytes;
     char * tmp_buf = NULL;
     int mpi_errno=MPI_SUCCESS;
     int partial_sub_ok = 0;
@@ -813,7 +823,7 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
 
     MPID_Datatype_get_size_macro(sendtype, sendtype_size);
     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
-    nbytes = sendtype_size * sendcount;
+    nbytes = (MPI_Aint) sendtype_size * sendcount;
 
 #ifdef CHANNEL_PSM
     /* To avoid picking up algorithms like recursive doubling alltoall if psm is used */
@@ -838,7 +848,7 @@ int MPIR_Alltoall_index_tuned_intra_MV2(
         }
         if (likely(mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
             /* for small messages, force Bruck or RD */
-            if (comm_size * nbytes < 512 && local_size < 16 && nbytes < 32) {
+            if (comm_size * nbytes < mv2_alltoall_rd_max_msg_size && local_size < 16 && nbytes < 32) {
                MV2_Alltoall_function = MPIR_Alltoall_RD_MV2; 
             } else { 
                 MV2_Alltoall_function = MPIR_Alltoall_bruck_MV2;
@@ -1131,7 +1141,7 @@ int MPIR_Alltoall_intra_MV2(
     else if ((nbytes <= mv2_coll_param.alltoall_small_msg) && (comm_size >= 8)
 #if defined(_ENABLE_CUDA_)
     /* use Isend/Irecv and pairwise in cuda configuration*/
-    && !rdma_enable_cuda
+    && !mv2_enable_device
 #endif 
     ) {
 
@@ -1609,7 +1619,7 @@ int MPIR_Alltoall_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     int comm_size, nbytes = 0, snbytes = 0;
     int send_mem_type = 0, recv_mem_type = 0;
 
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         if (sendbuf != MPI_IN_PLACE) { 
             send_mem_type = is_device_buffer(sendbuf);
         }
@@ -1626,9 +1636,9 @@ int MPIR_Alltoall_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     nbytes = recvtype_extent * recvcount;
 
     /*Handling Non-contig datatypes*/
-    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-        (nbytes < rdma_cuda_block_size && snbytes < rdma_cuda_block_size)) {
-        cuda_coll_pack((void **)&sendbuf, &sendcount, &sendtype,
+    if (mv2_enable_device && (send_mem_type || recv_mem_type) &&
+        (nbytes < mv2_device_stage_block_size && snbytes < mv2_device_stage_block_size)) {
+        device_coll_pack((void **)&sendbuf, &sendcount, &sendtype,
                         &recvbuf, &recvcount, &recvtype,
                         0, comm_size, comm_size);
 
@@ -1640,29 +1650,29 @@ int MPIR_Alltoall_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
         nbytes = recvtype_extent * recvcount;
     }
 
-    if (rdma_enable_cuda && 
-        rdma_cuda_alltoall_dynamic &&
+    if (mv2_enable_device &&
+        mv2_device_alltoall_dynamic &&
         send_mem_type && recv_mem_type &&
-        nbytes <= rdma_cuda_block_size &&
-        snbytes <= rdma_cuda_block_size &&
-        nbytes*comm_size > rdma_cuda_block_size) {
+        nbytes <= mv2_device_stage_block_size &&
+        snbytes <= mv2_device_stage_block_size &&
+        nbytes*comm_size > mv2_device_stage_block_size) {
         mpi_errno = MPIR_Alltoall_CUDA_intra_MV2(sendbuf, sendcount, sendtype,
                                        recvbuf, recvcount, recvtype,
                                        comm_ptr, errflag);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         goto fn_exit;
-    } else if (rdma_enable_cuda &&
-        rdma_cuda_use_naive && 
+    } else if (mv2_enable_device &&
+        mv2_device_coll_use_stage &&
         (send_mem_type || recv_mem_type) &&
-        nbytes <= rdma_cuda_alltoall_naive_limit) {
+        nbytes <= mv2_device_alltoall_stage_limit) {
         if (sendbuf != MPI_IN_PLACE) {
-             mpi_errno = cuda_stage_alloc ((void **)&sendbuf,
+             mpi_errno = device_stage_alloc ((void **)&sendbuf,
                            sendcount*sendtype_extent*comm_size,
                            &recvbuf, recvcount*recvtype_extent*comm_size,
                            send_mem_type, recv_mem_type,
                            0);
         } else {
-             mpi_errno = cuda_stage_alloc ((void **)&sendbuf,
+             mpi_errno = device_stage_alloc ((void **)&sendbuf,
                            recvcount*recvtype_extent*comm_size,
                            &recvbuf, recvcount*recvtype_extent*comm_size,
                            send_mem_type, recv_mem_type,
@@ -1691,11 +1701,11 @@ int MPIR_Alltoall_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
 #ifdef _ENABLE_CUDA_ 
-    if (rdma_enable_cuda && 
-        rdma_cuda_use_naive &&
+    if (mv2_enable_device &&
+        mv2_device_coll_use_stage &&
         (send_mem_type || recv_mem_type) &&
-        nbytes <= rdma_cuda_alltoall_naive_limit) {
-        cuda_stage_free ((void **)&sendbuf, 
+        nbytes <= mv2_device_alltoall_stage_limit) {
+        device_stage_free ((void **)&sendbuf,
                         &recvbuf, recvcount*recvtype_extent*comm_size,
                         send_mem_type, recv_mem_type);
     }
@@ -1704,8 +1714,8 @@ int MPIR_Alltoall_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     
  fn_exit:
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && (send_mem_type || recv_mem_type)) {
-        cuda_coll_unpack(&recvcount, comm_size);
+    if (mv2_enable_device && (send_mem_type || recv_mem_type)) {
+        device_coll_unpack(&recvcount, comm_size);
     }
 #endif
     return mpi_errno;

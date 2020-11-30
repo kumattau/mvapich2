@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -77,7 +77,8 @@ int MPID_Comm_spawn_multiple(int count, char *array_of_commands[],
     if ((MPIR_Process.comm_world->local_size + count) > 32768 && !MPIR_Process.comm_world->rank) {
         mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,
                 MPI_ERR_OTHER, FCNAME, __LINE__, MPI_ERR_OTHER,
-                "**nomem", "Job size is larger than 32768. Reconfigure the library with --with-ch3-rank-bits=32");
+                "**nomem", "Job size is larger than 32768 (%d). Reconfigure the library with --with-ch3-rank-bits=32",
+                (MPIR_Process.comm_world->local_size + count));
     }
 #endif
     

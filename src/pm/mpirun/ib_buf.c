@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -121,7 +121,7 @@ void free_ib_buffer(struct ib_buffer *buf)
 
     /// dereg the mem-region
     if (buf->mr)
-        ibv_dereg_mr(buf->mr);
+        mpirun_ibv_ops.dereg_mr(buf->mr);
 
     free(buf->addr);
     free(buf);

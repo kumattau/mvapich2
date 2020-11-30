@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -53,7 +53,7 @@ static void unlock_apm()
     return;
 }
 
-/* This function is used for implmeneting  "Alternate Path Specification"
+/* This function is used for implementing  "Alternate Path Specification"
  * and "Path Loading Request Module", (SMTPS 2007 Paper) */
 
 /* Description:
@@ -79,7 +79,7 @@ static void unlock_apm()
  * path4, second QP will use path1 and path5 and so on, as the primary and
  * alternate path respectively.
  *
- * Finally, Since this function also implements Path Loading Rquest Module,
+ * Finally, Since this function also implements Path Loading Request Module,
  * it should modify the QP with the specification of the alternate path */
 
  int reload_alternate_path(struct ibv_qp *qp)

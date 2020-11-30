@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -76,15 +76,6 @@ MPIDI_CH3I_Process_t;
 extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 extern MPIDI_VC_t *mv2_read_progress_pending_vc;
 
-extern int mv2_eager_fast_send(MPIDI_VC_t* vc, const void *buf,
-                                MPIDI_msg_sz_t data_sz, int rank, int tag,
-                                MPID_Comm *comm, int context_offset, MPID_Request **sreq_p);
-extern int mv2_eager_fast_coalesce_send(MPIDI_VC_t* vc, const void *buf,
-                                MPIDI_msg_sz_t data_sz, int rank, int tag,
-                                MPID_Comm *comm, int context_offset, MPID_Request **sreq_p);
-extern int mv2_eager_fast_rfp_send(MPIDI_VC_t* vc, const void *buf,
-                                MPIDI_msg_sz_t data_sz, int rank, int tag,
-                                MPID_Comm *comm, int context_offset, MPID_Request **sreq_p);
 extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
                                 MPIDI_msg_sz_t data_sz, int rank, int tag,
                                 MPID_Comm *comm, int context_offset, MPID_Request **sreq_p);
@@ -102,7 +93,7 @@ extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
     }                                                           \
     vc->ch.sendq_tail = req;                                    \
     /* Disable direct send */                                   \
-    vc->eager_fast_fn = NULL;                                   \
+    vc->use_eager_fast_fn = 0;                                  \
 }
 
 #define MPIDI_CH3I_SendQ_enqueue_head(vc, req)                              \
@@ -116,7 +107,7 @@ extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
     }                                                                       \
     vc->ch.sendq_head = req;                                                \
     /* Disable direct send */                                               \
-    vc->eager_fast_fn = NULL;                                               \
+    vc->use_eager_fast_fn = 0;                                  	    \
 }
 
 #define MPIDI_CH3I_SendQ_dequeue(vc)                                    \
@@ -130,11 +121,7 @@ extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
         /* Re-enable direct send */                                     \
         if (mv2_use_eager_fast_send &&                                  \
             !(SMP_INIT && (vc->smp.local_nodes >= 0))) {                \
-            if (likely(rdma_use_coalesce)) {                            \
-                vc->eager_fast_fn = mv2_eager_fast_coalesce_send;       \
-            } else {                                                    \
-                vc->eager_fast_fn = mv2_eager_fast_send;                \
-            }                                                           \
+	    vc->use_eager_fast_fn = 1;                                  \
         }                                                               \
     }                                                                   \
 }
@@ -158,7 +145,7 @@ extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
     }                                                                   \
     vc->ch.cm_sendq_tail = req;                                         \
     /* Disable direct send */                                           \
-    vc->eager_fast_fn = NULL;                                           \
+    vc->use_eager_fast_fn = 0;   					\
 }
 
 #define MPIDI_CH3I_CM_SendQ_dequeue(vc)                                 \
@@ -172,11 +159,7 @@ extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
         /* Re-enable direct send */                                     \
         if (mv2_use_eager_fast_send &&                                  \
             !(SMP_INIT && (vc->smp.local_nodes >= 0))) {                \
-            if (likely(rdma_use_coalesce)) {                            \
-                vc->eager_fast_fn = mv2_eager_fast_coalesce_send;       \
-            } else {                                                    \
-                vc->eager_fast_fn = mv2_eager_fast_send;                \
-            }                                                           \
+	    vc->use_eager_fast_fn = 1;                                  \
         }                                                               \
     }                                                                   \
 }
@@ -199,7 +182,7 @@ extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
     }                                                                       \
     vc->ch.cm_1sc_sendq_tail = v;                                           \
     /* Disable direct send */                                               \
-    vc->eager_fast_fn = NULL;                                               \
+    vc->use_eager_fast_fn = 0;                                              \
 }
 
 #define MPIDI_CH3I_CM_One_Sided_SendQ_dequeue(vc)                           \
@@ -212,11 +195,7 @@ extern int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
         /* Re-enable direct send */                                         \
         if (mv2_use_eager_fast_send &&                                      \
             !(SMP_INIT && (vc->smp.local_nodes >= 0))) {                    \
-            if (likely(rdma_use_coalesce)) {                            \
-                vc->eager_fast_fn = mv2_eager_fast_coalesce_send;       \
-            } else {                                                    \
-                vc->eager_fast_fn = mv2_eager_fast_send;                \
-            }                                                           \
+	    vc->use_eager_fast_fn = 1;                                      \
         }                                                                   \
     }                                                                       \
 }
@@ -281,8 +260,8 @@ int MPIDI_CH3I_RDMA_put_datav(MPIDI_VC_t *vc,
 /*
 MPIDI_CH3I_RDMA_read_datav reads data from the local ch memory into the user
 buffer described by the iovec.  This function sets num_bytes_ptr to the
-amout of data successfully read which may be zero.  This function only reads
-data that was previously put by the remote process indentified by the vc.
+amount of data successfully read which may be zero.  This function only reads
+data that was previously put by the remote process identified by the vc.
 */
 int MPIDI_CH3I_RDMA_read_datav(MPIDI_VC_t *vc, 
         MPL_IOV *iov, int n, int *num_bytes_ptr);
@@ -332,16 +311,16 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(
 int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
                 MPIDI_CH3I_MRAILI_Rndv_info_t *rndv);
 #if defined(_ENABLE_CUDA_)
-void MRAILI_RDMA_Put_finish_cuda(MPIDI_VC_t * vc,
-          MPID_Request * sreq, int rail, int is_cuda_pipeline, 
-            int cuda_pipeline_finish, int offset);
-int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, 
+void MRAILI_RDMA_Put_finish_device(MPIDI_VC_t * vc,
+          MPID_Request * sreq, int rail, int is_device_pipeline,
+            int device_pipeline_finish, int offset);
+int MPIDI_CH3I_MRAILI_Process_device_finish(MPIDI_VC_t * vc,
             MPID_Request * rreq, MPIDI_CH3_Pkt_rput_finish_t * rf_pkt);
-void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
+void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_device(MPIDI_VC_t * vc,
         MPID_Request * sreq);
-void MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(MPIDI_VC_t * vc, MPID_Request * req);
-void MPIDI_CH3_Rendezvous_cuda_cts_conti(MPIDI_VC_t * vc,
-                           MPIDI_CH3_Pkt_cuda_cts_cont_t * cts_pkt);
+void MPIDI_CH3I_MRAIL_Send_device_cts_conti(MPIDI_VC_t * vc, MPID_Request * req);
+void MPIDI_CH3_Rendezvous_device_cts_conti(MPIDI_VC_t * vc,
+                           MPIDI_CH3_Pkt_device_cts_cont_t * cts_pkt);
 #endif
 
 int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
@@ -349,15 +328,7 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
         MPIDI_CH3I_MRAILI_Rndv_info_t * rndv,
         MPL_IOV *);
 
-int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc, 
-        vbuf * v, void **, int *headersize);
-
 int handle_read(MPIDI_VC_t * vc, vbuf * v);
-
-int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request *, 
-        vbuf *v, int header_size, int * nb);
-
-void  MPIDI_CH3I_MRAIL_Release_vbuf(vbuf * v);
 
 int MPIDI_CH3I_MRAIL_Finish_request(MPID_Request *);
 
@@ -405,7 +376,7 @@ int MPIDI_CH3I_MRAIL_CM_Dealloc(MPIDI_PG_t * pg);
 void MPIDI_CH3I_Cleanup_cqes(void);
 
 /*flag to check if cq_poll is success in the progressing loop*/
-int cq_poll_completion;
+extern int cq_poll_completion;
 
 #ifdef CKPT
 
@@ -491,7 +462,7 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
           vc->smp.send_active =  vc->smp.sendq_head;                     \
     }                                                                    \
     /* Disable direct send */                                            \
-    vc->eager_fast_fn = NULL;                                            \
+    vc->use_eager_fast_fn = 0;                                           \
 }                                                                        
 
 #define MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, req)                            \
@@ -508,7 +479,7 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
     }                                                                         \
     vc->smp.sendq_head = req;                                                 \
     /* Disable direct send */                                                 \
-    vc->eager_fast_fn = NULL;                                                 \
+     vc->use_eager_fast_fn = 0;                                                \
 }
 
 #define MPIDI_CH3I_SMP_SendQ_dequeue(vc)                                      \
@@ -524,7 +495,7 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
         vc->smp.sendq_tail = NULL;                                            \
         /* Enable direct send */                                              \
         if (mv2_use_eager_fast_send) {                                        \
-            vc->eager_fast_fn = mv2_smp_fast_write_contig;                    \
+	    vc->use_eager_fast_fn = 1;                                        \
         }                                                                     \
     }                                                                         \
     MPID_Request_release(req);                                                \
@@ -543,7 +514,7 @@ enum {
     MRAIL_SMP_RNDV_NOT_START
 };
 
-/* management informations */
+/* management information */
 struct smpi_var {
     volatile void *mmap_ptr;
     void *send_buf_pool_ptr;
@@ -608,17 +579,17 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req,
     const MPL_IOV * iov, const int n, int *num_bytes_ptr);
 
 #if defined(_ENABLE_CUDA_)
-int MPIDI_CH3I_SMP_writev_rndv_data_cuda(MPIDI_VC_t * vc, MPID_Request *req,
+int MPIDI_CH3I_SMP_writev_rndv_data_device(MPIDI_VC_t * vc, MPID_Request *req,
     const MPL_IOV * iov, const int n, int *num_bytes_ptr, int is_cont);
 
-void smp_cuda_send_copy_complete(MPIDI_VC_t * vc, MPID_Request *req, 
+void smp_device_send_copy_complete(MPIDI_VC_t * vc, MPID_Request *req,
     void *ptr_flag);
 
-int MPIDI_CH3I_SMP_readv_rndv_cuda(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
+int MPIDI_CH3I_SMP_readv_rndv_device(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
     const MPL_IOV * iov, const int iov_count, int index, size_t *num_bytes_ptr, 
     int is_cont);
 
-void smp_cuda_recv_copy_complete(MPIDI_VC_t * vc, MPID_Request *req, 
+void smp_device_recv_copy_complete(MPIDI_VC_t * vc, MPID_Request *req,
     void *recv_buf_ptr);
 #endif
 

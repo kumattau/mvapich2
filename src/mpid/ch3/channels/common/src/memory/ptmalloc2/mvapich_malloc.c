@@ -1,6 +1,6 @@
 /* Malloc implementation for multiple threads without lock contention. */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -269,7 +269,7 @@
 /* Channel specific memory hooks. */
 #include <mem_hooks.h>
 
-extern mvapich2_malloc_info_t mvapich2_minfo;
+mvapich2_malloc_info_t mvapich2_minfo;
 
 #define munmap(buf,len) mvapich2_munmap(buf, len)
 
@@ -323,7 +323,7 @@ extern "C" {
   is fairly extensive, and will slow down execution
   noticeably. Calling malloc_stats or mallinfo with MALLOC_DEBUG set
   will attempt to check every non-mmapped allocated and free chunk in
-  the course of computing the summmaries. (By nature, mmapped regions
+  the course of computing the summaries. (By nature, mmapped regions
   cannot be checked very much automatically.)
 
   Setting MALLOC_DEBUG may also be helpful if you are trying to modify
@@ -1302,6 +1302,14 @@ int      public_sET_STATe();
   POSIX wrapper like memalign(), checking for validity of size.
 */
 int      __posix_memalign(void **, size_t, size_t);
+/*
+  void * aligned_alloc (size_t alignment, size_t size)
+
+  The aligned_alloc function allocates a block of size bytes
+  whose address is a multiple of alignment. The alignment must
+  be a power of two and size must be a multiple of alignment.
+*/
+void *  __aligned_alloc(size_t, size_t);
 #endif
 
 /* mallopt tuning options */
@@ -1758,7 +1766,7 @@ nextchunk-> +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     the malloc code, but "mem" is the pointer that is returned to the
     user.  "Nextchunk" is the beginning of the next contiguous chunk.
 
-    Chunks always begin on even word boundries, so the mem portion
+    Chunks always begin on even word boundaries, so the mem portion
     (which is returned to the user) is also on an even word boundary, and
     thus at least double-word aligned.
 
@@ -1968,7 +1976,7 @@ nextchunk-> +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     and consolidated sets of chunks, which is what these bins hold, so
     they can be found quickly.  All procedures maintain the invariant
     that no consolidated chunk physically borders another one, so each
-    chunk in a list is known to be preceeded and followed by either
+    chunk in a list is known to be preceded and followed by either
     inuse chunks or the ends of memory.
 
     Chunks in bins are kept in size order, with ties going to the
@@ -2920,19 +2928,6 @@ static Void_t* sYSMALLOc(nb, av) INTERNAL_SIZE_T nb; mstate av;
 	       | PREV_INUSE);
     }
     else if ((heap = new_heap(nb + (MINSIZE + sizeof(*heap)), mp_.top_pad))) {
-      /* Use a newly allocated heap.  */
-      heap->ar_ptr = av;
-      heap->prev = old_heap;
-      av->system_mem += heap->size;
-      arena_mem += heap->size;
-#if 0
-      if((unsigned long)(mmapped_mem + arena_mem + sbrked_mem) > max_total_mem)
-	max_total_mem = mmapped_mem + arena_mem + sbrked_mem;
-#endif
-      /* Set up the new top.  */
-      top(av) = chunk_at_offset(heap, sizeof(*heap));
-      set_head(top(av), (heap->size - sizeof(*heap)) | PREV_INUSE);
-
       /* Setup fencepost and free the old top chunk. */
       /* The fencepost takes at least MINSIZE bytes, because it might
 	 become the top chunk again later.  Note that a footer is set
@@ -2948,6 +2943,19 @@ static Void_t* sYSMALLOc(nb, av) INTERNAL_SIZE_T nb; mstate av;
 	set_head(old_top, (old_size + 2*SIZE_SZ)|PREV_INUSE);
 	set_foot(old_top, (old_size + 2*SIZE_SZ));
       }
+
+      /* Use a newly allocated heap.  */
+      heap->ar_ptr = av;
+      heap->prev = heap_for_ptr(av->top);
+      av->system_mem += heap->size;
+      arena_mem += heap->size;
+#if 0
+      if((unsigned long)(mmapped_mem + arena_mem + sbrked_mem) > max_total_mem)
+	max_total_mem = mmapped_mem + arena_mem + sbrked_mem;
+#endif
+      /* Set up the new top.  */
+      top(av) = chunk_at_offset(heap, sizeof(*heap));
+      set_head(top(av), (heap->size - sizeof(*heap)) | PREV_INUSE);
     }
 
   } else { /* av == main_arena */
@@ -5572,10 +5580,53 @@ posix_memalign (void **memptr, size_t alignment, size_t size)
   return ENOMEM;
 }
 
+/* CHANNEL_MRAIL: We need to expose our own aligned_alloc or the wrong one
+ * will be used.
+#ifdef _LIBC
+*/
+
+void *
+/* <CHANNEL_MRAIL> */
+aligned_alloc (size_t alignment, size_t size)
+/* __aligned_alloc (size_t alignment, size_t size)
+ * </CHANNEL_MRAIL>
+ */
+{
+  void *mem;
+  __malloc_ptr_t (*hook) __MALLOC_PMT ((size_t, size_t,
+					__const __malloc_ptr_t)) =
+    __memalign_hook;
+
+  /* Test whether the size and alignment arguments are valid.
+     The alignment must be a power of two and
+     size must be a multiple of alignment. */
+  if (size % alignment != 0
+      || !powerof2 (alignment) != 0
+      || alignment == 0) {
+    MALLOC_FAILURE_ACTION
+    return 0;
+  }
+
+  /* Call the hook here, so that caller is posix_memalign's caller
+     and not posix_memalign itself.  */
+  if (hook != NULL)
+    mem = (*hook)(alignment, size, RETURN_ADDRESS (0));
+  else
+    mem = public_mEMALIGn (alignment, size);
+
+  if (mem != NULL) {
+    return mem;
+  }
+
+  MALLOC_FAILURE_ACTION
+  return 0;
+}
+
 /* <CHANNEL_MRAIL> */
 #if defined(_LIBC)
 /* </CHANNEL_MRAIL> */
 weak_alias (__posix_memalign, posix_memalign)
+weak_alias (__aligned_alloc, aligned_alloc)
 
 strong_alias (__libc_calloc, __calloc) weak_alias (__libc_calloc, calloc)
 strong_alias (__libc_free, __cfree) weak_alias (__libc_free, cfree)

@@ -3,7 +3,7 @@
  *  (C) 2003 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -44,7 +44,7 @@ typedef struct PMIProcess {
 					   data */
     struct ProcessWorld *spawnWorld;    /* In progress spawn multiple 
 					   new world */
-    struct PMIKVSpace   *spawnKVS;      /* In progres KV space for new world */
+    struct PMIKVSpace   *spawnKVS;      /* In progress KV space for new world */
 } PMIProcess;
 
 typedef struct PMIGroup {

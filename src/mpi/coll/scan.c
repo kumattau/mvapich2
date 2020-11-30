@@ -6,6 +6,7 @@
  */
 
 #include "mpiimpl.h"
+#include "helper_fns.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_Scan */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -376,7 +377,7 @@ int MPIR_Scan(
        scan result. for example, to node 3, it will have reduce result 
        of rank 1,2,3,4,5,6 in tempbuf. 
        then we should broadcast this result in the local node, and
-       reduce it with recvbuf to get final result if nessesary. */
+       reduce it with recvbuf to get final result if necessary. */
 
     if (comm_ptr->node_comm != NULL) {
         mpi_errno = MPIR_Bcast_impl(&noneed, 1, MPI_INT, 0, comm_ptr->node_comm, errflag);

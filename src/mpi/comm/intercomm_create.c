@@ -7,6 +7,7 @@
 
 #include "mpiimpl.h"
 #include "mpicomm.h"
+#include "helper_fns.h"
 
 #define MPIR_INTERCOMM_CREATE_TAG 0
 

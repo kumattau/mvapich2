@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -47,6 +47,7 @@ unsigned long rdma_default_max_recv_wqe = RDMA_DEFAULT_MAX_RECV_WQE;
 uint32_t      rdma_default_max_sg_list = RDMA_DEFAULT_MAX_SG_LIST;
 uint16_t      rdma_default_pkey_ix = RDMA_DEFAULT_PKEY_IX;
 uint16_t      rdma_default_pkey = RDMA_DEFAULT_PKEY;
+uint32_t      rdma_default_qkey = RDMA_DEFAULT_QKEY;
 uint8_t       rdma_default_qp_ous_rd_atom;
 uint8_t       rdma_default_max_rdma_dst_ops = RDMA_DEFAULT_MAX_RDMA_DST_OPS;
 enum ibv_mtu  rdma_default_mtu;
@@ -180,7 +181,7 @@ int striping_threshold = STRIPING_THRESHOLD;
 int use_iboeth = 0;
 
 /* Linear update factor for HSAM */
-int alpha = 0.9;
+double alpha = 0.9;
 int stripe_factor = 1;
 int apm_tester = 0;
 
@@ -213,7 +214,7 @@ static void get_hca_user_parameters()
         if (ib_hca_num_hcas > MAX_NUM_HCAS) {
         	ib_hca_num_hcas = MAX_NUM_HCAS;
             MPL_msg_printf("Warning, max hca is %d, change %s in ib_hca.h "
-            		"to overide the option\n", MAX_NUM_HCAS, "MAX_NUM_HCAS");
+            		"to override the option\n", MAX_NUM_HCAS, "MAX_NUM_HCAS");
         }
     }
 
@@ -224,7 +225,7 @@ static void get_hca_user_parameters()
         if (ib_hca_num_ports > MAX_NUM_PORTS) {
         	ib_hca_num_ports = MAX_NUM_PORTS;
 	    MPL_usage_printf("Warning, max ports per hca is %d, change %s in "
-		    "ibv_hca.h to overide the option\n", MAX_NUM_PORTS,
+		    "ibv_hca.h to override the option\n", MAX_NUM_PORTS,
 		    "MAX_NUM_PORTS");
         }
     }
@@ -891,7 +892,7 @@ int MPID_nem_ib_set_default_params()
         struct ibv_device_attr dev_attr;
         int mpi_errno = MPI_SUCCESS;
 
-        /*quering device for cq depth*/
+        /*querying device for cq depth*/
         mpi_errno = ibv_query_device(hca_list[0].nic_context, &dev_attr);
 
         if(!mpi_errno) {
@@ -963,7 +964,7 @@ int MPID_nem_ib_get_user_params()
         if (rdma_num_qp_per_port > MAX_NUM_QP_PER_PORT) {
             rdma_num_qp_per_port = MAX_NUM_QP_PER_PORT;
             MPL_usage_printf("Warning, max qps per port is %d, change %s in "
-		    "ibv_param.h to overide the option\n", MAX_NUM_QP_PER_PORT,
+		    "ibv_param.h to override the option\n", MAX_NUM_QP_PER_PORT,
 		    "MAX_NUM_QP_PER_PORT");
         }
     }
@@ -1095,6 +1096,9 @@ int MPID_nem_ib_get_user_params()
         rdma_default_pkey = (uint16_t)strtol(value, (char **) NULL,0) & PKEY_MASK;
     }
 
+    if ((value = getenv("MV2_DEFAULT_QKEY")) != NULL) {
+        rdma_default_qkey = (uint32_t)strtol(value, (char **) NULL,0);
+    }
     if ((value = getenv("MV2_DEFAULT_MIN_RNR_TIMER")) != NULL) {
         rdma_default_min_rnr_timer = (uint8_t)atoi(value);
     }

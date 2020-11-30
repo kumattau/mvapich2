@@ -49,7 +49,7 @@ http://sslab.konkuk.ac.kr, under BSD license.
 LiMIC2 has been adopted into MVAPICH/MVAPICH2 developed by Network-Based 
 Computing Laboratory (NBCL) of the Ohio State University. MVAPICH/MVAPICH2 
 is the open-source implementation of MPI/MPI2 library for InfiniBand and 
-iWARP clusters. This sofware is being used by more than 800 organizations 
+iWARP clusters. This software is being used by more than 800 organizations 
 world-wide. You can download the software at the MVAPICH website (http://
 mvapich.cse.ohio-state.edu).
 

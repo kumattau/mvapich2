@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -179,7 +179,7 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
             }
         }
         /* --END ERROR HANDLING-- */
-    } else if (root != rank) {    /* non-root nodes proceses */
+    } else if (root != rank) {    /* non-root nodes processes */
         if (sendcnt) {
             comm_size = comm_ptr->local_size;
             if (sendbuf != MPI_IN_PLACE) {
@@ -279,7 +279,7 @@ int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
             }
             /* --END ERROR HANDLING-- */
         }
-    } else if (root != rank) {    /* non-root nodes proceses */
+    } else if (root != rank) {    /* non-root nodes processes */
         if (sendcnt) {
             comm_size = comm_ptr->local_size;
             if (sendbuf != MPI_IN_PLACE) {
@@ -962,7 +962,7 @@ static int MPIR_Limic_Gather_Scheme_PT_PT(
 
                 /*We have now completed the intra_sock gather and all the 
                  * socket level leaders have data in their tmp_buf. So we 
-                 * set sendbuf = MPI_IN_PLACE and also explicity set the
+                 * set sendbuf = MPI_IN_PLACE and also explicitly set the
                  * is_data_avail= TEMP_BUF_HAS_DATA*/
                 mpi_errno  = MPIR_pt_pt_intra_gather(MPI_IN_PLACE, 
                                                      (nbytes*intra_sock_comm_size), 
@@ -1226,7 +1226,7 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
 
                 /*We have now completed the intra_sock gather and all the 
                  * socket level leaders have data in their tmp_buf. So we 
-                 * set sendbuf = MPI_IN_PLACE and also explicity set the
+                 * set sendbuf = MPI_IN_PLACE and also explicitly set the
                  * is_data_avail= TEMP_BUF_HAS_DATA*/
                 mpi_errno  = MPIR_pt_pt_intra_gather(MPI_IN_PLACE, 
                                                      (send_nbytes*intra_sock_comm_size), 
@@ -2028,26 +2028,26 @@ conf_check_end:
    MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
    int send_mem_type = 0;
    int recv_mem_type = 0;
-   if (rdma_enable_cuda) {
+   if (mv2_enable_device) {
        send_mem_type = is_device_buffer(sendbuf);
        recv_mem_type = is_device_buffer(recvbuf);
    }
-   if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-       rdma_cuda_use_naive && (nbytes <= rdma_cuda_gather_naive_limit/comm_size)) {
+   if (mv2_enable_device && (send_mem_type || recv_mem_type) &&
+       mv2_device_coll_use_stage && (nbytes <= mv2_device_gather_stage_limit/comm_size)) {
        if (sendbuf != MPI_IN_PLACE) {
             if (rank == root) {
-                mpi_errno = cuda_stage_alloc (NULL, 0,
+                mpi_errno = device_stage_alloc (NULL, 0,
                           &recvbuf, recvcnt*recvtype_extent*comm_size, 
                           0, recv_mem_type, 
                           0);
             } else {
-                mpi_errno = cuda_stage_alloc ((void **)&sendbuf, sendcnt*sendtype_extent,
+                mpi_errno = device_stage_alloc ((void **)&sendbuf, sendcnt*sendtype_extent,
                           NULL, 0, 
                           send_mem_type, 0, 
                           0);
             }
        } else {
-            mpi_errno = cuda_stage_alloc ((void **)&sendbuf, recvcnt*recvtype_extent,
+            mpi_errno = device_stage_alloc ((void **)&sendbuf, recvcnt*recvtype_extent,
                       &recvbuf, recvcnt*recvtype_extent*comm_size, 
                       0, recv_mem_type, 
                       rank*recvcnt*recvtype_extent);
@@ -2059,8 +2059,8 @@ conf_check_end:
 
 
     /* Use Direct algorithm in cuda configuration */
-    if (rdma_enable_cuda && (((nbytes > rdma_cuda_gather_naive_limit/comm_size) &&
-        rdma_cuda_use_naive) || !rdma_cuda_use_naive)) {
+    if (mv2_enable_device && (((nbytes > mv2_device_gather_stage_limit/comm_size) &&
+        mv2_device_coll_use_stage) || !mv2_device_coll_use_stage)) {
         mpi_errno = MPIR_Gather_MV2_Direct(sendbuf, sendcnt,
                                            sendtype, recvbuf, recvcnt, recvtype,
                                            root, comm_ptr, errflag);
@@ -2069,7 +2069,7 @@ conf_check_end:
 
     if (comm_ptr->dev.ch.rank_list != NULL &&
             mv2_use_direct_gather == 1 && mv2_use_two_level_gather == 1 &&
-            comm_ptr->dev.ch.shmem_coll_ok == 1) {
+            comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_blocked == 0) {
         /* Set intra-node function pt for gather_two_level */
         MV2_Gather_intra_node_function = mv2_gather_indexed_thresholds_table[conf_index][comm_size_index].
 	    intra_node[intra_node_algo_index].MV2_pt_Gather_function;
@@ -2088,14 +2088,14 @@ conf_check_end:
     }
 
 #ifdef _ENABLE_CUDA_ 
-    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-        rdma_cuda_use_naive && (nbytes <= rdma_cuda_gather_naive_limit/comm_size)){
+    if (mv2_enable_device && (send_mem_type || recv_mem_type) &&
+        mv2_device_coll_use_stage && (nbytes <= mv2_device_gather_stage_limit/comm_size)){
         if (rank == root) {
-            cuda_stage_free (NULL, 
+            device_stage_free (NULL,
                         &recvbuf, recvcnt*recvtype_extent*comm_size,
                         0, recv_mem_type);
         } else {
-            cuda_stage_free ((void **)&sendbuf, 
+            device_stage_free ((void **)&sendbuf,
                         NULL, 0,
                         send_mem_type, 0);
         }
@@ -2199,26 +2199,26 @@ int MPIR_Gather_MV2(const void *sendbuf,
    MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
    int send_mem_type = 0;
    int recv_mem_type = 0;
-   if (rdma_enable_cuda) {
+   if (mv2_enable_device) {
        send_mem_type = is_device_buffer(sendbuf);
        recv_mem_type = is_device_buffer(recvbuf);
    }
-   if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-       rdma_cuda_use_naive && (nbytes <= rdma_cuda_gather_naive_limit/comm_size)) {
+   if (mv2_enable_device && (send_mem_type || recv_mem_type) &&
+       mv2_device_coll_use_stage && (nbytes <= mv2_device_gather_stage_limit/comm_size)) {
        if (sendbuf != MPI_IN_PLACE) {
             if (rank == root) {
-                mpi_errno = cuda_stage_alloc (NULL, 0,
+                mpi_errno = device_stage_alloc (NULL, 0,
                           &recvbuf, recvcnt*recvtype_extent*comm_size, 
                           0, recv_mem_type, 
                           0);
             } else {
-                mpi_errno = cuda_stage_alloc ((void **)&sendbuf, sendcnt*sendtype_extent,
+                mpi_errno = device_stage_alloc ((void **)&sendbuf, sendcnt*sendtype_extent,
                           NULL, 0, 
                           send_mem_type, 0, 
                           0);
             }
        } else {
-            mpi_errno = cuda_stage_alloc ((void **)&sendbuf, recvcnt*recvtype_extent,
+            mpi_errno = device_stage_alloc ((void **)&sendbuf, recvcnt*recvtype_extent,
                       &recvbuf, recvcnt*recvtype_extent*comm_size, 
                       0, recv_mem_type, 
                       rank*recvcnt*recvtype_extent);
@@ -2230,8 +2230,8 @@ int MPIR_Gather_MV2(const void *sendbuf,
 
 
     /* Use Direct algorithm in cuda configuration */
-    if (rdma_enable_cuda && (((nbytes > rdma_cuda_gather_naive_limit/comm_size) &&
-        rdma_cuda_use_naive) || !rdma_cuda_use_naive)) {
+    if (mv2_enable_device && (((nbytes > mv2_device_gather_stage_limit/comm_size) &&
+        mv2_device_coll_use_stage) || !mv2_device_coll_use_stage)) {
         mpi_errno = MPIR_Gather_MV2_Direct(sendbuf, sendcnt,
                                            sendtype, recvbuf, recvcnt, recvtype,
                                            root, comm_ptr, errflag);
@@ -2239,7 +2239,8 @@ int MPIR_Gather_MV2(const void *sendbuf,
 #endif /*_ENABLE_CUDA_*/
 
     if (comm_ptr->dev.ch.is_global_block == 1 && mv2_use_direct_gather == 1 &&
-            mv2_use_two_level_gather == 1 && comm_ptr->dev.ch.shmem_coll_ok == 1) {
+            mv2_use_two_level_gather == 1 && comm_ptr->dev.ch.shmem_coll_ok == 1 &&
+            comm_ptr->dev.ch.is_blocked == 0) {
         /* Set intra-node function pt for gather_two_level */
         MV2_Gather_intra_node_function = 
                               mv2_gather_thresholds_table[range].intra_node[range_intra_threshold].
@@ -2260,14 +2261,14 @@ int MPIR_Gather_MV2(const void *sendbuf,
     }
 
 #ifdef _ENABLE_CUDA_ 
-    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-        rdma_cuda_use_naive && (nbytes <= rdma_cuda_gather_naive_limit/comm_size)){
+    if (mv2_enable_device && (send_mem_type || recv_mem_type) &&
+        mv2_device_coll_use_stage && (nbytes <= mv2_device_gather_stage_limit/comm_size)){
         if (rank == root) {
-            cuda_stage_free (NULL, 
+            device_stage_free (NULL,
                         &recvbuf, recvcnt*recvtype_extent*comm_size,
                         0, recv_mem_type);
         } else {
-            cuda_stage_free ((void **)&sendbuf, 
+            device_stage_free ((void **)&sendbuf,
                         NULL, 0,
                         send_mem_type, 0);
         }

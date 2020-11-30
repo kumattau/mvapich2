@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -89,6 +89,12 @@ int DEBUG_1SC_verbose;
 // Verbosity level for dreg cache
 int DEBUG_DREG_verbose;
 
+// Verbosity level for vbuf cache
+int DEBUG_VBUF_verbose;
+
+// Verbosity level for P2P send
+int DEBUG_SEND_verbose;
+
 static inline int env2int (char *name)
 {
     char* env_str = getenv( name );
@@ -122,6 +128,7 @@ int initialize_debug_variables() {
     DEBUG_RDMACM_verbose = env2int( "MV2_DEBUG_RDMACM_VERBOSE" );
     DEBUG_1SC_verbose = env2int( "MV2_DEBUG_1SC_VERBOSE" );
     DEBUG_DREG_verbose = env2int( "MV2_DEBUG_DREG_VERBOSE" );
+    DEBUG_VBUF_verbose = env2int( "MV2_DEBUG_VBUF_VERBOSE" );
     return 0;
 }
 

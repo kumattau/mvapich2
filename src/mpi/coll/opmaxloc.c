@@ -6,7 +6,7 @@
  */
 
 /*
- * Copyright (c) 2001-2019, The Ohio State University. All rights
+ * Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -49,6 +49,12 @@ typedef struct MPIR_longdoubleint_loctype {
   long double   value;
   int           loc;
 } MPIR_longdoubleint_loctype;
+#endif
+
+#ifdef __ibmxl__
+void real16_maxloc(void *invec, void *inoutvec, int *Len);
+#else
+void real16_maxloc_(void *invec, void *inoutvec, int *Len);
 #endif
 
 /* Note a subtlety in these two macros which avoids compiler warnings.
@@ -104,7 +110,6 @@ typedef struct MPIR_longdoubleint_loctype {
     }                                                   \
         break
 
-
 #undef FUNCNAME
 #define FUNCNAME MPIR_MAXLOC
 #undef FCNAME
@@ -141,6 +146,16 @@ void MPIR_MAXLOC(
     case MPI_2INTEGER:          MPIR_MAXLOC_F_CASE(MPI_Fint);
     case MPI_2REAL:             MPIR_MAXLOC_F_CASE(MPIR_FC_REAL_CTYPE);
     case MPI_2DOUBLE_PRECISION: MPIR_MAXLOC_F_CASE(MPIR_FC_DOUBLE_CTYPE);
+#ifndef __PGI
+        /* As of v20.1, PGI compilers only support real8 */
+    case MPI_REAL16:
+#ifdef __ibmxl__
+        real16_maxloc(invec, inoutvec, &flen);
+#else
+        real16_maxloc_(invec, inoutvec, &flen);
+#endif
+        break;
+#endif /*ifndef __PGI*/
 #endif
 #endif
 	/* --BEGIN ERROR HANDLING-- */
@@ -181,9 +196,13 @@ int MPIR_MAXLOC_check_dtype( MPI_Datatype type )
     case MPI_2INTEGER: 
     case MPI_2REAL: 
     case MPI_2DOUBLE_PRECISION: 
-#endif
-#endif
+#ifndef __PGI
+        /* As of v20.1, PGI compilers only support real8 */
+    case MPI_REAL16:
         break;
+#endif /*ifndef __PGI*/
+#endif
+#endif
 
     default: MPIR_ERR_SET1(mpi_errno, MPI_ERR_OP, "**opundefined", "**opundefined %s", "MPI_MAXLOC");
     }

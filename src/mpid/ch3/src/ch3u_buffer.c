@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -236,10 +236,10 @@ void MPIDI_CH3U_Buffer_copy(
 
 #ifdef _ENABLE_CUDA_
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3U_Buffer_copy_cuda
+#define FUNCNAME MPIDI_CH3U_Buffer_copy_device
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-void MPIDI_CH3U_Buffer_copy_cuda(
+void MPIDI_CH3U_Buffer_copy_device(
         const void * const sbuf, int scount, MPI_Datatype sdt, int * smpi_errno,
         void * const rbuf, int rcount, MPI_Datatype rdt, MPIDI_msg_sz_t * rsz,
         int * rmpi_errno)
@@ -281,8 +281,8 @@ void MPIDI_CH3U_Buffer_copy_cuda(
     if (sdt_contig && rdt_contig)
     {
         MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
-        MPIU_Memcpy_CUDA((char *)rbuf + rdt_true_lb, 
-                (const char *)sbuf + sdt_true_lb, sdata_sz, cudaMemcpyDefault);
+        MPIU_Memcpy_Device((char *)rbuf + rdt_true_lb,
+                (const char *)sbuf + sdt_true_lb, sdata_sz, deviceMemcpyDefault);
         MPIDI_FUNC_EXIT(MPID_STATE_MEMCPY);
         *rsz = sdata_sz;
     }
@@ -295,7 +295,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
         last = sdata_sz;
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST, 
                     "pre-unpack last=" MPIDI_MSG_SZ_FMT, last ));
-        MPID_Segment_unpack_cuda(&seg, 0, &last, rdt_ptr, (char*)sbuf + sdt_true_lb);
+        MPID_Segment_unpack_device(&seg, 0, &last, rdt_ptr, (char*)sbuf + sdt_true_lb);
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                     "pre-unpack last=" MPIDI_MSG_SZ_FMT, last ));
         /* --BEGIN ERROR HANDLING-- */
@@ -316,7 +316,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
         last = sdata_sz;
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                     "pre-pack last=" MPIDI_MSG_SZ_FMT, last ));
-        MPID_Segment_pack_cuda(&seg, 0, &last, sdt_ptr, (char*)rbuf + rdt_true_lb);
+        MPID_Segment_pack_device(&seg, 0, &last, sdt_ptr, (char*)rbuf + rdt_true_lb);
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                     "post-pack last=" MPIDI_MSG_SZ_FMT, last ));
         /* --BEGIN ERROR HANDLING-- */
@@ -336,7 +336,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
         MPID_Segment rseg;
         MPIDI_msg_sz_t rfirst;
 
-        MPIU_Malloc_CUDA(buf, sdata_sz);
+        MPIU_Malloc_Device(buf, sdata_sz);
         if (buf == NULL)
         {
             MPIU_DBG_MSG(CH3_OTHER,TYPICAL,"SRBuf allocation failure");
@@ -356,7 +356,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                     "pre-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
                     sfirst, last ));
-        MPID_Segment_pack_cuda(&sseg, sfirst, &last, sdt_ptr, buf);
+        MPID_Segment_pack_device(&sseg, sfirst, &last, sdt_ptr, buf);
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                     "post-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
                     sfirst, last ));
@@ -368,7 +368,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                     "pre-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
                     rfirst, last ));
-        MPID_Segment_unpack_cuda(&rseg, rfirst, &last, rdt_ptr, buf);
+        MPID_Segment_unpack_device(&rseg, rfirst, &last, rdt_ptr, buf);
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                     "post-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
                     rfirst, last ));
@@ -377,7 +377,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
         rfirst = last;
 
         *rsz = rfirst;
-        MPIU_Free_CUDA(buf);
+        MPIU_Free_Device(buf);
     }
 
 fn_exit:
@@ -400,23 +400,23 @@ int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, MPI_Aint count,
 	MPIDI_msg_sz_t data_sz;
 	
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && is_device_buffer(sreq->dev.user_buf)) {
-        sreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+    if (mv2_enable_device && is_device_buffer(sreq->dev.user_buf)) {
+        sreq->mrail.device_transfer_mode = DEVICE_TO_DEVICE;
     } else {
-        sreq->mrail.cuda_transfer_mode = NONE;
+        sreq->mrail.device_transfer_mode = NONE;
     }
 
-    if (rdma_enable_cuda && is_device_buffer(rreq->dev.user_buf)) {
-        rreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+    if (mv2_enable_device && is_device_buffer(rreq->dev.user_buf)) {
+        rreq->mrail.device_transfer_mode = DEVICE_TO_DEVICE;
     } else {
-        rreq->mrail.cuda_transfer_mode = NONE;
+        rreq->mrail.device_transfer_mode = NONE;
     }
 
-    if (rdma_enable_cuda &&
-            (DEVICE_TO_DEVICE == sreq->mrail.cuda_transfer_mode ||
-             DEVICE_TO_DEVICE == rreq->mrail.cuda_transfer_mode))
+    if (mv2_enable_device &&
+            (DEVICE_TO_DEVICE == sreq->mrail.device_transfer_mode ||
+             DEVICE_TO_DEVICE == rreq->mrail.device_transfer_mode))
     {
-        MPIDI_CH3U_Buffer_copy_cuda(
+        MPIDI_CH3U_Buffer_copy_device(
                 sreq->dev.user_buf, sreq->dev.user_count,
                 sreq->dev.datatype, &sreq->status.MPI_ERROR,
                 buf, count, datatype, &data_sz,

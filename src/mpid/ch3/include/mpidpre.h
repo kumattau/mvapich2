@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -210,10 +210,10 @@ typedef struct MPIDI_CH3I_comm
                              * disconnected as a part of
                              * MPI_COMM_DISCONNECT; FALSE otherwise. */
 
-    struct MPIDI_VCRT *vcrt;          /* virtual connecton reference table */
+    struct MPIDI_VCRT *vcrt;          /* virtual connection reference table */
     MPIDI_VCR         *vcr;           /* alias to the array of virtual connections
                                        * in vcrt */
-    struct MPIDI_VCRT *local_vcrt;    /* local virtual connecton reference table */
+    struct MPIDI_VCRT *local_vcrt;    /* local virtual connection reference table */
 
     struct MPID_Comm *next; /* next pointer for list of communicators */
     struct MPID_Comm *prev; /* prev pointer for list of communicators */
@@ -250,7 +250,7 @@ MPIDI_CH3I_comm_t;
  * the last op piggybacked with a FLUSH flag to
  * detect remote completion;
  * (4) UNLOCK means origin issues all pending operations
- * incuding the last op piggybacked with an UNLOCK
+ * including the last op piggybacked with an UNLOCK
  * flag to release the lock on target and detect remote
  * completion.
  * Note that FLUSH_LOCAL is a superset of NONE, FLUSH
@@ -499,7 +499,7 @@ typedef struct MPIDI_Request {
     /* CUDA has a large CTS packet. It is ineffitient to have static 
        MPIDI_CH3_Pkt_t var */
     void *pending_pkt;
-    void *cuda_srbuf_entry;
+    void *device_srbuf_entry;
     int is_device_tmpbuf;
 #else
     MPIDI_CH3_Pkt_t pending_pkt;

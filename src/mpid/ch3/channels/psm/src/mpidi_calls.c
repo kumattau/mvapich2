@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -14,6 +14,11 @@
 #include "psmpriv.h"
 #include <pthread.h>
 
+int (*psm_lock_fn)(pthread_spinlock_t *);
+int (*psm_unlock_fn)(pthread_spinlock_t *);
+int (*psm_progress_lock_fn)(pthread_spinlock_t *);
+int (*psm_progress_unlock_fn)(pthread_spinlock_t *);
+progress_hook_slot_t progress_hooks[MAX_PROGRESS_HOOKS];
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Init

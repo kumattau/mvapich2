@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -42,7 +42,7 @@ void MPIDI_dbg_printf(int level, char *func, char *fmt, ...)
     /* FIXME: This "unreferenced_arg" is an example of a problem with the
      * API (unneeded level argument) or the code (failure to check the
      * level argument).  Inserting these "unreference_arg" macros erroneously
-     * suggests that the code is correct with this ununsed argument, and thus
+     * suggests that the code is correct with this unused argument, and thus
      * commits the grave harm of obscuring a real problem */
     MPIU_UNREFERENCED_ARG(level);
     {

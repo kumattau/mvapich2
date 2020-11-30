@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,7 @@
  */
 
 #include "mpiimpl.h"
+#include "helper_fns.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_Alltoallv */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -376,10 +377,10 @@ int MPIR_Alltoallv_impl(const void *sendbuf, const int *sendcounts, const int *s
 #if defined(_ENABLE_CUDA_)
     int i, rank, comm_size;
     int sendbuf_on_device = 0, recvbuf_on_device = 0;
-    int recvtype_extent = 0, total_count = 0;
-    int total_size = 0, total_msgs = 0, avg_size = 0;
+    MPI_Aint recvtype_extent = 0, total_count = 0;
+    MPI_Aint total_size = 0, total_msgs = 0, avg_size = 0;
 
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         rank = comm_ptr->rank;
         if (comm_ptr->comm_kind == MPID_INTRACOMM) {
             comm_size = comm_ptr->local_size;
@@ -409,10 +410,10 @@ int MPIR_Alltoallv_impl(const void *sendbuf, const int *sendcounts, const int *s
         avg_size = total_size / total_msgs;
 
         if ((sendbuf_on_device || recvbuf_on_device) &&
-             rdma_cuda_use_naive &&
-             avg_size <= rdma_cuda_alltoallv_naive_limit) {
+             mv2_device_coll_use_stage &&
+             avg_size <= mv2_device_alltoallv_stage_limit) {
 
-            mpi_errno = cuda_stage_alloc_v ((void **) &sendbuf, (int *)sendcounts, sendtype,
+            mpi_errno = device_stage_alloc_v ((void **) &sendbuf, (int *)sendcounts, sendtype,
                      (int **)&sdispls, comm_size,
                      &recvbuf, (int *)recvcounts, recvtype,
                      (int **)&rdispls, comm_size,
@@ -440,12 +441,12 @@ int MPIR_Alltoallv_impl(const void *sendbuf, const int *sendcounts, const int *s
     }
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         if ((sendbuf_on_device || recvbuf_on_device) &&
-             rdma_cuda_use_naive &&
-             avg_size <= rdma_cuda_alltoallv_naive_limit) {
+             mv2_device_coll_use_stage &&
+             avg_size <= mv2_device_alltoallv_stage_limit) {
 
-            cuda_stage_free_v ((void **)&sendbuf, (int *)sendcounts, sendtype,
+            device_stage_free_v ((void **)&sendbuf, (int *)sendcounts, sendtype,
                (int **)&sdispls, comm_size,
                &recvbuf, (int *)recvcounts, recvtype,
                (int **)&rdispls, comm_size,

@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -124,6 +124,7 @@ AVL_TREE* vma_tree;
 
 #if !defined(DISABLE_PTMALLOC)
 
+void flush_delayed_dregs(void* buf, size_t len);
 /* Array which stores the memory regions 
  * ptrs which are to be deregistered after 
  * free hook pulls them out of the reg cache
@@ -952,14 +953,25 @@ void flush_dereg_mrs_external()
  */
 dreg_entry *dreg_register(void* buf, size_t len)
 {
-    int rc;
+    int rc, i = 0;
+    static int show_dreg_evict_warning = 0;
     MPIDI_STATE_DECL(MPID_GEN2_DREG_REGISTER);
     MPIDI_FUNC_ENTER(MPID_GEN2_DREG_REGISTER);
 
 #if !defined(DISABLE_PTMALLOC)
     lock_dreg();
-#endif /* !defined(DISABLE_PTMALLOC) */
 
+    if (unlikely(buf_reg_count)) {
+        for (i = 0; i < buf_reg_count; ++i) {
+            if (buf >= delayed_buf_region[i].iov_base &&
+                buf < (delayed_buf_region[i].iov_base+delayed_buf_region[i].iov_len)) {
+                PRINT_DEBUG(DEBUG_DREG_verbose,"%p already in delayed_buf_region at loc %d (len = %d/%d)\n",
+                            buf, i, delayed_buf_region[i].iov_len, len);
+                flush_delayed_dregs(delayed_buf_region[i].iov_base, delayed_buf_region[i].iov_len);
+            }
+        }
+    }
+#endif /* !defined(DISABLE_PTMALLOC) */
     struct dreg_entry* d = dreg_find(buf, len);
 
     if (d != NULL)
@@ -977,10 +989,16 @@ dreg_entry *dreg_register(void* buf, size_t len)
 
         while ((d = dreg_new_entry(buf, len)) == NULL)
         {
-            /* either was not able to obtain a dreg_entry data strucrure
+            /* either was not able to obtain a dreg_entry data structure
              * or was not able to register memory.  In either case,
              * attempt to evict a currently unused entry and try again.
              */
+            PRINT_INFO(!show_dreg_evict_warning,
+                            "[Performance Impact Warning]: Entries are being evicted from the InfiniBand registration cache."
+                            " This can lead to degraded performance. Consider increasing MV2_NDREG_ENTRIES_MAX "
+                            "(current value: %d) and MV2_NDREG_ENTRIES (current value: %d)\n",
+                            rdma_ndreg_entries_max, rdma_ndreg_entries);
+            show_dreg_evict_warning = 1;
             rc = dreg_evict();
 
             if (rc == 0)
@@ -994,7 +1012,7 @@ dreg_entry *dreg_register(void* buf, size_t len)
                 PRINT_DEBUG(DEBUG_DREG_verbose, "Eviction failed\n");
                 return NULL;
             }
-            PRINT_DEBUG(DEBUG_DREG_verbose, "Eviction sucessful\n");
+            PRINT_DEBUG(DEBUG_DREG_verbose, "Eviction successful\n");
             /* eviction successful, try again */
         }
         dreg_incr_refcount(d);
@@ -1198,6 +1216,7 @@ int dreg_evict()
     dreg_remove(d);
     PRINT_DEBUG(DEBUG_DREG_verbose, "Adding dreg %p to free list: ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
                 d, d->refcount, d->is_valid, d->npages, d->pagenum);
+
     DREG_ADD_TO_FREE_LIST(d);
     ++dreg_stat_evicted;
     return 1;
@@ -1404,6 +1423,102 @@ find_buf:
     
     unlock_dereg();
     unlock_dreg();
+
+}
+
+void flush_delayed_dregs(void* buf, size_t len)
+{
+    unsigned long pagenum_low, pagenum_high;
+    unsigned long  npages, begin, end;
+    unsigned long user_low_a, user_high_a;
+    unsigned long pagebase_low_a, pagebase_high_a;
+    struct dreg_entry *d;
+    void *addr;
+    int i,j=0;
+    
+#ifdef NEMESIS_BUILD
+    if(!g_is_dreg_initialized ||
+            !process_info.has_lazy_mem_unregister)
+#else
+    if(!g_is_dreg_initialized ||
+            !mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister)
+#endif
+    {
+        PRINT_ERROR("Dreg not initialized\n");
+        return;
+    }
+
+    if(have_dereg()) {
+        PRINT_ERROR("Alredy have dereg lock\n");
+        return;
+    }
+
+    lock_dereg();
+
+find_buf:
+    /* calculate base page address for registration */
+    user_low_a = (unsigned long) buf;
+    user_high_a = user_low_a + (unsigned long) len - 1;
+
+    pagebase_low_a = user_low_a & ~DREG_PAGEMASK;
+    pagebase_high_a = user_high_a & ~DREG_PAGEMASK;
+
+    /* info to store in hash table */
+    pagenum_low = pagebase_low_a >> DREG_PAGEBITS;
+    pagenum_high = pagebase_high_a >> DREG_PAGEBITS;
+    npages = 1 + (pagenum_high - pagenum_low);
+
+    /* For every page in this buffer find out whether
+    * it is registered or not. This is fine, since
+    * we register only at a page granularity */
+
+    for(i = 0; i < npages; i++) {
+
+        addr = (void *) ((uintptr_t) pagebase_low_a + i * DREG_PAGESIZE);
+        
+        begin = ((unsigned long)addr) >> DREG_PAGEBITS;
+
+        end = ((unsigned long)(((char*)addr) +
+                        DREG_PAGESIZE - 1)) >> DREG_PAGEBITS;
+
+        while ((d = dreg_lookup (begin, end)) != NULL) {
+            if (d->refcount !=0 || d->is_valid == 0) {
+                /* This memory area is still being referenced
+                * by other pending MPI operations, which are
+                * expected to call dreg_unregister and thus
+                * unpin the buffer. We cannot deregister this
+                * page, since other ops are pending from here. */
+
+                /* OR: This memory region is in the process of
+                * being deregistered. Leave it alone! */
+
+                PRINT_DEBUG(DEBUG_DREG_verbose, "Not freeing dreg %p. ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                            d, d->refcount, d->is_valid, d->npages, d->pagenum);
+                break;
+            }
+            deregister_mr_array[n_dereg_mr] = d;
+            d->in_deregister_mr_array = 1;
+            d->is_valid = 0;
+            PRINT_DEBUG(DEBUG_DREG_verbose, "Trying to free associated dreg %p. ref_count = %d, valid = %d, npages = %lu, pagenum = %lu\n",
+                        d, d->refcount, d->is_valid, d->npages, d->pagenum);
+            /*
+            *  dreg_remove can call free() while removing vma_entry
+            *  It can lead to resursion here. but, still we have added 
+            *  this here on the assumption that dreg_lookup will fail 
+            */
+            dreg_remove (d);
+            n_dereg_mr++;
+        }
+    }
+    if (j < buf_reg_count) {
+        buf = delayed_buf_region[j].iov_base;
+        len = delayed_buf_region[j].iov_len;
+        j++;
+        goto find_buf;
+    }
+    buf_reg_count = 0;
+
+    unlock_dereg();
 
 }
 #endif /* !defined(DISABLE_PTMALLOC) */

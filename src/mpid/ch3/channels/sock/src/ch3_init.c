@@ -10,6 +10,9 @@
    interface (not just the implementation of that interface) changes */
 char MPIDI_CH3_ABIVersion[] = "1.1";
 
+/* Use a runtime modifiable parameter to determine the minimum IOV density */
+int mv2_iov_density_min = MPIDI_IOV_DENSITY_MIN;
+
 /*
  *  MPIDI_CH3_Init  - makes socket specific initializations.  Most of this 
  *                    functionality is in the MPIDI_CH3U_Init_sock upcall 

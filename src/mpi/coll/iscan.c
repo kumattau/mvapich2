@@ -289,7 +289,7 @@ int MPIR_Iscan_SMP(const void *sendbuf, void *recvbuf, int count, MPI_Datatype d
        scan result. for example, to node 3, it will have reduce result
        of rank 1,2,3,4,5,6 in tempbuf.
        then we should broadcast this result in the local node, and
-       reduce it with recvbuf to get final result if nessesary. */
+       reduce it with recvbuf to get final result if necessary. */
 
     if (MPIU_Get_internode_rank(comm_ptr, rank) != 0) {
         /* we aren't on "node 0", so our node leader (possibly us) received

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -47,6 +47,9 @@
 
 /////////////////////////////////////
 #define        POLL_COMP_CHANNEL
+
+mpirun_ibv_ops_t mpirun_ibv_ops;
+void *mpirun_ibv_dl_handle = NULL;
 
 ////////////////////////////////////
 
@@ -216,6 +219,11 @@ int ib_HCA_init(struct ib_HCA *hca, int is_srv)
     int i, ret;
     //int dev;
 
+    ret = mv2_mpirun_ibv_dlopen_init();
+    if (ret != SUCCESS_DLOPEN) {
+        return ret;
+    }
+
     ///////////
     memset(hca, 0, sizeof(*hca));
     pthread_mutex_init(&hca->mutex, NULL);
@@ -241,7 +249,7 @@ int ib_HCA_init(struct ib_HCA *hca, int is_srv)
     //////////////////////////////////////////////////////////////////
     //// open IB device 
 
-    dev_list = ibv_get_device_list(&ret);   // has "ret" num of devices in the system
+    dev_list = mpirun_ibv_ops.get_device_list(&ret);   // has "ret" num of devices in the system
     if (!dev_list) {
         error("Fail at get_device_list\n");
         goto err_out_1;
@@ -249,35 +257,35 @@ int ib_HCA_init(struct ib_HCA *hca, int is_srv)
 
     for (i = 0; i < ret; i++)   // open the device with "g_devname"
     {
-        if (strcmp(g_devname, ibv_get_device_name(dev_list[i])) == 0) {
-            hca->context = ibv_open_device(dev_list[i]);
+        if (strcmp(g_devname, mpirun_ibv_ops.get_device_name(dev_list[i])) == 0) {
+            hca->context = mpirun_ibv_ops.open_device(dev_list[i]);
             break;
         }
     }
     if (i >= ret)               // couldn't find the device
     {
         i = ret - 1;
-        hca->context = ibv_open_device(dev_list[i]);
+        hca->context = mpirun_ibv_ops.open_device(dev_list[i]);
         //error("ERROR!!!!   ****** %d HCA,  Cannot find device %s\n", ret,g_devname);
         //return -1;
     }
     //dev = 1; //ret-1; // use device 0: // dev0: mthca0,  dev1: mlx4_0
 /*    g_device = ret>1? g_device: 0;
-    hca->context = ibv_open_device(dev_list[g_device]);
+    hca->context = mpirun_ibv_ops.open_device(dev_list[g_device]);
     if( ! hca->context ){
         error("Fail to open_device %d\n", g_device);
-        ibv_free_device_list( dev_list ); // free all other devices
+        mpirun_ibv_ops.free_device_list( dev_list ); // free all other devices
         goto err_out_1;
     }    */
-    printf("------- Has opened device: %s\n", ibv_get_device_name(dev_list[i]));    //g_device]) );
-    ibv_free_device_list(dev_list); // free all other devices
+    printf("------- Has opened device: %s\n", mpirun_ibv_ops.get_device_name(dev_list[i]));    //g_device]) );
+    mpirun_ibv_ops.free_device_list(dev_list); // free all other devices
 
     /// get device's MTU    
-    ibv_query_port(hca->context, hca->ib_port, &port_attr);
+    mpirun_ibv_ops.query_port(hca->context, hca->ib_port, &port_attr);
     hca->mtu = port_attr.active_mtu;
 
     ///// create completion-channel
-    hca->comp_channel = ibv_create_comp_channel(hca->context);
+    hca->comp_channel = mpirun_ibv_ops.create_comp_channel(hca->context);
     if (!hca->comp_channel) {
         error("Fail to create_comp_channel\n");
         goto err_out_1;
@@ -293,13 +301,13 @@ int ib_HCA_init(struct ib_HCA *hca, int is_srv)
 #endif
 
     // get pd
-    hca->pd = ibv_alloc_pd(hca->context);
+    hca->pd = mpirun_ibv_ops.alloc_pd(hca->context);
     if (!hca->pd) {
         error("Fail to alloc_pd\n");
         goto err_out_1;
     }
     // get CQ
-    hca->cq = ibv_create_cq(hca->context, hca->rx_depth + 1,    // rx_depth+1,  /* CQE depth */
+    hca->cq = mpirun_ibv_ops.create_cq(hca->context, hca->rx_depth + 1,    // rx_depth+1,  /* CQE depth */
                             NULL,   //void*, user provide cq_context                
                             hca->comp_channel,  /*completion_channel */
                             0);
@@ -313,7 +321,7 @@ int ib_HCA_init(struct ib_HCA *hca, int is_srv)
                  .max_wr = g_rx_depth,
                  .max_sge = 1}
     };
-    hca->srq = ibv_create_srq(hca->pd, &srqattr);
+    hca->srq = mpirun_ibv_ops.create_srq(hca->pd, &srqattr);
     if (!hca->srq) {
         error("Couldn't create SRQ\n");
         goto err_out_1;
@@ -354,33 +362,33 @@ void ib_HCA_destroy(struct ib_HCA *hca)
     printf("%d cq_event \n", hca->comp_event_cnt);
     if (hca->comp_event_cnt > 0) {
         if (hca->comp_event_cnt % 10 != 0) {
-            ibv_ack_cq_events(hca->cq, hca->comp_event_cnt % 10);
+            mpirun_ibv_ops.ack_cq_events(hca->cq, hca->comp_event_cnt % 10);
         }
     }
     ///// free srq  
     if (hca->srq)
-        if (ibv_destroy_srq(hca->srq)) {
+        if (mpirun_ibv_ops.destroy_srq(hca->srq)) {
             error("   Couldn't destroy SRQ\n");
         }
     /// free cq
     if (hca->cq)
-        ibv_destroy_cq(hca->cq);
+        mpirun_ibv_ops.destroy_cq(hca->cq);
 
     /// free pd
     if (hca->pd) {
-        if (ibv_dealloc_pd(hca->pd)) {
+        if (mpirun_ibv_ops.dealloc_pd(hca->pd)) {
             error("Couldn't deallocate PD\n");
         }
     }
     // free comp_channel
     if (hca->comp_channel) {
-        if (ibv_destroy_comp_channel(hca->comp_channel)) {
+        if (mpirun_ibv_ops.destroy_comp_channel(hca->comp_channel)) {
             error("Couldn't destroy comp_channel\n");
         }
     }
     // free context
     if (hca->context) {
-        if (ibv_close_device(hca->context)) {
+        if (mpirun_ibv_ops.close_device(hca->context)) {
             fprintf(stderr, "Couldn't release context\n");
             //return 1;
         }
@@ -388,6 +396,8 @@ void ib_HCA_destroy(struct ib_HCA *hca)
     // 
     pthread_mutex_destroy(&hca->mutex);
     printf("Has released connection...\n");
+
+    mv2_mpirun_ibv_dlopen_finalize();
 }
 
 ////////////////////////////////
@@ -398,7 +408,7 @@ init the basic params in connection
 */
 int ib_connection_init_1(struct ib_connection *conn, int num_qp, struct ib_HCA *hca)    // , int rx_depth)
 {
-    //// init some basic infor in the connection    
+    //// init some basic info in the connection    
     memset(conn, 0, sizeof(struct ib_connection));
 
     ///////////////////
@@ -433,7 +443,7 @@ int ib_connection_init_1(struct ib_connection *conn, int num_qp, struct ib_HCA *
 
         qp_init_attr.qp_type = IBV_QPT_RC;  // create a RC qp
 
-        conn->qp[i] = ibv_create_qp(hca->pd, &qp_init_attr);
+        conn->qp[i] = mpirun_ibv_ops.create_qp(hca->pd, &qp_init_attr);
         if (!conn->qp[i]) {
             error("fail to create_qp %d, qp[%d]=%p\n", i, i, conn->qp[i]);
             goto err_out_1;
@@ -455,7 +465,7 @@ int ib_connection_init_1(struct ib_connection *conn, int num_qp, struct ib_HCA *
 
         attr_mask = IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS;
 
-        ret = ibv_modify_qp(conn->qp[i], &qp_attr, attr_mask);
+        ret = mpirun_ibv_ops.modify_qp(conn->qp[i], &qp_attr, attr_mask);
         if (ret != 0) {
             error("Fail to transit qp %d to INIT\n", i);
             goto err_out_1;
@@ -474,7 +484,7 @@ int ib_connection_init_1(struct ib_connection *conn, int num_qp, struct ib_HCA *
 
     //////////////////////////////////////////////////////////////////
     //// get IB device attr,  IB port attr
-    ibv_query_port(hca->context, hca->ib_port, &port_attr);
+    mpirun_ibv_ops.query_port(hca->context, hca->ib_port, &port_attr);
     //conn->mtu = port_attr.active_mtu;
 
     // record the endpoint info for each QP     
@@ -533,7 +543,7 @@ int ib_connection_init_2(struct ib_connection *conn)
 
         ///// transit to RTR state
         attr_mask = IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
-        ibv_modify_qp(conn->qp[i], &qp_attr, attr_mask);
+        mpirun_ibv_ops.modify_qp(conn->qp[i], &qp_attr, attr_mask);
     }
 
     /// modify QP to RTS
@@ -550,7 +560,7 @@ int ib_connection_init_2(struct ib_connection *conn)
 
         //// transit to RTS state
         attr_mask = IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC;
-        ibv_modify_qp(conn->qp[i], &qp_attr, attr_mask);
+        mpirun_ibv_ops.modify_qp(conn->qp[i], &qp_attr, attr_mask);
     }
 
     dbg("ib-conn init-2 completed...\n");
@@ -575,7 +585,7 @@ void ib_connection_release(struct ib_connection *conn)
         if (!conn->qp[i])
             break;
 
-        ret = ibv_modify_qp(conn->qp[i], &attr, IBV_QP_STATE);
+        ret = mpirun_ibv_ops.modify_qp(conn->qp[i], &attr, IBV_QP_STATE);
         if (ret < 0) {
             error("Error when drain qp %d, ret=%d\n", i, ret);
         }
@@ -586,7 +596,7 @@ void ib_connection_release(struct ib_connection *conn)
         if (!conn->qp[i])
             break;
         dbg("destroy qp %d\n", i);
-        ibv_destroy_qp(conn->qp[i]);
+        mpirun_ibv_ops.destroy_qp(conn->qp[i]);
     }
 
     put_HCA(hca);
@@ -603,13 +613,13 @@ int ib_connection_buf_init(struct ib_HCA *hca, int sendsize, int recvsize, int r
     int slot_size = sendslot_size;  //64; // max 256 slots, so max size = 64 * 256 = 16 KB 
 
     hca->send_buf = create_ib_buffer(sendsize, slot_size, "send-buf");
-    hca->send_buf->mr = ibv_reg_mr(hca->pd, hca->send_buf->addr, sendsize, IBV_ACCESS_LOCAL_WRITE);
+    hca->send_buf->mr = mpirun_ibv_ops.reg_mr(hca->pd, hca->send_buf->addr, sendsize, IBV_ACCESS_LOCAL_WRITE);
     //dbg("send-buf: addr=%p, size=%d, mr=%p\n", hca->send_buf->addr, 
     //      sendsize, hca->send_buf->mr );
 
     slot_size = recvslot_size;
     hca->recv_buf = create_ib_buffer(recvsize, slot_size, "recv-buf");
-    hca->recv_buf->mr = ibv_reg_mr(hca->pd, hca->recv_buf->addr, recvsize, IBV_ACCESS_LOCAL_WRITE);
+    hca->recv_buf->mr = mpirun_ibv_ops.reg_mr(hca->pd, hca->recv_buf->addr, recvsize, IBV_ACCESS_LOCAL_WRITE);
     //dbg("recv-buf: addr=%p, size=%d, mr=%p\n", hca->recv_buf->addr, 
     //      recvsize, hca->recv_buf->mr );
 
@@ -619,7 +629,7 @@ int ib_connection_buf_init(struct ib_HCA *hca, int sendsize, int recvsize, int r
     slot_size = rdmaslot_size;  // 1*1024*1024; // 1M per slot in RDMA buf. max 256 slots
     if (rdmasize > 0) {
         hca->rdma_buf = create_ib_buffer(rdmasize, slot_size, "rdma-buf");
-        hca->rdma_buf->mr = ibv_reg_mr(hca->pd, hca->rdma_buf->addr, rdmasize, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
+        hca->rdma_buf->mr = mpirun_ibv_ops.reg_mr(hca->pd, hca->rdma_buf->addr, rdmasize, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
         printf("%s: Create RDMA-buf: size=%d, slotsize=%d\n", __func__, rdmasize, rdmaslot_size);
         //hca->rdma_buf->addr, rdmasize, hca->rdma_buf->mr );
     }
@@ -660,7 +670,7 @@ int ib_connection_exchange_server(struct ib_connection *conn, int sock)
     ////  3. final handshake: a dummy int
     read(sock, &n, sizeof(int));
 
-    //// dump remote infor
+    //// dump remote info
     for (n = 0; n < conn->num_qp; n++) {
         //dbg("local  EP %d :: ", n);
         //dump_ep( &conn->my_ep[n] );
@@ -705,7 +715,7 @@ int ib_connection_exchange_client(struct ib_connection *conn, int sock)
     ////  3. final handshake: a dummy int
     write(sock, &n, sizeof(int));
 
-    //// dump remote infor
+    //// dump remote info
     for (n = 0; n < conn->num_qp; n++) {
         //dbg("local  EP %d :: ", n);
         //dump_ep( &conn->my_ep[n] );
@@ -754,7 +764,7 @@ int ib_connection_post_send(struct ib_connection *conn, int qp_index, int sbuf_s
 
 /*
 IB-server calls this to post a RDMA-read to SQ. 
-The "rrpkt" contains infor of RR in remote peer, it's a local-var from iop
+The "rrpkt" contains info of RR in remote peer, it's a local-var from iop
 */
 int ib_connection_post_RR(struct ib_connection *conn, int qpidx, ib_packet_t * rrpkt)
 {
@@ -1095,7 +1105,7 @@ int exam_cqe(struct ib_connection *conn, int qpidx, struct ibv_wc *wc, int serve
         } else {
             /////////////// client side
             if (pkt->command == reply_RR) {
-                // RR finished, the infor about RR is in pkt
+                // RR finished, the info about RR is in pkt
                 //dbg("  RR reply : procid=%d, buf=%p, bufid = %d, size = %d\n", 
                 //  pkt->RR.rprocid, pkt->RR.raddr, pkt->RR.rbuf_id, pkt->RR.size );
 
@@ -1189,7 +1199,7 @@ int ib_server_loop(struct ib_connection *connarray, struct thread_pool *tp)
         pfd.fd = hca->comp_channel->fd;
         pfd.events = POLLIN;
         pfd.revents = 0;
-        ret = poll(&pfd, 1, 1500);  // poll 1 fd, wait 1000 ms inbetween
+        ret = poll(&pfd, 1, 1500);  // poll 1 fd, wait 1000 ms in between
 
         if (ret == 0) {         // timeout, no event happens
             // check if user wants exit
@@ -1208,7 +1218,7 @@ int ib_server_loop(struct ib_connection *connarray, struct thread_pool *tp)
         ///////////////////////////////////
 
         // wait for a comp_event
-        ret = ibv_get_cq_event(hca->comp_channel, &ev_cq, &cq_ctx);
+        ret = mpirun_ibv_ops.get_cq_event(hca->comp_channel, &ev_cq, &cq_ctx);
         //dbg("get_cq_event ret %d\n", ret);
         if (ret != 0) {
             error("Error to get comp_channel event\n");
@@ -1223,7 +1233,7 @@ int ib_server_loop(struct ib_connection *connarray, struct thread_pool *tp)
         }
         /// cumulative ack
         if (hca->comp_event_cnt % 10 == 0) {
-            ibv_ack_cq_events(hca->cq, 10);
+            mpirun_ibv_ops.ack_cq_events(hca->cq, 10);
         }
         // enable future comp_event
         ret = ibv_req_notify_cq(hca->cq, 0);
@@ -1327,7 +1337,7 @@ int ib_client_loop(struct ib_connection *connarray)
         pfd.fd = hca->comp_channel->fd;
         pfd.events = POLLIN;
         pfd.revents = 0;
-        ret = poll(&pfd, 1, 1500);  // poll 1 fd, wait 1000 ms inbetween
+        ret = poll(&pfd, 1, 1500);  // poll 1 fd, wait 1000 ms in between
 
         if (ret == 0) {         // timeout, no event happens
             // check if user wants exit
@@ -1346,7 +1356,7 @@ int ib_client_loop(struct ib_connection *connarray)
         ///////////////////////////////////
 
         // wait for a comp_event
-        ret = ibv_get_cq_event(hca->comp_channel, &ev_cq, &cq_ctx);
+        ret = mpirun_ibv_ops.get_cq_event(hca->comp_channel, &ev_cq, &cq_ctx);
         //dbg("get_cq_event ret %d\n", ret);
         if (ret != 0) {
             error("Error to get comp_channel event\n");
@@ -1362,7 +1372,7 @@ int ib_client_loop(struct ib_connection *connarray)
         }
         // cumulative ack
         if (hca->comp_event_cnt % 10 == 0) {
-            ibv_ack_cq_events(hca->cq, 10);
+            mpirun_ibv_ops.ack_cq_events(hca->cq, 10);
         }
         // enable future comp_event
         ret = ibv_req_notify_cq(hca->cq, 0);

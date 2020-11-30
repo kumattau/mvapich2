@@ -129,5 +129,5 @@ fi
 - Updated version number
 
 * Wed Apr 08 2009 Jonathan Perkins <perkinjo@cse.ohio-state.edu>
-- Intial creation of limic2 spec.
+- Initial creation of limic2 spec.
 

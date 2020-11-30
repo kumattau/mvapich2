@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -307,9 +307,9 @@ int MPIDI_CH3U_Win_shared_query(MPID_Win * win_ptr, int target_rank, MPI_Aint * 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_WIN_SHARED_QUERY);
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_WIN_SHARED_QUERY);
 
-    *(void **) baseptr = win_ptr->base;
-    *size = win_ptr->size;
-    *disp_unit = win_ptr->disp_unit;
+    *(void **) baseptr = win_ptr->basic_info_table[target_rank].base_addr;
+    *size = win_ptr->basic_info_table[target_rank].size;
+    *disp_unit = win_ptr->basic_info_table[target_rank].disp_unit;
 
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_WIN_SHARED_QUERY);
     return mpi_errno;

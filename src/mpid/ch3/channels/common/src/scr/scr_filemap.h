@@ -189,7 +189,7 @@ int scr_filemap_write(const scr_path* file, const scr_filemap* map);
 /* create a new filemap structure */
 scr_filemap* scr_filemap_new();
 
-/* free memory resources assocaited with filemap */
+/* free memory resources associated with filemap */
 int scr_filemap_delete(scr_filemap** ptr_map);
 
 #endif

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -136,7 +136,8 @@ enum mv2_reduce_tuning
     REDUCE_INTRA_KNOMIAL,
     REDUCE_SHMEM,
     REDUCE_RDSC_GATHER,
-    REDUCE_ZCPY
+    REDUCE_ZCPY,
+    REDUCE_X1, /* place holder for master-x algorithm */
 };
 
 enum mv2_gather_tuning 
@@ -155,7 +156,12 @@ enum mv2_allreduce_tuning
     ALLREDUCE_MCAST_RSA,
     ALLREDUCE_SHMEM_REDUCE,
     ALLREDUCE_P2P_REDUCE,
-    ALLREDUCE_RED_SCAT_ALLGA_COLL
+    ALLREDUCE_X1, /* place holder for master-x algorithm */
+    ALLREDUCE_RED_SCAT_ALLGA_COLL,
+    ALLREDUCE_RING,
+    ALLREDUCE_X2, /* place holder for master-x algorithm */
+    ALLREDUCE_SOCK_AWARE,
+    ALLREDUCE_X3, /* place holder for master-x algorithm */
 };
 
 enum mv2_scatter_tuning 

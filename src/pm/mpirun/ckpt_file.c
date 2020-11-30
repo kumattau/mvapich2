@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -128,7 +128,7 @@ unsigned long check_chunk_content(ckpt_file_t * cfile, ckpt_chunk_t * chunk, uns
 
 /**
 io-thr has finished RR a chunk, now store this chunk to the corresponding ckpt-file.
-rrpkt: the ib-pkt that containing infor about this chunk
+rrpkt: the ib-pkt that containing info about this chunk
 **/
 int add_chunk_to_ckpt_file(ckpt_file_t * cfile, struct ib_packet *rrpkt)
 {

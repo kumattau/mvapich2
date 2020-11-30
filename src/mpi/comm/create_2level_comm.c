@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,6 +39,8 @@ extern int mv2_g_shmem_coll_blocks;
 #define MAX_NUM_THREADS 1024
 pthread_t thread_reg[MAX_NUM_THREADS];
 
+extern int get_socket_bound_info(int *socket_bound, int *num_sockets, int *num_cores_socket, int *is_uniform);
+
 void clear_2level_comm (MPID_Comm* comm_ptr)
 {
     comm_ptr->dev.ch.allgather_comm_ok = 0;
@@ -47,6 +49,7 @@ void clear_2level_comm (MPID_Comm* comm_ptr)
     comm_ptr->dev.ch.leader_rank = NULL;
     comm_ptr->dev.ch.node_disps  = NULL;
     comm_ptr->dev.ch.rank_list   = NULL;
+    comm_ptr->dev.ch.coll_tmp_buf = NULL;
     comm_ptr->dev.ch.rank_list_index = -1;
     comm_ptr->dev.ch.shmem_comm = MPI_COMM_NULL; 
     comm_ptr->dev.ch.leader_comm = MPI_COMM_NULL;
@@ -79,6 +82,10 @@ int free_limic_comm (MPID_Comm* shmem_comm_ptr)
                 MPIU_Free(shmem_comm_ptr->dev.ch.socket_size);
             }
         }
+    }
+    if (intra_sock_comm_ptr->dev.ch.shmem_info) {
+        mv2_shm_coll_cleanup((shmem_info_t *)intra_sock_comm_ptr->dev.ch.shmem_info);
+        MPIU_Free(intra_sock_comm_ptr->dev.ch.shmem_info);
     }
     if (intra_sock_comm_ptr != NULL) { 
         mpi_errno = MPIR_Comm_release(intra_sock_comm_ptr);
@@ -150,7 +157,10 @@ int free_2level_comm (MPID_Comm* comm_ptr)
     if (comm_ptr->dev.ch.rank_list != NULL) {
         MPIU_Free(comm_ptr->dev.ch.rank_list);
     }
- 
+    if (comm_ptr->dev.ch.coll_tmp_buf != NULL) {
+        MPIU_Free(comm_ptr->dev.ch.coll_tmp_buf);
+        comm_ptr->dev.ch.coll_tmp_buf = NULL;
+    }
     MPID_Comm_get_ptr((comm_ptr->dev.ch.shmem_comm), shmem_comm_ptr );
     MPID_Comm_get_ptr((comm_ptr->dev.ch.leader_comm), leader_comm_ptr );
     
@@ -590,9 +600,10 @@ int create_intra_sock_comm(MPI_Comm comm)
         }
 
         if (output_err != 0) {
-
-            PRINT_INFO(comm_ptr->rank == 0, "Failed to get correct process to socket binding info."
-                                            "Proceeding by disabling socket aware collectives support.");
+            if(numSocketsNode > 1) {
+                PRINT_INFO(comm_ptr->rank == 0, "Failed to get correct process to socket binding info."
+                        "Proceeding by disabling socket aware collectives support.");
+            }
             return MPI_SUCCESS;
         }
 
@@ -655,6 +666,16 @@ int create_intra_sock_comm(MPI_Comm comm)
             }
 
             intra_sock_commptr->dev.ch.shmem_comm_rank = mv2_shmem_coll_blk_stat;
+            if (mv2_use_slot_shmem_coll) {
+                intra_sock_commptr->dev.ch.shmem_info = mv2_shm_coll_init(mv2_shmem_coll_blk_stat, intra_sock_commptr->rank,
+                intra_sock_commptr->local_size, intra_sock_commptr);
+                if (intra_sock_commptr->dev.ch.shmem_info == NULL) {
+                    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                            FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                            "collective shmem allocation failed", strerror(errno));
+                    MPIR_ERR_POP(mpi_errno);
+                }
+            }
             if (intra_comm_rank == 0) {
                 intra_socket_leader_id=1;
             }
@@ -846,11 +867,14 @@ int create_intra_sock_comm(MPI_Comm comm)
             comm_ptr->dev.ch.use_intra_sock_comm=1;
 
             MPID_Comm *global_sock_leader_ptr;
-            MPID_Comm *intra_sock_comm_ptr=NULL;
             MPID_Comm *intra_sock_leader_comm_ptr=NULL;
 
-            MPID_Comm_get_ptr(shmem_ptr->dev.ch.intra_sock_comm, 
-                              intra_sock_comm_ptr);
+            #if defined(_SHARP_SUPPORT_)
+                MPID_Comm *intra_sock_comm_ptr=NULL;
+                MPID_Comm_get_ptr(shmem_ptr->dev.ch.intra_sock_comm, 
+                                intra_sock_comm_ptr);
+            #endif
+            
             MPID_Comm_get_ptr(shmem_ptr->dev.ch.intra_sock_leader_comm, 
                               intra_sock_leader_comm_ptr);
             MPID_Comm_get_ptr(comm_ptr->dev.ch.global_sock_leader_comm, 
@@ -885,12 +909,12 @@ int create_intra_sock_comm(MPI_Comm comm)
                 int allred_flag = mv2_use_socket_aware_allreduce;
                 mv2_use_socket_aware_allreduce = 0;
                 mpi_errno = MPIR_Allreduce_impl(&local_leader_shmem_status, &global_leader_shmem_status, 1,
-                        MPI_INT, MPI_LAND, global_sock_leader_ptr, &errflag);
+                        MPI_INT, MPI_MIN, global_sock_leader_ptr, &errflag);
                 mv2_use_socket_aware_allreduce = allred_flag;
                 if (mpi_errno) {
                     MPIR_ERR_POP(mpi_errno);
                 }
-                if (global_leader_shmem_status == 0) {
+                if (global_leader_shmem_status != 1) {
                     intra_sock_leader_comm_ptr->dev.ch.shmem_coll_ok = 0;    
                 }
             }
@@ -1164,8 +1188,19 @@ int create_sharp_comm(MPI_Comm comm, int size, int my_rank)
     leader_group_size = comm_ptr->dev.ch.leader_group_size;
     comm_ptr->dev.ch.sharp_coll_info = NULL;
 
-    if (comm == MPI_COMM_WORLD && mv2_enable_sharp_coll
-        && (leader_group_size > 1) && (comm_ptr->dev.ch.is_sharp_ok == 0)) {
+    if (comm == MPI_COMM_WORLD && mv2_enable_sharp_coll &&
+        (comm_ptr->dev.ch.is_sharp_ok == 0) &&
+        leader_group_size >= mv2_sharp_min_node_count) {
+
+        setenv("SHARP_COLL_ENABLE_GROUP_TRIM", "0", 0);
+        setenv("SHARP_COLL_SHARP_ENABLE_MCAST_TARGET", "0", 0);
+
+        MPID_Comm_get_ptr(comm, comm_ptr);
+        if (comm_ptr->local_size <= MV2_SHARP_DIRECT_ALGO_MAX_PROC &&
+                mv2_enable_sharp_coll == 1) {
+            mv2_enable_sharp_coll = 2; /* use direct algo for sharp */
+        }
+
         sharp_info_t * sharp_coll_info = NULL;        
 
         comm_ptr->dev.ch.sharp_coll_info = 
@@ -1183,11 +1218,11 @@ int create_sharp_comm(MPI_Comm comm, int size, int my_rank)
         /* Initialize sharp */
         if (mv2_enable_sharp_coll == 2) {
             /* Flat algorithm in which every process uses SHArP */
-            mpi_errno = mv2_sharp_coll_init(sharp_coll_info->sharp_conf, my_local_id);
+            mpi_errno = mv2_sharp_coll_init(sharp_coll_info->sharp_conf, my_local_id, my_local_id);
         } else if (mv2_enable_sharp_coll == 1) {
             /* Two-level hierarchical algorithm in which, one process at each
              * node uses SHArP for inter-node communication */
-            mpi_errno = mv2_sharp_coll_init(sharp_coll_info->sharp_conf, 0);
+            mpi_errno = mv2_sharp_coll_init(sharp_coll_info->sharp_conf, 0, my_local_id);
         } else {
             PRINT_ERROR("Invalid value for MV2_ENABLE_SHARP\n");
             mpi_errno = MPI_ERR_OTHER;
@@ -1469,6 +1504,14 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     }
 
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_num_2level_comm_success, 1);
+
+    comm_ptr->dev.ch.coll_tmp_buf = MPIU_Malloc(mv2_coll_tmp_buf_size);
+    if (NULL == comm_ptr->dev.ch.coll_tmp_buf){
+        mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                   "memory allocation failed", strerror(errno));
+                   MPIR_ERR_POP(mpi_errno);
+    }
 
     /* Creating leader group */
     int leader = 0;

@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -19,9 +19,7 @@
 
 #include "mpiimpl.h"
 #include "collutil.h"
-#ifdef _OSU_MVAPICH_
-#   include "coll_shmem.h"
-#endif /* _OSU_MVAPICH_ */
+#include "coll_shmem.h"
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -343,14 +341,14 @@ static int MPIR_Reduce_redscat_gather (
     
     /* If I'm not the root, then my recvbuf may not be valid, therefore
        I have to allocate a temporary one */
-    if (rank != root) {
-        MPIU_CHKLMEM_MALLOC(recvbuf, void *, 
-                            count*(MPIR_MAX(extent,true_extent)), 
-                            mpi_errno, "receive buffer");
-        recvbuf = (void *)((char*)recvbuf - true_lb);
-    }
+    if (sendbuf != MPI_IN_PLACE) {
+        if (rank != root) {
+            MPIU_CHKLMEM_MALLOC(recvbuf, void *,
+                                count*(MPIR_MAX(extent,true_extent)),
+                                mpi_errno, "receive buffer");
+            recvbuf = (void *)((char*)recvbuf - true_lb);
+        }
 
-    if ((rank != root) || (sendbuf != MPI_IN_PLACE)) {
         mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf,
                                    count, datatype);
         if (mpi_errno) { MPIR_ERR_POP(mpi_errno); }

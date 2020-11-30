@@ -118,8 +118,8 @@
 	{2048, &MPIR_Reduce_binomial_MV2},		\
 	{4096, &MPIR_Reduce_inter_knomial_wrapper_MV2},		\
 	{8192, &MPIR_Reduce_inter_knomial_wrapper_MV2},		\
-	{16384, &MPIR_Reduce_redscat_gather_MV2},		\
-	{32768, &MPIR_Reduce_redscat_gather_MV2},		\
+	{16384, &MPIR_Reduce_inter_knomial_wrapper_MV2},		\
+	{32768, &MPIR_Reduce_inter_knomial_wrapper_MV2},		\
 	{65536, &MPIR_Reduce_inter_knomial_wrapper_MV2},		\
 	{131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},		\
 	{262144, &MPIR_Reduce_inter_knomial_wrapper_MV2},		\

@@ -6,6 +6,7 @@
  */
 
 #include "mpiimpl.h"
+#include "helper_fns.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_Exscan */
 #if defined(HAVE_PRAGMA_WEAK)

@@ -83,7 +83,7 @@ scr_reddesc* scr_reddesc_for_checkpoint(
   scr_reddesc* ckpts
 );
 
-/* convert the specified redundancy descritpor into a corresponding
+/* convert the specified redundancy descriptor into a corresponding
  * hash */
 int scr_reddesc_store_to_hash(
   const scr_reddesc* c,

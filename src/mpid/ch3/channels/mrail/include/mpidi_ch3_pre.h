@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -41,6 +41,7 @@ typedef struct {
     int*    node_disps;      /* displacements into rank_list for each node */
     int*    allgather_new_ranks;
     int*    rank_list;       /* list of ranks, ordered by node id, then shmem rank on each node */
+    void*   coll_tmp_buf;
     int     rank_list_index; /* index of this process in the rank_list array */
     int     is_uniform;
     int     is_blocked;
@@ -56,6 +57,7 @@ typedef struct {
     int     shmem_coll_count;
     int     allgather_coll_count;
     int     allreduce_coll_count;
+    int     barrier_coll_count;
     int     bcast_coll_count;
     int     scatter_coll_count;
     void    *shmem_info; /* intra node shmem info */
@@ -252,12 +254,12 @@ typedef enum SMP_pkt_type
 } SMP_pkt_type_t;
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-typedef enum CUDA_IPC_STATUS
+typedef enum DEVICE_IPC_STATUS
 { 
-    CUDA_IPC_UNINITIALIZED,
-    CUDA_IPC_ENABLED,
-    CUDA_IPC_DISABLED
-} cuda_ipc_status_t;
+    MV2_DEVICE_IPC_UNINITIALIZED,
+    MV2_DEVICE_IPC_ENABLED,
+    MV2_DEVICE_IPC_DISABLED
+} mv2_device_ipc_status_t;
 #endif
 
 typedef struct MPIDI_CH3I_SMP_VC
@@ -292,7 +294,7 @@ typedef struct MPIDI_CH3I_SMP_VC
     int use_cma;
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    cuda_ipc_status_t can_access_peer;
+    mv2_device_ipc_status_t can_access_peer;
 #endif
 } MPIDI_CH3I_SMP_VC;
 
@@ -339,28 +341,28 @@ struct MPIDI_CH3I_Request						\
 } ch;
 
 #ifdef _ENABLE_CUDA_
-#define  MPIDI_CH3_REQUEST_INIT_CUDA(_rreq)          \
-    (_rreq)->mrail.cuda_transfer_mode = 0;           \
+#define  MPIDI_CH3_REQUEST_INIT_DEVICE(_rreq)        \
+    (_rreq)->mrail.device_transfer_mode = 0;         \
     (_rreq)->mrail.pipeline_nm = 0;                  \
-    (_rreq)->mrail.cuda_event = NULL;                \
+    (_rreq)->mrail.device_event = NULL;              \
     (_rreq)->dev.pending_pkt = NULL;                 \
-    (_rreq)->dev.cuda_srbuf_entry = NULL;            \
+    (_rreq)->dev.device_srbuf_entry = NULL;          \
     (_rreq)->dev.is_device_tmpbuf = 0;
 #else
-#define MPIDI_CH3_REQUEST_INIT_CUDA(sreq_)
+#define MPIDI_CH3_REQUEST_INIT_DEVICE(sreq_)
 #endif
 
 #if defined(HAVE_CUDA_IPC)
-#define MPIDI_CH3_REQUEST_INIT_CUDA_IPC(_rreq)      \
-    (_rreq)->mrail.cudaipc_stage_index = 0;         \
-    (_rreq)->mrail.ipc_cuda_event = NULL;           \
+#define MPIDI_CH3_REQUEST_INIT_DEVICE_IPC(_rreq)    \
+    (_rreq)->mrail.device_ipc_stage_index = 0;      \
+    (_rreq)->mrail.ipc_device_event = NULL;         \
     (_rreq)->mrail.ipc_baseptr = NULL;              \
     (_rreq)->mrail.ipc_size = 0;                    \
     (_rreq)->mrail.ipc_event = NULL;                \
-    (_rreq)->mrail.cuda_reg = NULL;
+    (_rreq)->mrail.device_reg = NULL;
 
 #else
-#define MPIDI_CH3_REQUEST_INIT_CUDA_IPC(_rreq)
+#define MPIDI_CH3_REQUEST_INIT_DEVICE_IPC(_rreq)
 #endif 
 
 #define MPIDI_CH3_REQUEST_INIT(_rreq)    \
@@ -377,8 +379,8 @@ struct MPIDI_CH3I_Request						\
     (_rreq)->mrail.local_complete  = 0;  \
     (_rreq)->mrail.remote_complete = 0;  \
     (_rreq)->mrail.is_rma_last_stream_unit = 1;  \
-    MPIDI_CH3_REQUEST_INIT_CUDA(_rreq)   \
-    MPIDI_CH3_REQUEST_INIT_CUDA_IPC(_rreq) 
+    MPIDI_CH3_REQUEST_INIT_DEVICE(_rreq) \
+    MPIDI_CH3_REQUEST_INIT_DEVICE_IPC(_rreq)
 
 typedef struct MPIDI_CH3I_Progress_state
 {

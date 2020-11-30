@@ -474,7 +474,7 @@ char *tasklist_yytext;
 #line 1 "src/pm/mpirun/src/slurm/tasklist_scanner.l"
 #line 2 "src/pm/mpirun/src/slurm/tasklist_scanner.l"
 /*
- * Copyright (c) 2001-2019, The Ohio State University. All rights
+ * Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1514,7 +1514,7 @@ YY_BUFFER_STATE tasklist_yy_scan_bytes  (yyconst char * yybytes, yy_size_t  _yyb
 	YY_BUFFER_STATE b;
 	char *buf;
 	yy_size_t n;
-	int i;
+	yy_size_t i;
     
 	/* Get memory for full buffer, including space for trailing EOB's. */
 	n = _yybytes_len + 2;

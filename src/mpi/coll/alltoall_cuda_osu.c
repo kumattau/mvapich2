@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,7 +22,7 @@ typedef enum _send_stat_ {
     SEND_COMPLETE
 } send_stat;
 
-cudaEvent_t *send_events = NULL, *recv_event = NULL;
+deviceEvent_t *send_events = NULL, *recv_event = NULL;
 int send_events_count = 0;
 
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_alltoall_cuda);
@@ -47,12 +47,12 @@ int MPIR_Alltoall_CUDA_cleanup ()
 
     if (send_events) {
         for(i = 0; i < send_events_count; i++) {
-            CUDA_CHECK(cudaEventDestroy(send_events[i]));
+            MPIU_Device_EventDestroy(send_events[i]);
         }
         MPIU_Free(send_events); 
     }
     if (recv_event) {
-        CUDA_CHECK(cudaEventDestroy(*recv_event));
+        MPIU_Device_EventDestroy(*recv_event);
         MPIU_Free(recv_event); 
     }
 
@@ -101,11 +101,11 @@ int MPIR_Alltoall_CUDA_intra_MV2(
 
     /*calculate the block count based on the messages size and cuda block size 
       for pipelining*/
-    sblock = (int) rdma_cuda_block_size/(sendcount*sendtype_extent);
+    sblock = (int) mv2_device_stage_block_size/(sendcount*sendtype_extent);
     sblock = sblock < comm_size ? sblock : comm_size; 
     MPIU_Assert(sblock != 0 && sblock <= comm_size);
 
-    rblock = (int) rdma_cuda_block_size/(recvcount*recvtype_extent);
+    rblock = (int) mv2_device_stage_block_size/(recvcount*recvtype_extent);
     rblock = rblock < comm_size ? rblock : comm_size; 
     MPIU_Assert(rblock != 0 && rblock <= comm_size);
 
@@ -128,11 +128,11 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     if (send_events_count < num_sbufs) {
         if (send_events) { 
             for(i = 0; i < send_events_count; i++) { 
-                cudaEventDestroy(send_events[i]);
+                MPIU_Device_EventDestroy(send_events[i]);
             }
             MPIU_Free(send_events);
         }
-        send_events = (cudaEvent_t *) MPIU_Malloc(sizeof(cudaEvent_t) * num_sbufs); 
+        send_events = (deviceEvent_t *) MPIU_Malloc(sizeof(deviceEvent_t) * num_sbufs);
         for (i=0; i<num_sbufs; i++) { 
             cudaerr = cudaEventCreateWithFlags(&send_events[i], cudaEventDisableTiming);
             if(cudaerr != cudaSuccess) {
@@ -146,7 +146,7 @@ int MPIR_Alltoall_CUDA_intra_MV2(
         send_events_count = num_sbufs;
     }
     if (!recv_event) {
-        recv_event = (cudaEvent_t *) MPIU_Malloc(sizeof(cudaEvent_t));
+        recv_event = (deviceEvent_t *) MPIU_Malloc(sizeof(deviceEvent_t));
         cudaerr = cudaEventCreateWithFlags(recv_event, cudaEventDisableTiming);
         if(cudaerr != cudaSuccess) {
             mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
@@ -225,33 +225,28 @@ int MPIR_Alltoall_CUDA_intra_MV2(
         }
 
         if (begin <= end) {
-            MPIU_Memcpy_CUDA_Async(send_buf[sbufs_filled]->buf, 
+            MPIU_Memcpy_Device_Async(send_buf[sbufs_filled]->buf,
                     ((char *) sendbuf
                      + begin*sendcount*sendtype_extent),
                     (end - begin + 1)*sendcount*sendtype_extent,
-                    cudaMemcpyDeviceToHost, stream_d2h);
+                    deviceMemcpyDeviceToHost, stream_d2h);
         } else {
-            MPIU_Memcpy_CUDA_Async(send_buf[sbufs_filled]->buf, 
+            MPIU_Memcpy_Device_Async(send_buf[sbufs_filled]->buf,
                     ((char *) sendbuf
                      + begin*sendcount*sendtype_extent),
                     (comm_size - begin)*sendcount*sendtype_extent,
-                    cudaMemcpyDeviceToHost, stream_d2h);
+                    deviceMemcpyDeviceToHost, stream_d2h);
 
             bytes_copied = (comm_size - begin)*sendcount*sendtype_extent; 
 
-            MPIU_Memcpy_CUDA_Async(((char *)send_buf[sbufs_filled]->buf 
+            MPIU_Memcpy_Device_Async(((char *)send_buf[sbufs_filled]->buf
                         + bytes_copied),
                     sendbuf,
                     (end + 1)*sendcount*sendtype_extent,
-                    cudaMemcpyDeviceToHost, stream_d2h);
+                    deviceMemcpyDeviceToHost, stream_d2h);
         }
 
-        cudaerr = cudaEventRecord(send_events[sbufs_filled], stream_d2h);
-        if (cudaerr != cudaSuccess) {
-            mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
-                    __LINE__, MPI_ERR_OTHER, "**cudaEventRecord", 0);
-            return mpi_errno;
-        }
+        MPIU_Device_EventRecord(send_events[sbufs_filled], stream_d2h);
         sbufs_filled++;
     }
 
@@ -340,25 +335,25 @@ int MPIR_Alltoall_CUDA_intra_MV2(
                 end = (begin + procs_in_block - 1) % comm_size;
 
                 if (begin <= end) {
-                    MPIU_Memcpy_CUDA_Async(((char *) recvbuf
+                    MPIU_Memcpy_Device_Async(((char *) recvbuf
                                 + begin*recvcount*recvtype_extent),
                             recv_buf[rbufs_filled]->buf, 
                             procs_in_block*recvcount*recvtype_extent,
-                            cudaMemcpyHostToDevice, stream_h2d);
+                            deviceMemcpyHostToDevice, stream_h2d);
                 } else {
-                    MPIU_Memcpy_CUDA_Async(((char *) recvbuf 
+                    MPIU_Memcpy_Device_Async(((char *) recvbuf
                                 + begin*recvcount*recvtype_extent),
                             recv_buf[rbufs_filled]->buf,  
                             (comm_size - begin)*recvcount*recvtype_extent,
-                            cudaMemcpyHostToDevice, stream_h2d);
+                            deviceMemcpyHostToDevice, stream_h2d);
 
                     bytes_copied = (comm_size - begin)*recvcount*recvtype_extent;
 
-                    MPIU_Memcpy_CUDA_Async(recvbuf,
+                    MPIU_Memcpy_Device_Async(recvbuf,
                             ((char *) recv_buf[rbufs_filled]->buf  
                              + bytes_copied), 
                             (end + 1)*recvcount*recvtype_extent,
-                            cudaMemcpyHostToDevice, stream_h2d);
+                            deviceMemcpyHostToDevice, stream_h2d);
                 }
                 rbufs_filled++;
             }
@@ -372,13 +367,8 @@ int MPIR_Alltoall_CUDA_intra_MV2(
     }
 
     /* wait for the receive copies into the device to complete */
-    cudaerr = cudaEventRecord(*recv_event, stream_h2d);
-    if (cudaerr != cudaSuccess) {
-        mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
-                __LINE__, MPI_ERR_OTHER, "**cudaEventRecord", 0);
-        return mpi_errno;
-    }
-    cudaEventSynchronize(*recv_event);
+    MPIU_Device_EventRecord(*recv_event, stream_h2d);
+    MPIU_Device_EventSynchronize(*recv_event);
 
     MPIU_Free(send_complete);             
     MPIU_Free(request_ptrs);

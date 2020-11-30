@@ -306,6 +306,16 @@ for hydra_bss_name in ${hydra_bss_names}; do
 		    available_launchers="$available_launchers pbs"
 		    PAC_APPEND_FLAG([-ltorque],[WRAPPER_LIBS])
                 fi
+		PAC_SET_HEADER_LIB_PATH(pbs)
+		PAC_PUSH_FLAG(LIBS)
+		PAC_CHECK_HEADER_LIB(tm.h, pbs, tm_init, have_pbs_launcher=yes,
+					   have_pbs_launcher=no)
+		PAC_POP_FLAG(LIBS)
+                if test "$have_pbs_launcher" = "yes" ; then
+		    available_launchers="$available_launchers pbs"
+		    PAC_APPEND_FLAG([-lpbs],[WRAPPER_LIBS])
+                    AC_DEFINE(HAVE_PBS_PRO, 1, [Define if PBS Pro support is enabled])
+                fi
 		available_rmks="$available_rmks pbs"
 		;;
 	cobalt)

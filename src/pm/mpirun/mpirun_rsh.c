@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -746,7 +746,7 @@ void pglist_insert(const char *const hostname, const int plist_index)
     if (configfile_on && result == 0) {
         int index_previous;
         /*
-         * Check if the previous name of exexutable and args in the pglist are
+         * Check if the previous name of executable and args in the pglist are
          * equal.  If they are different we need to add this exe to another
          * group.
          */
@@ -1685,7 +1685,7 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
                 }
             }
 
-            /* user may specifiy custom working dir via MPI_Info */
+            /* user may specify custom working dir via MPI_Info */
             if (custwd) {
                 tmp = mkstr("%s MPISPAWN_WORKING_DIR=%s", mpispawn_env, custwd);
                 if (tmp) {
@@ -2488,7 +2488,7 @@ void child_handler(int signal)
             if (wait_socks_succ < NSPAWNS) {
                 PRINT_ERROR("Error in init phase, aborting! "
                             "(%d/%d mpispawn connections)\n", wait_socks_succ, NSPAWNS);
-                alarm_msg = "Failed in initilization phase, cleaned up all the mpispawn!\n";
+                alarm_msg = "Failed in initialization phase, cleaned up all the mpispawn!\n";
                 socket_error = 1;
             }
             pthread_mutex_unlock(&wait_socks_succ_lock);

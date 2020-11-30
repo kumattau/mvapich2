@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -216,8 +216,8 @@ typedef struct MPIDI_CH3_Pkt_send
     MPIDI_Message_match match;
     MPIDI_msg_sz_t data_sz;
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    uint8_t in_cuda_region;
-    CUipcEventHandle ipcEventHandle;
+    uint8_t in_device_region;
+    deviceIpcEventHandle_t ipcEventHandle;
 #endif
 }
 MPIDI_CH3_Pkt_send_t;
@@ -328,7 +328,7 @@ typedef struct MPIDI_CH3_Pkt_rndv_clr_to_send
 } MPIDI_CH3_Pkt_rndv_clr_to_send_t;
 
 #if defined(_ENABLE_CUDA_)
-typedef MPIDI_CH3_Pkt_rndv_clr_to_send_t MPIDI_CH3_Pkt_cuda_cts_cont_t;
+typedef MPIDI_CH3_Pkt_rndv_clr_to_send_t MPIDI_CH3_Pkt_device_cts_cont_t;
 #endif
 
 typedef struct MPIDI_CH3_Pkt_rndv_send
@@ -367,10 +367,10 @@ typedef struct MPIDI_CH3_Pkt_rput_finish_t
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     MPI_Request receiver_req_id; /* echoed*/
 #ifdef _ENABLE_CUDA_
-    uint8_t is_cuda;
-    uint8_t is_cuda_pipeline;
-    uint8_t cuda_pipeline_finish;
-    uint32_t cuda_offset;
+    uint8_t is_device;
+    uint8_t is_device_pipeline;
+    uint8_t device_pipeline_finish;
+    uint32_t device_pipeline_offset;
 #endif
 } MPIDI_CH3_Pkt_rput_finish_t;
 
@@ -1080,10 +1080,10 @@ typedef struct MPIDI_CH3_Pkt_get_resp
     MPIDI_CH3_Pkt_type_t type;
 #endif /* defined(CHANNEL_MRAIL) */
     MPI_Request request_handle;
-    /* followings are used to decrement ack_counter at origin */
+    /* following are used to decrement ack_counter at origin */
     int target_rank;
     MPIDI_CH3_Pkt_flags_t flags;
-    /* Followings are to piggyback IMMED data */
+    /* Following are to piggyback IMMED data */
     struct {
         /* note that we use struct here in order
          * to consistently access data
@@ -1157,7 +1157,7 @@ typedef struct MPIDI_CH3_Pkt_get_accum_rndv
     MPI_Request sender_req_id;
     MPIDI_msg_sz_t data_sz;
 
-    MPIDI_CH3I_MRAILI_RNDV_INFO_DECL;
+    MPIDI_CH3I_MRAILI_RNDV_INFO_DECL
 }
 MPIDI_CH3_Pkt_get_accum_rndv_t;
 #endif /* defined(CHANNEL_MRAIL) */
@@ -1240,10 +1240,10 @@ typedef struct MPIDI_CH3_Pkt_get_accum_resp
     MPIDI_CH3_Pkt_type_t type;
 #endif
     MPI_Request request_handle;
-    /* followings are used to decrement ack_counter at origin */
+    /* following are used to decrement ack_counter at origin */
     int target_rank;
     MPIDI_CH3_Pkt_flags_t flags;
-    /* Followings are to piggyback IMMED data */
+    /* Following are to piggyback IMMED data */
     struct {
         /* note that we use struct here in order
          * to consistently access data
@@ -1301,7 +1301,7 @@ typedef struct MPIDI_CH3_Pkt_cas_resp
          * by "pkt->info.data". */
         MPIDI_CH3_CAS_Immed_u data;
     } info;
-    /* followings are used to decrement ack_counter at orign */
+    /* following are used to decrement ack_counter at origin */
     int target_rank;
     MPIDI_CH3_Pkt_flags_t flags;
 #if defined (CHANNEL_PSM)
@@ -1354,7 +1354,7 @@ typedef struct MPIDI_CH3_Pkt_fop_resp
          * by "pkt->info.data". */
         MPIDI_CH3_RMA_Immed_u data;
     } info;
-    /* followings are used to decrement ack_counter at orign */
+    /* following are used to decrement ack_counter at origin */
     int target_rank;
     MPIDI_CH3_Pkt_flags_t flags;
 #if defined (CHANNEL_PSM)

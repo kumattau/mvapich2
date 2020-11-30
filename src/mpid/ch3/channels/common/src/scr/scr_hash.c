@@ -708,7 +708,7 @@ scr_hash* scr_hash_set_kv_int(scr_hash* hash, const char* key, int val)
   return scr_hash_set_kv(hash, key, tmp);
 }
 
-/* shortcut to get hash assocated with the subkey of a key in a hash
+/* shortcut to get hash associated with the subkey of a key in a hash
  * with one call */
 scr_hash* scr_hash_get_kv(const scr_hash* hash, const char* key, const char* val)
 {

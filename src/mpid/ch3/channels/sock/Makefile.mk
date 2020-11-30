@@ -11,7 +11,8 @@ if BUILD_CH3_SOCK
 
 AM_CPPFLAGS +=                                           \
     -I$(top_srcdir)/src/mpid/ch3/channels/sock/include   \
-    -I$(top_builddir)/src/mpid/ch3/channels/sock/include
+    -I$(top_builddir)/src/mpid/ch3/channels/sock/include \
+    -I$(top_srcdir)/src/mpi/coll
 
 noinst_HEADERS +=                                       \
     src/mpid/ch3/channels/sock/include/mpidi_ch3_pre.h  \

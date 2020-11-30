@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -62,8 +62,8 @@ int MPID_MRAIL_RndvSend (
     rts_pkt->sender_req_id    = sreq->handle;
     rts_pkt->data_sz	      = data_sz;
 #if defined(_ENABLE_CUDA_)
-    if(rdma_enable_cuda) {
-        rts_pkt->rndv.cuda_transfer_mode = sreq->mrail.cuda_transfer_mode;
+    if(mv2_enable_device) {
+        rts_pkt->rndv.device_transfer_mode = sreq->mrail.device_transfer_mode;
     }
 #endif
     MPIDI_Comm_get_vc(comm, rank, &vc);
@@ -98,16 +98,19 @@ int MPID_MRAIL_RndvSend (
 	sreq->dev.OnFinal = 0;
 	mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq, &sreq->dev.iov[0],
 						     &sreq->dev.iov_count);
-    /* Fallback to R3 for non-contig transfers */
-    if (IS_VC_SMP(vc)) {
+    /* Fallback to R3 if sender side is non-contiguous
+     * and if the user has not forced RPUT. For Intra-node
+     * we always switch to R3*/
+    if(IS_VC_SMP(vc) || rdma_rndv_protocol != MV2_RNDV_PROTOCOL_RPUT) {
         sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
         MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(sreq);
     }
+
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && sreq->dev.OnDataAvail == 
-                        MPIDI_CH3_ReqHandler_pack_cudabuf) {
+    if (mv2_enable_device && sreq->dev.OnDataAvail ==
+                        MPIDI_CH3_ReqHandler_pack_device) {
         int complete ATTRIBUTE((unused));
-        MPIDI_CH3_ReqHandler_pack_cudabuf_stream(vc, sreq, &complete, (void *) stream_d2h);
+        MPIDI_CH3_ReqHandler_pack_device_stream(vc, sreq, &complete, (void *) stream_d2h);
         sreq->dev.iov[0].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)sreq->dev.tmpbuf;
         sreq->dev.iov[0].MPL_IOV_LEN = sreq->dev.segment_size;
         sreq->dev.iov_count = 1;
@@ -117,7 +120,7 @@ int MPID_MRAIL_RndvSend (
          * this situation. In particular, when we are using MPI_BOTTOM based
          * scheme in MPIR_Igather_binomial, MPIR_Igather_binomial_MV2,
          * MPIR_Gather_intra we can hit this situation. */
-        rts_pkt->rndv.cuda_transfer_mode = sreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+        rts_pkt->rndv.device_transfer_mode = sreq->mrail.device_transfer_mode = DEVICE_TO_DEVICE;
     }
 #endif
 	/* --BEGIN ERROR HANDLING-- */

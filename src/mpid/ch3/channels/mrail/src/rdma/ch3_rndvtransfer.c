@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,8 +22,8 @@
 #include "mpiutil.h"
 #include "rdma_impl.h"
 #include "smp_smpi.h"
-
 #include "dreg.h"
+#include "ibv_send_inline.h"
 
 static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t *, MPID_Request *);
 
@@ -47,6 +47,10 @@ do {                                                          \
 #else
 #define DEBUG_PRINT(args...)
 #endif
+
+#if defined(MPIDI_MRAILI_COALESCE_ENABLED)
+extern void FLUSH_SQUEUE_NOINLINE(MPIDI_VC_t *vc);
+#endif /*#if defined(MPIDI_MRAILI_COALESCE_ENABLED)*/
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Prepare_rndv_get
@@ -93,10 +97,10 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
 #endif
 
 #if defined(_ENABLE_CUDA_)
-    if(rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE) {
-        cts_pkt->rndv.cuda_transfer_mode = DEVICE_TO_DEVICE;
+    if(mv2_enable_device && rreq->mrail.device_transfer_mode != NONE) {
+        cts_pkt->rndv.device_transfer_mode = DEVICE_TO_DEVICE;
     } else {
-        cts_pkt->rndv.cuda_transfer_mode = NONE;
+        cts_pkt->rndv.device_transfer_mode = NONE;
     }
 #endif
 
@@ -193,18 +197,18 @@ int MPIDI_CH3_iStartRndvTransfer(MPIDI_VC_t * vc, MPID_Request * rreq)
     MPIDI_Pkt_set_seqnum(cts_pkt, seqnum);    
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda  &&
-        ((rreq->mrail.cuda_transfer_mode != NONE &&
+    if (mv2_enable_device  &&
+        ((rreq->mrail.device_transfer_mode != NONE &&
             (vc->smp.local_nodes == -1))
 #ifdef HAVE_CUDA_IPC
-       || (rdma_cuda_ipc && cudaipc_stage_buffered && 
-           rreq->mrail.cuda_transfer_mode != NONE &&
-           vc->smp.can_access_peer == CUDA_IPC_ENABLED) ||
+       || (mv2_device_use_ipc && mv2_device_use_ipc_stage_buffer &&
+           rreq->mrail.device_transfer_mode != NONE &&
+           vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) ||
            (rreq->mrail.protocol == MV2_RNDV_PROTOCOL_CUDAIPC)
 #endif
        ))
     { 
-       mpi_errno = MPIDI_CH3_Prepare_rndv_cts_cuda(vc, cts_pkt, rreq);
+       mpi_errno = MPIDI_CH3_Prepare_rndv_cts_device(vc, cts_pkt, rreq);
     } else 
 #endif
     {
@@ -273,24 +277,24 @@ int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
     }
 
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && sreq) {
+    if (mv2_enable_device && sreq) {
         /* Local data is on host, but remote side replied indicating that its
          * buffers reside on device. If this is an intra-node transfer, we
-         * require cuda_transfer_mode to be set so that we can choose not to do
+         * require device_transfer_mode to be set so that we can choose not to do
          * CMA/LiMIC-based transfers if source or target is on device */
-        if ((sreq->mrail.cuda_transfer_mode == NONE) && (vc->smp.local_nodes >= 0)) {
-            if (cts_pkt->rndv.cuda_transfer_mode != NONE) {
-                req->mrail.cuda_transfer_mode = HOST_TO_DEVICE;
+        if ((sreq->mrail.device_transfer_mode == NONE) && (vc->smp.local_nodes >= 0)) {
+            if (cts_pkt->rndv.device_transfer_mode != NONE) {
+                req->mrail.device_transfer_mode = HOST_TO_DEVICE;
             } 
         }
 
         /* Local data is on device, but remote side replied indicating that its
          * buffers reside on host or is unable to transfer to device directly.
-         * If this is an intra-node transfer, we require cuda_transfer_mode to
+         * If this is an intra-node transfer, we require device_transfer_mode to
          * be set so that we can choose not to do CMA/LiMIC-based transfers if
          * source or target is on device */
-        if ((sreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE) && (vc->smp.local_nodes >= 0)) {
-            req->mrail.cuda_transfer_mode = DEVICE_TO_HOST;
+        if ((sreq->mrail.device_transfer_mode == DEVICE_TO_DEVICE) && (vc->smp.local_nodes >= 0)) {
+            req->mrail.device_transfer_mode = DEVICE_TO_HOST;
         }
     }
 #endif
@@ -403,7 +407,7 @@ int MPIDI_CH3_Rendezvous_push(MPIDI_VC_t * vc, MPID_Request * sreq)
 #endif
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     case MV2_RNDV_PROTOCOL_CUDAIPC:
-            MPIDI_CH3_CUDAIPC_Rendezvous_push(vc, sreq);
+            MPIDI_CH3_DEVICE_IPC_Rendezvous_push(vc, sreq);
         break;
 #endif
     default:
@@ -481,7 +485,6 @@ static int MPIDI_CH3_CMA_Rendezvous_push(MPIDI_VC_t * vc,
         return mpi_errno;
     }
 
-fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_CMA_RNDV_PUSH);
     return mpi_errno;
 }
@@ -509,7 +512,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
 
     if (sreq->mrail.protocol != MV2_RNDV_PROTOCOL_R3
 #if defined (_ENABLE_CUDA_)
-            && sreq->mrail.cuda_transfer_mode == NONE
+            && sreq->mrail.device_transfer_mode == NONE
 #endif
        ) {
 #if defined(_SMP_CMA_)
@@ -547,7 +550,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
             && sreq->dev.OnDataAvail != MPIDI_CH3_ReqHandler_SendReloadIOV
             && sreq->dev.iov_count == 1
 #if defined(_ENABLE_CUDA_)
-            && (sreq->mrail.cuda_transfer_mode == NONE)
+            && (sreq->mrail.device_transfer_mode == NONE)
 #endif
        )
     {
@@ -562,7 +565,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
             && sreq->dev.OnDataAvail != MPIDI_CH3_ReqHandler_SendReloadIOV
             && sreq->dev.iov_count == 1
 #if defined(_ENABLE_CUDA_)
-            && (sreq->mrail.cuda_transfer_mode == NONE)
+            && (sreq->mrail.device_transfer_mode == NONE)
 #endif
        )
     {
@@ -573,10 +576,16 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
 
 #endif
 
+#if defined(_SMP_LIMIC_) || defined(_SMP_CMA_)
     PRINT_DEBUG(DEBUG_RNDV_verbose>1,
             "Sending R3 Data to %d, sreq: %p, partner: %08x, niov: %d, cma: %p, limic: %p\n",
             vc->pg_rank, sreq, sreq->mrail.partner_id, sreq->dev.iov_count,
             pkt_head.csend_req_id, pkt_head.send_req_id);
+#else
+    PRINT_DEBUG(DEBUG_RNDV_verbose>1,
+            "Sending R3 Data to %d, sreq: %p, partner: %08x, niov: %d\n",
+            vc->pg_rank, sreq, sreq->mrail.partner_id, sreq->dev.iov_count);
+#endif
 
     mpi_errno = MPIDI_CH3_iStartMsg(vc, &pkt_head,
                                     sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t),
@@ -608,7 +617,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     PRINT_DEBUG(DEBUG_RNDV_verbose>1, "R3 Data sent to %d, sreq: %p\n", vc->pg_rank, sreq);
     if (MPIDI_CH3I_SMP_SendQ_empty(vc)) {
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && s_smp_cuda_pipeline) {
+        if (mv2_enable_device && mv2_device_smp_pipeline) {
             iov_isdev = is_device_buffer((void *) sreq->dev.iov[sreq->dev.iov_offset].MPL_IOV_BUF);
         }
 #endif
@@ -623,7 +632,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
             if (vc->smp.send_current_pkt_type == SMP_RNDV_MSG) {
 #if defined(_ENABLE_CUDA_)
                 if (iov_isdev) { 
-                    mpi_errno = MPIDI_CH3I_SMP_writev_rndv_data_cuda(vc,
+                    mpi_errno = MPIDI_CH3I_SMP_writev_rndv_data_device(vc,
                           sreq,
                           &sreq->dev.iov[sreq->dev.iov_offset],
                           sreq->dev.iov_count - sreq->dev.iov_offset,
@@ -642,7 +651,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                 MPIU_Assert(vc->smp.send_current_pkt_type == SMP_RNDV_MSG_CONT);
 #if defined(_ENABLE_CUDA_)
                 if (iov_isdev) {
-                    mpi_errno = MPIDI_CH3I_SMP_writev_rndv_data_cuda(vc,
+                    mpi_errno = MPIDI_CH3I_SMP_writev_rndv_data_device(vc,
                           sreq,
                           &sreq->dev.iov[sreq->dev.iov_offset],
                           sreq->dev.iov_count - sreq->dev.iov_offset,
@@ -744,6 +753,11 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
 
     MPIDI_CH3_Pkt_rndv_r3_data_t pkt_head;
 
+#if defined(MPIDI_MRAILI_COALESCE_ENABLED)
+    /* TODO: Ticket #1433 */
+    FLUSH_SQUEUE_NOINLINE(vc);
+#endif /*if defined(MPIDI_MRAILI_COALESCE_ENABLED)*/
+
     MPIDI_Pkt_init(&pkt_head, MPIDI_CH3_PKT_RNDV_R3_DATA);
     iov[0].MPL_IOV_LEN = sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t);
     iov[0].MPL_IOV_BUF = (void*) &pkt_head;
@@ -793,14 +807,14 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
                 vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
                 sreq->status.MPI_ERROR = MPI_ERR_INTERN;
                 MPID_Request_complete(sreq);
-                return;
+                goto fn_exit;
             } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
                 msg_buffered = 1;
             }
 
             nb -= sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t);
             finished = MPIDI_CH3I_Request_adjust_iov(sreq, nb);
-            DEBUG_PRINT("ajust iov finish: %d\n", finished);
+            DEBUG_PRINT("adjust iov finish: %d\n", finished);
             vc->ch.pending_r3_data += nb;
         } while (!finished/* && !msg_buffered*/);
 
@@ -817,7 +831,7 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
         }
     } while (/* 1 != msg_buffered && */0 == complete);
 
-    DEBUG_PRINT("exit loop with complete %d, msg_buffered %d wiat %d pending data:%d \n", complete,
+    DEBUG_PRINT("exit loop with complete %d, msg_buffered %d wait %d pending data:%d \n", complete,
                 msg_buffered, wait_for_rndv_r3_ack, vc->ch.pending_r3_data);
 
     if (wait_for_rndv_r3_ack) { //|| 0 == complete && 1 == msg_buffered) {
@@ -838,6 +852,12 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
     }
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RNDV_R3_PUSH);
+fn_exit:
+#if defined(MPIDI_MRAILI_COALESCE_ENABLED)
+    /* TODO: Ticket #1433 */
+    FLUSH_SQUEUE_NOINLINE(vc);
+#endif /*if defined(MPIDI_MRAILI_COALESCE_ENABLED)*/
+    return;
 }
 
 #undef FUNCNAME
@@ -909,18 +929,18 @@ void MPIDI_CH3I_MRAILI_Process_rndv()
         }
 
 #if defined (_ENABLE_CUDA_) && defined (HAVE_CUDA_IPC)
-        if(rdma_enable_cuda) {
-            sreq = flowlist->mrail.cudaipc_sreq_head;
+        if(mv2_enable_device) {
+            sreq = flowlist->mrail.device_ipc_sreq_head;
             while (sreq != NULL) {
-                MPIDI_CH3_CUDAIPC_Rendezvous_recv(flowlist, sreq);
+                MPIDI_CH3_DEVICE_IPC_Rendezvous_recv(flowlist, sreq);
                 if (1 != sreq->mrail.nearly_complete) {
                     if (!need_vc_enqueue) {
                         need_vc_enqueue = 1;
                     }
                     break;
                 }
-                CUDAIPC_RECV_DONE(flowlist);
-                sreq = flowlist->mrail.cudaipc_sreq_head;
+                DEVICE_IPC_RECV_DONE(flowlist);
+                sreq = flowlist->mrail.device_ipc_sreq_head;
             }
         }
 #endif 
@@ -1089,18 +1109,12 @@ int MPIDI_CH3_Rendezvous_rget_send_finish(MPIDI_VC_t * vc,
             sreq, sreq->mrail.protocol, sreq->mrail.local_complete, sreq->mrail.remote_complete);
 
 #if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    cudaError_t cudaerr = cudaSuccess;
-
-    if (rdma_enable_cuda && sreq->mrail.ipc_cuda_event) {
-        cudaerr = cudaStreamWaitEvent(0, sreq->mrail.ipc_cuda_event->event, 0);
-        if (cudaerr != cudaSuccess) {
-            ibv_error_abort(IBV_RETURN_ERR,"cudaStreamWaitEvent failed\n");
+    if (mv2_enable_device && sreq->mrail.ipc_device_event) {
+        MPIU_Device_StreamWaitEvent(0, sreq->mrail.ipc_device_event->event, 0);
+        if (sreq->mrail.ipc_device_event) {
+            release_cudaipc_event(sreq->mrail.ipc_device_event);
         }
-    
-        if (sreq->mrail.ipc_cuda_event) {
-            release_cudaipc_event(sreq->mrail.ipc_cuda_event);
-        }
-        sreq->mrail.ipc_cuda_event = NULL;
+        sreq->mrail.ipc_device_event = NULL;
     }
 #endif
 
@@ -1335,9 +1349,9 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
             rreq, rreq->mrail.protocol, rreq->mrail.local_complete, rreq->mrail.remote_complete);
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE 
-        && rreq->mrail.cuda_transfer_mode != DEVICE_TO_HOST) {
-        if (MPIDI_CH3I_MRAILI_Process_cuda_finish(vc, rreq, rf_pkt) != 1) {
+    if (mv2_enable_device && rreq->mrail.device_transfer_mode != NONE
+        && rreq->mrail.device_transfer_mode != DEVICE_TO_HOST) {
+        if (MPIDI_CH3I_MRAILI_Process_device_finish(vc, rreq, rf_pkt) != 1) {
             goto fn_exit;
         }
     } else 

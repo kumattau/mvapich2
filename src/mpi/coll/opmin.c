@@ -8,6 +8,11 @@
 #include "mpiimpl.h"
 #include "oputil.h"
 
+#ifdef __ibmxl__
+void real16_min(void *invec, void *inoutvec, int *Len);
+#else
+void real16_min_(void *invec, void *inoutvec, int *Len);
+#endif
 /*
  * In MPI-2.1, this operation is valid only for C integer, Fortran integer,
  * and floating point types (5.9.2 Predefined reduce operations)
@@ -37,6 +42,18 @@ void MPIR_MINF (
         MPIR_OP_TYPE_GROUP(FLOATING_POINT_EXTRA)
 #undef MPIR_OP_TYPE_MACRO
         /* --BEGIN ERROR HANDLING-- */
+#ifdef HAVE_FORTRAN_BINDING
+#ifndef __PGI
+        /* As of v20.1, PGI compilers only support real8 */
+        case MPI_REAL16:
+#ifdef __ibmxl__
+            real16_min(invec, inoutvec, Len);
+#else
+            real16_min_(invec, inoutvec, Len);
+#endif
+            break;
+#endif /*ifndef __PGI*/
+#endif /*#ifdef HAVE_FORTRAN_BINDING*/
         default: {
             MPID_THREADPRIV_DECL;
             MPID_THREADPRIV_GET;
@@ -64,6 +81,12 @@ int MPIR_MINF_check_dtype ( MPI_Datatype type )
         MPIR_OP_TYPE_GROUP(C_INTEGER_EXTRA)
         MPIR_OP_TYPE_GROUP(FORTRAN_INTEGER_EXTRA)
         MPIR_OP_TYPE_GROUP(FLOATING_POINT_EXTRA)
+#ifdef HAVE_FORTRAN_BINDING
+#ifndef __PGI
+        /* As of v20.1, PGI compilers only support real8 */
+        case (MPI_REAL16):
+#endif /*ifndef __PGI*/
+#endif /*#ifdef HAVE_FORTRAN_BINDING*/
 #undef MPIR_OP_TYPE_MACRO
             return MPI_SUCCESS;
         /* --BEGIN ERROR HANDLING-- */

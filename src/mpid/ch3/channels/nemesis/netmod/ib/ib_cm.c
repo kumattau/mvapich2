@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -375,7 +375,7 @@ int MPID_nem_ib_setup_conn(MPIDI_PG_t *pg)
         /* TODO: currently we also setup connection for intra-node, 
          * because we still don't know whether it's a local process 
          * or not. Ideally, we should avoid setup connection for 
-         * local processes. Then in MPID_nem_ib_finalize fucntion,
+         * local processes. Then in MPID_nem_ib_finalize function,
          * we can avoid extra steps of ibv_destroy_qp and so on.
          */
         MPIDI_PG_Get_vc_set_active(pg, curRank, &vc);

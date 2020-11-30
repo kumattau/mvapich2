@@ -54,7 +54,7 @@
 #endif
 
 /* =========================================================================
- * Default config file location, control direcotry, and cache and checkpoint configuration.
+ * Default config file location, control directory, and cache and checkpoint configuration.
  * ========================================================================= */
 
 /* default location for system configuration file */

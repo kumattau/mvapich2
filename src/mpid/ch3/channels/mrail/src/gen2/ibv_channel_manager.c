@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,6 +39,17 @@
 #define DEBUG_PRINT(args...)
 #endif
 
+static inline int perform_blocking_progress_for_ib(int hca_num, int num_cqs);
+static inline int perform_blocking_progress_for_iwarp(int hca_num, int num_cqs);
+
+#define PERFORM_BLOCKING_PROGRESS(_hca_num, _num_cqs)                   \
+    if (likely(mv2_use_ib_channel)) {                                   \
+        perform_blocking_progress_for_ib((_hca_num), (_num_cqs));       \
+    } else {                                                            \
+        perform_blocking_progress_for_iwarp((_hca_num), (_num_cqs));    \
+    }
+
+int cq_poll_completion = 0;
 static pthread_spinlock_t g_apm_lock;
 static int num_cqes[MAX_NUM_HCAS] = { 0 };
 static int curr_cqe[MAX_NUM_HCAS] = { 0 };
@@ -60,6 +71,178 @@ MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ibv_channel_ctrl_packet_count);
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2,
         mv2_ibv_channel_out_of_order_packet_count);
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_ibv_channel_exact_recv_count);
+
+/* Utility function to print detailed messages for failed work completions.
+ * Thanks to IBM and RDMAmojo.com for the detailed descriptions.
+ */
+void mv2_print_wc_status_error(enum ibv_wc_status status)
+{
+    switch(status) {
+        case IBV_WC_LOC_LEN_ERR:
+            PRINT_ERROR("IBV_WC_LOC_LEN_ERR: This event is generated when a)"
+                        " the receive buffer is smaller than the incoming send,"
+                        " or b) a work request that was posted in a local send"
+                        " queue contains a message that is greater than the"
+                        " maximum message size that is supported by the RDMA"
+                        " device port that should send the message.\n");
+            break;
+        case IBV_WC_LOC_QP_OP_ERR:
+            PRINT_ERROR("IBV_WC_LOC_QP_OP_ERR: This event is generated when a"
+                        " QP error occurs. For example, it may be generated if"
+                        " a) user neglects to specify responder_resources and"
+                        " initiator_depth values in struct rdma_conn_param"
+                        " before calling rdma_connect() on the client side and"
+                        " rdma_accept() on the server side, b) a Work Request"
+                        " that was posted in a local Send Queue of a UD QP"
+                        " contains an Address Handle that is associated with a"
+                        " Protection Domain to a QP which is associated with a"
+                        " different Protection Domain, or c) an opcode which"
+                        " is not supported by the transport type of the QP is"
+                        " not supported (for example: RDMA Write over a UD QP).\n");
+            break;
+        case IBV_WC_LOC_EEC_OP_ERR:
+            PRINT_ERROR("IBV_WC_LOC_EEC_OP_ERR: This event is generated when"
+                        " there is an error related to the local EECs receive"
+                        " logic while executing the request packet. The"
+                        " responder is unable to complete the request. This"
+                        " error is not caused by the sender.\n");
+            break;
+        case IBV_WC_LOC_PROT_ERR:
+            PRINT_ERROR("IBV_WC_LOC_PROT_ERR: This event is generated when a"
+                        " user attempts to access an address outside of the"
+                        " registered memory region. For example, this may"
+                        " happen if the Lkey does not match the address in"
+                        " the WR.\n");
+            break;
+        case IBV_WC_WR_FLUSH_ERR:
+            PRINT_ERROR("IBV_WC_WR_FLUSH_ERR: This event is generated when an"
+                        " invalid remote error is thrown when the responder"
+                        " detects an invalid request. It may be that the"
+                        " operation is not supported by the request queue or"
+                        " there is insufficient buffer space to receive the"
+                        " request.\n");
+            break;
+        case IBV_WC_MW_BIND_ERR:
+            PRINT_ERROR("IBV_WC_MW_BIND_ERR: This event is generated when a"
+                        " memory management operation error occurs. The error"
+                        " may be due to the fact that the memory window and the"
+                        " QP belong to different protection domains. It may"
+                        " also be that the memory window is not allowed to be"
+                        " bound to the specified MR or the access permissions"
+                        " may be wrong.\n");
+            break;
+        case IBV_WC_BAD_RESP_ERR:
+            PRINT_ERROR("IBV_WC_BAD_RESP_ERR: This event is generated when an"
+                        " unexpected transport layer opcode is returned by the"
+                        " responder. Relevant to: RC or DC QPs.\n");
+            break;
+        case IBV_WC_LOC_ACCESS_ERR:
+            PRINT_ERROR("IBV_WC_LOC_ACCESS_ERR: This event is generated when a"
+                        " local protection error occurs on a local data buffer"
+                        " during the process of an RDMA Write with Immediate"
+                        " Data operation sent from the remote node."
+                        " Relevant to: RC or DC QPs.\n");
+            break;
+        case IBV_WC_REM_INV_REQ_ERR:
+            PRINT_ERROR("IBV_WC_REM_INV_REQ_ERR: This event is generated when"
+                        " the responder detects an invalid message on the"
+                        " channel. Possible causes include a) the receive"
+                        " buffer is smaller than the incoming send, b) "
+                        " operation is not supported by this receive queue"
+                        " (qp_access_flags on the remote QP was not"
+                        " configured to support this operation), or c) the"
+                        " length specified in a RDMA request is greater than"
+                        " 2^31 bytes. It is generated on the sender side of"
+                        " the connection. Relevant to: RC or DC QPs.\n");
+            break;
+        case IBV_WC_REM_ACCESS_ERR:
+            PRINT_ERROR("IBV_WC_REM_ACCESS_ERR: This event is generated when"
+                        " a protection error occurs on a remote data buffer"
+                        " to be read by an RDMA read, written by an RDMA Write"
+                        " or accessed by an atomic operation. The error is"
+                        " reported only on RDMA operations or atomic"
+                        " operations. Relevant to: RC or DC QPs.\n");
+            break;
+        case IBV_WC_REM_OP_ERR:
+            PRINT_ERROR("IBV_WC_REM_OP_ERR: This event is generated when an"
+                        " operation cannot be completed successfully by the"
+                        " responder. The failure to complete the operation"
+                        " may be due to QP related errors which prevent the"
+                        " responder from completing the request or a malformed"
+                        " WQE on the Receive Queue. Relevant to: RC or DC QPs.\n");
+            break;
+        case IBV_WC_RETRY_EXC_ERR:
+            PRINT_ERROR("IBV_WC_RETRY_EXC_ERR: This event is generated when"
+                        " a sender is unable to receive feedback from the"
+                        " receiver. This means that either the receiver just"
+                        " never ACKs sender messages in a specified time"
+                        " period, or it has been disconnected or it is in a"
+                        " bad state which prevents it from responding."
+                        " If this happens when sending the first message,"
+                        " usually it means that the QP connection attributes"
+                        " are wrong or the remote side is not in a state"
+                        " that it can respond to messages. If this happens"
+                        " after sending the first message, usually it means"
+                        " that the remote QP is not available anymore or that"
+                        " there is congestion in the network preventing the"
+                        " packets from reaching on time."
+                        " Relevant to: RC or DC QPs.\n");
+            break;
+        case IBV_WC_RNR_RETRY_EXC_ERR:
+            PRINT_ERROR("IBV_WC_RNR_RETRY_EXC_ERR: This event is generated"
+                        " when the RNR NAK retry count is exceeded. This"
+                        " may be caused by lack of receive buffers on the"
+                        " responder side. Relevant to: RC or DC QPs.\n");
+            break;
+        case IBV_WC_LOC_RDD_VIOL_ERR:
+            PRINT_ERROR("IBV_WC_LOC_RDD_VIOL_ERR: This event is generated when"
+                        " the RDD associated with the QP does not match the"
+                        " RDD associated with the EEC.\n");
+            break;
+        case IBV_WC_REM_INV_RD_REQ_ERR:
+            PRINT_ERROR("IBV_WC_REM_INV_RD_REQ_ERR: This event is generated"
+                        " when the responder detects an invalid incoming RD"
+                        " message. The message may be invalid because it has"
+                        " in invalid Q_Key or there may be a Reliable"
+                        " Datagram Domain (RDD) violation.\n");
+            break;
+        case IBV_WC_REM_ABORT_ERR:
+            PRINT_ERROR("IBV_WC_REM_ABORT_ERR: This event is generated when an"
+                        " error occurs on the responder side which causes it"
+                        " to abort the operation. Relevant to: UD or UC QPs"
+                        " associated with a SRQ.\n");
+            break;
+        case IBV_WC_INV_EECN_ERR:
+            PRINT_ERROR("IBV_WC_INV_EECN_ERR: This event is generated when an"
+                        " invalid End to End Context Number (EECN) is detected.\n");
+            break;
+        case IBV_WC_INV_EEC_STATE_ERR:
+            PRINT_ERROR("IBV_WC_INV_EEC_STATE_ERR: This event is generated when"
+                        " an illegal operation is detected in a request for the"
+                        " specified EEC state.\n");
+            break;
+        case IBV_WC_FATAL_ERR:
+            PRINT_ERROR("IBV_WC_FATAL_ERR: This event is generated when a fatal"
+                        " transport error occurs. The user may have to restart"
+                        " the RDMA device driver or reboot the server to"
+                        " recover from the error.\n");
+            break;
+        case IBV_WC_RESP_TIMEOUT_ERR:
+            PRINT_ERROR("IBV_WC_RESP_TIMEOUT_ERR: This event is generated when"
+                        " the responder is unable to respond to a request"
+                        " within the timeout period. It generally indicates that"
+                        " the receiver is not ready to process requests.\n");
+            break;
+        case IBV_WC_GENERAL_ERR:
+            PRINT_ERROR("IBV_WC_GENERAL_ERR: This event is generated when there"
+                        " is a transport error which cannot be described by the"
+                        " other specific events discussed here.\n");
+            break;
+        default:
+            PRINT_ERROR("ERROR: Unknown work completion status %d\n", status);
+            break;
+    }
+}
 
 volatile int mv2_in_blocking_progress = 0;
 
@@ -252,6 +435,396 @@ int MPIDI_CH3I_MRAILI_Register_channels(MPIDI_VC_t *vc, int num, vbuf *(*func[])
     return MPI_SUCCESS;    
 }
 
+static inline void handle_multiple_cqs_for_iwarp(int num_cqs, int cq_choice, int is_send_completion)
+{
+    if (2 == num_cqs) {
+        if (0 == cq_choice) {
+            if (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq) {
+                 mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
+            } else {
+                PRINT_DEBUG(DEBUG_CHM_verbose,
+                    "Possibly received a duplicate send completion event\n");
+            }
+        } 
+    } else {
+        if (is_send_completion) {
+            if (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq > 0) {
+                mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
+            } else {
+                PRINT_DEBUG(DEBUG_CHM_verbose,
+                        "Possibly received a duplicate send completion event\n");
+            }
+        }     
+    }
+
+    return;
+}
+
+static inline void handle_multiple_cqs_for_ib(int num_cqs, int cq_choice, int is_send_completion)
+{
+    return;
+}
+
+static inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
+        int receiving, struct ibv_wc wc, int num_cqs, int cq_choice,
+        int hca_num)
+{
+    vbuf *v = NULL;
+    int type = T_CHANNEL_NO_ARRIVE;
+    int needed = 0;
+    MPIDI_VC_t *vc = NULL;
+    int is_send_completion = 0;
+    MPIDI_CH3I_MRAILI_Pkt_comm_header *p = NULL;
+
+    v = (vbuf *) ((uintptr_t) wc.wr_id);
+    vc = (MPIDI_VC_t *) (v->vc);
+    cq_poll_completion = 1;
+
+    if (unlikely(wc.status != IBV_WC_SUCCESS)) {
+        if (wc.opcode == IBV_WC_SEND ||
+            wc.opcode == IBV_WC_RDMA_WRITE ||
+            wc.opcode == IBV_WC_FETCH_ADD ) {
+            PRINT_ERROR("Send desc error in msg to %d, wc_opcode=%d\n", vc->pg_rank, wc.opcode );
+        } else {
+    		PRINT_ERROR("Recv desc error in msg from %d, wc_opcode=%d\n",vc->pg_rank, wc.opcode);
+		}
+        PRINT_ERROR("Msg from %d: wc.status=%d (%s), wc.wr_id=%p, wc.opcode=%d, vbuf->phead->type=%d = %s\n",
+                    vc->pg_rank, wc.status, ibv_ops.wc_status_str(wc.status), v, wc.opcode,
+                    ((MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader)->type,
+                    MPIDI_CH3_Pkt_type_to_string[((MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader)->type]);
+        mv2_print_wc_status_error(wc.status);
+
+        ibv_va_error_abort(IBV_STATUS_ERR,
+                "[] Got completion with error %d, vendor code=0x%x, dest rank=%d\n",
+                wc.status, wc.vendor_err, ((MPIDI_VC_t *)v->vc)->pg_rank);
+    }
+
+    is_send_completion = (wc.opcode == IBV_WC_SEND ||
+                          wc.opcode == IBV_WC_RDMA_WRITE ||
+                          wc.opcode == IBV_WC_RDMA_READ ||
+                          wc.opcode == IBV_WC_FETCH_ADD ||
+                          wc.opcode == IBV_WC_COMP_SWAP);
+
+    /* iWARP has the need for multiple CQ's, IB does not */
+    if (unlikely(mv2_use_ib_channel == 0)) {
+	handle_multiple_cqs_for_iwarp(num_cqs, cq_choice, is_send_completion);
+    }
+
+	/* get the VC and increase its wqe */
+	if (is_send_completion) {
+#ifdef _ENABLE_UD_
+        p = v->pheader;
+        if (rdma_enable_hybrid
+#ifdef _MCST_SUPPORT_
+            && !IS_MCAST_MSG(p)
+#endif
+           )
+        {
+            if(v->transport == IB_TRANSPORT_RC  || 
+                (v->pheader && IS_CNTL_MSG(p))) {
+                MRAILI_Process_send(v);
+            }
+            if (v->transport == IB_TRANSPORT_UD) {
+                mv2_ud_update_send_credits(v);
+            }
+            if(v->transport == IB_TRANSPORT_UD &&
+                    v->flags & UD_VBUF_SEND_INPROGRESS) {
+                v->flags &= ~(UD_VBUF_SEND_INPROGRESS);
+                if (v->flags & UD_VBUF_FREE_PENIDING) {
+                    v->flags &= ~(UD_VBUF_FREE_PENIDING);
+                    MRAILI_Release_vbuf(v);
+                }
+            }
+        }
+        else
+#endif
+        {
+	        MRAILI_Process_send(v);
+        }
+            type = T_CHANNEL_NO_ARRIVE;
+            *vbuf_handle = NULL;
+    } else {
+        /* This is a receive completion */
+        if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
+#ifdef _ENABLE_UD_
+                   || v->transport == IB_TRANSPORT_UD
+#endif
+           ) {
+            SET_PKT_LEN_HEADER(v, wc);
+            SET_PKT_HEADER_OFFSET(v);
+            p = v->pheader;
+#ifdef _MCST_SUPPORT_
+            if (IS_MCAST_MSG(p)) {
+                mv2_process_mcast_msg(v);
+                return T_CHANNEL_NO_ARRIVE;
+            }
+            else
+#endif
+#ifdef _ENABLE_UD_
+	    if(rdma_enable_hybrid)
+	    {
+                MPIDI_PG_Get_vc(MPIDI_Process.my_pg, p->src.rank, &vc);
+	    } else
+#endif
+        {
+                vc = (MPIDI_VC_t *)p->src.vc_addr;
+        }
+
+            v->vc = vc;
+            v->rail = p->rail;
+        }
+        if (likely(NULL == vc_req || vc_req == vc)) {
+            /* In this case, we should return the vbuf
+             * any way if it is next expected*/
+            int seqnum = GetSeqNumVbuf(v);
+            *vbuf_handle = v;
+            SET_PKT_LEN_HEADER(v, wc);
+            SET_PKT_HEADER_OFFSET(v);
+            v->seqnum =  seqnum;
+            p = v->pheader;
+            PRINT_DEBUG(DEBUG_CHM_verbose>1,"Received from rank:%d seqnum :%d "
+                    "ack:%d size:%zu type:%d transport:%d \n",vc->pg_rank,
+                    v->seqnum, p->acknum, v->content_size, p->type, v->transport);
+#ifdef _ENABLE_UD_
+            if (v->transport == IB_TRANSPORT_UD)
+            {
+                mv2_ud_ctx_t *ud_ctx =
+                    mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_num];
+                --ud_ctx->num_recvs_posted;
+                if(ud_ctx->num_recvs_posted < ud_ctx->credit_preserve) {
+                    ud_ctx->num_recvs_posted += mv2_post_ud_recv_buffers(
+                            (rdma_default_max_ud_recv_wqe - ud_ctx->num_recvs_posted), ud_ctx);
+                }
+            }
+            else
+#endif 
+                if (likely(mv2_MPIDI_CH3I_RDMA_Process.has_srq)) {
+                    /* Check if we need to release the SRQ limit thread */
+                    if (unlikely(mv2_MPIDI_CH3I_RDMA_Process.
+                                srq_zero_post_counter[hca_num] >= 1)) {
+                        pthread_mutex_lock(
+                                &mv2_MPIDI_CH3I_RDMA_Process.
+                                srq_post_mutex_lock[hca_num]);
+                        mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num] = 0;
+                        pthread_cond_signal(&mv2_MPIDI_CH3I_RDMA_Process.
+                                srq_post_cond[hca_num]);
+                        pthread_mutex_unlock(
+                                &mv2_MPIDI_CH3I_RDMA_Process.
+                                srq_post_mutex_lock[hca_num]);
+                    }
+                }
+                else
+                {
+                    --vc->mrail.srp.credits[v->rail].preposts;
+
+                    needed = rdma_prepost_depth + rdma_prepost_noop_extra
+                        + MIN(rdma_prepost_rendezvous_extra,
+                                vc->mrail.srp.credits[v->rail].
+                                rendezvous_packets_expected);
+                }
+#ifdef _ENABLE_UD_
+            if (rdma_enable_hybrid){
+                if (IS_CNTL_MSG(p)){
+                    type = T_CHANNEL_CONTROL_MSG_ARRIVE;
+                    MPIR_T_PVAR_COUNTER_INC(MV2,
+                            mv2_ibv_channel_ctrl_packet_count, 1);
+                } else {
+                    type = T_CHANNEL_HYBRID_MSG_ARRIVE;
+                }
+            }
+            else
+#endif
+            {
+                if (seqnum == PKT_NO_SEQ_NUM){
+                    type = T_CHANNEL_CONTROL_MSG_ARRIVE;
+                    MPIR_T_PVAR_COUNTER_INC(MV2,
+                            mv2_ibv_channel_ctrl_packet_count, 1);
+                } else if (seqnum == vc->mrail.seqnum_next_torecv) {
+                    vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
+                    ++vc->mrail.seqnum_next_torecv;
+                    type = T_CHANNEL_EXACT_ARRIVE;
+                    PRINT_DEBUG(DEBUG_CHM_verbose, "[channel manager] get one with exact seqnum\n");
+                } else {
+                    type = T_CHANNEL_OUT_OF_ORDER_ARRIVE;
+                    VQUEUE_ENQUEUE(&vc->mrail.cmanager,
+                            INDEX_GLOBAL(&vc->mrail.cmanager, v->rail),
+                            v);
+                    PRINT_DEBUG(DEBUG_CHM_verbose, "get recv %d (%d)\n", seqnum,
+                            vc->mrail.seqnum_next_torecv);
+                }
+            }
+            if (unlikely(!mv2_MPIDI_CH3I_RDMA_Process.has_srq && v->transport != IB_TRANSPORT_UD)) {
+
+                if (PKT_IS_NOOP(v)) {
+                    PREPOST_VBUF_RECV(vc, v->rail);
+                    /* noops don't count for credits */
+                    --vc->mrail.srp.credits[v->rail].local_credit;
+                }
+                else if ((vc->mrail.srp.credits[v->rail].preposts
+                            < rdma_rq_size) &&
+                        (vc->mrail.srp.credits[v->rail].preposts +
+                         rdma_prepost_threshold < needed))
+                {
+                    do {
+                        PREPOST_VBUF_RECV(vc, v->rail);
+                    } while (vc->mrail.srp.credits[v->rail].preposts
+                            < rdma_rq_size &&
+                            vc->mrail.srp.credits[v->rail].preposts
+                            < needed);
+                }
+
+                MRAILI_Send_noop_if_needed(vc, v->rail);
+            }
+            if (type == T_CHANNEL_CONTROL_MSG_ARRIVE ||
+                type == T_CHANNEL_EXACT_ARRIVE ||
+                type == T_CHANNEL_HYBRID_MSG_ARRIVE ||
+                type == T_CHANNEL_OUT_OF_ORDER_ARRIVE) {
+                goto fn_exit;
+            }
+        } else {
+            /* Now since this is not the packet we want, enqueue it */
+            type = T_CHANNEL_OUT_OF_ORDER_ARRIVE;
+            *vbuf_handle = NULL;
+            v->content_size = wc.byte_len;
+            VQUEUE_ENQUEUE(&vc->mrail.cmanager,
+                    INDEX_GLOBAL(&vc->mrail.cmanager, v->rail),
+                    v);
+            if (v->transport != IB_TRANSPORT_UD) {
+                if (unlikely(!mv2_MPIDI_CH3I_RDMA_Process.has_srq)) {
+                    --vc->mrail.srp.credits[v->rail].preposts;
+
+                    needed = rdma_prepost_depth + rdma_prepost_noop_extra
+                        + MIN(rdma_prepost_rendezvous_extra,
+                                vc->mrail.srp.credits[v->rail].
+                                rendezvous_packets_expected);
+
+                    if (PKT_IS_NOOP(v)) {
+                        PREPOST_VBUF_RECV(vc, v->rail);
+                        --vc->mrail.srp.credits[v->rail].local_credit;
+                    }
+                    else if ((vc->mrail.srp.credits[v->rail].preposts
+                                < rdma_rq_size) &&
+                            (vc->mrail.srp.credits[v->rail].preposts +
+                             rdma_prepost_threshold < needed)) {
+                        do {
+                            PREPOST_VBUF_RECV(vc, v->rail);
+                        } while (vc->mrail.srp.credits[v->rail].preposts
+                                < rdma_rq_size &&
+                                vc->mrail.srp.credits[v->rail].preposts
+                                < needed);
+                    }
+                    MRAILI_Send_noop_if_needed(vc, v->rail);
+                }
+            }
+        }
+    }
+
+fn_exit:
+    return type;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_RDMA_cq_poll_iwarp
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIDI_CH3I_MRAILI_Cq_poll_iwarp(vbuf **vbuf_handle, 
+        MPIDI_VC_t * vc_req, int receiving, int is_blocking)
+{
+    int ne = 0;
+    int i = 0;
+    int cq_choice = 0;
+    int num_cqs = 0;
+    int type = T_CHANNEL_NO_ARRIVE;
+    struct ibv_cq *chosen_cq = NULL;
+
+    MPIDI_STATE_DECL(MPID_GEN2_MRAILI_CQ_POLL_IWARP);
+    MPIDI_FUNC_ENTER(MPID_GEN2_MRAILI_CQ_POLL_IWARP);
+
+    *vbuf_handle = NULL;
+
+    if (!vc_req) {
+        type = MPIDI_CH3I_MRAILI_Test_pkt(vbuf_handle);
+        if (type == T_CHANNEL_EXACT_ARRIVE 
+                || type == T_CHANNEL_CONTROL_MSG_ARRIVE)
+            goto fn_exit;
+    }
+
+    if (rdma_iwarp_use_multiple_cq &&
+        MV2_IS_CHELSIO_IWARP_CARD(mv2_MPIDI_CH3I_RDMA_Process.hca_type) &&
+        (mv2_MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
+        num_cqs = 2;
+    } else {
+        num_cqs = 1;
+    }
+
+    for (i = 0; i < rdma_num_hcas; ++i) {
+        for (cq_choice = 0; cq_choice < num_cqs; ++cq_choice) {
+            if (1 == num_cqs) {
+	            chosen_cq = mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i];
+	        } else {
+	            if (0 == cq_choice) {
+	                chosen_cq = mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i];
+                } else {
+	                chosen_cq = mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i];
+                }
+	        }
+
+            if (curr_cqe[i] < num_cqes[i]) {
+                /* We already have CQEs polled out from last call to
+                 * ibv_poll_cq. Drain them before polling again */
+                do {
+                    type = handle_cqe(vbuf_handle, vc_req, receiving, wc[i][curr_cqe[i]],
+                                    num_cqs, cq_choice, i);
+                    curr_cqe[i]++;
+                    /* Drain till we get in-order recv or run out of polled CQEs */
+                } while ((*vbuf_handle == NULL) && (curr_cqe[i] < num_cqes[i]));
+
+                if (*vbuf_handle != NULL) {
+                    /* We got in-order data, deliver it to higher level */
+                    goto fn_exit;
+                }
+            } else {
+                memset(wc[i], 0, sizeof(struct ibv_wc) * num_cqes[i]);
+	            ne = ibv_poll_cq(chosen_cq, rdma_num_cqes_per_poll, wc[i]);
+
+    	        if (unlikely(ne < 0)) {
+    	            ibv_error_abort(IBV_RETURN_ERR, "Fail to poll cq\n");
+    	        } else if (ne) {         
+                    curr_cqe[i] = 0;
+                    num_cqes[i] = ne;
+    
+                    do {
+                        type = handle_cqe(vbuf_handle, vc_req, receiving, wc[i][curr_cqe[i]],
+                                            num_cqs, cq_choice, i);
+                        curr_cqe[i]++;
+                        /* Drain till we get in-order recv or run out of polled CQEs */
+                    } while ((*vbuf_handle == NULL) && (curr_cqe[i] < num_cqes[i]));
+
+                    if (*vbuf_handle != NULL) {
+                        /* We got in-order data, deliver it to higher level */
+                        goto fn_exit;
+                    }
+    	        } else {
+    	            *vbuf_handle = NULL;
+    	            type = T_CHANNEL_NO_ARRIVE;
+    	            ++nspin;
+    	
+    	            /* Blocking mode progress */
+    	            if(rdma_use_blocking && is_blocking && nspin >= rdma_blocking_spin_count_threshold) {
+                        mv2_in_blocking_progress = 1;
+                        PERFORM_BLOCKING_PROGRESS(i, num_cqs);
+                        mv2_in_blocking_progress = 0;
+    	                nspin = 0;
+    	            }
+    	        }
+            }
+        }
+    }
+fn_exit:
+    MPIDI_FUNC_EXIT(MPID_GEN2_MRAILI_CQ_POLL_IWARP);
+    return type;
+}
+
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAILI_Get_next_vbuf
 #undef FCNAME
@@ -392,6 +965,7 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
 {
     MRAILI_Channel_manager * cmanager = &vc->mrail.cmanager;
     int i = 0;
+    int receiving = 0;
     int seq;
     int seq_expected = vc->mrail.seqnum_next_torecv;
     int type = T_CHANNEL_NO_ARRIVE;
@@ -464,7 +1038,11 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
             }
         }
 
-        type = MPIDI_CH3I_MRAILI_Cq_poll(vbuf_handle, vc, 0, blocking);
+        if (likely(mv2_use_ib_channel == 1)) {
+            type = MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf_handle, vc, receiving, blocking);
+        } else {
+            type = MPIDI_CH3I_MRAILI_Cq_poll_iwarp(vbuf_handle, vc, receiving, blocking);
+        }
         if (type != T_CHANNEL_NO_ARRIVE) {
             switch(type) {
                 case (T_CHANNEL_EXACT_ARRIVE):
@@ -485,292 +1063,7 @@ fn_exit:
     return type;
 }
 
-inline void handle_multiple_cqs_for_iwarp(int num_cqs, int cq_choice, int is_send_completion)
-{
-    if (2 == num_cqs) {
-        if (0 == cq_choice) {
-            if (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq) {
-                 mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
-            } else {
-                PRINT_DEBUG(DEBUG_CHM_verbose,
-                    "Possibly received a duplicate send completion event\n");
-            }
-        } 
-    } else {
-        if (is_send_completion) {
-            if (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq > 0) {
-                mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
-            } else {
-                PRINT_DEBUG(DEBUG_CHM_verbose,
-                        "Possibly received a duplicate send completion event\n");
-            }
-        }     
-    }
-
-    return;
-}
-
-inline void handle_multiple_cqs_for_ib(int num_cqs, int cq_choice, int is_send_completion)
-{
-    return;
-}
-
-static inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
-        int receiving, struct ibv_wc wc, int num_cqs, int cq_choice,
-        int hca_num)
-{
-    vbuf *v = NULL;
-    int type = T_CHANNEL_NO_ARRIVE;
-    int needed = 0;
-    MPIDI_VC_t *vc = NULL;
-    int is_send_completion = 0;
-    MPIDI_CH3I_MRAILI_Pkt_comm_header *p = NULL;
-
-    v = (vbuf *) ((uintptr_t) wc.wr_id);
-    vc = (MPIDI_VC_t *) (v->vc);
-    cq_poll_completion = 1;
-
-    if (unlikely(wc.status != IBV_WC_SUCCESS)) {
-        if (wc.opcode == IBV_WC_SEND ||
-            wc.opcode == IBV_WC_RDMA_WRITE ||
-            wc.opcode == IBV_WC_FETCH_ADD ) {
-            PRINT_ERROR("Send desc error in msg to %d, wc_opcode=%d\n", vc->pg_rank, wc.opcode );
-        } else {
-    		PRINT_ERROR("Recv desc error in msg from %d, wc_opcode=%d\n",vc->pg_rank, wc.opcode);
-		}
-        PRINT_ERROR("Msg from %d: wc.status=%d, wc.wr_id=%p, wc.opcode=%d, vbuf->phead->type=%d = %s\n",
-                    vc->pg_rank, wc.status, v, wc.opcode,
-                    ((MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader)->type,
-                    MPIDI_CH3_Pkt_type_to_string[((MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader)->type]);
-
-        ibv_va_error_abort(IBV_STATUS_ERR,
-                "[] Got completion with error %d, vendor code=0x%x, dest rank=%d\n",
-                wc.status, wc.vendor_err, ((MPIDI_VC_t *)v->vc)->pg_rank);
-    }
-
-    is_send_completion = (wc.opcode == IBV_WC_SEND ||
-                          wc.opcode == IBV_WC_RDMA_WRITE ||
-                          wc.opcode == IBV_WC_RDMA_READ ||
-                          wc.opcode == IBV_WC_FETCH_ADD ||
-                          wc.opcode == IBV_WC_COMP_SWAP);
-
-    /* iWARP has the need for multiple CQ's, IB does not */
-    handle_multiple_cqs(num_cqs, cq_choice, is_send_completion);
-
-	/* get the VC and increase its wqe */
-	if (is_send_completion) {
-#ifdef _ENABLE_UD_
-        p = v->pheader;
-        if (rdma_enable_hybrid
-#ifdef _MCST_SUPPORT_
-            && !IS_MCAST_MSG(p)
-#endif
-           )
-        {
-            if(v->transport == IB_TRANSPORT_RC  || 
-                (v->pheader && IS_CNTL_MSG(p))) {
-                MRAILI_Process_send(v);
-            }
-            if (v->transport == IB_TRANSPORT_UD) {
-                mv2_ud_update_send_credits(v);
-            }
-            if(v->transport == IB_TRANSPORT_UD &&
-                    v->flags & UD_VBUF_SEND_INPROGRESS) {
-                v->flags &= ~(UD_VBUF_SEND_INPROGRESS);
-                if (v->flags & UD_VBUF_FREE_PENIDING) {
-                    v->flags &= ~(UD_VBUF_FREE_PENIDING);
-                    MRAILI_Release_vbuf(v);
-                }
-            }
-        }
-        else
-#endif
-        {
-	        MRAILI_Process_send(v);
-        }
-            type = T_CHANNEL_NO_ARRIVE;
-            *vbuf_handle = NULL;
-    } else {
-        /* This is a receive completion */
-        if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
-#ifdef _ENABLE_UD_
-                   || v->transport == IB_TRANSPORT_UD
-#endif
-           ) {
-            SET_PKT_LEN_HEADER(v, wc);
-            SET_PKT_HEADER_OFFSET(v);
-            p = v->pheader;
-#ifdef _MCST_SUPPORT_
-            if (IS_MCAST_MSG(p)) {
-                mv2_process_mcast_msg(v);
-                return T_CHANNEL_NO_ARRIVE;
-            }
-            else
-#endif
-#ifdef _ENABLE_UD_
-	    if(rdma_enable_hybrid)
-	    {
-                MPIDI_PG_Get_vc(MPIDI_Process.my_pg, p->src.rank, &vc);
-	    } else
-#endif
-        {
-                vc = (MPIDI_VC_t *)p->src.vc_addr;
-        }
-
-            v->vc = vc;
-            v->rail = p->rail;
-        }
-        if (likely(NULL == vc_req || vc_req == vc)) {
-            /* In this case, we should return the vbuf
-             * any way if it is next expected*/
-            int seqnum = GetSeqNumVbuf(v);
-            *vbuf_handle = v;
-            SET_PKT_LEN_HEADER(v, wc);
-            SET_PKT_HEADER_OFFSET(v);
-            v->seqnum =  seqnum;
-            p = v->pheader;
-            PRINT_DEBUG(DEBUG_CHM_verbose>1,"Received from rank:%d seqnum :%d "
-                    "ack:%d size:%zu type:%d trasport:%d \n",vc->pg_rank,
-                    v->seqnum, p->acknum, v->content_size, p->type, v->transport);
-#ifdef _ENABLE_UD_
-            if (v->transport == IB_TRANSPORT_UD)
-            {
-                mv2_ud_ctx_t *ud_ctx =
-                    mv2_MPIDI_CH3I_RDMA_Process.ud_rails[hca_num];
-                --ud_ctx->num_recvs_posted;
-                if(ud_ctx->num_recvs_posted < ud_ctx->credit_preserve) {
-                    ud_ctx->num_recvs_posted += mv2_post_ud_recv_buffers(
-                            (rdma_default_max_ud_recv_wqe - ud_ctx->num_recvs_posted), ud_ctx);
-                }
-            }
-            else
-#endif 
-                if (likely(mv2_MPIDI_CH3I_RDMA_Process.has_srq)) {
-                    /* Check if we need to release the SRQ limit thread */
-                    if (unlikely(mv2_MPIDI_CH3I_RDMA_Process.
-                                srq_zero_post_counter[hca_num] >= 1)) {
-                        pthread_mutex_lock(
-                                &mv2_MPIDI_CH3I_RDMA_Process.
-                                srq_post_mutex_lock[hca_num]);
-                        mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num] = 0;
-                        pthread_cond_signal(&mv2_MPIDI_CH3I_RDMA_Process.
-                                srq_post_cond[hca_num]);
-                        pthread_mutex_unlock(
-                                &mv2_MPIDI_CH3I_RDMA_Process.
-                                srq_post_mutex_lock[hca_num]);
-                    }
-                }
-                else
-                {
-                    --vc->mrail.srp.credits[v->rail].preposts;
-
-                    needed = rdma_prepost_depth + rdma_prepost_noop_extra
-                        + MIN(rdma_prepost_rendezvous_extra,
-                                vc->mrail.srp.credits[v->rail].
-                                rendezvous_packets_expected);
-                }
-#ifdef _ENABLE_UD_
-            if (rdma_enable_hybrid){
-                if (IS_CNTL_MSG(p)){
-                    type = T_CHANNEL_CONTROL_MSG_ARRIVE;
-                    MPIR_T_PVAR_COUNTER_INC(MV2,
-                            mv2_ibv_channel_ctrl_packet_count, 1);
-                } else {
-                    type = T_CHANNEL_HYBRID_MSG_ARRIVE;
-                }
-            }
-            else
-#endif
-            {
-                if (seqnum == PKT_NO_SEQ_NUM){
-                    type = T_CHANNEL_CONTROL_MSG_ARRIVE;
-                    MPIR_T_PVAR_COUNTER_INC(MV2,
-                            mv2_ibv_channel_ctrl_packet_count, 1);
-                } else if (seqnum == vc->mrail.seqnum_next_torecv) {
-                    vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
-                    ++vc->mrail.seqnum_next_torecv;
-                    type = T_CHANNEL_EXACT_ARRIVE;
-                    PRINT_DEBUG(DEBUG_CHM_verbose, "[channel manager] get one with exact seqnum\n");
-                } else {
-                    type = T_CHANNEL_OUT_OF_ORDER_ARRIVE;
-                    VQUEUE_ENQUEUE(&vc->mrail.cmanager,
-                            INDEX_GLOBAL(&vc->mrail.cmanager, v->rail),
-                            v);
-                    PRINT_DEBUG(DEBUG_CHM_verbose, "get recv %d (%d)\n", seqnum,
-                            vc->mrail.seqnum_next_torecv);
-                }
-            }
-            if (unlikely(!mv2_MPIDI_CH3I_RDMA_Process.has_srq && v->transport != IB_TRANSPORT_UD)) {
-
-                if (PKT_IS_NOOP(v)) {
-                    PREPOST_VBUF_RECV(vc, v->rail);
-                    /* noops don't count for credits */
-                    --vc->mrail.srp.credits[v->rail].local_credit;
-                }
-                else if ((vc->mrail.srp.credits[v->rail].preposts
-                            < rdma_rq_size) &&
-                        (vc->mrail.srp.credits[v->rail].preposts +
-                         rdma_prepost_threshold < needed))
-                {
-                    do {
-                        PREPOST_VBUF_RECV(vc, v->rail);
-                    } while (vc->mrail.srp.credits[v->rail].preposts
-                            < rdma_rq_size &&
-                            vc->mrail.srp.credits[v->rail].preposts
-                            < needed);
-                }
-
-                MRAILI_Send_noop_if_needed(vc, v->rail);
-            }
-            if (type == T_CHANNEL_CONTROL_MSG_ARRIVE ||
-                type == T_CHANNEL_EXACT_ARRIVE ||
-                type == T_CHANNEL_HYBRID_MSG_ARRIVE ||
-                type == T_CHANNEL_OUT_OF_ORDER_ARRIVE) {
-                goto fn_exit;
-            }
-        } else {
-            /* Now since this is not the packet we want, enqueue it */
-            type = T_CHANNEL_OUT_OF_ORDER_ARRIVE;
-            *vbuf_handle = NULL;
-            v->content_size = wc.byte_len;
-            VQUEUE_ENQUEUE(&vc->mrail.cmanager,
-                    INDEX_GLOBAL(&vc->mrail.cmanager, v->rail),
-                    v);
-            if (v->transport != IB_TRANSPORT_UD) {
-                if (unlikely(!mv2_MPIDI_CH3I_RDMA_Process.has_srq)) {
-                    --vc->mrail.srp.credits[v->rail].preposts;
-
-                    needed = rdma_prepost_depth + rdma_prepost_noop_extra
-                        + MIN(rdma_prepost_rendezvous_extra,
-                                vc->mrail.srp.credits[v->rail].
-                                rendezvous_packets_expected);
-
-                    if (PKT_IS_NOOP(v)) {
-                        PREPOST_VBUF_RECV(vc, v->rail);
-                        --vc->mrail.srp.credits[v->rail].local_credit;
-                    }
-                    else if ((vc->mrail.srp.credits[v->rail].preposts
-                                < rdma_rq_size) &&
-                            (vc->mrail.srp.credits[v->rail].preposts +
-                             rdma_prepost_threshold < needed)) {
-                        do {
-                            PREPOST_VBUF_RECV(vc, v->rail);
-                        } while (vc->mrail.srp.credits[v->rail].preposts
-                                < rdma_rq_size &&
-                                vc->mrail.srp.credits[v->rail].preposts
-                                < needed);
-                    }
-                    MRAILI_Send_noop_if_needed(vc, v->rail);
-                }
-            }
-        }
-    }
-
-fn_exit:
-    return type;
-}
-
-inline int perform_blocking_progress_for_ib(int hca_num, int num_cqs)
+static inline int perform_blocking_progress_for_ib(int hca_num, int num_cqs)
 {
     int ret = 0, err = 0;
     void *ev_ctx = NULL;
@@ -789,7 +1082,7 @@ inline int perform_blocking_progress_for_ib(int hca_num, int num_cqs)
             ibv_error_abort(IBV_RETURN_ERR,
                 "Couldn't request for CQ notification\n");
         }
-        ret = ibv_get_cq_event(
+        ret = ibv_ops.get_cq_event(
                 mv2_MPIDI_CH3I_RDMA_Process.comp_channel[hca_num], 
                 &ev_cq, &ev_ctx);
         if (unlikely(ret && errno != EINTR)) {
@@ -808,12 +1101,12 @@ inline int perform_blocking_progress_for_ib(int hca_num, int num_cqs)
                          "Event in unknown CQ\n");
 	}
 	
-    ibv_ack_cq_events(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_num], 1);
+    ibv_ops.ack_cq_events(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_num], 1);
 	
     return 0;
 }
 
-inline int perform_blocking_progress_for_iwarp(int hca_num, int num_cqs)
+static inline int perform_blocking_progress_for_iwarp(int hca_num, int num_cqs)
 {
     int ret = 0, err = 0;
     void *ev_ctx = NULL;
@@ -845,7 +1138,7 @@ inline int perform_blocking_progress_for_iwarp(int hca_num, int num_cqs)
     	           "Couldn't request for CQ notification\n");
     	    }
         }
-        ret = ibv_get_cq_event(
+        ret = ibv_ops.get_cq_event(
                 mv2_MPIDI_CH3I_RDMA_Process.comp_channel[hca_num], 
                 &ev_cq, &ev_ctx);
         if (ret && errno != EINTR) {
@@ -864,14 +1157,14 @@ inline int perform_blocking_progress_for_iwarp(int hca_num, int num_cqs)
 	        ibv_error_abort(IBV_STATUS_ERR,
                              "Event in unknown CQ\n");
 	    }
-       ibv_ack_cq_events(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_num], 1);
+       ibv_ops.ack_cq_events(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_num], 1);
     } else {
 	    if (ev_cq == mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[hca_num]) {
-            ibv_ack_cq_events(
+            ibv_ops.ack_cq_events(
                     mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[hca_num], 1);
         } else if (ev_cq == 
                     mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[hca_num]) {
-            ibv_ack_cq_events(
+            ibv_ops.ack_cq_events(
                     mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[hca_num], 1);
 	    } else {
 	       ibv_error_abort(IBV_STATUS_ERR, "Event in unknown CQ\n");
@@ -879,108 +1172,6 @@ inline int perform_blocking_progress_for_iwarp(int hca_num, int num_cqs)
     }
 
     return 0;
-}
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_RDMA_cq_poll_iwarp
-#undef FCNAME
-#define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIDI_CH3I_MRAILI_Cq_poll_iwarp(vbuf **vbuf_handle, 
-        MPIDI_VC_t * vc_req, int receiving, int is_blocking)
-{
-    int ne = 0;
-    int i = 0;
-    int cq_choice = 0;
-    int num_cqs = 0;
-    int type = T_CHANNEL_NO_ARRIVE;
-    struct ibv_cq *chosen_cq = NULL;
-
-    MPIDI_STATE_DECL(MPID_GEN2_MRAILI_CQ_POLL_IWARP);
-    MPIDI_FUNC_ENTER(MPID_GEN2_MRAILI_CQ_POLL_IWARP);
-
-    *vbuf_handle = NULL;
-
-    if (!vc_req) {
-        type = MPIDI_CH3I_MRAILI_Test_pkt(vbuf_handle);
-        if (type == T_CHANNEL_EXACT_ARRIVE 
-                || type == T_CHANNEL_CONTROL_MSG_ARRIVE)
-            goto fn_exit;
-    }
-
-    if (rdma_iwarp_use_multiple_cq &&
-        MV2_IS_CHELSIO_IWARP_CARD(mv2_MPIDI_CH3I_RDMA_Process.hca_type) &&
-        (mv2_MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
-        num_cqs = 2;
-    } else {
-        num_cqs = 1;
-    }
-
-    for (i = 0; i < rdma_num_hcas; ++i) {
-        for (cq_choice = 0; cq_choice < num_cqs; ++cq_choice) {
-            if (1 == num_cqs) {
-	            chosen_cq = mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i];
-	        } else {
-	            if (0 == cq_choice) {
-	                chosen_cq = mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i];
-                } else {
-	                chosen_cq = mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i];
-                }
-	        }
-
-            if (curr_cqe[i] < num_cqes[i]) {
-                /* We already have CQEs polled out from last call to
-                 * ibv_poll_cq. Drain them before polling again */
-                do {
-                    type = handle_cqe(vbuf_handle, vc_req, receiving, wc[i][curr_cqe[i]],
-                                    num_cqs, cq_choice, i);
-                    curr_cqe[i]++;
-                    /* Drain till we get in-order recv or run out of polled CQEs */
-                } while ((*vbuf_handle == NULL) && (curr_cqe[i] < num_cqes[i]));
-
-                if (*vbuf_handle != NULL) {
-                    /* We got in-order data, deliver it to higher level */
-                    goto fn_exit;
-                }
-            } else {
-                memset(wc[i], 0, sizeof(struct ibv_wc) * num_cqes[i]);
-	            ne = ibv_poll_cq(chosen_cq, rdma_num_cqes_per_poll, wc[i]);
-
-    	        if (unlikely(ne < 0)) {
-    	            ibv_error_abort(IBV_RETURN_ERR, "Fail to poll cq\n");
-    	        } else if (ne) {         
-                    curr_cqe[i] = 0;
-                    num_cqes[i] = ne;
-    
-                    do {
-                        type = handle_cqe(vbuf_handle, vc_req, receiving, wc[i][curr_cqe[i]],
-                                            num_cqs, cq_choice, i);
-                        curr_cqe[i]++;
-                        /* Drain till we get in-order recv or run out of polled CQEs */
-                    } while ((*vbuf_handle == NULL) && (curr_cqe[i] < num_cqes[i]));
-
-                    if (*vbuf_handle != NULL) {
-                        /* We got in-order data, deliver it to higher level */
-                        goto fn_exit;
-                    }
-    	        } else {
-    	            *vbuf_handle = NULL;
-    	            type = T_CHANNEL_NO_ARRIVE;
-    	            ++nspin;
-    	
-    	            /* Blocking mode progress */
-    	            if(rdma_use_blocking && is_blocking && nspin >= rdma_blocking_spin_count_threshold) {
-                        mv2_in_blocking_progress = 1;
-                        perform_blocking_progress(i, num_cqs);
-                        mv2_in_blocking_progress = 0;
-    	                nspin = 0;
-    	            }
-    	        }
-            }
-        }
-    }
-fn_exit:
-    MPIDI_FUNC_EXIT(MPID_GEN2_MRAILI_CQ_POLL_IWARP);
-    return type;
 }
 
 #undef FUNCNAME
@@ -1050,7 +1241,7 @@ get_blocking_message:
     	        if (unlikely(rdma_use_blocking && is_blocking &&
                             nspin >= rdma_blocking_spin_count_threshold)) {
                     mv2_in_blocking_progress = 1;
-                    perform_blocking_progress(i, num_cqs);
+                    PERFORM_BLOCKING_PROGRESS(i, num_cqs);
                     mv2_in_blocking_progress = 0;
     	            nspin = 0;
                     goto get_blocking_message;
@@ -1090,7 +1281,7 @@ void async_thread(void *context)
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
     while (1) {
-        if (ibv_get_async_event((struct ibv_context *) context, &event)) {
+        if (ibv_ops.get_async_event((struct ibv_context *) context, &event)) {
             fprintf(stderr, "Error getting event!\n"); 
         }
 
@@ -1112,41 +1303,41 @@ void async_thread(void *context)
             /* Fatal */
             case IBV_EVENT_CQ_ERR:
                 ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on CQ %p\n",
-                                    ibv_event_type_str(event.event_type),
+                                    ibv_ops.event_type_str(event.event_type),
                                     event.element.cq);
                 break;
             case IBV_EVENT_COMM_EST:
             case IBV_EVENT_SQ_DRAINED:
                 PRINT_DEBUG(DEBUG_CHM_verbose, "Async event %s on QP 0x%x\n",
-                            ibv_event_type_str(event.event_type),
+                            ibv_ops.event_type_str(event.event_type),
                             event.element.qp->qp_num);
                 break;
             case IBV_EVENT_QP_FATAL:
             case IBV_EVENT_QP_REQ_ERR:
             case IBV_EVENT_QP_ACCESS_ERR:
                 ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on QP 0x%x\n",
-                                    ibv_event_type_str(event.event_type),
+                                    ibv_ops.event_type_str(event.event_type),
                                     event.element.qp->qp_num);
                 break;
             case IBV_EVENT_PATH_MIG_ERR:
 #ifdef DEBUG
                 if(mv2_MPIDI_CH3I_RDMA_Process.has_apm) {
-                    DEBUG_PRINT("Path Migration Failed\n");
+                    PRINT_DEBUG(DEBUG_CHM_verbose, "Path Migration Failed\n");
                 }
 #endif /* ifdef DEBUG */
                 ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on QP 0x%x\n",
-                                    ibv_event_type_str(event.event_type),
+                                    ibv_ops.event_type_str(event.event_type),
                                     event.element.qp->qp_num);
                 break;
             case IBV_EVENT_PATH_MIG:
                 if(mv2_MPIDI_CH3I_RDMA_Process.has_apm && !apm_tester){
-                    DEBUG_PRINT("Path Migration Successful\n");
+                    PRINT_DEBUG(DEBUG_CHM_verbose, "Path Migration Successful\n");
                     reload_alternate_path((&event)->element.qp);
                 }
 
                 if(!mv2_MPIDI_CH3I_RDMA_Process.has_apm) {
                     ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on QP 0x%x\n",
-                                        ibv_event_type_str(event.event_type),
+                                        ibv_ops.event_type_str(event.event_type),
                                         event.element.qp->qp_num);
                 }
                 
@@ -1154,25 +1345,30 @@ void async_thread(void *context)
             case IBV_EVENT_DEVICE_FATAL:
             case IBV_EVENT_PORT_ERR:
                 ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on port %d\n",
-                                    ibv_event_type_str(event.event_type),
+                                    ibv_ops.event_type_str(event.event_type),
                                     event.element.port_num);
                 break;
             case IBV_EVENT_SRQ_ERR:
                 ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %s on SRQ %p\n",
-                                    ibv_event_type_str(event.event_type),
+                                    ibv_ops.event_type_str(event.event_type),
                                     event.element.srq);
                 break;
             case IBV_EVENT_QP_LAST_WQE_REACHED:
                 PRINT_DEBUG(DEBUG_CHM_verbose, "Async event %s on SRQ %p\n",
-                            ibv_event_type_str(event.event_type),
+                            ibv_ops.event_type_str(event.event_type),
                             event.element.srq);
+                break;
+            case IBV_EVENT_GID_CHANGE:
+            case IBV_EVENT_CLIENT_REREGISTER:
+                PRINT_DEBUG(DEBUG_CHM_verbose, "Async event %s\n",
+                            ibv_ops.event_type_str(event.event_type));
                 break;
             case IBV_EVENT_PORT_ACTIVE:
             case IBV_EVENT_LID_CHANGE:
             case IBV_EVENT_PKEY_CHANGE:
             case IBV_EVENT_SM_CHANGE:
                 PRINT_DEBUG(DEBUG_CHM_verbose, "Async event %s on port %d",
-                            ibv_event_type_str(event.event_type),
+                            ibv_ops.event_type_str(event.event_type),
                             event.element.port_num);
                 break;
 
@@ -1238,7 +1434,7 @@ void async_thread(void *context)
                 srq_attr.max_sge = 1;
                 srq_attr.srq_limit = mv2_srq_limit;
 
-                if (ibv_modify_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], 
+                if (ibv_ops.modify_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], 
                             &srq_attr, IBV_SRQ_LIMIT)) {
                     ibv_va_error_abort(GEN_EXIT_ERR,
                             "Couldn't modify SRQ limit (%u) after posting %d\n",
@@ -1258,12 +1454,12 @@ void async_thread(void *context)
         }
 #endif
 
-        ibv_ack_async_event(&event);
+        ibv_ops.ack_async_event(&event);
         pthread_mutex_unlock(&mv2_MPIDI_CH3I_RDMA_Process.async_mutex_lock[hca_num]);
     }
 }
 
-/* This function is used for implmeneting  "Alternate Path Specification"
+/* This function is used for implementing  "Alternate Path Specification"
  * and "Path Loading Request Module", (SMTPS 2007 Paper) */
 
 /* Description:
@@ -1289,7 +1485,7 @@ void async_thread(void *context)
  * path4, second QP will use path1 and path5 and so on, as the primary and
  * alternate path respectively.
  *
- * Finally, Since this function also implements Path Loading Rquest Module,
+ * Finally, Since this function also implements Path Loading Request Module,
  * it should modify the QP with the specification of the alternate path */
 
 int reload_alternate_path(struct ibv_qp *qp)
@@ -1307,7 +1503,7 @@ int reload_alternate_path(struct ibv_qp *qp)
 
     attr_mask = 0;
 
-    if (ibv_query_qp(qp, &attr,
+    if (ibv_ops.query_qp(qp, &attr,
                 attr_mask, &init_attr)) {
         ibv_error_abort(GEN_EXIT_ERR, "Failed to query QP\n");
     }
@@ -1330,7 +1526,7 @@ int reload_alternate_path(struct ibv_qp *qp)
     attr_mask |= IBV_QP_ALT_PATH;
     attr_mask |= IBV_QP_PATH_MIG_STATE;
 
-    if (ibv_modify_qp(qp, &attr, attr_mask))
+    if (ibv_ops.modify_qp(qp, &attr, attr_mask))
     {
         ibv_error_abort(GEN_EXIT_ERR, "Failed to modify QP\n");
     }
@@ -1370,14 +1566,14 @@ int perform_manual_apm(struct ibv_qp* qp)
     MPIU_Memset(&init_attr, 0, sizeof init_attr);
     attr_mask = 0;
     lock_apm();
-    ibv_query_qp(qp, &attr,
+    ibv_ops.query_qp(qp, &attr,
                 attr_mask, &init_attr);
 
     if (IBV_MIG_ARMED == attr.path_mig_state)
     {
         attr.path_mig_state = IBV_MIG_MIGRATED;
         MPIU_Assert(attr.qp_state == IBV_QPS_RTS);
-        ibv_modify_qp(qp, &attr,
+        ibv_ops.modify_qp(qp, &attr,
                     IBV_QP_PATH_MIG_STATE);
     }
     

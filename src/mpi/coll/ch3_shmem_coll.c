@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -80,6 +80,27 @@
 #if defined(_MCST_SUPPORT_)
 #include "ibv_mcast.h"
 #endif
+
+#define MV2_SHMEM_COLL_MAX_NUM_EMPTY_POLL 10000
+
+#if defined(CHANNEL_MRAIL)
+#define MV2_PROGRESS_IF_NEEDED                                  \
+    if (unlikely(mv2_posted_recvq_length ||mv2_unexp_msg_recv ||\
+        mv2_num_posted_send || rdma_global_ext_sendq_size)) {   \
+        MPID_Progress_test();                                   \
+    } else if (mv2_shmem_coll_num_empty_progress_polls >        \
+              mv2_shmem_coll_max_num_empty_progress_polls) {    \
+        MV2_INC_NUM_UNEXP_RECV();                               \
+        MPID_Progress_test();                                   \
+        MV2_DEC_NUM_UNEXP_RECV();                               \
+        mv2_shmem_coll_num_empty_progress_polls = 0;            \
+    } else {                                                    \
+        mv2_shmem_coll_num_empty_progress_polls++;              \
+    }
+#else
+#define MV2_PROGRESS_IF_NEEDED                                  \
+        MPID_Progress_test();
+#endif /* #if defined(CHANNEL_MRAIL) */
 
 /* 
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -183,6 +204,21 @@ shmem_info_t *ckpt_free_head = NULL;
 #endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 #endif /* CKPT */
 
+volatile int *child_complete_bcast;   /* use for initial synchro */
+volatile int *child_complete_gather;   /* use for initial synchro */
+volatile int *root_complete_gather;
+volatile int *barrier_gather;
+volatile int *barrier_bcast;
+volatile int *shmem_coll_block_status;
+#if defined(_SMP_LIMIC_)
+volatile int *limic_progress;
+#endif
+
+shmem_coll_region *shmem_coll = NULL;
+
+/* Use a runtime modifiable parameter to determine the minimum IOV density */
+int mv2_iov_density_min = MV2_DEFAULT_IOV_DENSITY_MIN;
+
 typedef unsigned long addrint_t;
 
 /* Shared memory collectives mgmt*/
@@ -198,12 +234,14 @@ int mv2_knomial_2level_bcast_message_size_threshold = 2048;
 int mv2_knomial_2level_bcast_system_size_threshold = 64;
 int mv2_enable_zcpy_bcast=1; 
 int mv2_enable_zcpy_reduce=1; 
-int mv2_gatherv_ssend_threshold = 8192;
+int mv2_gatherv_ssend_threshold = 32768;
 
 int mv2_init_call_once = 0;
 int mv2_mmap_coll_once = 0;
 int mv2_unlink_call_once = 0;
 int finalize_coll_comm = 0;
+int mv2_shmem_coll_num_empty_progress_polls = 0;
+int mv2_shmem_coll_max_num_empty_progress_polls = MV2_SHMEM_COLL_MAX_NUM_EMPTY_POLL;
 
 size_t  mv2_shmem_coll_size = 0;
 char *mv2_shmem_coll_file = NULL;
@@ -270,6 +308,7 @@ int mv2_use_direct_scatter = 1;
 int mv2_gather_direct_system_size_small = MV2_GATHER_DIRECT_SYSTEM_SIZE_SMALL;
 int mv2_gather_direct_system_size_medium = MV2_GATHER_DIRECT_SYSTEM_SIZE_MEDIUM;
 int mv2_use_xor_alltoall = 1;
+int mv2_alltoall_rd_max_msg_size = MV2_ALLTOALL_RD_MAX_MSG;
 int mv2_enable_shmem_bcast = 1;
 int mv2_use_old_bcast = 0;
 int mv2_use_old_allgather = 0;
@@ -293,10 +332,17 @@ int mv2_shmem_coll_spin_count = 5;
 
 int mv2_enable_socket_aware_collectives = 1;
 int mv2_use_socket_aware_allreduce = 1;
+int mv2_use_optimized_release_allreduce=1;
+int mv2_use_shmem_tree_enable=0;
+int mv2_use_shmem_tree_min_message_size=1;
+int mv2_use_shmem_tree_max_message_size=16384;
+int mv2_use_shmem_num_trees=8;
+int mv2_coll_tmp_buf_size=2048;
 int mv2_use_socket_aware_sharp_allreduce = 0;
 int mv2_use_socket_aware_barrier = 1;
 int mv2_socket_aware_allreduce_max_msg = 2048;
 int mv2_socket_aware_allreduce_min_msg = 1;
+int mv2_socket_aware_allreduce_ppn_threshold = 1;
 int mv2_tune_parameter = 0;
 /* Runtime threshold for scatter */
 int mv2_user_scatter_small_msg = 0;
@@ -473,6 +519,8 @@ int use_limic_gather = 0;
 int use_2lvl_allgather = 0;
 
 int mv2_enable_skip_tuning_table_search = 1;
+int mv2_enable_allreduce_skip_small_message_tuning_table_search = 1;
+int mv2_enable_allreduce_skip_large_message_tuning_table_search = 1;
 int mv2_coll_skip_table_threshold = MV2_DEFAULT_COLL_SKIP_TABLE_THRESHOLD; /* msg sizes larger than this will pick an algorithm from tuning table */
 
 struct coll_runtime mv2_coll_param = { MPIR_ALLGATHER_SHORT_MSG,
@@ -497,29 +545,29 @@ int smc_store_set;
 #endif
 
 #ifdef _ENABLE_CUDA_
-static void *mv2_cuda_host_send_buf = NULL;
-static void *mv2_cuda_host_recv_buf = NULL;
-static void *mv2_cuda_dev_sr_buf = NULL;
-static int mv2_cuda_host_sendbuf_size = 0;
-static int mv2_cuda_host_recvbuf_size = 0;
-static int mv2_cuda_dev_srbuf_size = 0;
-static int *mv2_cuda_host_send_displs = NULL;
-static int *mv2_cuda_host_recv_displs = NULL;
-static int mv2_cuda_host_send_peers = 0;
-static int mv2_cuda_host_recv_peers = 0;
-static int *mv2_cuda_original_send_displs = NULL;
-static int *mv2_cuda_original_recv_displs = NULL;
-static void *mv2_cuda_original_send_buf = NULL;
-static void *mv2_cuda_original_recv_buf = NULL;
-void *mv2_cuda_allgather_store_buf = NULL;
-int mv2_cuda_allgather_store_buf_size = 256 * 1024;
-static void *mv2_cuda_coll_pack_buf = 0;
-static int mv2_cuda_coll_pack_buf_size = 0;
-static void *mv2_cuda_coll_unpack_buf = 0;
-static int mv2_cuda_coll_unpack_buf_size = 0;
-static void *mv2_cuda_orig_recvbuf = NULL;
-static int mv2_cuda_orig_recvcount = 0;
-static MPI_Datatype mv2_cuda_orig_recvtype;
+static void *mv2_device_host_send_buf = NULL;
+static void *mv2_device_host_recv_buf = NULL;
+static void *mv2_device_dev_sr_buf = NULL;
+static int mv2_device_host_sendbuf_size = 0;
+static int mv2_device_host_recvbuf_size = 0;
+static int mv2_device_dev_srbuf_size = 0;
+static int *mv2_device_host_send_displs = NULL;
+static int *mv2_device_host_recv_displs = NULL;
+static int mv2_device_host_send_peers = 0;
+static int mv2_device_host_recv_peers = 0;
+static int *mv2_device_original_send_displs = NULL;
+static int *mv2_device_original_recv_displs = NULL;
+static void *mv2_device_original_send_buf = NULL;
+static void *mv2_device_original_recv_buf = NULL;
+void *mv2_device_allgather_store_buf = NULL;
+int mv2_device_allgather_store_buf_size = 256 * 1024;
+static void *mv2_device_coll_pack_buf = 0;
+static int mv2_device_coll_pack_buf_size = 0;
+static void *mv2_device_coll_unpack_buf = 0;
+static int mv2_device_coll_unpack_buf_size = 0;
+static void *mv2_device_orig_recvbuf = NULL;
+static int mv2_device_orig_recvcount = 0;
+static MPI_Datatype mv2_device_orig_recvtype;
 #endif
 
 /*
@@ -538,6 +586,7 @@ int mv2_enable_pvar_timer = 0;
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MV2_collectives_arch_init(int heterogeneity, struct coll_info *colls_arch_hca)
 {
+    char *value = NULL;
     int mpi_errno = MPI_SUCCESS;
 
 #if defined(CHANNEL_PSM)
@@ -553,7 +602,6 @@ int MV2_collectives_arch_init(int heterogeneity, struct coll_info *colls_arch_hc
 #endif
 
 #if defined(_MCST_SUPPORT_)
-    char *value = NULL;
     /* Disable mcast for any system other than Frontera by default */
     if (rdma_enable_mcast &&
         ((value = getenv("MV2_USE_MCAST")) == NULL) &&
@@ -635,6 +683,16 @@ int MV2_collectives_arch_init(int heterogeneity, struct coll_info *colls_arch_hc
         if (mpi_errno != MPI_SUCCESS) {
             MPIR_ERR_POP(mpi_errno);
         }
+    }
+    /* Honor users requests over default settings */
+    if ((value = getenv("MV2_ENABLE_ALLREDUCE_SKIP_LARGE_MESSAGE_TUNING_TABLE_SEARCH")) != NULL) {
+        mv2_enable_allreduce_skip_large_message_tuning_table_search = !!atoi(value);
+    }
+    if ((value = getenv("MV2_ENABLE_ALLREDUCE_SKIP_SMALL_MESSAGE_TUNING_TABLE_SEARCH")) != NULL) {
+        mv2_enable_allreduce_skip_small_message_tuning_table_search = !!atoi(value);
+    }
+    if ((value = getenv("MV2_SOCKET_AWARE_ALLREDUCE_PPN_THRESHOLD")) !=NULL) {
+        mv2_socket_aware_allreduce_ppn_threshold = atoi(value);
     }
 
 fn_exit:
@@ -1506,6 +1564,198 @@ void MPIDI_CH3I_SHMEM_Coll_Block_Clear_Status(int block_id)
     WRITEBAR();
 }
 
+/* Shared memory gather: root is given as the input of function(int parent)*/
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_TREE_SHMEM_COLL_GetShmemBuf_optrels
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+void MPIDI_CH3I_SHMEM_TREE_COLL_GetShmemBuf_optrels(int size, int rank, int shmem_comm_rank, int target_rank,
+                                       void **output_buf, int parent)
+{
+    int cnt = 0, err = 0;
+    char *shmem_coll_buf = (char *) (&(shmem_coll->shmem_coll_buf));
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_TREE_SHMEM_COLL_GETSHMEMBUF_OPTRELS);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_TREE_SHMEM_COLL_GETSHMEMBUF_OPTRELS);
+
+    READBAR();
+    if (rank == parent) {
+            READBAR();
+            while (SHMEM_COLL_SYNC_ISCLR(child_complete_gather, shmem_comm_rank, target_rank)) {
+#if defined(CKPT)
+                Wait_for_CR_Completion();
+#endif
+                MV2_INC_NUM_UNEXP_RECV();
+                MPID_Progress_test();
+                MV2_DEC_NUM_UNEXP_RECV();
+                /* Yield once in a while */
+                MPIU_THREAD_CHECK_BEGIN++ cnt;
+                if (cnt >= mv2_shmem_coll_spin_count) {
+                    cnt = 0;
+#if defined(CKPT)
+                    MPIDI_CH3I_CR_unlock();
+#endif
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                    MPIU_THREAD_CHECK_BEGIN
+                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
+                    MPIU_THREAD_CHECK_END
+#endif
+                        do {
+                    } while (0);
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                    MPIU_THREAD_CHECK_BEGIN
+                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
+                    MPIU_THREAD_CHECK_END
+#endif
+#if defined(CKPT)
+                        MPIDI_CH3I_CR_lock();
+#endif
+
+                }
+                MPIU_THREAD_CHECK_END
+                READBAR();
+            }
+        /* Set the completion flags back to zero */
+            SHMEM_COLL_SYNC_CLR(child_complete_gather, shmem_comm_rank, target_rank);
+            WRITEBAR();
+
+        *output_buf = (char *) shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
+    } else {
+        READBAR();
+        while (SHMEM_COLL_SYNC_ISCLR(root_complete_gather, shmem_comm_rank, rank)) {
+#if defined(CKPT)
+            Wait_for_CR_Completion();
+#endif
+            MV2_INC_NUM_UNEXP_RECV();
+            MPID_Progress_test();
+            MV2_DEC_NUM_UNEXP_RECV();
+            /* Yield once in a while */
+            MPIU_THREAD_CHECK_BEGIN++ cnt;
+            if (cnt >= mv2_shmem_coll_spin_count) {
+                cnt = 0;
+#if defined(CKPT)
+                MPIDI_CH3I_CR_unlock();
+#endif
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                MPIU_THREAD_CHECK_BEGIN
+                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
+                MPIU_THREAD_CHECK_END
+#endif
+                    do {
+                } while (0);
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                MPIU_THREAD_CHECK_BEGIN
+                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
+                MPIU_THREAD_CHECK_END
+#endif
+#if defined(CKPT)
+                    MPIDI_CH3I_CR_lock();
+#endif
+            }
+            MPIU_THREAD_CHECK_END
+            READBAR();
+        }
+
+        SHMEM_COLL_SYNC_CLR(root_complete_gather, shmem_comm_rank, rank);
+        WRITEBAR();
+        *output_buf = (char *) shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
+    }
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_TREE_SHMEM_COLL_GETSHMEMBUF_OPTRELS);
+}
+
+/* Shared memory gather: rank zero is the root always*/
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SHMEM_COLL_GetShmemBuf_optrels
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf_optrels(int size, int rank, int shmem_comm_rank, int target_rank,
+                                       void **output_buf)
+{
+    int cnt = 0, err = 0;
+    char *shmem_coll_buf = (char *) (&(shmem_coll->shmem_coll_buf));
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF_OPTRELS);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF_OPTRELS);
+
+    READBAR();
+    if (rank == 0) {
+            READBAR();
+            while (SHMEM_COLL_SYNC_ISCLR(child_complete_gather, shmem_comm_rank, target_rank)) {
+#if defined(CKPT)
+                Wait_for_CR_Completion();
+#endif
+                MV2_PROGRESS_IF_NEEDED
+                /* Yield once in a while */
+                MPIU_THREAD_CHECK_BEGIN++ cnt;
+                if (cnt >= mv2_shmem_coll_spin_count) {
+                    cnt = 0;
+#if defined(CKPT)
+                    MPIDI_CH3I_CR_unlock();
+#endif
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                    MPIU_THREAD_CHECK_BEGIN
+                        MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
+                    MPIU_THREAD_CHECK_END
+#endif
+                        do {
+                    } while (0);
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                    MPIU_THREAD_CHECK_BEGIN
+                        MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
+                    MPIU_THREAD_CHECK_END
+#endif
+#if defined(CKPT)
+                        MPIDI_CH3I_CR_lock();
+#endif
+                }
+                MPIU_THREAD_CHECK_END
+                READBAR();
+            }
+        /* Set the completion flags back to zero */
+            SHMEM_COLL_SYNC_CLR(child_complete_gather, shmem_comm_rank, target_rank);
+            WRITEBAR();
+
+        *output_buf = (char *) shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
+    } else {
+        READBAR();
+        while (SHMEM_COLL_SYNC_ISCLR(root_complete_gather, shmem_comm_rank, rank)) {
+#if defined(CKPT)
+            Wait_for_CR_Completion();
+#endif
+            MV2_PROGRESS_IF_NEEDED
+            /* Yield once in a while */
+            MPIU_THREAD_CHECK_BEGIN++ cnt;
+            if (cnt >= mv2_shmem_coll_spin_count) {
+                cnt = 0;
+#if defined(CKPT)
+                MPIDI_CH3I_CR_unlock();
+#endif
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                MPIU_THREAD_CHECK_BEGIN
+                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex, &err);
+                MPIU_THREAD_CHECK_END
+#endif
+                    do {
+                } while (0);
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                MPIU_THREAD_CHECK_BEGIN
+                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex, &err);
+                MPIU_THREAD_CHECK_END
+#endif
+#if defined(CKPT)
+                    MPIDI_CH3I_CR_lock();
+#endif
+            }
+            MPIU_THREAD_CHECK_END
+            READBAR();
+        }
+
+        SHMEM_COLL_SYNC_CLR(root_complete_gather, shmem_comm_rank, rank);
+        WRITEBAR();
+        *output_buf = (char *) shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
+    }
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF_OPTRELS);
+}
+
+
 /* Shared memory gather: rank zero is the root always*/
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_GetShmemBuf
@@ -1527,9 +1777,7 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank,
 #if defined(CKPT)
                 Wait_for_CR_Completion();
 #endif
-                MV2_INC_NUM_UNEXP_RECV();
-                MPID_Progress_test();
-                MV2_DEC_NUM_UNEXP_RECV();
+                MV2_PROGRESS_IF_NEEDED
                 /* Yield once in a while */
                 MPIU_THREAD_CHECK_BEGIN++ cnt;
                 if (cnt >= mv2_shmem_coll_spin_count) {
@@ -1570,9 +1818,7 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank,
 #if defined(CKPT)
             Wait_for_CR_Completion();
 #endif
-            MV2_INC_NUM_UNEXP_RECV();
-            MPID_Progress_test();
-            MV2_DEC_NUM_UNEXP_RECV();
+            MV2_PROGRESS_IF_NEEDED
             /* Yield once in a while */
             MPIU_THREAD_CHECK_BEGIN++ cnt;
             if (cnt >= mv2_shmem_coll_spin_count) {
@@ -1629,9 +1875,7 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
 #if defined(CKPT)
                 Wait_for_CR_Completion();
 #endif
-                MV2_INC_NUM_UNEXP_RECV();
-                MPID_Progress_test();
-                MV2_DEC_NUM_UNEXP_RECV();
+                MV2_PROGRESS_IF_NEEDED
                 /* Yield once in a while */
                 MPIU_THREAD_CHECK_BEGIN++ cnt;
                 if (cnt >= mv2_shmem_coll_spin_count) {
@@ -1666,9 +1910,7 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank,
 #if defined(CKPT)
             Wait_for_CR_Completion();
 #endif
-            MV2_INC_NUM_UNEXP_RECV();
-            MPID_Progress_test();
-            MV2_DEC_NUM_UNEXP_RECV();
+            MV2_PROGRESS_IF_NEEDED
             /* Yield once in a while */
             MPIU_THREAD_CHECK_BEGIN++ cnt;
             if (cnt >= mv2_shmem_coll_spin_count) {
@@ -1727,6 +1969,44 @@ void MPIDI_CH3I_SHMEM_Bcast_Complete(int size, int rank, int shmem_comm_rank)
 }
 
 #undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_TREE_SHMEM_COLL_SetGatherComplete_optrels
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+void MPIDI_CH3I_SHMEM_TREE_COLL_SetGatherComplete_optrels(int size, int rank, int shmem_comm_rank, int target_rank, int parent)
+{
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_TREE_SHMEM_COLL_SETGATHERCOMPLETE_OPTRELS);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_TREE_SHMEM_COLL_SETGATHERCOMPLETE_OPTRELS);
+
+    READBAR();
+    if (rank == parent) {
+            SHMEM_COLL_SYNC_SET(root_complete_gather, shmem_comm_rank, target_rank);
+    } else {
+        SHMEM_COLL_SYNC_SET(child_complete_gather, shmem_comm_rank, rank);
+        WRITEBAR();
+    }
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_TREE_SHMEM_COLL_SETGATHERCOMPLETE_OPTRELS);
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SHMEM_COLL_SetGatherComplete_optrels
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete_optrels(int size, int rank, int shmem_comm_rank, int target_rank)
+{
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETGATHERCOMPLETE_OPTRELS);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETGATHERCOMPLETE_OPTRELS);
+
+    READBAR();
+    if (rank == 0) {
+            SHMEM_COLL_SYNC_SET(root_complete_gather, shmem_comm_rank, target_rank);
+    } else {
+        SHMEM_COLL_SYNC_SET(child_complete_gather, shmem_comm_rank, rank);
+        WRITEBAR();
+    }
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETGATHERCOMPLETE_OPTRELS);
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_SetGatherComplete
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
@@ -1767,9 +2047,7 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
 #if defined(CKPT)
                 Wait_for_CR_Completion();
 #endif
-                MV2_INC_NUM_UNEXP_RECV();
-                MPID_Progress_test();
-                MV2_DEC_NUM_UNEXP_RECV();
+                MV2_PROGRESS_IF_NEEDED
                 /* Yield once in a while */
                 MPIU_THREAD_CHECK_BEGIN++ cnt;
                 if (cnt >= mv2_shmem_coll_spin_count) {
@@ -1831,9 +2109,7 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
 #if defined(CKPT)
             Wait_for_CR_Completion();
 #endif
-            MV2_INC_NUM_UNEXP_RECV();
-            MPID_Progress_test();
-            MV2_DEC_NUM_UNEXP_RECV();
+            MV2_PROGRESS_IF_NEEDED
             /* Yield once in a while */
             MPIU_THREAD_CHECK_BEGIN++ cnt;
             if (cnt >= mv2_shmem_coll_spin_count) {
@@ -2151,6 +2427,13 @@ void MV2_Read_env_vars(void)
     }
     if ((value = getenv("MV2_USE_SHMEM_ALLREDUCE")) != NULL) {
         mv2_enable_shmem_allreduce = !!atoi(value);
+    }
+    if ((value = getenv("MV2_SHMEM_COLL_MAX_NUM_EMPTY_PROGRESS_POLLS")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag > 0)
+            mv2_shmem_coll_max_num_empty_progress_polls = flag;
+        else
+            mv2_shmem_coll_max_num_empty_progress_polls = MV2_SHMEM_COLL_MAX_NUM_EMPTY_POLL;
     }
 #if defined(_MCST_SUPPORT_)
     if ((value = getenv("MV2_USE_MCAST_ALLREDUCE")) != NULL) {
@@ -2471,6 +2754,10 @@ void MV2_Read_env_vars(void)
         if (flag >= 0)
             mv2_use_xor_alltoall = flag;
     }
+    if ((value = getenv("MV2_ALLTOALL_RD_MAX_MSG_SIZE")) != NULL) {
+        mv2_alltoall_rd_max_msg_size =
+            user_val_to_bytes(value, "MV2_ALLTOALL_RD_MAX_MSG_SIZE");
+    }
     if ((value = getenv("MV2_KNOMIAL_INTER_LEADER_THRESHOLD")) != NULL) {
         flag = (int) atoi(value);
         if (flag > 0)
@@ -2751,7 +3038,7 @@ void MV2_Read_env_vars(void)
         flag = (int) atoi(value);
         if (flag >= 0) {
             mv2_gatherv_ssend_threshold = flag;
-	}
+        }
     }
 
     if ((value = getenv("MV2_ALLREDUCE_RING_ALGO_PPN_THRESHOLD")) != NULL) {
@@ -2923,6 +3210,30 @@ void MV2_Read_env_vars(void)
     }
 #endif 
 
+#if defined(_SHARP_SUPPORT_)
+    if ((value = getenv("MV2_ENABLE_SHARP")) != NULL) {
+        mv2_enable_sharp_coll = atoi(value);
+    } else {
+        mv2_enable_sharp_coll = MPIR_CVAR_ENABLE_SHARP; 
+    }
+    if ((value = getenv("MV2_SHARP_PORT")) != NULL) {
+        mv2_sharp_port = atoi(value);
+    }
+    if ((value = getenv("MV2_SHARP_HCA_NAME")) != NULL) {
+        mv2_sharp_hca_name = MPIU_Malloc(sizeof(value));
+        MPIU_Memcpy(mv2_sharp_hca_name, value, sizeof(value));
+    }
+    if ((value = getenv("MV2_SHARP_MIN_NODE_COUNT")) != NULL) {
+        mv2_sharp_min_node_count = atoi(value);
+    }
+    if ((value = getenv("MV2_ENABLE_SHARP_ALLREDUCE")) != NULL) {
+        mv2_enable_sharp_allreduce = atoi(value);
+    }
+    if ((value = getenv("MV2_ENABLE_SHARP_BARRIER")) != NULL) {
+        mv2_enable_sharp_barrier = atoi(value);
+    }
+#endif
+
     if ((value = getenv("MV2_ENABLE_SOCKET_AWARE_COLLECTIVES")) !=NULL) {
         mv2_enable_socket_aware_collectives = !!atoi(value);
     }
@@ -2930,6 +3241,30 @@ void MV2_Read_env_vars(void)
     if ((value = getenv("MV2_USE_SOCKET_AWARE_ALLREDUCE")) !=NULL) {
         mv2_use_socket_aware_allreduce = !!atoi(value);
     }
+
+    if ((value = getenv("MV2_USE_OPTIMIZED_RELEASE_ALLREDUCE")) !=NULL) {
+        mv2_use_optimized_release_allreduce = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_SHMEM_TREE_ENABLE")) !=NULL) {
+        mv2_use_shmem_tree_enable = atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_SHMEM_TREE_MIN_MESSAGE_SIZE")) !=NULL) {
+        mv2_use_shmem_tree_min_message_size = atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_SHMEM_TREE_MAX_MESSAGE_SIZE")) !=NULL) {
+        mv2_use_shmem_tree_max_message_size = atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_SHMEM_NUM_TREES")) !=NULL) {
+        mv2_use_shmem_num_trees = atoi(value);
+    }
+
+    if ((value = getenv("MV2_COLL_TMP_BUF_SIZE")) !=NULL) {
+        mv2_coll_tmp_buf_size = !!atoi(value);
+    } 
 
     if ((value = getenv("MV2_USE_SOCKET_AWARE_SHARP_ALLREDUCE")) !=NULL) {
         mv2_use_socket_aware_sharp_allreduce = !!atoi(value);                   
@@ -2962,77 +3297,77 @@ void MV2_Read_env_vars(void)
 //Checks if cuda stage buffer size is sufficient, if not allocates//
 //more memory.                                                    //
 /******************************************************************/
-int cuda_stage_alloc(void **send_buf, int sendsize,
+int device_stage_alloc(void **send_buf, int sendsize,
                      void **recv_buf, int recvsize,
                      int send_on_device, int recv_on_device, int disp)
 {
     int page_size = getpagesize();
     int result, mpi_errno = MPI_SUCCESS;
 
-    if (send_on_device && *send_buf != MPI_IN_PLACE && mv2_cuda_host_sendbuf_size < sendsize) {
-        if (mv2_cuda_host_send_buf) {
-            if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
-                ibv_cuda_unregister(mv2_cuda_host_send_buf);
+    if (send_on_device && *send_buf != MPI_IN_PLACE && mv2_device_host_sendbuf_size < sendsize) {
+        if (mv2_device_host_send_buf) {
+            if (mv2_device_host_sendbuf_size >= mv2_device_coll_register_stage_buf_threshold) {
+                ibv_device_unregister(mv2_device_host_send_buf);
             }
-            MPIU_Memalign_Free(mv2_cuda_host_send_buf);
+            MPIU_Memalign_Free(mv2_device_host_send_buf);
         }
-        mv2_cuda_host_sendbuf_size =
-            sendsize < rdma_cuda_block_size ? rdma_cuda_block_size : sendsize;
-        result = MPIU_Memalign(&mv2_cuda_host_send_buf, page_size, mv2_cuda_host_sendbuf_size);
-        if ((result != 0) || (NULL == mv2_cuda_host_send_buf)) {
+        mv2_device_host_sendbuf_size =
+            sendsize < mv2_device_stage_block_size ? mv2_device_stage_block_size : sendsize;
+        result = MPIU_Memalign(&mv2_device_host_send_buf, page_size, mv2_device_host_sendbuf_size);
+        if ((result != 0) || (NULL == mv2_device_host_send_buf)) {
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                              FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
                                              "%s: %s", "posix_memalign", strerror(errno));
             return (mpi_errno);
         }
-        if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
-            ibv_cuda_register(mv2_cuda_host_send_buf, mv2_cuda_host_sendbuf_size);
+        if (mv2_device_host_sendbuf_size >= mv2_device_coll_register_stage_buf_threshold) {
+            ibv_device_register(mv2_device_host_send_buf, mv2_device_host_sendbuf_size);
         }
     }
-    if (recv_on_device && mv2_cuda_host_recvbuf_size < recvsize) {
-        if (mv2_cuda_host_recv_buf) {
-            if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
-                ibv_cuda_unregister(mv2_cuda_host_recv_buf);
+    if (recv_on_device && mv2_device_host_recvbuf_size < recvsize) {
+        if (mv2_device_host_recv_buf) {
+            if (mv2_device_host_recvbuf_size >= mv2_device_coll_register_stage_buf_threshold) {
+                ibv_device_unregister(mv2_device_host_recv_buf);
             }
-            MPIU_Memalign_Free(mv2_cuda_host_recv_buf);
+            MPIU_Memalign_Free(mv2_device_host_recv_buf);
         }
-        mv2_cuda_host_recvbuf_size =
-            recvsize < rdma_cuda_block_size ? rdma_cuda_block_size : recvsize;
-        result = MPIU_Memalign(&mv2_cuda_host_recv_buf, page_size, mv2_cuda_host_recvbuf_size);
-        if ((result != 0) || (NULL == mv2_cuda_host_recv_buf)) {
+        mv2_device_host_recvbuf_size =
+            recvsize < mv2_device_stage_block_size ? mv2_device_stage_block_size : recvsize;
+        result = MPIU_Memalign(&mv2_device_host_recv_buf, page_size, mv2_device_host_recvbuf_size);
+        if ((result != 0) || (NULL == mv2_device_host_recv_buf)) {
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                              FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
                                              "%s: %s", "posix_memalign", strerror(errno));
             return (mpi_errno);
         }
-        if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
-            ibv_cuda_register(mv2_cuda_host_recv_buf, mv2_cuda_host_recvbuf_size);
+        if (mv2_device_host_recvbuf_size >= mv2_device_coll_register_stage_buf_threshold) {
+            ibv_device_register(mv2_device_host_recv_buf, mv2_device_host_recvbuf_size);
         }
     }
 
     if (send_on_device && *send_buf != MPI_IN_PLACE) {
         if (send_on_device) {
-            MPIU_Memcpy_CUDA(mv2_cuda_host_send_buf, *send_buf, sendsize, cudaMemcpyDeviceToHost);
+            MPIU_Memcpy_Device(mv2_device_host_send_buf, *send_buf, sendsize, deviceMemcpyDeviceToHost);
         }
     } else {
         if (recv_on_device) {
-            MPIU_Memcpy_CUDA(((char *) (mv2_cuda_host_recv_buf) + disp),
+            MPIU_Memcpy_Device(((char *) (mv2_device_host_recv_buf) + disp),
                              ((char *) (*recv_buf) + disp),
-                             sendsize, cudaMemcpyDeviceToHost);
+                             sendsize, deviceMemcpyDeviceToHost);
         }
     }
 
     if (send_on_device && send_buf != MPI_IN_PLACE) {
-        mv2_cuda_original_send_buf = *send_buf;
-        *send_buf = mv2_cuda_host_send_buf;
+        mv2_device_original_send_buf = *send_buf;
+        *send_buf = mv2_device_host_send_buf;
     } else {
-        mv2_cuda_original_send_buf = NULL;
+        mv2_device_original_send_buf = NULL;
     }
     if (recv_on_device) {
-        mv2_cuda_original_recv_buf = *recv_buf;
-        *recv_buf = mv2_cuda_host_recv_buf;
+        mv2_device_original_recv_buf = *recv_buf;
+        *recv_buf = mv2_device_host_recv_buf;
     } else {
-        mv2_cuda_original_recv_buf = NULL;
+        mv2_device_original_recv_buf = NULL;
     }
     return mpi_errno;
 }
@@ -3041,27 +3376,27 @@ int cuda_stage_alloc(void **send_buf, int sendsize,
 //After performing the cuda collective operation, sendbuf and recv//
 //-buf are made to point back to device buf.                      //
 /******************************************************************/
-void cuda_stage_free(void **send_buf,
+void device_stage_free(void **send_buf,
                      void **recv_buf, int recvsize,
                      int send_on_device, int recv_on_device)
 {
 
-    if (send_on_device && mv2_cuda_original_send_buf && send_buf != MPI_IN_PLACE) {
-        if (!recv_on_device && !mv2_cuda_original_recv_buf) {
-            MPIU_Memcpy_CUDA(mv2_cuda_original_send_buf, *send_buf,
-                             recvsize, cudaMemcpyHostToDevice);
+    if (send_on_device && mv2_device_original_send_buf && send_buf != MPI_IN_PLACE) {
+        if (!recv_on_device && !mv2_device_original_recv_buf) {
+            MPIU_Memcpy_Device(mv2_device_original_send_buf, *send_buf,
+                             recvsize, deviceMemcpyHostToDevice);
         }
-        *send_buf = mv2_cuda_original_send_buf;
-        mv2_cuda_original_send_buf = NULL;
+        *send_buf = mv2_device_original_send_buf;
+        mv2_device_original_send_buf = NULL;
     }
-    if (recv_on_device && mv2_cuda_original_recv_buf) {
-        MPIU_Memcpy_CUDA(mv2_cuda_original_recv_buf, *recv_buf, recvsize, cudaMemcpyHostToDevice);
-        *recv_buf = mv2_cuda_original_recv_buf;
-        mv2_cuda_original_recv_buf = NULL;
+    if (recv_on_device && mv2_device_original_recv_buf) {
+        MPIU_Memcpy_Device(mv2_device_original_recv_buf, *recv_buf, recvsize, deviceMemcpyHostToDevice);
+        *recv_buf = mv2_device_original_recv_buf;
+        mv2_device_original_recv_buf = NULL;
     }
 }
 
-int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type,
+int device_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type,
                        int **send_displs, int send_peers,
                        void **recv_buf, int *recv_counts, MPI_Datatype recv_type,
                        int **recv_displs, int recv_peers,
@@ -3073,7 +3408,6 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
     int recv_type_contig = 0;
     MPI_Aint send_type_extent, recv_type_extent;
     MPID_Datatype *dtp;
-    cudaError_t cuda_err = cudaSuccess;
 
     page_size = getpagesize();
     MPID_Datatype_get_extent_macro(send_type, send_type_extent);
@@ -3101,53 +3435,46 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
 
     /* Allocate the packing buffer on device if one does not exist 
      * or is not large enough. Free the older one */
-    if (mv2_cuda_dev_srbuf_size < total_buf_size) {
-        if (mv2_cuda_dev_sr_buf) {
-            cudaFree(mv2_cuda_dev_sr_buf);
+    if (mv2_device_dev_srbuf_size < total_buf_size) {
+        if (mv2_device_dev_sr_buf) {
+            MPIU_Free_Device(mv2_device_dev_sr_buf);
         }
-        mv2_cuda_dev_srbuf_size = total_buf_size;
-        cuda_err = cudaMalloc(&mv2_cuda_dev_sr_buf, mv2_cuda_dev_srbuf_size);
-        if (cuda_err != cudaSuccess) {
-            mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
-                                             FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
-                                             "%s: %s", "cudaMalloc failed",
-                                             cudaGetErrorString(cuda_err));
-            return (mpi_errno);
-        }
+        mv2_device_dev_srbuf_size = total_buf_size;
+        MPIU_Malloc_Device(mv2_device_dev_sr_buf, mv2_device_dev_srbuf_size);
     }
 
     /* Allocate the stage out (send) host buffers if they do not exist 
      * or are not large enough. Free the older one */
     if (send_buf_on_device && *send_buf != MPI_IN_PLACE) {
         /*allocate buffer to stage displacements */
-        if (mv2_cuda_host_send_peers < send_peers) {
-            if (mv2_cuda_host_send_displs) {
-                MPIU_Free(mv2_cuda_host_send_displs);
+        if (mv2_device_host_send_peers < send_peers) {
+            if (mv2_device_host_send_displs) {
+                MPIU_Free(mv2_device_host_send_displs);
             }
-            mv2_cuda_host_send_peers = send_peers;
-            mv2_cuda_host_send_displs = MPIU_Malloc(sizeof (int) * mv2_cuda_host_send_peers);
-            MPIU_Memset((void *) mv2_cuda_host_send_displs, 0, sizeof (int) * mv2_cuda_host_send_peers);
+            mv2_device_host_send_peers = send_peers;
+            mv2_device_host_send_displs = MPIU_Malloc(sizeof (int) * mv2_device_host_send_peers);
+            MPIU_Memset((void *) mv2_device_host_send_displs, 0, sizeof (int) * mv2_device_host_send_peers);
         }
         /*allocate buffer to stage the data */
-        if (mv2_cuda_host_sendbuf_size < total_send_size) {
-            if (mv2_cuda_host_send_buf) {
-                if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
-                    ibv_cuda_unregister(mv2_cuda_host_send_buf);
+        if (mv2_device_host_sendbuf_size < total_send_size) {
+            if (mv2_device_host_send_buf) {
+                if (mv2_device_host_sendbuf_size >= mv2_device_coll_register_stage_buf_threshold) {
+                    ibv_device_unregister(mv2_device_host_send_buf);
                 }
-                MPIU_Memalign_Free(mv2_cuda_host_send_buf);
+                MPIU_Memalign_Free(mv2_device_host_send_buf);
             }
-            mv2_cuda_host_sendbuf_size = total_send_size < rdma_cuda_block_size ?
-                rdma_cuda_block_size : total_send_size;
-            result = MPIU_Memalign(&mv2_cuda_host_send_buf, page_size, mv2_cuda_host_sendbuf_size);
-            if ((result != 0) || (NULL == mv2_cuda_host_send_buf)) {
+            mv2_device_host_sendbuf_size = total_send_size < mv2_device_stage_block_size ?
+                mv2_device_stage_block_size : total_send_size;
+            result = MPIU_Memalign(&mv2_device_host_send_buf, page_size, mv2_device_host_sendbuf_size);
+            if ((result != 0) || (NULL == mv2_device_host_send_buf)) {
                 mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                                  FCNAME, __LINE__, MPI_ERR_OTHER,
                                                  "**fail", "%s: %s", "posix_memalign",
                                                  strerror(errno));
                 return (mpi_errno);
             }
-            if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
-                ibv_cuda_register(mv2_cuda_host_send_buf, mv2_cuda_host_sendbuf_size);
+            if (mv2_device_host_sendbuf_size >= mv2_device_coll_register_stage_buf_threshold) {
+                ibv_device_register(mv2_device_host_send_buf, mv2_device_host_sendbuf_size);
             }
         }
     }
@@ -3156,34 +3483,34 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
      * or are not large enough */
     if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) {
         /*allocate buffer to stage displacements */
-        if (mv2_cuda_host_recv_peers < recv_peers) {
-            if (mv2_cuda_host_recv_displs) {
-                MPIU_Free(mv2_cuda_host_recv_displs);
+        if (mv2_device_host_recv_peers < recv_peers) {
+            if (mv2_device_host_recv_displs) {
+                MPIU_Free(mv2_device_host_recv_displs);
             }
-            mv2_cuda_host_recv_peers = recv_peers;
-            mv2_cuda_host_recv_displs = MPIU_Malloc(sizeof (int) * mv2_cuda_host_recv_peers);
-            MPIU_Memset(mv2_cuda_host_recv_displs, 0, sizeof (int) * mv2_cuda_host_recv_peers);
+            mv2_device_host_recv_peers = recv_peers;
+            mv2_device_host_recv_displs = MPIU_Malloc(sizeof (int) * mv2_device_host_recv_peers);
+            MPIU_Memset(mv2_device_host_recv_displs, 0, sizeof (int) * mv2_device_host_recv_peers);
         }
         /*allocate buffer to stage the data */
-        if (mv2_cuda_host_recvbuf_size < total_recv_size) {
-            if (mv2_cuda_host_recv_buf) {
-                if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
-                    ibv_cuda_unregister(mv2_cuda_host_recv_buf);
+        if (mv2_device_host_recvbuf_size < total_recv_size) {
+            if (mv2_device_host_recv_buf) {
+                if (mv2_device_host_recvbuf_size >= mv2_device_coll_register_stage_buf_threshold) {
+                    ibv_device_unregister(mv2_device_host_recv_buf);
                 }
-                MPIU_Memalign_Free(mv2_cuda_host_recv_buf);
+                MPIU_Memalign_Free(mv2_device_host_recv_buf);
             }
-            mv2_cuda_host_recvbuf_size = total_recv_size < rdma_cuda_block_size ?
-                rdma_cuda_block_size : total_recv_size;
-            result = MPIU_Memalign(&mv2_cuda_host_recv_buf, page_size, mv2_cuda_host_recvbuf_size);
-            if ((result != 0) || (NULL == mv2_cuda_host_recv_buf)) {
+            mv2_device_host_recvbuf_size = total_recv_size < mv2_device_stage_block_size ?
+                mv2_device_stage_block_size : total_recv_size;
+            result = MPIU_Memalign(&mv2_device_host_recv_buf, page_size, mv2_device_host_recvbuf_size);
+            if ((result != 0) || (NULL == mv2_device_host_recv_buf)) {
                 mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                                  FCNAME, __LINE__, MPI_ERR_OTHER,
                                                  "**fail", "%s: %s", "posix_memalign",
                                                  strerror(errno));
                 return (mpi_errno);
             }
-            if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
-                ibv_cuda_register(mv2_cuda_host_recv_buf, mv2_cuda_host_recvbuf_size);
+            if (mv2_device_host_recvbuf_size >= mv2_device_coll_register_stage_buf_threshold) {
+                ibv_device_register(mv2_device_host_recv_buf, mv2_device_host_recvbuf_size);
             }
         }
     }
@@ -3192,21 +3519,21 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
     offset = 0;
     if (send_buf_on_device && *send_buf != MPI_IN_PLACE) {
         for (i = 0; i < send_peers; i++) {
-            MPIU_Memcpy_CUDA((void *) ((char *) mv2_cuda_dev_sr_buf
+            MPIU_Memcpy_Device((void *) ((char *) mv2_device_dev_sr_buf
                                        + offset * send_type_extent),
                              (void *) ((char *) (*send_buf)
                                        + (*send_displs)[i] * send_type_extent),
-                             send_counts[i] * send_type_extent, cudaMemcpyDeviceToDevice);
-            mv2_cuda_host_send_displs[i] = offset;
+                             send_counts[i] * send_type_extent, deviceMemcpyDeviceToDevice);
+            mv2_device_host_send_displs[i] = offset;
             offset += send_counts[i];
         }
-        MPIU_Memcpy_CUDA(mv2_cuda_host_send_buf, mv2_cuda_dev_sr_buf,
-                         total_send_size, cudaMemcpyDeviceToHost);
+        MPIU_Memcpy_Device(mv2_device_host_send_buf, mv2_device_dev_sr_buf,
+                         total_send_size, deviceMemcpyDeviceToHost);
 
-        mv2_cuda_original_send_buf = (void *) *send_buf;
-        mv2_cuda_original_send_displs = (int *)*send_displs;
-        *send_buf = mv2_cuda_host_send_buf;
-        *send_displs = mv2_cuda_host_send_displs;
+        mv2_device_original_send_buf = (void *) *send_buf;
+        mv2_device_original_send_displs = (int *)*send_displs;
+        *send_buf = mv2_device_host_send_buf;
+        *send_displs = mv2_device_host_send_displs;
     }
 
     /*Stage out buffer into which data is to be received and set the stage in 
@@ -3214,33 +3541,33 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
     offset = 0;
     if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) {
         for (i = 0; i < recv_peers; i++) {
-            mv2_cuda_host_recv_displs[i] = offset;
+            mv2_device_host_recv_displs[i] = offset;
             offset += recv_counts[i];
         }
         /*If data type is not contig, copy the device receive buffer out onto host receive buffer 
            to maintain the original data in un-touched parts while copying back */
         if (!recv_type_contig) {
             for (i = 0; i < recv_peers; i++) {
-                MPIU_Memcpy_CUDA((void *) ((char *) mv2_cuda_dev_sr_buf
-                                           + mv2_cuda_host_recv_displs[i] * recv_type_extent),
+                MPIU_Memcpy_Device((void *) ((char *) mv2_device_dev_sr_buf
+                                           + mv2_device_host_recv_displs[i] * recv_type_extent),
                                  (void *) ((char *) (*recv_buf)
                                            + (*recv_displs)[i] * recv_type_extent),
                                  recv_counts[i] * recv_type_extent,
-                                 cudaMemcpyDeviceToDevice);
+                                 deviceMemcpyDeviceToDevice);
             }
-            MPIU_Memcpy_CUDA(mv2_cuda_host_recv_buf, mv2_cuda_dev_sr_buf,
-                             total_recv_size, cudaMemcpyDeviceToHost);
+            MPIU_Memcpy_Device(mv2_device_host_recv_buf, mv2_device_dev_sr_buf,
+                             total_recv_size, deviceMemcpyDeviceToHost);
         }
-        mv2_cuda_original_recv_buf = *recv_buf;
-        mv2_cuda_original_recv_displs = *recv_displs;
-        *recv_buf = mv2_cuda_host_recv_buf;
-        *recv_displs = mv2_cuda_host_recv_displs;
+        mv2_device_original_recv_buf = *recv_buf;
+        mv2_device_original_recv_displs = *recv_displs;
+        *recv_buf = mv2_device_host_recv_buf;
+        *recv_displs = mv2_device_host_recv_displs;
     }
 
     return mpi_errno;
 }
 
-void cuda_stage_free_v(void **send_buf, int *send_counts, MPI_Datatype send_type,
+void device_stage_free_v(void **send_buf, int *send_counts, MPI_Datatype send_type,
                        int **send_displs, int send_peers,
                        void **recv_buf, int *recv_counts, MPI_Datatype recv_type,
                        int **recv_displs, int recv_peers,
@@ -3257,83 +3584,83 @@ void cuda_stage_free_v(void **send_buf, int *send_counts, MPI_Datatype send_type
     }
 
     if (send_buf_on_device && *send_buf != MPI_IN_PLACE) {
-        MPIU_Assert(mv2_cuda_original_send_buf != NULL);
-        *send_buf = mv2_cuda_original_send_buf;
-        *send_displs = mv2_cuda_original_send_displs;
-        mv2_cuda_original_send_buf = NULL;
-        mv2_cuda_original_send_displs = NULL;
+        MPIU_Assert(mv2_device_original_send_buf != NULL);
+        *send_buf = mv2_device_original_send_buf;
+        *send_displs = mv2_device_original_send_displs;
+        mv2_device_original_send_buf = NULL;
+        mv2_device_original_send_displs = NULL;
     }
 
     if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) {
-        MPIU_Memcpy_CUDA(mv2_cuda_dev_sr_buf, *recv_buf, total_recv_size, cudaMemcpyHostToDevice);
+        MPIU_Memcpy_Device(mv2_device_dev_sr_buf, *recv_buf, total_recv_size, deviceMemcpyHostToDevice);
         for (i = 0; i < recv_peers; i++) {
             if (send_buf_on_device && *send_buf == MPI_IN_PLACE && i == rank)
                 continue;
-            MPIU_Memcpy_CUDA((void *) ((char *) mv2_cuda_original_recv_buf
-                                       + mv2_cuda_original_recv_displs[i] * recv_type_extent),
-                             (void *) ((char *) mv2_cuda_dev_sr_buf
+            MPIU_Memcpy_Device((void *) ((char *) mv2_device_original_recv_buf
+                                       + mv2_device_original_recv_displs[i] * recv_type_extent),
+                             (void *) ((char *) mv2_device_dev_sr_buf
                                        + (*recv_displs)[i] * recv_type_extent),
-                             recv_counts[i] * recv_type_extent, cudaMemcpyDeviceToDevice);
+                             recv_counts[i] * recv_type_extent, deviceMemcpyDeviceToDevice);
         }
-        *recv_buf = mv2_cuda_original_recv_buf;
-        *recv_displs = mv2_cuda_original_recv_displs;
-        mv2_cuda_original_recv_buf = NULL;
-        mv2_cuda_original_recv_displs = NULL;
+        *recv_buf = mv2_device_original_recv_buf;
+        *recv_displs = mv2_device_original_recv_displs;
+        mv2_device_original_recv_buf = NULL;
+        mv2_device_original_recv_displs = NULL;
     }
 }
 
 /******************************************************************/
 //Freeing the stage buffers during finalize                       //
 /******************************************************************/
-void CUDA_COLL_Finalize()
+void DEVICE_COLL_Finalize()
 {
-    if (mv2_cuda_host_recv_buf) {
-        if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
-            ibv_cuda_unregister(mv2_cuda_host_recv_buf);
+    if (mv2_device_host_recv_buf) {
+        if (mv2_device_host_recvbuf_size >= mv2_device_coll_register_stage_buf_threshold) {
+            ibv_device_unregister(mv2_device_host_recv_buf);
         }
-        MPIU_Memalign_Free(mv2_cuda_host_recv_buf);
-        mv2_cuda_host_recv_buf = NULL;
+        MPIU_Memalign_Free(mv2_device_host_recv_buf);
+        mv2_device_host_recv_buf = NULL;
     }
 
-    if (mv2_cuda_host_send_displs) {
-        MPIU_Free(mv2_cuda_host_send_displs);
-        mv2_cuda_host_send_displs = NULL;
+    if (mv2_device_host_send_displs) {
+        MPIU_Free(mv2_device_host_send_displs);
+        mv2_device_host_send_displs = NULL;
     }
 
-    if (mv2_cuda_host_send_buf) {
-        if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
-            ibv_cuda_unregister(mv2_cuda_host_send_buf);
+    if (mv2_device_host_send_buf) {
+        if (mv2_device_host_sendbuf_size >= mv2_device_coll_register_stage_buf_threshold) {
+            ibv_device_unregister(mv2_device_host_send_buf);
         }
-        MPIU_Memalign_Free(mv2_cuda_host_send_buf);
-        mv2_cuda_host_send_buf = NULL;
+        MPIU_Memalign_Free(mv2_device_host_send_buf);
+        mv2_device_host_send_buf = NULL;
     }
 
-    if (mv2_cuda_host_recv_displs) {
-        MPIU_Free(mv2_cuda_host_recv_displs);
-        mv2_cuda_host_recv_displs = NULL;
+    if (mv2_device_host_recv_displs) {
+        MPIU_Free(mv2_device_host_recv_displs);
+        mv2_device_host_recv_displs = NULL;
     }
 
-    if (mv2_cuda_allgather_store_buf) {
-        ibv_cuda_unregister(mv2_cuda_allgather_store_buf);
-        MPIU_Memalign_Free(mv2_cuda_allgather_store_buf);
-        mv2_cuda_allgather_store_buf = NULL;
+    if (mv2_device_allgather_store_buf) {
+        ibv_device_unregister(mv2_device_allgather_store_buf);
+        MPIU_Memalign_Free(mv2_device_allgather_store_buf);
+        mv2_device_allgather_store_buf = NULL;
     }
 
-    if (mv2_cuda_coll_pack_buf_size) {
-        MPIU_Free_CUDA(mv2_cuda_coll_pack_buf);
-        mv2_cuda_coll_pack_buf_size = 0;
+    if (mv2_device_coll_pack_buf_size) {
+        MPIU_Free_Device(mv2_device_coll_pack_buf);
+        mv2_device_coll_pack_buf_size = 0;
     }
 
-    if (mv2_cuda_coll_unpack_buf_size) {
-        MPIU_Free_CUDA(mv2_cuda_coll_unpack_buf);
-        mv2_cuda_coll_unpack_buf_size = 0;
+    if (mv2_device_coll_unpack_buf_size) {
+        MPIU_Free_Device(mv2_device_coll_unpack_buf);
+        mv2_device_coll_unpack_buf_size = 0;
     }
 }
 
 /******************************************************************/
 //Packing non-contig sendbuf                                      //
 /******************************************************************/
-void cuda_coll_pack(void **sendbuf, int *sendcount, MPI_Datatype * sendtype,
+void device_coll_pack(void **sendbuf, int *sendcount, MPI_Datatype * sendtype,
                     void **recvbuf, int *recvcount, MPI_Datatype * recvtype,
                     int disp, int procs_in_sendbuf, int comm_size)
 {
@@ -3352,7 +3679,7 @@ void cuda_coll_pack(void **sendbuf, int *sendcount, MPI_Datatype * sendtype,
     MPID_Datatype_get_size_macro(*sendtype, sendtype_size);
     MPID_Datatype_get_size_macro(*recvtype, recvtype_size);
 
-    /*Calulating size of data in recv and send buffers */
+    /*Calculating size of data in recv and send buffers */
     if (*sendbuf != MPI_IN_PLACE) {
         sendsize = *sendcount * sendtype_size;
         send_copy_size = *sendcount * sendtype_size * procs_in_sendbuf;
@@ -3363,39 +3690,39 @@ void cuda_coll_pack(void **sendbuf, int *sendcount, MPI_Datatype * sendtype,
     recvsize = *recvcount * recvtype_size * comm_size;
 
     /*Creating packing and unpacking buffers */
-    if (!sendtype_iscontig && send_copy_size > mv2_cuda_coll_pack_buf_size) {
-        MPIU_Free_CUDA(mv2_cuda_coll_pack_buf);
-        MPIU_Malloc_CUDA(mv2_cuda_coll_pack_buf, send_copy_size);
-        mv2_cuda_coll_pack_buf_size = send_copy_size;
+    if (!sendtype_iscontig && send_copy_size > mv2_device_coll_pack_buf_size) {
+        MPIU_Free_Device(mv2_device_coll_pack_buf);
+        MPIU_Malloc_Device(mv2_device_coll_pack_buf, send_copy_size);
+        mv2_device_coll_pack_buf_size = send_copy_size;
     }
-    if (!recvtype_iscontig && recvsize > mv2_cuda_coll_unpack_buf_size) {
-        MPIU_Free_CUDA(mv2_cuda_coll_unpack_buf);
-        MPIU_Malloc_CUDA(mv2_cuda_coll_unpack_buf, recvsize);
-        mv2_cuda_coll_unpack_buf_size = recvsize;
+    if (!recvtype_iscontig && recvsize > mv2_device_coll_unpack_buf_size) {
+        MPIU_Free_Device(mv2_device_coll_unpack_buf);
+        MPIU_Malloc_Device(mv2_device_coll_unpack_buf, recvsize);
+        mv2_device_coll_unpack_buf_size = recvsize;
     }
 
     /*Packing of data to sendbuf */
     if (*sendbuf != MPI_IN_PLACE && !sendtype_iscontig) {
         MPIR_Localcopy(*sendbuf, *sendcount * procs_in_sendbuf, *sendtype,
-                       mv2_cuda_coll_pack_buf, send_copy_size, MPI_BYTE);
-        *sendbuf = mv2_cuda_coll_pack_buf;
+                       mv2_device_coll_pack_buf, send_copy_size, MPI_BYTE);
+        *sendbuf = mv2_device_coll_pack_buf;
         *sendcount = sendsize;
         *sendtype = MPI_BYTE;
     } else if (*sendbuf == MPI_IN_PLACE && !recvtype_iscontig) {
         MPIR_Localcopy((void *) ((char *) (*recvbuf) + disp),
                        (*recvcount) * procs_in_sendbuf, *recvtype,
-                       mv2_cuda_coll_pack_buf, send_copy_size, MPI_BYTE);
-        *sendbuf = mv2_cuda_coll_pack_buf;
+                       mv2_device_coll_pack_buf, send_copy_size, MPI_BYTE);
+        *sendbuf = mv2_device_coll_pack_buf;
         *sendcount = sendsize;
         *sendtype = MPI_BYTE;
     }
 
     /*Changing recvbuf to contig temp recvbuf */
     if (!recvtype_iscontig) {
-        mv2_cuda_orig_recvbuf = *recvbuf;
-        mv2_cuda_orig_recvcount = *recvcount;
-        mv2_cuda_orig_recvtype = *recvtype;
-        *recvbuf = mv2_cuda_coll_unpack_buf;
+        mv2_device_orig_recvbuf = *recvbuf;
+        mv2_device_orig_recvcount = *recvcount;
+        mv2_device_orig_recvtype = *recvtype;
+        *recvbuf = mv2_device_coll_unpack_buf;
         *recvcount = *recvcount * recvtype_size;
         *recvtype = MPI_BYTE;
     }
@@ -3404,22 +3731,22 @@ void cuda_coll_pack(void **sendbuf, int *sendcount, MPI_Datatype * sendtype,
 /******************************************************************/
 //Unpacking data to non-contig recvbuf                            //
 /******************************************************************/
-void cuda_coll_unpack(int *recvcount, int comm_size)
+void device_coll_unpack(int *recvcount, int comm_size)
 {
 
     int recvtype_iscontig = 0;
 
-    if (mv2_cuda_orig_recvbuf && mv2_cuda_orig_recvtype != MPI_DATATYPE_NULL) {
-        MPIR_Datatype_iscontig(mv2_cuda_orig_recvtype, &recvtype_iscontig);
+    if (mv2_device_orig_recvbuf && mv2_device_orig_recvtype != MPI_DATATYPE_NULL) {
+        MPIR_Datatype_iscontig(mv2_device_orig_recvtype, &recvtype_iscontig);
     }
 
     /*Unpacking of data to recvbuf */
-    if (mv2_cuda_orig_recvbuf && !recvtype_iscontig) {
-        MPIR_Localcopy(mv2_cuda_coll_unpack_buf, *recvcount * comm_size, MPI_BYTE,
-                       mv2_cuda_orig_recvbuf, mv2_cuda_orig_recvcount * comm_size, mv2_cuda_orig_recvtype);
+    if (mv2_device_orig_recvbuf && !recvtype_iscontig) {
+        MPIR_Localcopy(mv2_device_coll_unpack_buf, *recvcount * comm_size, MPI_BYTE,
+                       mv2_device_orig_recvbuf, mv2_device_orig_recvcount * comm_size, mv2_device_orig_recvtype);
     }
 
-    mv2_cuda_orig_recvbuf = NULL;
+    mv2_device_orig_recvbuf = NULL;
 }
 #endif                          /* #ifdef _ENABLE_CUDA_ */
 
@@ -3658,9 +3985,7 @@ static inline void mv2_shm_progress(int *nspin)
 #if defined(CKPT)
     Wait_for_CR_Completion();
 #endif
-    MV2_INC_NUM_UNEXP_RECV();
-    MPID_Progress_test();
-    MV2_DEC_NUM_UNEXP_RECV();
+    MV2_PROGRESS_IF_NEEDED
     /* Yield once in a while */
     MPIU_THREAD_CHECK_BEGIN if (*nspin % 20 == 0) {
 #if defined(CKPT)
@@ -3681,6 +4006,54 @@ static inline void mv2_shm_progress(int *nspin)
 #endif
     }
 MPIU_THREAD_CHECK_END}
+
+void mv2_shm_barrier_gather(shmem_info_t * shmem)
+{   
+    int i, nspin = 0;
+    MPIU_Assert(shmem->write == shmem->read);
+    if (shmem->write != shmem->read) {
+        PRINT_ERROR("shmem->write != shmem->read\n");
+    }
+    int idx = shmem->read % mv2_shm_window_size;
+    if (shmem->local_rank == 0) {
+        for (i = 1; i < shmem->local_size; i++) {
+            while (shmem->queue[i].shm_slots[idx]->psn != shmem->read) {
+                nspin++;
+                if (nspin % mv2_shmem_coll_spin_count == 0) {
+                    mv2_shm_progress(&nspin);
+                }
+            }
+            READBAR();
+        }
+    } else {
+        shmem->queue[shmem->local_rank].shm_slots[idx]->psn = shmem->write;
+        WRITEBAR();
+    }
+}
+
+void mv2_shm_barrier_bcast(shmem_info_t * shmem)
+{
+    int i, nspin = 0;
+    int idx = shmem->read % mv2_shm_window_size;
+    if (shmem->local_rank == 0) {
+        WRITEBAR();
+        shmem->queue[0].shm_slots[idx]->psn = shmem->write;
+    } else {
+        while (shmem->queue[0].shm_slots[idx]->psn != shmem->read) {
+            nspin++;
+            if (nspin % mv2_shmem_coll_spin_count == 0) {
+                mv2_shm_progress(&nspin);
+            }
+        }
+        READBAR();
+    }
+    shmem->write++;
+    shmem->read++;
+    MPIU_Assert(shmem->write == shmem->read);
+    if (shmem->write != shmem->read) {
+        PRINT_ERROR("shmem->write != shmem->read\n");
+    }
+}
 
 void mv2_shm_barrier(shmem_info_t * shmem)
 {
@@ -3728,7 +4101,7 @@ void mv2_shm_reduce(shmem_info_t * shmem, char *in_buf, int len,
      * ensure that we don't mess with the sendbuf supplied 
      * by the application */
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         MPIR_Localcopy(in_buf, len, MPI_BYTE,
             shmem->queue[shmem->local_rank].shm_slots[windex]->buf, len, MPI_BYTE);
     } else
@@ -3781,7 +4154,7 @@ void mv2_shm_tree_reduce(shmem_info_t * shmem, char *in_buf, int len,
         /* Copy the data from the input buffer to the shm slot. This is to ensure
         * that we don't mess with the sendbuf supplied by the application */ 
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda) {
+        if (mv2_enable_device) {
             MPIR_Localcopy(in_buf, len, MPI_BYTE,
                 shmem->queue[shmem->local_rank].shm_slots[windex]->buf, len, MPI_BYTE);
         } else
@@ -3838,7 +4211,7 @@ void mv2_shm_tree_reduce(shmem_info_t * shmem, char *in_buf, int len,
 
     } else {
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda) {
+        if (mv2_enable_device) {
             MPIR_Localcopy(in_buf, len, MPI_BYTE,
                 shmem->queue[shmem->local_rank].shm_slots[windex]->buf, len, MPI_BYTE);
         } else
@@ -3866,14 +4239,16 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
     MPID_Comm *leader_commptr = NULL;
     MPID_Comm_get_ptr(comm_ptr->dev.ch.leader_comm, leader_commptr);
 #endif
-    shmem  = shmem_commptr->dev.ch.shmem_info; 
+    if (shmem_commptr) {
+        shmem  = shmem_commptr->dev.ch.shmem_info;
+    }
     windex = shmem->write % mv2_shm_window_size;
     rindex = shmem->read % mv2_shm_window_size;
 
     if(shmem->local_size > 0) { 
         if (shmem->local_rank == root) {
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda) { 
+            if (mv2_enable_device) {
                 MPIR_Localcopy(buf, len, MPI_BYTE, 
                     shmem->queue[root].shm_slots[windex]->buf, len, MPI_BYTE);
             } else
@@ -3892,7 +4267,7 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
             }
             READBAR();
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda) { 
+            if (mv2_enable_device) {
                 MPIR_Localcopy(shmem->queue[root].shm_slots[rindex]->buf, len, MPI_BYTE, 
                                 buf, len, MPI_BYTE);
             } else 
@@ -3909,7 +4284,7 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
         IS_SHMEM_WINDOW_HALF_FULL(shmem->write, shmem->tail)) {
         PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window half full: %llu \n", shmem->write);
         mv2_shm_barrier(shmem);
-        if (shmem->local_rank == intra_node_root &&
+        if (shmem->local_rank == intra_node_root && leader_commptr &&
             leader_commptr->local_size > 1) {
 
             if(shmem->end_request_active == 1){ 
@@ -3928,7 +4303,7 @@ int mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
     if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
         PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %llu \n", shmem->write);
         mv2_shm_barrier(shmem);
-        if (shmem->local_rank == intra_node_root &&
+        if (shmem->local_rank == intra_node_root && leader_commptr &&
             leader_commptr->local_size > 1) {
 
             if(shmem->mid_request_active == 1){ 
@@ -4092,7 +4467,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
             } else {
                 /* node-level leader, and the root of the bcast */
 #if defined(_ENABLE_CUDA_)
-                if (rdma_enable_cuda) {
+                if (mv2_enable_device) {
                     MPIR_Localcopy(buf, len, MPI_BYTE,
                             shmem->queue[intra_node_root].shm_slots[windex]->buf, len, MPI_BYTE);
                 } else
@@ -4140,7 +4515,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
              * the user-level buffer */
             if(leader_commptr->rank != root) {
 #if defined(_ENABLE_CUDA_)
-                if (rdma_enable_cuda) {
+                if (mv2_enable_device) {
                     mpi_errno = MPIR_Localcopy(shmem->queue[intra_node_root].shm_slots[windex]->buf,
                                    len, MPI_BYTE,
                                    buf, len, MPI_BYTE);
@@ -4155,7 +4530,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
             }
         } else {
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda) {
+            if (mv2_enable_device) {
                 mpi_errno = MPIR_Localcopy(buf, len, MPI_BYTE,
                     shmem->queue[intra_node_root].shm_slots[windex]->buf, len, MPI_BYTE);
                 if (mpi_errno) {
@@ -4178,7 +4553,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
         }
         READBAR();
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda) {
+        if (mv2_enable_device) {
             mpi_errno = MPIR_Localcopy(shmem->queue[intra_node_root].shm_slots[rindex]->buf, len, MPI_BYTE,
                             buf, len, MPI_BYTE);
             if (mpi_errno) {
@@ -4678,6 +5053,9 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     MPID_Comm *shmem_ptr = NULL;
  
     MPID_Comm_get_ptr(comm_ptr->dev.ch.shmem_comm, shmem_ptr);
+    if (shmem_ptr == NULL) {
+        shmem_ptr = comm_ptr;
+    }
 
     shmem = MPIU_Malloc(sizeof (shmem_info_t));
     MPIU_Assert(shmem != NULL);

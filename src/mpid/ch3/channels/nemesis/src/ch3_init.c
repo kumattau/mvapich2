@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -27,6 +27,11 @@
 #ifdef _OSU_MVAPICH_
 #include "coll_shmem.h"
 #endif /* _OSU_MVAPICH_ */
+
+#ifndef _OSU_MVAPICH_
+/* Use a runtime modifiable parameter to determine the minimum IOV density */
+int mv2_iov_density_min = MPIDI_IOV_DENSITY_MIN;
+#endif
 
 void *MPIDI_CH3_packet_buffer = NULL;
 int MPIDI_CH3I_my_rank = -1;

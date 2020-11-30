@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -42,6 +42,9 @@ MPIDI_VC_t *mv2_read_progress_pending_vc = NULL;
 int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_found, int is_blocking)
 {
     int 	type;
+    int receiving = 0;
+    MPIDI_VC_t * vc = NULL;
+
     MPIDI_VC_t 	*recv_vc_ptr;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_READ_PROGRESS);
@@ -94,7 +97,11 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
      * packet on *v_ptr
      * TODO: Is this the optimal way?
      */
-    type = MPIDI_CH3I_MRAILI_Cq_poll(v_ptr, NULL, 0, is_blocking);
+    if (likely(mv2_use_ib_channel == 1)) {
+        type = MPIDI_CH3I_MRAILI_Cq_poll_ib(v_ptr, vc, receiving, is_blocking);
+    } else {
+        type = MPIDI_CH3I_MRAILI_Cq_poll_iwarp(v_ptr, vc, receiving, is_blocking);
+    }
     if (type != T_CHANNEL_NO_ARRIVE) {
         recv_vc_ptr = (*v_ptr)->vc;
         *vc_pptr = recv_vc_ptr;

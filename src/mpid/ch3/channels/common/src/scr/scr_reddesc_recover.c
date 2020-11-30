@@ -36,7 +36,7 @@ static int scr_bool_have_xor_file(scr_filemap* map, int checkpoint_id, char* xor
     scr_meta* meta = scr_meta_new();
     scr_filemap_get_meta(map, checkpoint_id, scr_my_rank_world, file, meta);
 
-    /* if the filetype of this file is an XOR fule, copy the filename and bail out */
+    /* if the filetype of this file is an XOR file, copy the filename and bail out */
     char* filetype = NULL;
     if (scr_meta_get_filetype(meta, &filetype) == SCR_SUCCESS) {
       if (strcmp(filetype, SCR_META_FILE_XOR) == 0) {
@@ -331,7 +331,7 @@ static int scr_reddesc_recover_xor(scr_filemap* map, const scr_reddesc* c, int i
     );
   }
 
-  /* allocate buffer to read a piece of the recevied chunk file */
+  /* allocate buffer to read a piece of the received chunk file */
   char* recv_buf = (char*) scr_align_malloc(scr_mpi_buf_size, scr_page_size);
   if (recv_buf == NULL) {
     scr_abort(-1, "Allocating memory for recv buffer: malloc(%d) errno=%d %s @ %s:%d",

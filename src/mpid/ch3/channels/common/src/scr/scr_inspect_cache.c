@@ -39,7 +39,7 @@ int buffer_size = 128*1024;
 
 static char scr_my_hostname[SCR_MAX_FILENAME];
 
-/* checks whether specifed file exists, is readable, and is complete */
+/* checks whether specified file exists, is readable, and is complete */
 static int scr_bool_have_file(const scr_filemap* map, int dset, int rank, const char* file)
 {
   /* if no filename is given return false */

@@ -7,6 +7,7 @@
 
 #include "mpiimpl.h"
 #include "mpicomm.h"
+#include "helper_fns.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_Intercomm_merge */
 #if defined(HAVE_PRAGMA_WEAK)

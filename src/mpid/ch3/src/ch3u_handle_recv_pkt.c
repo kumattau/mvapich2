@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,7 +23,7 @@
  * This file contains the dispatch routine called by the ch3 progress 
  * engine to process messages.  
  *
- * This file is in transistion
+ * This file is in transition
  *
  * Where possible, the routines that create and send all packets of
  * a particular type are in the same file that contains the implementation 
@@ -92,7 +92,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_address_reply_t),
     sizeof(MPIDI_CH3_Pkt_cm_establish_t),
 #if defined(CKPT)
-    /* These contrl packet has no packet header,
+    /* These control packet has no packet header,
      * use noop packet as the packet header size*/
     sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
@@ -317,17 +317,17 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, void *buf, MPIDI_msg_sz_t 
             /* copy data out of the receive buffer */
 
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda) {
+            if (mv2_enable_device) {
                 userbuf_isdev = is_device_buffer((void *) rreq->dev.user_buf);
             }
             if (userbuf_isdev) {
-                MPIU_Memcpy_CUDA((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
-                                    buf, data_sz, cudaMemcpyDefault);
+                MPIU_Memcpy_Device((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
+                                    buf, data_sz, deviceMemcpyDefault);
             }
             else if (!is_device_buffer(rreq->dev.user_buf)
                     && is_device_buffer(buf)) {
-                MPIU_Memcpy_CUDA((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
-                                    buf, data_sz, cudaMemcpyDeviceToHost);
+                MPIU_Memcpy_Device((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
+                                    buf, data_sz, deviceMemcpyDeviceToHost);
             }
             else
 #endif
@@ -370,15 +370,15 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, void *buf, MPIDI_msg_sz_t 
         if (data_sz == rreq->dev.recv_data_sz && *buflen >= data_sz)
         {
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda && 
-                    rreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE) {
+            if (mv2_enable_device &&
+                    rreq->mrail.device_transfer_mode == DEVICE_TO_DEVICE) {
                 mpi_errno = MPIDI_CH3U_Request_load_recv_iov(rreq);
                 if (mpi_errno != MPI_SUCCESS) {
                     MPIR_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,
                             "**ch3|loadrecviov");
                 }
-                MPIU_Memcpy_CUDA((char*)(rreq->dev.iov[0].MPL_IOV_BUF),
-                        buf, data_sz, cudaMemcpyDefault);
+                MPIU_Memcpy_Device((char*)(rreq->dev.iov[0].MPL_IOV_BUF),
+                        buf, data_sz, deviceMemcpyDefault);
 
                 *buflen = data_sz;
                 *complete = TRUE;
@@ -444,22 +444,18 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, void *buf, MPIDI_msg
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)  
     int buf_isdev = 0;
-    cudaError_t cuda_error = cudaSuccess;
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         buf_isdev = is_device_buffer((void *) buf);
     }   
-    if (buf_isdev && rdma_cuda_smp_ipc) {
-        cuda_error = cudaMalloc((void **) &(rreq->dev.tmpbuf), rreq->dev.recv_data_sz);       
-        if (cuda_error != cudaSuccess) {
-            MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
-                    rreq->dev.recv_data_sz);
-        }
+    if (buf_isdev && mv2_device_use_smp_eager_ipc) {
+        MPIU_Malloc_Device(rreq->dev.tmpbuf, rreq->dev.recv_data_sz);
+        
         rreq->dev.tmpbuf_sz = rreq->dev.recv_data_sz;
 
         if (rreq->dev.recv_data_sz <= *buflen)
         {
-            MPIU_Memcpy_CUDA((void *) rreq->dev.tmpbuf, (void *) buf,
-                    rreq->dev.recv_data_sz, cudaMemcpyDefault);
+            MPIU_Memcpy_Device((void *) rreq->dev.tmpbuf, (void *) buf,
+                    rreq->dev.recv_data_sz, deviceMemcpyDefault);
             *buflen = rreq->dev.recv_data_sz;
             rreq->dev.recv_pending_count = 1;
             *complete = TRUE;
@@ -691,7 +687,7 @@ int MPIDI_CH3I_Try_acquire_win_lock(MPID_Win *win_ptr, int requested_lock)
 /* ------------------------------------------------------------------------ */
 /* Here are the functions that implement the packet actions.  They'll be moved
  * to more modular places where it will be easier to replace subsets of the
- * in order to experiement with alternative data transfer methods, such as
+ * in order to experiment with alternative data transfer methods, such as
  * sending some data with a rendezvous request or including data within
  * an eager message.                                                        
  *

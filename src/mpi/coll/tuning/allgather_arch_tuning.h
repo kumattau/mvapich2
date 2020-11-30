@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2019, The Ohio State University. All rights
+ * Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -148,7 +148,10 @@
 #include "allgather/gen2_cma_AMD_EPYC_ROME_8ppn.h"
 #include "allgather/gen2_cma_AMD_EPYC_ROME_16ppn.h"
 #include "allgather/gen2_cma_AMD_EPYC_ROME_32ppn.h"
+#include "allgather/gen2_cma_AMD_EPYC_ROME_60ppn.h"
 #include "allgather/gen2_cma_AMD_EPYC_ROME_64ppn.h"
+#include "allgather/gen2_cma_AMD_EPYC_ROME_120ppn.h"
+#include "allgather/gen2_cma_AMD_EPYC_ROME_128ppn.h"
 #include "allgather/gen2_cma_NOWHASWELL_1ppn.h"
 #include "allgather/gen2_cma_NOWHASWELL_2ppn.h"
 #include "allgather/gen2_cma_NOWHASWELL_4ppn.h"
@@ -163,6 +166,11 @@
 #include "allgather/gen2_cma_FRONTERA_28ppn.h"
 #include "allgather/gen2_cma_FRONTERA_32ppn.h"
 #include "allgather/gen2_cma_FRONTERA_56ppn.h"
+#include "allgather/gen2_cma_MV2_ARCH_INTEL_XEON_E5_2620_V4_2S_16_1ppn.h"
+#include "allgather/gen2_cma_MV2_ARCH_INTEL_XEON_E5_2620_V4_2S_16_2ppn.h"
+#include "allgather/gen2_cma_MV2_ARCH_INTEL_XEON_E5_2620_V4_2S_16_4ppn.h"
+#include "allgather/gen2_cma_MV2_ARCH_INTEL_XEON_E5_2620_V4_2S_16_8ppn.h"
+#include "allgather/gen2_cma_MV2_ARCH_INTEL_XEON_E5_2620_V4_2S_16_16ppn.h"
 #include "allgather/gen2_cma_MAYER_1ppn.h"
 #include "allgather/gen2_cma_MAYER_2ppn.h"
 #include "allgather/gen2_cma_MAYER_4ppn.h"
@@ -178,3 +186,11 @@
 #include "allgather/gen2_cma_ARM_CAVIUM_V8_2S_32_MLX_CX_EDR_16ppn.h"
 #include "allgather/gen2_cma_ARM_CAVIUM_V8_2S_32_MLX_CX_EDR_32ppn.h"
 #include "allgather/gen2_cma_ARM_CAVIUM_V8_2S_32_MLX_CX_EDR_64ppn.h"
+#include "allgather/gen2_cma_AMD_EPYC_7401_24_1ppn.h"
+#include "allgather/gen2_cma_AMD_EPYC_7401_24_2ppn.h"
+#include "allgather/gen2_cma_AMD_EPYC_7401_24_4ppn.h"
+#include "allgather/gen2_cma_AMD_EPYC_7401_24_8ppn.h"
+#include "allgather/gen2_cma_AMD_EPYC_7401_24_16ppn.h"
+#include "allgather/gen2_cma_AMD_EPYC_7401_24_32ppn.h"
+#include "allgather/gen2_cma_AMD_EPYC_7401_24_48ppn.h"
+

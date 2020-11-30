@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -148,7 +148,7 @@ int MPIR_Reduce_scatter_block_ring_2lvl_MV2(
                         &request[1], errflag);
                 MPIC_Waitall(2, request, status, errflag);
             } else {
-                /* write the result to the ouput buffer */
+                /* write the result to the output buffer */
                 char* buf = output_buf + nread * extent;
                 MPIR_Localcopy(tmp_sendbuf, count, datatype,
                         buf, count, datatype);
@@ -279,7 +279,7 @@ int MPIR_Reduce_scatter_block_ring_MV2(
                         &request[1], errflag);
                 MPIC_Waitall(2, request, status, errflag);
             } else {
-                /* write the result to the ouput buffer */
+                /* write the result to the output buffer */
                 char* buf = output_buf + nread * extent;
                 MPIR_Localcopy(tmp_sendbuf, count, datatype,
                         buf, count, datatype);

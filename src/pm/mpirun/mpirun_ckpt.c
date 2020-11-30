@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -715,7 +715,7 @@ static void *CR_Loop(void *arg)
                 } else {
                     // Resume after a successful checkpoint
 
-                    // Remove the ealier checkpoints
+                    // Remove the earlier checkpoints
                     if ( (max_save_ckpts > 0) && (max_save_ckpts < current_version) ) {
                         sprintf(buf, "%s.%d.auto", ckpt_filename, current_version - max_save_ckpts);
                         PRINT_DEBUG( DEBUG_CR_verbose, "[2] unlink() file '%s' \n", buf );
@@ -941,7 +941,7 @@ static int CR_Callback(void *arg)
     } 
 
 
-    // At this point, all the MPI processes have succesfully checkpointed
+    // At this point, all the MPI processes have successfully checkpointed
     // Then, proceed to local checkpoint of mpirun_rsh
 
 #if defined(CKPT) && defined(CR_FTB)

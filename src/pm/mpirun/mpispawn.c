@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -113,15 +113,26 @@ void report_error(int abort_code)
     int connect_attempt = 0, max_connect_attempts = 5;
     struct sockaddr_in sockaddr;
     struct hostent *mpirun_hostent;
+    char *env = NULL;
     if (sock < 0) {
         /* Oops! */
         PRINT_ERROR_ERRNO("socket() failed", errno);
         exit(EXIT_FAILURE);
     }
 
-    mpirun_hostent = gethostbyname(env2str("MPISPAWN_MPIRUN_HOST"));
+    env = env2str("MPISPAWN_MPIRUN_HOST");
+    mpirun_hostent = gethostbyname(env);
+    if (env) {
+        free(env);
+        env = NULL;
+    }
     if (NULL == mpirun_hostent) {
-        mpirun_hostent = gethostbyname(env2str("MPISPAWN_MPIRUN_HOSTIP"));
+        env = env2str("MPISPAWN_MPIRUN_HOSTIP");
+        mpirun_hostent = gethostbyname(env);
+        if (env) {
+            free(env);
+            env = NULL;
+        }
         if (NULL == mpirun_hostent) {
             /* Oops! */
             PRINT_ERROR("gethostbyname() failed: %s (%d)\n",
@@ -239,6 +250,7 @@ static inline int setup_global_environment()
             strncpy(ckpt_filename, value, CR_MAX_FILENAME);
 #endif
 #endif                          /* CKPT */
+        free(buffer);
 
         setenv(name, value, 1);
 
@@ -326,10 +338,13 @@ char *obtain_host_list_from_file()
 
     fp = fopen(host_list_file, "r");
     if (fp == NULL) {
-
         fprintf(stderr, "host list temp file could not be read\n");
+        return NULL;
     }
-
+    if (host_list_file) {
+        free(host_list_file);
+        host_list_file = NULL;
+    }
     host_list = malloc(num_bytes);
     fscanf(fp, "%s", host_list);
     fclose(fp);
@@ -370,7 +385,7 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
     char *mpispawn_env = NULL;
     char hostname[MAX_HOST_LEN + 1];
     char hostnameip[MAX_HOST_LEN + 1];
-    char *nargv[7], buf[20], *args, **host;
+    char *nargv[7], buf[20], *args = NULL, **host;
     int target[mt_degree];
 
     for (i = 0; i < nargc; i++) {
@@ -415,7 +430,7 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
 
             } else {
                 /*If mpmd is selected the name and args of the executable are written in the HOST_LIST, not in the
-                 * MPISPAWN_ARGV and MPISPAWN_ARGC. So the value of these varibles is not exact and we don't
+                 * MPISPAWN_ARGV and MPISPAWN_ARGC. So the value of these variables is not exact and we don't
                  * read this value.*/
                 if (mpmd_on) {
                     if (strstr(var, "MPISPAWN_ARGV_") == NULL && strstr(var, "MPISPAWN_ARGC") == NULL) {
@@ -540,6 +555,27 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
             execv(nargv[0], (char *const *) nargv);
             perror("execv");
         }
+    }
+
+    if (args) {
+        free(args);
+        args = NULL;
+    }
+    if (mpmd_on) {
+        free(mpmd_on);
+        mpmd_on = NULL;
+    }
+    if (host_list) {
+        free(host_list);
+        host_list = NULL;
+    }
+    if (command) {
+        free(command);
+        command = NULL;
+    }
+    if (mpispawn_env) {
+        free(mpispawn_env);
+        mpispawn_env = NULL;
     }
 }
 

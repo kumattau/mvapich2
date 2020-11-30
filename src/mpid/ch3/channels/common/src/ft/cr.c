@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -888,7 +888,7 @@ int CR_Thread_loop()
                 CR_MPDU_Ckpt_succeed();
 
                 if (MPICR_max_save_ckpts > 0 && MPICR_max_save_ckpts < checkpoint_count) {
-                    /*remove the ealier checkpoints */
+                    /*remove the earlier checkpoints */
                     sprintf(cr_file, "%s.%d.%d", valstr, checkpoint_count - MPICR_max_save_ckpts, MPICR_pg_rank);
                     unlink(cr_file);
                 }
@@ -1441,7 +1441,7 @@ int CR_IBU_Release_network()
          */
         if (!(SMP_INIT && (vc->smp.local_nodes >= 0))) {
             for (rail_index = 0; rail_index < vc->mrail.num_rails; ++rail_index) {
-                ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
+                ibv_ops.destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
             }
         }
 #ifndef MV2_DISABLE_HEADER_CACHING
@@ -1459,7 +1459,7 @@ int CR_IBU_Release_network()
             pthread_cancel(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i]);
             pthread_join(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);
 
-            if (ibv_destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i])) {
+            if (ibv_ops.destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i])) {
                 ibv_error_abort(IBV_RETURN_ERR, "Couldn't destroy SRQ\n");
             }
         }
@@ -1497,14 +1497,14 @@ int CR_IBU_Release_network()
     for (i = 0; i < rdma_num_hcas; ++i) {
         if (rdma_iwarp_use_multiple_cq && MV2_IS_CHELSIO_IWARP_CARD(mv2_MPIDI_CH3I_RDMA_Process.hca_type) && (mv2_MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
             /* Trac #423 */
-            ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
-            ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
+            ibv_ops.destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
+            ibv_ops.destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
         } else {
-            ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+            ibv_ops.destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
         }
         deallocate_vbufs(i);
-        ibv_dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
-        ibv_close_device(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]);
+        ibv_ops.dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
+        ibv_ops.close_device(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]);
     }
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"CR_IBU_Release_network: ibv_close\n");
 #if !defined(DISABLE_PTMALLOC)
@@ -1594,7 +1594,7 @@ int CR_IBU_Rebuild_network()
             srq_attr.max_sge = 1;
             srq_attr.srq_limit = mv2_srq_limit;
 
-            if (ibv_modify_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i], &srq_attr, IBV_SRQ_LIMIT)) {
+            if (ibv_ops.modify_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i], &srq_attr, IBV_SRQ_LIMIT)) {
                 ibv_error_abort(IBV_RETURN_ERR, "Couldn't modify SRQ limit\n");
             }
 

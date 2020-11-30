@@ -1,5 +1,5 @@
 /*!\file */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -40,6 +40,7 @@ extern unsigned long        rdma_default_max_recv_wqe;
 extern uint32_t             rdma_default_max_sg_list;
 extern uint16_t             rdma_default_pkey_ix;
 extern uint16_t             rdma_default_pkey;
+extern uint32_t             rdma_default_qkey;
 extern uint8_t              rdma_default_qp_ous_rd_atom;
 extern uint8_t              rdma_default_max_rdma_dst_ops;
 extern enum ibv_mtu         rdma_default_mtu;
@@ -108,7 +109,7 @@ extern int                  rdma_num_sa_query_retries;
 
 extern  int                 striping_threshold;
 extern  int                 sm_scheduling;
-extern  int                 alpha;
+extern  double                 alpha;
 extern  int                 stripe_factor;
 extern  int                 apm_tester;
 
@@ -134,6 +135,7 @@ extern int                  mv2_show_env_info;
 #define RDMA_DEFAULT_MAX_SG_LIST        (1)
 #define RDMA_DEFAULT_PKEY_IX            (0)
 #define RDMA_DEFAULT_PKEY               (0x0)
+#define RDMA_DEFAULT_QKEY               (0)
 #define RDMA_DEFAULT_MAX_RDMA_DST_OPS   (4)
 #define RDMA_DEFAULT_PSN                (0)
 #define RDMA_DEFAULT_MIN_RNR_TIMER      (12)

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
 * reserved.
 *
 * This file is part of the MVAPICH2 software package developed by the
@@ -508,10 +508,11 @@ int MPIR_Allgather_RD_MV2(const void *sendbuf,
     int curr_cnt, dst;
     MPI_Status status;
     int mask, dst_tree_root, my_tree_root, is_homogeneous,
-        send_offset, recv_offset, last_recv_cnt = 0, nprocs_completed, k,
-        offset, tmp_mask, tree_root;
+        last_recv_cnt = 0, nprocs_completed, k,
+        tmp_mask, tree_root;
+    MPI_Aint send_offset, recv_offset, offset;
 #ifdef MPID_HAS_HETERO
-    int position, tmp_buf_size, nbytes;
+    MPI_Aint position, tmp_buf_size, nbytes;
 #endif
 
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allgather_rd, 1);
@@ -559,7 +560,6 @@ int MPIR_Allgather_RD_MV2(const void *sendbuf,
             my_tree_root = rank >> i;
             my_tree_root <<= i;
 
-            /* FIXME: saving an MPI_Aint into an int */
             send_offset = my_tree_root * recvcount * recvtype_extent;
             recv_offset = dst_tree_root * recvcount * recvtype_extent;
 
@@ -618,7 +618,6 @@ int MPIR_Allgather_RD_MV2(const void *sendbuf,
                 }
                 k--;
 
-                /* FIXME: saving an MPI_Aint into an int */
                 offset = recvcount * (my_tree_root + mask) * recvtype_extent;
                 tmp_mask = mask >> 1;
 
@@ -1923,12 +1922,13 @@ int MPIR_2lvl_Allgather_Direct_MV2(
         MPIR_ERR_POP(mpi_errno);
     }
 
-  fn_exit:
+fn_exit:
     MPIU_CHKLMEM_FREEALL();
-
-  fn_fail:
-    MPIR_TIMER_END(coll,allgather,2lvl_direct);
     return (mpi_errno);
+
+fn_fail:
+    MPIR_TIMER_END(coll,allgather,2lvl_direct);
+    goto fn_exit;
 }
 
 /* In this implementation, we "gather" data from all procs on a node
@@ -2134,7 +2134,7 @@ int MPIR_2lvl_Allgather_Ring_MV2(
         int send_index = leader_rank;
         int recv_index = left;
         for (i = 0; i < leader_size; i++) {
-            /* initalize our request counter */
+            /* initialize our request counter */
             reqs = 0;
 
             /* post receives for data coming from the left */
@@ -2224,13 +2224,14 @@ int MPIR_2lvl_Allgather_Ring_MV2(
     if (mpi_errno) {
         MPIR_ERR_POP(mpi_errno);
     }
-
-  fn_exit:
+  
+fn_exit:
     MPIU_CHKLMEM_FREEALL();
-
-  fn_fail:
-    MPIR_TIMER_END(coll,allgather,2lvl_ring);
     return (mpi_errno);
+
+fn_fail:
+    MPIR_TIMER_END(coll,allgather,2lvl_ring);
+    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -2243,7 +2244,8 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
 {
 
     int mpi_errno = MPI_SUCCESS;
-    int nbytes = 0, comm_size, recvtype_size;
+    MPI_Aint nbytes = 0, recvtype_size;
+    int comm_size;
     int comm_size_index = 0;
     int inter_node_algo_index = 0;
     int local_size = 0;
@@ -2275,16 +2277,16 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
 #ifdef _ENABLE_CUDA_
     int send_mem_type = 0;
     int recv_mem_type = 0;
-    int snbytes = INT_MAX;
+    MPI_Aint snbytes = INT_MAX;
     MPI_Aint sendtype_extent;
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         send_mem_type = is_device_buffer(sendbuf);
         recv_mem_type = is_device_buffer(recvbuf);
     }
 
     /*Handling Non-contig datatypes */
-    if (rdma_enable_cuda && (send_mem_type || recv_mem_type)) {
-        cuda_coll_pack((void **)&sendbuf, &sendcount, &sendtype,
+    if (mv2_enable_device && (send_mem_type || recv_mem_type)) {
+        device_coll_pack((void **)&sendbuf, &sendcount, &sendtype,
                        &recvbuf, &recvcount, &recvtype,
                        rank * recvcount * recvtype_extent, 1, comm_size);
     }
@@ -2297,11 +2299,11 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
     nbytes = recvtype_size * recvcount;
 
-    if (rdma_enable_cuda && rdma_cuda_allgather_fgp &&
+    if (mv2_enable_device && mv2_device_use_allgather_fgp &&
         send_mem_type && recv_mem_type &&
         snbytes >
-        rdma_cuda_allgather_naive_limit / (FGP_SWITCH_FACTOR * comm_size) &&
-        nbytes > rdma_cuda_allgather_naive_limit / (FGP_SWITCH_FACTOR * comm_size)) {
+        mv2_device_allgather_stage_limit / (FGP_SWITCH_FACTOR * comm_size) &&
+        nbytes > mv2_device_allgather_stage_limit / (FGP_SWITCH_FACTOR * comm_size)) {
         if (sendbuf != MPI_IN_PLACE) {
             mpi_errno =
                 MPIR_Allgather_cuda_intra_MV2(sendbuf, sendcount, sendtype,
@@ -2319,15 +2321,15 @@ int MPIR_Allgather_index_tuned_intra_MV2(const void *sendbuf, int sendcount, MPI
             MPIR_ERR_POP(mpi_errno);
         }
         goto fn_exit;
-    } else if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-               rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)) {
+    } else if (mv2_enable_device && (send_mem_type || recv_mem_type) &&
+               mv2_device_coll_use_stage && (nbytes <= mv2_device_allgather_stage_limit)) {
         if (sendbuf != MPI_IN_PLACE) {
-            mpi_errno = cuda_stage_alloc((void **)&sendbuf, sendcount * sendtype_extent,
+            mpi_errno = device_stage_alloc((void **)&sendbuf, sendcount * sendtype_extent,
                                          &recvbuf,
                                          recvcount * recvtype_extent *
                                          comm_size, send_mem_type, recv_mem_type, 0);
         } else {
-            mpi_errno = cuda_stage_alloc((void **)&sendbuf, recvcount * recvtype_extent,
+            mpi_errno = device_stage_alloc((void **)&sendbuf, recvcount * recvtype_extent,
                                          &recvbuf,
                                          recvcount * recvtype_extent *
                                          comm_size, send_mem_type,
@@ -2474,7 +2476,7 @@ conf_check_end:
             /* Reordering data into recvbuf */
             if (sendtype_iscontig == 1 && recvtype_iscontig == 1
 #if defined(_ENABLE_CUDA_)
-                && rdma_enable_cuda == 0
+                && mv2_enable_device == 0
 #endif
             ){
                 for (i = 0; i < comm_size; i++) {
@@ -2533,9 +2535,9 @@ conf_check_end:
 
 fn_cuda_exit:
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && ((send_mem_type == 1) || (recv_mem_type == 1)) &&
-        rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)) {
-        cuda_stage_free((void **)&sendbuf,
+    if (mv2_enable_device && ((send_mem_type == 1) || (recv_mem_type == 1)) &&
+        mv2_device_coll_use_stage && (nbytes <= mv2_device_allgather_stage_limit)) {
+        device_stage_free((void **)&sendbuf,
                         &recvbuf, recvcount * recvtype_extent * comm_size,
                         send_mem_type, recv_mem_type);
     }
@@ -2548,8 +2550,8 @@ fn_cuda_exit:
   fn_exit:
 #ifdef _ENABLE_CUDA_
     /*Handling Non-Contig datatypes */
-    if (rdma_enable_cuda && (send_mem_type || recv_mem_type)) {
-        cuda_coll_unpack(&recvcount, comm_size);
+    if (mv2_enable_device && (send_mem_type || recv_mem_type)) {
+        device_coll_unpack(&recvcount, comm_size);
     }
 #endif                          /*#ifdef _ENABLE_CUDA_ */
     return mpi_errno;
@@ -2599,16 +2601,16 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
 #ifdef _ENABLE_CUDA_
     int send_mem_type = 0;
     int recv_mem_type = 0;
-    int snbytes = INT_MAX;
+    MPI_Aint snbytes = INT_MAX;
     MPI_Aint sendtype_extent;
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         send_mem_type = is_device_buffer(sendbuf);
         recv_mem_type = is_device_buffer(recvbuf);
     }
 
     /*Handling Non-contig datatypes */
-    if (rdma_enable_cuda && (send_mem_type || recv_mem_type)) {
-        cuda_coll_pack((void **)&sendbuf, &sendcount, &sendtype,
+    if (mv2_enable_device && (send_mem_type || recv_mem_type)) {
+        device_coll_pack((void **)&sendbuf, &sendcount, &sendtype,
                        &recvbuf, &recvcount, &recvtype,
                        rank * recvcount * recvtype_extent, 1, comm_size);
     }
@@ -2621,11 +2623,11 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
     nbytes = recvtype_size * recvcount;
 
-    if (rdma_enable_cuda && rdma_cuda_allgather_fgp &&
+    if (mv2_enable_device && mv2_device_use_allgather_fgp &&
         send_mem_type && recv_mem_type &&
         snbytes >
-        rdma_cuda_allgather_naive_limit / (FGP_SWITCH_FACTOR * comm_size) &&
-        nbytes > rdma_cuda_allgather_naive_limit / (FGP_SWITCH_FACTOR * comm_size)) {
+        mv2_device_allgather_stage_limit / (FGP_SWITCH_FACTOR * comm_size) &&
+        nbytes > mv2_device_allgather_stage_limit / (FGP_SWITCH_FACTOR * comm_size)) {
         if (sendbuf != MPI_IN_PLACE) {
             mpi_errno =
                 MPIR_Allgather_cuda_intra_MV2(sendbuf, sendcount, sendtype,
@@ -2643,15 +2645,15 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
             MPIR_ERR_POP(mpi_errno);
         }
         goto fn_exit;
-    } else if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-               rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)) {
+    } else if (mv2_enable_device && (send_mem_type || recv_mem_type) &&
+               mv2_device_coll_use_stage && (nbytes <= mv2_device_allgather_stage_limit)) {
         if (sendbuf != MPI_IN_PLACE) {
-            mpi_errno = cuda_stage_alloc((void **)&sendbuf, sendcount * sendtype_extent,
+            mpi_errno = device_stage_alloc((void **)&sendbuf, sendcount * sendtype_extent,
                                          &recvbuf,
                                          recvcount * recvtype_extent *
                                          comm_size, send_mem_type, recv_mem_type, 0);
         } else {
-            mpi_errno = cuda_stage_alloc((void **)&sendbuf, recvcount * recvtype_extent,
+            mpi_errno = device_stage_alloc((void **)&sendbuf, recvcount * recvtype_extent,
                                          &recvbuf,
                                          recvcount * recvtype_extent *
                                          comm_size, send_mem_type,
@@ -2777,7 +2779,7 @@ conf_check_end:
             /* Reordering data into recvbuf */
             if (sendtype_iscontig == 1 && recvtype_iscontig == 1
 #if defined(_ENABLE_CUDA_)
-                && rdma_enable_cuda == 0
+                && mv2_enable_device == 0
 #endif
             ){
                 for (i = 0; i < comm_size; i++) {
@@ -2822,9 +2824,9 @@ conf_check_end:
     }
 
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-        rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)) {
-        cuda_stage_free((void **)&sendbuf,
+    if (mv2_enable_device && (send_mem_type || recv_mem_type) &&
+        mv2_device_coll_use_stage && (nbytes <= mv2_device_allgather_stage_limit)) {
+        device_stage_free((void **)&sendbuf,
                         &recvbuf, recvcount * recvtype_extent * comm_size,
                         send_mem_type, recv_mem_type);
     }
@@ -2837,8 +2839,8 @@ conf_check_end:
   fn_exit:
 #ifdef _ENABLE_CUDA_
     /*Handling Non-Contig datatypes */
-    if (rdma_enable_cuda && (send_mem_type || recv_mem_type)) {
-        cuda_coll_unpack(&recvcount, comm_size);
+    if (mv2_enable_device && (send_mem_type || recv_mem_type)) {
+        device_coll_unpack(&recvcount, comm_size);
     }
 #endif                          /*#ifdef _ENABLE_CUDA_ */
     return mpi_errno;

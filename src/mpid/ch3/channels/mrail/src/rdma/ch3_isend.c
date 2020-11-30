@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,7 +18,7 @@
 
 #include "mpidi_ch3_impl.h"
 #include "rdma_impl.h"
-
+#include "ibv_send_inline.h"
 
 #undef FUNCNAME
 #define FUNCNAME isend_update_request

@@ -64,27 +64,27 @@ int MPIR_Reduce_local_impl(const void *inbuf, void *inoutbuf, int count, MPI_Dat
     char *temp_recvbuf = inoutbuf;
     const char *temp_sendbuf = inbuf;
 
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
        recv_mem_type = is_device_buffer(inoutbuf);
        if ( inbuf != MPI_IN_PLACE ){
          send_mem_type = is_device_buffer(inbuf);
        }
     }
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         send_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)send_host_buf, 
+        MPIU_Memcpy_Device((void *)send_host_buf,
                             (void *)inbuf, 
                             stride,
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         inbuf = send_host_buf;
     }
 
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         recv_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)recv_host_buf, 
+        MPIU_Memcpy_Device((void *)recv_host_buf,
                             (void *)inoutbuf, 
                             stride,
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         inoutbuf = recv_host_buf;
     }
 #endif
@@ -141,21 +141,21 @@ int MPIR_Reduce_local_impl(const void *inbuf, void *inoutbuf, int count, MPI_Dat
     }
     
 #ifdef _ENABLE_CUDA_
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         inoutbuf = temp_recvbuf;
         inbuf = temp_sendbuf;
-        MPIU_Memcpy_CUDA((void *)inoutbuf, 
+        MPIU_Memcpy_Device((void *)inoutbuf,
                             (void *)recv_host_buf, 
                             stride, 
-                            cudaMemcpyHostToDevice);
+                            deviceMemcpyHostToDevice);
     }
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         if(recv_host_buf){
             MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         if(send_host_buf){
             MPIU_Free(send_host_buf);
             send_host_buf = NULL;

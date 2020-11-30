@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -11,6 +11,7 @@
  */
 
 #include "rdma_3dtorus.h"
+#include "rdma_impl.h"
 
 /*
  * The service level is possibly dynamic and if so the only way to get a
@@ -41,6 +42,7 @@
  */
 
 struct openib_sa_qp_cache_t *openib_sa_qp_cache = NULL;
+static pthread_mutex_t sl_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
                         uint32_t port_num, uint16_t lid, uint16_t rem_lid,
@@ -56,9 +58,10 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
     struct ibv_recv_wr *brwr;
     int i;
 
+    pthread_mutex_lock(&sl_lock);
     for (cache = openib_sa_qp_cache; cache; cache = cache->next) {
   	    if ((strcmp(cache->device_name,
-                    ibv_get_device_name (context_arg->device)) == 0) &&
+                    ibv_ops.get_device_name (context_arg->device)) == 0) &&
             (cache->port_num == port_num)) {
                     break;
         }
@@ -78,7 +81,7 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
     	}
 
     	cache->context = context;
-    	cache->device_name = (char *) ibv_get_device_name(context->device);
+    	cache->device_name = (char *) ibv_ops.get_device_name(context->device);
     	cache->port_num = port_num;
 
     	for (i = 0; i < sizeof(cache->sl_values); i++) {
@@ -95,7 +98,7 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
             goto fn_fail;
     	}
     
-    	cache->mr = ibv_reg_mr(pd, cache->send_recv_buffer,
+    	cache->mr = ibv_ops.reg_mr(pd, cache->send_recv_buffer,
     			                sizeof(cache->send_recv_buffer),
     			                IBV_ACCESS_REMOTE_WRITE |
                                 IBV_ACCESS_LOCAL_WRITE);
@@ -104,7 +107,7 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
             goto fn_fail;
     	}
     
-    	cache->cq = ibv_create_cq(context, 4, NULL, NULL, 0);
+    	cache->cq = ibv_ops.create_cq(context, 4, NULL, NULL, 0);
     	if (!cache->cq) {
             fprintf(stderr, "Cannot create CQ\n");
             goto fn_fail;
@@ -119,7 +122,7 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
     	iattr.cap.max_recv_sge = 1;
     	iattr.qp_type = IBV_QPT_UD;
 
-    	cache->qp = ibv_create_qp(pd, &iattr);
+    	cache->qp = ibv_ops.create_qp(pd, &iattr);
     	if (!cache->qp) {
             fprintf(stderr, "Failed to create qp for SL queries\n");
             goto fn_fail;
@@ -130,7 +133,7 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
     	mattr.port_num = port_num;
     	mattr.qkey = IB_GLOBAL_QKEY;
 
-    	if (ibv_modify_qp(cache->qp, &mattr,
+    	if (ibv_ops.modify_qp(cache->qp, &mattr,
     					IBV_QP_STATE              |
     					IBV_QP_PKEY_INDEX         |
     					IBV_QP_PORT               |
@@ -139,7 +142,7 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
             goto fn_fail;
     	}
     
-    	if (ibv_query_port(context, port_num, &pattr)) {
+    	if (ibv_ops.query_port(context, port_num, &pattr)) {
             fprintf(stderr, "Failed to query port\n");
             goto fn_fail;
     	}
@@ -149,7 +152,7 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
     	aattr.sl = pattr.sm_sl;
     	aattr.port_num = port_num;
 
-    	cache->ah = ibv_create_ah(pd, &aattr);
+    	cache->ah = ibv_ops.create_ah(pd, &aattr);
     	if (!cache->ah) {
             fprintf(stderr, "Failed to create AH for SL queries\n");
             goto fn_fail;
@@ -157,13 +160,13 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
     
     	memset(&mattr, 0, sizeof(mattr));
     	mattr.qp_state = IBV_QPS_RTR;
-    	if (ibv_modify_qp(cache->qp, &mattr, IBV_QP_STATE)) {
+    	if (ibv_ops.modify_qp(cache->qp, &mattr, IBV_QP_STATE)) {
             fprintf(stderr, "Failed to modify QP to RTR");
             goto fn_fail;
     	}
     
     	mattr.qp_state = IBV_QPS_RTS;
-    	if (ibv_modify_qp(cache->qp, &mattr, IBV_QP_STATE | IBV_QP_SQ_PSN)) {
+    	if (ibv_ops.modify_qp(cache->qp, &mattr, IBV_QP_STATE | IBV_QP_SQ_PSN)) {
             fprintf(stderr, "Failed to modify QP to RTS");
             goto fn_fail;
     	}
@@ -199,7 +202,7 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
     	    struct ibv_port_attr port_attr;
     	    int ret;
     
-    	    if ((ret = ibv_query_port(context, port_num, &port_attr))) {
+    	    if ((ret = ibv_ops.query_port(context, port_num, &port_attr))) {
                 fprintf(stderr, "Failed to query port\n");
                 goto fn_fail;
     	    }
@@ -270,7 +273,7 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
         			    /* Everything matches, so we have the desired SL */
         			    cache->sl_values[rem_lid] =
         			            sar->sa_data.path_record.reserved__sl & 0x0F;
-                        /* still must repost recieve buf */
+                        /* still must repost receive buf */
                         got_sl_value = 1;
         		    } else {
                 		/* Probably bad status, unlikely bad lid match.  We
@@ -310,8 +313,10 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
     }
 
     /* Now all we do is send back the value laying around */
+    pthread_mutex_unlock(&sl_lock);
     return cache->sl_values[rem_lid];
 fn_fail:
+    pthread_mutex_unlock(&sl_lock);
     if (network_is_3dtorus) {
         fprintf(stderr, "Error: Failed to query Subnet Manager for correct "
                 "Service Level. This will cause deadlock in a 3D Torus network."
@@ -330,13 +335,13 @@ int mv2_release_3d_torus_resources()
     struct openib_sa_qp_cache_t *cache = NULL;
 
     for (cache = openib_sa_qp_cache; cache; cache = cache->next) {
-        err = ibv_destroy_ah(cache->ah);
+        err = ibv_ops.destroy_ah(cache->ah);
 
-        err = ibv_dereg_mr(cache->mr);
+        err = ibv_ops.dereg_mr(cache->mr);
 
-        err = ibv_destroy_cq(cache->cq);
+        err = ibv_ops.destroy_cq(cache->cq);
 
-        err = ibv_destroy_qp(cache->qp);
+        err = ibv_ops.destroy_qp(cache->qp);
     }
 
     return err;

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -19,9 +19,7 @@
 
 #include "mpiimpl.h"
 #include "collutil.h"
-#ifdef _OSU_MVAPICH_
-#   include "coll_shmem.h"
-#endif /* _OSU_MVAPICH_ */
+#include "coll_shmem.h"
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -923,6 +921,7 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
         }
 #if defined(_SHARP_SUPPORT_)
         if (mv2_enable_sharp_coll &&
+            mv2_enable_sharp_allreduce &&
             (comm_ptr->dev.ch.is_sharp_ok == 0) &&
             (comm_ptr->dev.ch.shmem_coll_ok == 1) &&
             (comm_ptr->dev.ch.allreduce_coll_count >= shmem_coll_count_threshold)) { 

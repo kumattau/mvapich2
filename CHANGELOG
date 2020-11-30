@@ -3,7 +3,128 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
-MVAPICH2 2.3.3 (01/09/2019)
+MVAPICH2 2.3.5 (11/30/2020)
+
+* Features and Enhancements (since 2.3.4):
+    - Enhanced performance for MPI_Allreduce and MPI_Barrier
+    - Support collective offload using Mellanox's SHARP for Barrier
+        - Enhanced tuning framework for Barrier using SHARP
+    - Remove dependency on underlying libibverbs, libibmad, libibumad, and
+      librdmacm libraries using dlopen
+    - Add support for Broadcom NetXtreme RoCE HCA
+        - Enhanced inter-node point-to-point support
+    - Support architecture detection for Fujitsu A64fx processor
+    - Enhanced point-to-point and collective tuning for Fujitsu A64fx processor
+    - Enhanced point-to-point and collective tuning for AMD ROME processor
+    - Add support for process placement aware HCA selection
+        - Add "MV2_PROCESS_PLACEMENT_AWARE_HCA_MAPPING" environment variable to
+          enable process placement aware HCA mapping
+    - Add support to select HWLOC v1 and HWLOC v2 at configure time
+        - Select using configure time flag --with-hwloc=version
+        - Takes options of v1 (default) and v2
+    - Add support to auto-detect RoCE HCAs and auto-detect GID index
+    - Add support to use RoCE/Ethernet and InfiniBand HCAs at the same time
+    - Add architecture-specific flags to improve performance of certain CUDA
+      operations
+        - Thanks to Chris Chambreau @LLNL for the report
+    - Read MTU and maximum outstanding RDMA operations from the device
+    - Improved performance and scalability for UD-based communication
+    - Update maximum HCAs supported by default from 4 to 10
+    - Enhanced collective tuning for Frontera@TACC, Expanse@SDSC,
+      Ookami@StonyBrook, and bb5@EPFL
+    - Enhanced support for SHARP v2.1.0
+    - Generalize code for GPU support
+    - Update hwloc v2 code to v2.3.0
+
+* Bug Fixes (since 2.3.4):
+    - Fix issue with mpiexec+PBS when calling MPI_Abort
+        - Thanks to Matthew W. Anderson @INL for the report and initial patch
+    - Fix validation failure with multi-threaded applications when InfiniBand
+      registration cache is enabled.
+        - Thanks to Alexander Melnikov for the report and initial patch
+    - Fix issue with realloc when InfiniBand registration cache is enabled
+        - Thanks to Si Lu @TACC and Viet-Duc Le @KISTI for reporting the issue
+    - Fix out of tree builds for ROMIO
+        - Thanks to Per Berg @Defense Center for Operative Oceanography, Denmark
+          for the report
+    - Fix integer overflow errors in the collective code path
+        - Thanks to Kiran Ravikumar @GaTech for the report and reproducer
+    - Fix issue with Hybrid+Spread mapping on hyper-threaded systems
+    - Fix out-of-memory issue when allocating CUDA events
+    - Fix issue with large message UD transfers where packets were incorrectly
+      marked as dropped/missing
+    - Fix spelling mistakes
+        - Thanks to Jens.Schleusener @fossies.org for the report
+    - Revert changes which caused dependencies on lex/yacc at configure time
+        - Thanks to Daniel Pou @HPE for the report
+    - Fix issues with UD Zcopy data transfers
+    - Fix issues with handling datatypes in the collective code
+    - Revert moving -lmpi, -lmpicxx, and -lmpifort before other LDFLAGS in
+      compiler wrappers like mpicc, mpicxx, mpif77, and mpif90
+        - This was causing issues with certain legacy applications
+        - Thanks to Nicolas Morey-Chaisemartin @SUSE for the report
+    - Fix compilation warnings and memory leaks
+
+MVAPICH2 2.3.4 (06/01/2020)
+
+* Features and Enhancements (since 2.3.3):
+    - Improved performance for small message collective operations
+    - Improved performance for data transfers from/to non-contiguous buffers used
+      by user-defined datatypes
+    - Add custom API to identify if MVAPICH2 has in-built CUDA support
+        - New API 'MPIX_Query_cuda_support' defined in mpi-ext.h
+        - New macro 'MPIX_CUDA_AWARE_SUPPORT' defined in mpi-ext.h
+    - Add support for MPI_REAL16 based reduction operations for Fortran programs
+        - MPI_SUM, MPI_MAX, MPI_MIN, MPI_LAND, MPI_LOR, MPI_MINLOC, and MPI_MAXLOC
+        - Thanks to Greg Lee@LLNL for the report and reproducer
+        - Thanks to Hui Zhou@ANL for the initial patch
+    - Add support to intercept aligned_alloc in ptmalloc
+        - Thanks to Ye Luo @ANL for the report and the reproducer
+    - Add support to enable fork safety in MVAPICH2 using environment variable
+      "MV2_SUPPORT_FORK_SAFETY"
+    - Add support for user to modify QKEY using environment variable
+      "MV2_DEFAULT_QKEY"
+    - Add multiple MPI_T PVARs and CVARs for point-to-point and collective
+      operations
+    - Enhanced point-to-point and collective tuning for AMD EPYC Rome,
+      Frontera@TACC, Longhorn@TACC, Mayer@Sandia, Pitzer@OSC, Catalyst@EPCC,
+      Summit@ORNL, Lassen@LLNL, and Sierra@LLNL systems
+    - Give preference to CMA if LiMIC2 and CMA are enabled at the same time
+    - Move -lmpi, -lmpicxx, and -lmpifort before other LDFLAGS in compiler
+      wrappers like mpicc, mpicxx, mpif77, and mpif90
+    - Allow passing flags to nvcc compiler through environment variable
+      NVCCFLAGS
+    - Display more meaningful error messages for InfiniBand asynchronous events
+    - Add support for AMD Optimizing C/C++ (AOCC) compiler v2.1.0
+    - Add support for GCC compiler v10.1.0
+        - Requires setting FFLAGS=-fallow-argument-mismatch at configure time
+    - Update to hwloc v2.2.0
+
+* Bug Fixes (since 2.3.3):
+    - Fix compilation issue with IBM XLC++ compilers and CUDA 10.2
+    - Fix hangs with MPI_Get operations win UD-Hybrid mode
+    - Initialize MPI3 data structures correctly to avoid random hangs caused by
+      garbage values
+    - Fix corner case with LiMIC2 and MPI3 one-sided operations
+    - Add proper fallback and warning message when shared RMA window cannot be
+      created
+    - Fix race condition in calling mv2_get_path_rec_sl by introducing mutex
+        - Thanks to Alexander Melnikov for reporting the issue and providing
+          the patch
+    - Fix mapping generation for the cases where hwloc returns zero on non-numa
+      machines
+        - Thanks to Honggang Li @Red Hat for the report and initial patch
+    - Fix issues with InfiniBand registration cache and PGI20 compiler
+    - Fix warnings raised by Coverity scans
+        - Thanks to Honggang Li @Red Hat for the report
+    - Fix bad baseptr address returned from MPI_Win_shared_query
+        - Thanks to Adam Moody@LLNL for the report and discussion
+    - Fix issues with HCA selection logic in heterogeneous multi-rail scenerios
+    - Fix spelling mistake in error message
+        - Thanks to Bill Long and Krishna Kandalla @Cray/HPE for the report
+    - Fix compilation warnings and memory leaks
+
+MVAPICH2 2.3.3 (01/09/2020)
 
 * Features and Enhancements (since 2.3.2):
     - Enhanced performance for intra-node collective operations
@@ -129,7 +250,7 @@ MVAPICH2 2.3 (07/23/2018)
     - Fix error when XRC and RoCE were enabled at the same time
     - Fix issue with XRC connection establishment
     - Fix for failure at finalize seen on iWARP enabled devices
-    - Fix issue with MPI_IN_PLACE-based communcation in MPI_Reduce and
+    - Fix issue with MPI_IN_PLACE-based communication in MPI_Reduce and
       MPI_Reduce_scatter
     - Fix issue with allocating large number of shared memory based MPI3-RMA
       windows
@@ -773,7 +894,7 @@ MVAPICH2-1.9b (02/28/2013)
     - Introduced option to export environment variables automatically with
       mpirun_rsh
     - Updated to HWLOC v1.6.1
-    - Provided option to use CUDA libary call instead of CUDA driver to check
+    - Provided option to use CUDA library call instead of CUDA driver to check
       buffer pointer type
         - Thanks to Christian Robert from Sandia for the suggestion
     - Improved debug messages and error reporting 
@@ -1072,7 +1193,7 @@ MVAPICH2-1.8a1 (11/09/2011)
 MVAPICH2-1.7 (10/14/2011)
 
 * Features and Enhancements (since 1.7rc2):
-    - Support SHMEM collectives upto 64 cores/node
+    - Support SHMEM collectives up to 64 cores/node
     - Update to hwloc v1.2.2
     - Enhancement and tuned collective (GatherV)
 
@@ -1574,7 +1695,7 @@ MVAPICH2-1.4-rc2
     - Fix for allowing to use user specified P_Key's (Thanks to Mike Heinz @
       QLogic)
     - Fix for allowing mpirun_rsh to accept parameters through the
-      parmeters file (Thanks to Mike Heinz @ QLogic)
+      parameters file (Thanks to Mike Heinz @ QLogic)
     - Modify the default value of shmem_bcast_leaders to 4K
     - Fix for one-sided with XRC support
     - Fix hang with XRC
@@ -1582,7 +1703,7 @@ MVAPICH2-1.4-rc2
     - Fix build error on RHEL 4 systems (Reported by Nathan Baca and Jonathan
       Atencio)
     - Fix issue with PGI compilation for PSM interface
-    - Fix for one-sided accumulate function with user-defined continguous
+    - Fix for one-sided accumulate function with user-defined contiguous
       datatypes
     - Fix linear/hierarchical switching logic and reduce threshold for the
       enhanced mpirun_rsh framework.

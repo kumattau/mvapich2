@@ -95,26 +95,26 @@ int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, in
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,
 		     "found posted receive request; copying data");
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && is_device_buffer(buf)) {
+    if (mv2_enable_device && is_device_buffer(buf)) {
         /* buf is in the GPU device memory */
-        sreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+        sreq->mrail.device_transfer_mode = DEVICE_TO_DEVICE;
     } else { 
         /* buf is in the host memory*/
-        sreq->mrail.cuda_transfer_mode = NONE;
+        sreq->mrail.device_transfer_mode = NONE;
     }
 
-    if (rdma_enable_cuda && is_device_buffer(rreq->dev.user_buf)) {
+    if (mv2_enable_device && is_device_buffer(rreq->dev.user_buf)) {
         /* buf is in the GPU device memory */
-        rreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+        rreq->mrail.device_transfer_mode = DEVICE_TO_DEVICE;
     } else { 
         /* buf is in the host memory*/
-        rreq->mrail.cuda_transfer_mode = NONE;
+        rreq->mrail.device_transfer_mode = NONE;
     }
 
-    if (rdma_enable_cuda 
-            && ((DEVICE_TO_DEVICE == sreq->mrail.cuda_transfer_mode) 
-                || (DEVICE_TO_DEVICE == rreq->mrail.cuda_transfer_mode))) {
-        MPIDI_CH3U_Buffer_copy_cuda(buf, count, datatype, &sreq->status.MPI_ERROR,
+    if (mv2_enable_device
+            && ((DEVICE_TO_DEVICE == sreq->mrail.device_transfer_mode)
+                || (DEVICE_TO_DEVICE == rreq->mrail.device_transfer_mode))) {
+        MPIDI_CH3U_Buffer_copy_device(buf, count, datatype, &sreq->status.MPI_ERROR,
                 rreq->dev.user_buf, rreq->dev.user_count, rreq->dev.datatype, &data_sz, &rreq->status.MPI_ERROR);    
     } else {
 #endif	    

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -128,7 +128,7 @@ int MPIR_Alltoallv_intra_scatter_MV2(const void *sendbuf,
         mpi_errno = MPIR_Localcopy(((char *) recvbuf), total_count, recvtype,
               ((char *) sendbuf_tmp), total_count, recvtype);
 
-        /* in th MPI_IN_PLACE case, all the followings for sender could be NULL,
+        /* in th MPI_IN_PLACE case, all the following for sender could be NULL,
          * use the receiver info instead of sender info  */
         sendcnt_tmp = recvcnts;
         sdispls_tmp = rdispls;
@@ -219,7 +219,7 @@ int MPIR_Alltoallv_intra_scatter_MV2(const void *sendbuf,
             }
         }
 
-        /* wait for recv to complete then wait for remainging sends*/
+        /* wait for recv to complete then wait for remaining sends*/
         mpi_errno = MPIC_Waitall(rreq_cnt,rreqarray,rstarray, errflag);
         if (mpi_errno && mpi_errno != MPI_ERR_IN_STATUS) {
             MPIR_ERR_POP(mpi_errno);

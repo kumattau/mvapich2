@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -252,21 +252,21 @@ int MPIDI_CH3_PktHandler_SMP_RTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 
     if (found) {
 #if defined (_ENABLE_CUDA_)
-        /* Fallback to R3 for heterogenous transfer, i.e., H-D and D-H
+        /* Fallback to R3 for heterogeneous transfer, i.e., H-D and D-H
          * TODO: may consider support RGET/RPUT for such case */
-        if (rdma_enable_cuda && (rts_pkt->rndv.cuda_transfer_mode != rreq->mrail.cuda_transfer_mode)) {
+        if (mv2_enable_device && (rts_pkt->rndv.device_transfer_mode != rreq->mrail.device_transfer_mode)) {
             rreq->mrail.protocol = rts_pkt->rndv.protocol = MV2_RNDV_PROTOCOL_R3;
         }
 #if defined (HAVE_CUDA_IPC)
         /*initialize IPC buffers if not initialized*/
-        if (rdma_enable_cuda &&
-            rdma_cuda_ipc &&
-            rdma_cuda_dynamic_init &&
-            (rreq->mrail.cuda_transfer_mode != NONE ||
-             rts_pkt->rndv.cuda_transfer_mode != NONE) &&
-             vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
-                if (cuda_initialized) {
-                    cudaipc_init_dynamic (vc);
+        if (mv2_enable_device &&
+            mv2_device_use_ipc &&
+            mv2_device_dynamic_init &&
+            (rreq->mrail.device_transfer_mode != NONE ||
+             rts_pkt->rndv.device_transfer_mode != NONE) &&
+             vc->smp.can_access_peer == MV2_DEVICE_IPC_UNINITIALIZED) {
+                if (mv2_device_initialized) {
+                    device_ipc_init_dynamic (vc);
                 }
         }
 #endif /* defined (HAVE_CUDA_IPC) */
@@ -287,14 +287,14 @@ int MPIDI_CH3_PktHandler_SMP_RTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
             }
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-            if  (rdma_enable_cuda && rdma_cuda_ipc
-                    && rts_pkt->rndv.cuda_transfer_mode != NONE) {
+            if  (mv2_enable_device && mv2_device_use_ipc
+                    && rts_pkt->rndv.device_transfer_mode != NONE) {
                 /*revert to RGET if using IPC and rdma is possible*/
                 if (MV2_RNDV_PROTOCOL_RPUT == rreq->mrail.protocol) {
                     rreq->mrail.protocol = MV2_RNDV_PROTOCOL_RGET;
                 }
                 if (MV2_RNDV_PROTOCOL_RGET == rreq->mrail.protocol) {
-                    if (MPIDI_CH3I_MRAIL_Rndv_transfer_cuda_ipc (vc, rreq, rts_pkt)) {
+                    if (MPIDI_CH3I_MRAIL_Rndv_transfer_device_ipc (vc, rreq, rts_pkt)) {
                         *rreqp = NULL;
                         goto fn_exit;
                     }
@@ -346,12 +346,12 @@ int MPIDI_CH3_PktHandler_SMP_RTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
                 cts_pkt->recv_sz = rreq->dev.segment_size;
             }
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-            if (rdma_enable_cuda && (rdma_cuda_ipc && cudaipc_stage_buffered &&
-                    rreq->mrail.cuda_transfer_mode != NONE &&
-                    vc->smp.can_access_peer == CUDA_IPC_ENABLED) ||
+            if (mv2_enable_device && (mv2_device_use_ipc && mv2_device_use_ipc_stage_buffer &&
+                    rreq->mrail.device_transfer_mode != NONE &&
+                    vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) ||
                     (rreq->mrail.protocol == MV2_RNDV_PROTOCOL_CUDAIPC)
                ) {
-                mpi_errno = MPIDI_CH3_Prepare_rndv_cts_cuda(vc, cts_pkt, rreq);
+                mpi_errno = MPIDI_CH3_Prepare_rndv_cts_device(vc, cts_pkt, rreq);
             } else
 #endif
             mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
@@ -531,12 +531,12 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
         }
 
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda  &&
-            (rreq->mrail.cuda_transfer_mode != NONE &&
+        if (mv2_enable_device  &&
+            (rreq->mrail.device_transfer_mode != NONE &&
                 (vc->smp.local_nodes == -1)) 
            )
         {
-    	    mpi_errno = MPIDI_CH3_Prepare_rndv_cts_cuda(vc, cts_pkt, rreq);
+            mpi_errno = MPIDI_CH3_Prepare_rndv_cts_device(vc, cts_pkt, rreq);
         } else
 #endif
         {
@@ -616,7 +616,7 @@ int MPIDI_CH3_PktHandler_SMP_CTS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
      * revert protocol to MV2_RNDV_PROTOCOL_CUDAIPC */
     if (cts_pkt->rndv.protocol == MV2_RNDV_PROTOCOL_CUDAIPC &&
         sreq->mrail.protocol != MV2_RNDV_PROTOCOL_CUDAIPC) {
-        MPIDI_CH3I_MRAIL_Revert_rndv_cuda_ipc_buffered (vc, sreq);
+        MPIDI_CH3I_MRAIL_Revert_rndv_device_ipc_buffered (vc, sreq);
     }
 #endif
     recv_size = cts_pkt->recv_sz;
@@ -691,7 +691,7 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, vo
      * revert protocol to MV2_RNDV_PROTOCOL_CUDAIPC */
     if (cts_pkt->rndv.protocol == MV2_RNDV_PROTOCOL_CUDAIPC && 
         sreq->mrail.protocol != MV2_RNDV_PROTOCOL_CUDAIPC) {
-        MPIDI_CH3I_MRAIL_Revert_rndv_cuda_ipc_buffered (vc, sreq);
+        MPIDI_CH3I_MRAIL_Revert_rndv_device_ipc_buffered (vc, sreq);
     } 
 #endif
 

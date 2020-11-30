@@ -1,6 +1,6 @@
 /** <plaintext>
 *
-* avl.c -- C source file for avl trees. Contains the auxillary routines
+* avl.c -- C source file for avl trees. Contains the auxiliary routines
 *          and defines for the avl tree functions and user interface and
 *          includes all the necessary public and private routines
 *
@@ -12,7 +12,7 @@
 *
 **/
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -81,7 +81,7 @@ static AVLnode avl_free_list;
 
 
 /************************************************************************
-*       Auxillary functions
+*       Auxiliary functions
 *
 *       routines to allocate/de-allocate an AVL node,
 *       and determine the type of an AVL node.
@@ -201,7 +201,7 @@ node_type(tree)
 *       PRIVATE functions for manipulating AVL trees
 *
 *  This following defines a set of routines for creating, maintaining, and
-*  manipulating AVL Trees as an Abtract Data Type. The routines in this
+*  manipulating AVL Trees as an Abstract Data Type. The routines in this
 *  file that are accessible (through the avl tree user-interface) to other
 *  files to allow other programmers to:
 *
@@ -645,7 +645,7 @@ avl_delete(data, rootp, compar)
 *         "node"    indicates which children (if any) of the current node
 *                   are null.
 *         "level"   is the current level (or depth) in the tree of the
-*                   curent node.
+*                   current node.
 *         "bal"     is the balance factor of the current node.
 **/
 

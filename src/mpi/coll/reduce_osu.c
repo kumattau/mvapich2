@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -60,6 +60,15 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_count_recv);
 
+
+int (*reduce_fn)(const void *sendbuf,
+                             void *recvbuf,
+                             int count,
+                             MPI_Datatype datatype,
+                             MPI_Op op,
+                             int root,
+                             MPID_Comm * comm_ptr,
+                             MPIR_Errflag_t *errflag);
 
 int (*MV2_Reduce_function)(const void *sendbuf,
                            void *recvbuf,
@@ -820,6 +829,287 @@ int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
   fn_fail:
     goto fn_exit;
 }
+
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Tree_Shmem_Reduce_MV2_optrels
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Reduce_tree_shmem_MV2_optrels(const void *sendbuf,
+                          void *recvbuf,
+                          int count,
+                          MPI_Datatype datatype,
+                          MPI_Op op,
+                          int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    MPIR_TIMER_START(coll,reduce,shmem);
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    int i, stride, local_rank, local_size, shmem_comm_rank;
+    MPI_User_function *uop;
+    MPID_Op *op_ptr;
+    char *shmem_buf = NULL;
+    void *local_buf = NULL;
+    char *tmp_buf = NULL;
+    int buf_allocated = 0;
+    int parent;
+    MPI_Aint true_lb, true_extent, extent;
+#ifdef HAVE_CXX_BINDING
+    int is_cxx_uop = 0;
+#endif
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_shmem, 1);
+
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+    stride = count * MPIR_MAX(extent, true_extent);
+
+    local_rank = comm_ptr->rank;
+    local_size = comm_ptr->local_size;
+    shmem_comm_rank = comm_ptr->dev.ch.shmem_comm_rank;
+    if(local_size < mv2_use_shmem_num_trees){
+	    mv2_use_shmem_num_trees=1;
+    }
+
+    //For the processes that are doing the computation, check if recvbuf is valid
+    if (sendbuf != MPI_IN_PLACE && (local_rank<mv2_use_shmem_num_trees)) {
+        /* if local_rank == 0 and not root then the recvbuf may not be valid*/
+        if (sendbuf == recvbuf || recvbuf == NULL) {
+            tmp_buf = recvbuf;
+            recvbuf = MPIU_Malloc(count * MPIR_MAX(extent, true_extent));
+            buf_allocated = 1;
+        }
+        mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf, count,
+                                   datatype);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+    if (local_size == 0) {
+        /* Only one process. So, return */
+        goto fn_exit;
+    }
+
+    /* Get the operator and check whether it is commutative or not */
+    if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
+        /* get the function by indexing into the op table */
+        uop = MPIR_Op_table[op % 16 - 1];
+    } else {
+        MPID_Op_get_ptr(op, op_ptr);
+#if defined(HAVE_CXX_BINDING)
+        if (op_ptr->language == MPID_LANG_CXX) {
+            uop = (MPI_User_function *) op_ptr->function.c_function;
+            is_cxx_uop = 1;
+        } else {
+#endif                          /* defined(HAVE_CXX_BINDING) */
+            if (op_ptr->language == MPID_LANG_C) {
+                uop = (MPI_User_function *) op_ptr->function.c_function;
+            } else {
+                uop = (MPI_User_function *) op_ptr->function.f77_function;
+            }
+#if defined(HAVE_CXX_BINDING)
+        }
+#endif                          /* defined(HAVE_CXX_BINDING) */
+    }
+    
+    parent = local_rank%mv2_use_shmem_num_trees;
+    if(local_rank<mv2_use_shmem_num_trees) {
+	for (i = local_rank+mv2_use_shmem_num_trees; i < local_size; i=i+mv2_use_shmem_num_trees) {
+	    MPIDI_CH3I_SHMEM_TREE_COLL_GetShmemBuf_optrels(local_size, local_rank, shmem_comm_rank, i, (void *) &shmem_buf, local_rank);
+	    local_buf = (char *) shmem_buf + stride * i;
+#if defined(HAVE_CXX_BINDING)
+            if (is_cxx_uop) {
+                (*MPIR_Process.cxx_call_op_fn) (local_buf, recvbuf,
+                                                count, datatype, uop);
+            } else {
+#endif                          /* defined(HAVE_CXX_BINDING) */
+                (*uop) (local_buf, recvbuf, &count, &datatype);
+#if defined(HAVE_CXX_BINDING)
+            }
+#endif
+	    MPIDI_CH3I_SHMEM_TREE_COLL_SetGatherComplete_optrels(local_size, local_rank, shmem_comm_rank, i, local_rank);
+	    }
+	} else {
+	    MPIDI_CH3I_SHMEM_TREE_COLL_GetShmemBuf_optrels(local_size, local_rank,shmem_comm_rank, 0, (void *) &shmem_buf, parent);
+	    local_buf = (char *) shmem_buf + stride * local_rank;
+	    mpi_errno = MPIR_Localcopy(sendbuf, count, datatype,local_buf, count, datatype);
+	    if (mpi_errno) {
+		MPIR_ERR_POP(mpi_errno);
+	    }
+	    MPIDI_CH3I_SHMEM_TREE_COLL_SetGatherComplete_optrels(local_size, local_rank,shmem_comm_rank, 0, parent);
+	}
+
+	//now, process 0 does the reduction between parents
+	if(local_rank==0){
+	    for(i=1;i<mv2_use_shmem_num_trees;i++){
+		MPIDI_CH3I_SHMEM_TREE_COLL_GetShmemBuf_optrels(local_size, local_rank, shmem_comm_rank, i, (void *) &shmem_buf, 0);
+		local_buf = (char *) shmem_buf + stride * i;
+#if defined(HAVE_CXX_BINDING)
+            if (is_cxx_uop) {
+                (*MPIR_Process.cxx_call_op_fn) (local_buf, recvbuf,
+                                                count, datatype, uop);
+            } else {
+#endif                          /* defined(HAVE_CXX_BINDING) */
+                (*uop) (local_buf, recvbuf, &count, &datatype);
+#if defined(HAVE_CXX_BINDING)
+            }
+#endif
+		MPIDI_CH3I_SHMEM_TREE_COLL_SetGatherComplete_optrels(local_size,local_rank, shmem_comm_rank, i, 0);
+	}
+    } else if(local_rank<mv2_use_shmem_num_trees){
+	MPIDI_CH3I_SHMEM_TREE_COLL_GetShmemBuf_optrels(local_size, local_rank, shmem_comm_rank, 0, (void *) &shmem_buf, 0);
+	local_buf = (char *) shmem_buf + stride * local_rank;
+	mpi_errno = MPIR_Localcopy(recvbuf, count, datatype,local_buf, count, datatype);
+	if (mpi_errno) {
+	    MPIR_ERR_POP(mpi_errno);
+	}
+	 MPIDI_CH3I_SHMEM_TREE_COLL_SetGatherComplete_optrels(local_size, local_rank, shmem_comm_rank, 0, 0);
+    }
+
+    if (buf_allocated) {
+        MPIU_Free(recvbuf);
+        recvbuf = tmp_buf;
+    }
+  fn_exit:
+    if (mpi_errno_ret)
+        mpi_errno = mpi_errno_ret;
+    else if (*errflag)
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+
+    MPIR_TIMER_END(coll,reduce,shmem);
+    return mpi_errno;
+  fn_fail:
+    goto fn_exit;
+
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Shmem_Reduce_MV2_optrels
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Reduce_shmem_MV2_optrels(const void *sendbuf,
+                          void *recvbuf,
+                          int count,
+                          MPI_Datatype datatype,
+                          MPI_Op op,
+                          int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    MPIR_TIMER_START(coll,reduce,shmem);
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    int i, stride, local_rank, local_size, shmem_comm_rank;
+    MPI_User_function *uop;
+    MPID_Op *op_ptr;
+    char *shmem_buf = NULL;
+    void *local_buf = NULL;
+    char *tmp_buf = NULL;
+    int buf_allocated = 0;
+    MPI_Aint true_lb, true_extent, extent;
+#ifdef HAVE_CXX_BINDING
+    int is_cxx_uop = 0;
+#endif
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_shmem, 1);
+
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+    stride = count * MPIR_MAX(extent, true_extent);
+
+    local_rank = comm_ptr->rank;
+    local_size = comm_ptr->local_size;
+    shmem_comm_rank = comm_ptr->dev.ch.shmem_comm_rank;
+
+    if (sendbuf != MPI_IN_PLACE && local_rank == 0) {
+        /* if local_rank == 0 and not root then the recvbuf may not be valid*/
+        if (sendbuf == recvbuf || recvbuf == NULL) {
+            tmp_buf = recvbuf;
+            recvbuf = MPIU_Malloc(count * MPIR_MAX(extent, true_extent));
+            buf_allocated = 1;
+        }
+        mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf, count,
+                                   datatype);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+    if (local_size == 0) {
+        /* Only one process. So, return */
+        goto fn_exit;
+    }
+
+    /* Get the operator and check whether it is commutative or not */
+    if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
+        /* get the function by indexing into the op table */
+        uop = MPIR_Op_table[op % 16 - 1];
+    } else {
+        MPID_Op_get_ptr(op, op_ptr);
+#if defined(HAVE_CXX_BINDING)
+        if (op_ptr->language == MPID_LANG_CXX) {
+            uop = (MPI_User_function *) op_ptr->function.c_function;
+            is_cxx_uop = 1;
+        } else {
+#endif                          /* defined(HAVE_CXX_BINDING) */
+            if (op_ptr->language == MPID_LANG_C) {
+                uop = (MPI_User_function *) op_ptr->function.c_function;
+            } else {
+                uop = (MPI_User_function *) op_ptr->function.f77_function;
+            }
+#if defined(HAVE_CXX_BINDING)
+        }
+#endif                          /* defined(HAVE_CXX_BINDING) */
+    }
+
+    if (local_rank == 0) {
+
+	for (i = 1; i < local_size; i++) {
+	    MPIDI_CH3I_SHMEM_COLL_GetShmemBuf_optrels(local_size, local_rank,
+                                          shmem_comm_rank, i, (void *) &shmem_buf);
+            local_buf = (char *) shmem_buf + stride * i;
+#if defined(HAVE_CXX_BINDING)
+            if (is_cxx_uop) {
+                (*MPIR_Process.cxx_call_op_fn) (local_buf, recvbuf,
+                                                count, datatype, uop);
+            } else {
+#endif                          /* defined(HAVE_CXX_BINDING) */
+                (*uop) (local_buf, recvbuf, &count, &datatype);
+#if defined(HAVE_CXX_BINDING)
+            }
+#endif
+        MPIDI_CH3I_SHMEM_COLL_SetGatherComplete_optrels(local_size,
+                                                local_rank, shmem_comm_rank, i);
+	}
+    } else {
+        MPIDI_CH3I_SHMEM_COLL_GetShmemBuf_optrels(local_size, local_rank,
+                                          shmem_comm_rank, 0, (void *) &shmem_buf);
+        local_buf = (char *) shmem_buf + stride * local_rank;
+        mpi_errno = MPIR_Localcopy(sendbuf, count, datatype,
+                                   local_buf, count, datatype);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+        MPIDI_CH3I_SHMEM_COLL_SetGatherComplete_optrels(local_size, local_rank,
+                                                shmem_comm_rank, 0);
+    }
+
+    if (buf_allocated) {
+        MPIU_Free(recvbuf);
+        recvbuf = tmp_buf;
+    }
+  fn_exit:
+    if (mpi_errno_ret)
+        mpi_errno = mpi_errno_ret;
+    else if (*errflag)
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+
+    MPIR_TIMER_END(coll,reduce,shmem);
+    return mpi_errno;
+  fn_fail:
+    goto fn_exit;
+
+}
+
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Shmem_Reduce_MV2
@@ -1845,27 +2135,27 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
 
     rank = comm_ptr->rank;
 
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
        recv_mem_type = is_device_buffer(recvbuf);
        if ( sendbuf != MPI_IN_PLACE ){
          send_mem_type = is_device_buffer(sendbuf);
        }
     }
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         send_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)send_host_buf, 
+        MPIU_Memcpy_Device((void *)send_host_buf,
                             (void *)sendbuf, 
                             stride,
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         sendbuf = send_host_buf;
     }
 
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         recv_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)recv_host_buf, 
+        MPIU_Memcpy_Device((void *)recv_host_buf,
                             (void *)recvbuf, 
                             stride,
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         recvbuf = recv_host_buf;
     }
 #endif
@@ -2055,20 +2345,20 @@ skip_tuning_tables:
     if (mpi_errno)
         MPIR_ERR_POP(mpi_errno);
 #ifdef _ENABLE_CUDA_
-    if(rdma_enable_cuda && recv_mem_type && ( rank == root )){
+    if(mv2_enable_device && recv_mem_type && ( rank == root )){
         recvbuf = temp_recvbuf;
-        MPIU_Memcpy_CUDA((void *)recvbuf, 
+        MPIU_Memcpy_Device((void *)recvbuf,
                             (void *)recv_host_buf, 
                             stride, 
-                            cudaMemcpyHostToDevice);
+                            deviceMemcpyHostToDevice);
     }
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         if(recv_host_buf){
             MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         if(send_host_buf){
             MPIU_Free(send_host_buf);
             send_host_buf = NULL;
@@ -2160,27 +2450,27 @@ int MPIR_Reduce_MV2(const void *sendbuf,
 
     rank = comm_ptr->rank;
 
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
        recv_mem_type = is_device_buffer(recvbuf);
        if ( sendbuf != MPI_IN_PLACE ){
          send_mem_type = is_device_buffer(sendbuf);
        }
     }
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         send_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)send_host_buf, 
+        MPIU_Memcpy_Device((void *)send_host_buf,
                             (void *)sendbuf, 
                             stride,
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         sendbuf = send_host_buf;
     }
 
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         recv_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)recv_host_buf, 
+        MPIU_Memcpy_Device((void *)recv_host_buf,
                             (void *)recvbuf, 
                             stride,
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         recvbuf = recv_host_buf;
     }
 #endif
@@ -2272,20 +2562,20 @@ int MPIR_Reduce_MV2(const void *sendbuf,
     if (mpi_errno)
         MPIR_ERR_POP(mpi_errno);
 #ifdef _ENABLE_CUDA_
-    if(rdma_enable_cuda && recv_mem_type && ( rank == root )){
+    if(mv2_enable_device && recv_mem_type && ( rank == root )){
         recvbuf = temp_recvbuf;
-        MPIU_Memcpy_CUDA((void *)recvbuf, 
+        MPIU_Memcpy_Device((void *)recvbuf,
                             (void *)recv_host_buf, 
                             stride, 
-                            cudaMemcpyHostToDevice);
+                            deviceMemcpyHostToDevice);
     }
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         if(recv_host_buf){
             MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         sendbuf = temp_sendbuf;
         if(send_host_buf){
             MPIU_Free(send_host_buf);

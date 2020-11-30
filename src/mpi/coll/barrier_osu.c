@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,6 +23,11 @@
 #include "shmem_bar.h"
 #if defined(CKPT)
 #include <cr.h>
+#endif
+
+#if defined (_SHARP_SUPPORT_)
+#include "api/sharp_coll.h"
+#include "ibv_sharp.h"
 #endif
 
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_barrier_pairwise);
@@ -105,11 +110,60 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errfl
 
 }
 
+#if defined (_SHARP_SUPPORT_)
+
+#undef FCNAME
+#define FCNAME "MPIR_Sharp_Barrier_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+static inline int MPIR_Sharp_Barrier_MV2 (MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag) 
+{
+
+    /*
+     * TODO add PVARS 
+     */
+
+    int mpi_errno = MPI_SUCCESS;
+
+    struct sharp_coll_comm * sharp_comm =
+        ((sharp_info_t *)comm_ptr->dev.ch.sharp_coll_info)->sharp_comm_module->sharp_coll_comm;
+
+    /* Ensure that all messages in non-sharp channels are progressed first
+     * to prevent deadlocks in subsequent blocking sharp API calls */
+    while (rdma_global_ext_sendq_size) {
+        MPIDI_CH3_Progress_test();
+    }
+
+    mpi_errno = sharp_coll_do_barrier(sharp_comm);
+
+    if (mpi_errno != SHARP_COLL_SUCCESS) {
+        goto fn_fail;
+    }
+
+    mpi_errno = MPI_SUCCESS;
+
+fn_exit:
+    return (mpi_errno);
+
+fn_fail:
+    PRINT_DEBUG(DEBUG_Sharp_verbose, "Continue without SHArP: %s \n", sharp_coll_strerror(mpi_errno));
+    mpi_errno = MPI_ERR_INTERN;
+    goto fn_exit;
+
+}
+
+#endif /* end of defined (_SHARP_SUPPORT_) */
+
 static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
 
     MPIR_TIMER_START(coll,barrier,shmem);
     int mpi_errno = MPI_SUCCESS;
+
+    #if defined(_SHARP_SUPPORT_)
+        int mpi_errno_ret = MPI_SUCCESS;
+    #endif
+    
 
     MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
@@ -137,6 +191,23 @@ static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
     }
 
     if ((local_rank == 0) && (local_size != total_size)) {
+#if defined (_SHARP_SUPPORT_)
+        if (comm_ptr->dev.ch.is_sharp_ok == 1 && mv2_enable_sharp_coll == 1 &&
+                mv2_enable_sharp_barrier) {
+            mpi_errno =
+                MPIR_Sharp_Barrier_MV2(comm_ptr, errflag);
+            if (mpi_errno != MPI_SUCCESS) {
+                /* fall back to Pairwise algorithm if SHArP is not supported */
+                mpi_errno = MPIR_Pairwise_Barrier_MV2(leader_commptr, errflag);
+                if (mpi_errno) {
+                     /* for communication errors, just record the error but continue */
+                     *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                     MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                     MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+            }
+        } else
+#endif /* #if defined (_SHARP_SUPPORT_) */
         mpi_errno = MPIR_Pairwise_Barrier_MV2(leader_commptr, errflag);
     }
 
@@ -150,7 +221,7 @@ static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 
 }
 
-static int MPIR_socket_aware_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+static int MPIR_socket_aware_shmem_barrier_old_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     MPIU_Assert(comm_ptr->dev.ch.use_intra_sock_comm && comm_ptr->dev.ch.shmem_coll_ok == 1);
     int mpi_errno = MPI_SUCCESS;
@@ -223,6 +294,102 @@ static int MPIR_socket_aware_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errfla
     if (local_size > 1) {
         MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(intra_sock_size, intra_sock_rank,
                                             shmem_comm_rank);
+    }
+    return mpi_errno;
+}
+
+static int MPIR_socket_aware_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    MPIU_Assert(comm_ptr->dev.ch.use_intra_sock_comm && comm_ptr->dev.ch.shmem_coll_ok == 1);
+    if(!mv2_use_slot_shmem_coll) {
+        return MPIR_socket_aware_shmem_barrier_old_MV2(comm_ptr, errflag);
+    }
+    int mpi_errno = MPI_SUCCESS;    
+    #if defined(_SHARP_SUPPORT_)
+        int mpi_errno_ret = MPI_SUCCESS;
+    #endif
+    MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
+    int local_rank = -1, local_size = 0;
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
+    PMPI_Comm_size(shmem_comm, &local_size);
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+    local_rank = shmem_commptr->rank;
+    local_size = shmem_commptr->local_size;
+
+    leader_comm = comm_ptr->dev.ch.leader_comm;
+    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+
+    int intra_sock_rank = -1, intra_sock_size;
+    MPID_Comm * intra_sock_commptr = NULL;
+    PMPI_Comm_rank(shmem_commptr->dev.ch.intra_sock_comm, &intra_sock_rank);
+    PMPI_Comm_size(shmem_commptr->dev.ch.intra_sock_comm, &intra_sock_size);
+    MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_comm, intra_sock_commptr);
+
+    int shmem_comm_rank = intra_sock_commptr->dev.ch.shmem_comm_rank;
+
+    if (local_size > 1) {
+        mv2_shm_barrier_gather(intra_sock_commptr->dev.ch.shmem_info);
+    }
+
+    if (intra_sock_rank == 0) {
+
+        MPID_Comm *shmem_leader_commptr = NULL;
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_leader_comm,shmem_leader_commptr);
+        MPID_Comm *global_sock_leader_ptr=NULL;
+        MPID_Comm_get_ptr(comm_ptr->dev.ch.global_sock_leader_comm,global_sock_leader_ptr);
+
+        if(shmem_leader_commptr->dev.ch.shmem_coll_ok != 1)
+	    {
+	        /* Fall back to pt2pt pairwise algorithm */
+            mpi_errno = MPIR_Pairwise_Barrier_MV2(global_sock_leader_ptr, errflag);
+	    }
+        else
+        {
+            MPID_Comm *shmem_leader_shmemcomm = NULL;
+            MPID_Comm_get_ptr(shmem_leader_commptr->dev.ch.shmem_comm, shmem_leader_shmemcomm);
+            int leader_shmem_comm_rank=0, leader_size=0, leader_rank=0;
+
+            if(shmem_leader_commptr->local_size > 1)
+            {
+                leader_shmem_comm_rank = shmem_leader_shmemcomm->dev.ch.shmem_comm_rank;
+                leader_size = shmem_leader_commptr->local_size;
+                leader_rank = shmem_leader_commptr->rank;
+
+                mv2_shm_barrier_gather(shmem_leader_shmemcomm->dev.ch.shmem_info);
+            }
+
+            if(local_rank == 0)
+            {
+#if defined (_SHARP_SUPPORT_)
+                if (comm_ptr->dev.ch.is_sharp_ok == 1 && mv2_enable_sharp_coll == 1 &&
+                        mv2_enable_sharp_barrier) {
+                    mpi_errno =
+                        MPIR_Sharp_Barrier_MV2(comm_ptr, errflag);
+                    if (mpi_errno != MPI_SUCCESS) {
+                        /* fall back to Pairwise algorithm if SHArP is not supported */
+                        mpi_errno = MPIR_Pairwise_Barrier_MV2(leader_commptr, errflag);
+                        if (mpi_errno) {
+                             /* for communication errors, just record the error but continue */
+                             *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                             MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                             MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+                        }
+                    }
+                } else
+#endif /* #if defined (_SHARP_SUPPORT_) */
+                mpi_errno = MPIR_Pairwise_Barrier_MV2(leader_commptr, errflag);
+            }
+
+            if(shmem_leader_commptr->local_size > 1)
+            {
+                mv2_shm_barrier_bcast(shmem_leader_shmemcomm->dev.ch.shmem_info);
+            }
+        }
+    }
+
+    if (local_size > 1) {
+        mv2_shm_barrier_bcast(intra_sock_commptr->dev.ch.shmem_info);
     }
     return mpi_errno;
 }

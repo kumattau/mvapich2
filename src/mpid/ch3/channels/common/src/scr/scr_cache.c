@@ -440,7 +440,7 @@ int scr_cache_check_files(const scr_filemap* map, int id)
   return SCR_SUCCESS;
 }
 
-/* checks whether specifed file exists, is readable, and is complete */
+/* checks whether specified file exists, is readable, and is complete */
 int scr_bool_have_file(const scr_filemap* map, int dset, int rank, const char* file, int ranks)
 {
   /* if no filename is given return false */

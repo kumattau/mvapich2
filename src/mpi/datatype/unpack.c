@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -74,11 +74,11 @@ int MPIR_Unpack_impl(const void *inbuf, MPI_Aint insize, MPI_Aint *position,
 
     if (contig) {
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && outbuf_isdev) {
-            MPIU_Memcpy_CUDA((void *) ((char *)outbuf + dt_true_lb),
+        if (mv2_enable_device && outbuf_isdev) {
+            MPIU_Memcpy_Device((void *) ((char *)outbuf + dt_true_lb),
                     (void *) ((char *)inbuf + *position),
                     data_sz,
-                    cudaMemcpyHostToDevice);
+                    deviceMemcpyHostToDevice);
         } else
 #endif
         {
@@ -110,7 +110,7 @@ int MPIR_Unpack_impl(const void *inbuf, MPI_Aint insize, MPI_Aint *position,
         MPID_Datatype *dt_ptr;
         MPID_Datatype_get_ptr(datatype, dt_ptr);
         last = data_sz;
-        MPID_Segment_unpack_cuda(segp, first, &last, 
+        MPID_Segment_unpack_device(segp, first, &last,
             dt_ptr, (void *) ((char *) inbuf + *position));
     } else
 # endif

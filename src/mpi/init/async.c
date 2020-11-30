@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -54,9 +54,9 @@ static void progress_fn(void * data)
     MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && 
-        cuda_initialized) {
-        cuda_init_thread_context();
+    if (mv2_enable_device &&
+        mv2_device_initialized) {
+        device_init_thread_context();
     }
 #endif
 

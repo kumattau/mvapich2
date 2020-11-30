@@ -4,7 +4,7 @@
 ## (C) 2011 by Argonne National Laboratory.
 ##     See COPYRIGHT in top-level directory.
 ##
-## Copyright (c) 2001-2019, The Ohio State University. All rights
+## Copyright (c) 2001-2020, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -20,3 +20,8 @@ include $(top_srcdir)/src/mpid/ch3/channels/sock/Makefile.mk
 include $(top_srcdir)/src/mpid/ch3/channels/mrail/Makefile.mk
 include $(top_srcdir)/src/mpid/ch3/channels/psm/Makefile.mk
 include $(top_srcdir)/src/mpid/ch3/channels/common/Makefile.mk
+
+if BUILD_ROMIO
+AM_CPPFLAGS += -I$(top_builddir)/src/mpi/romio/adio/include   \
+           -I$(top_srcdir)/src/mpi/romio/adio/include
+endif

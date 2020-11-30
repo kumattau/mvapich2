@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -483,16 +483,83 @@ int MV2_set_alltoall_tuning_table(int heterogeneity, struct coll_info *colls_arc
       MV2_COLL_TUNING_FINISH_TABLE (alltoall)
     }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                MV2_ARCH_AMD_EPYC_7551_64, MV2_HCA_MLX_CX_HDR) && !heterogeneity) {
+      /* AMD EPYC table */
+      MV2_COLL_TUNING_START_TABLE  (alltoall, 7)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  3, GEN2__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 1,  3, GEN2_CMA__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 2,  4, GEN2__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 2,  4, GEN2_CMA__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 4,  4, GEN2__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 4,  4, GEN2_CMA__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 8,  4, GEN2__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 8,  4, GEN2_CMA__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 16, 4, GEN2__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 16, 4, GEN2_CMA__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 32, 4, GEN2__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 32, 3, GEN2_CMA__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 64, 4, GEN2_CMA__AMD_EPYC_VENUS__64PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 64, 4, GEN2_CMA__AMD_EPYC_VENUS__64PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (alltoall)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                MV2_ARCH_AMD_EPYC_7551_64, MV2_HCA_ANY) && !heterogeneity) {
+      /* AMD EPYC table */
+      MV2_COLL_TUNING_START_TABLE  (alltoall, 7)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  3, GEN2__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 1,  3, GEN2_CMA__AMD_EPYC__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 2,  4, GEN2__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 2,  4, GEN2_CMA__AMD_EPYC__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 4,  4, GEN2__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 4,  4, GEN2_CMA__AMD_EPYC__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 8,  4, GEN2__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 8,  4, GEN2_CMA__AMD_EPYC__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 16, 4, GEN2__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 16, 4, GEN2_CMA__AMD_EPYC__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 32, 4, GEN2__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 32, 3, GEN2_CMA__AMD_EPYC__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 64, 4, GEN2__AMD_EPYC__64PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 64, 4, GEN2_CMA__AMD_EPYC__64PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (alltoall)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                MV2_ARCH_AMD_EPYC_7601_64, MV2_HCA_ANY) && !heterogeneity) {
+      /* AMD EPYC rome table */
+      MV2_COLL_TUNING_START_TABLE  (alltoall, 6)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  3, GEN2_CMA__AMD_EPYC_ROME__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 1,  3, GEN2_CMA__AMD_EPYC_ROME__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 4,  4, GEN2_CMA__AMD_EPYC_ROME__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 4,  4, GEN2_CMA__AMD_EPYC_ROME__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 8,  4, GEN2_CMA__AMD_EPYC_ROME__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 8,  4, GEN2_CMA__AMD_EPYC_ROME__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 16, 4, GEN2_CMA__AMD_EPYC_ROME__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 16, 4, GEN2_CMA__AMD_EPYC_ROME__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 32, 4, GEN2_CMA__AMD_EPYC_ROME__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 32, 4, GEN2_CMA__AMD_EPYC_ROME__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 64, 4, GEN2_CMA__AMD_EPYC_ROME__64PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 64, 4, GEN2_CMA__AMD_EPYC_ROME__64PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (alltoall)
+    }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
                 MV2_ARCH_AMD_EPYC_7742_128, MV2_HCA_ANY) && !heterogeneity) {
       /* AMD EPYC rome table */
-      MV2_COLL_TUNING_START_TABLE  (alltoall, 7)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  1, GEN2_CMA__AMD_EPYC__1PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 2,  2, GEN2_CMA__AMD_EPYC__2PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 4,  2, GEN2_CMA__AMD_EPYC__4PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 8,  2, GEN2_CMA__AMD_EPYC__8PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 16, 2, GEN2_CMA__AMD_EPYC__16PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 32, 2, GEN2_CMA__AMD_EPYC__32PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 64, 2, GEN2_CMA__AMD_EPYC__64PPN)
+      MV2_COLL_TUNING_START_TABLE  (alltoall, 8)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  3, GEN2_CMA__AMD_EPYC_ROME__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 1,  3, GEN2_CMA__AMD_EPYC_ROME__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 4,  4, GEN2_CMA__AMD_EPYC_ROME__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 4,  4, GEN2_CMA__AMD_EPYC_ROME__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 8,  4, GEN2_CMA__AMD_EPYC_ROME__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 8,  4, GEN2_CMA__AMD_EPYC_ROME__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 16, 4, GEN2_CMA__AMD_EPYC_ROME__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 16, 4, GEN2_CMA__AMD_EPYC_ROME__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 32, 4, GEN2_CMA__AMD_EPYC_ROME__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 32, 4, GEN2_CMA__AMD_EPYC_ROME__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 64, 4, GEN2_CMA__AMD_EPYC_ROME__64PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 64, 4, GEN2_CMA__AMD_EPYC_ROME__64PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 120, 4, GEN2_CMA__AMD_EPYC_ROME__120PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 120, 4, GEN2_CMA__AMD_EPYC_ROME__120PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 128, 4, GEN2_CMA__AMD_EPYC_ROME__128PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 128, 4, GEN2_CMA__AMD_EPYC_ROME__128PPN)
       MV2_COLL_TUNING_FINISH_TABLE (alltoall)
     }
     else if(MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
@@ -536,6 +603,26 @@ int MV2_set_alltoall_tuning_table(int heterogeneity, struct coll_info *colls_arc
       MV2_COLL_TUNING_FINISH_TABLE (alltoall)
     }
     else if(MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                    MV2_ARCH_AMD_EPYC_7401_48, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+      /* LLNL Corona */
+      MV2_COLL_TUNING_START_TABLE  (alltoall, 6)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  1, GEN2_CMA__AMD_EPYC_7401_24__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 1,  1, GEN2_CMA__AMD_EPYC_7401_24__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 2,  2, GEN2_CMA__AMD_EPYC_7401_24__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 2,  2, GEN2_CMA__AMD_EPYC_7401_24__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 4,  2, GEN2_CMA__AMD_EPYC_7401_24__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 4,  2, GEN2_CMA__AMD_EPYC_7401_24__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 8,  2, GEN2_CMA__AMD_EPYC_7401_24__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 8,  2, GEN2_CMA__AMD_EPYC_7401_24__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 16, 2, GEN2_CMA__AMD_EPYC_7401_24__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 16, 2, GEN2_CMA__AMD_EPYC_7401_24__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 32, 1, GEN2_CMA__AMD_EPYC_7401_24__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 32, 1, GEN2_CMA__AMD_EPYC_7401_24__32PPN)
+      //MV2_COLL_TUNING_ADD_CONF     (alltoall, 48, 0, GEN2_CMA__AMD_EPYC_7401_24__48PPN)
+      //MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 48, 0, GEN2_CMA__AMD_EPYC_7401_24__48PPN)
+      MV2_COLL_TUNING_FINISH_TABLE (alltoall)
+    }
+    else if(MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
                     MV2_ARCH_ARM_CAVIUM_V8_2S_28, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
       /* Mayer */
       MV2_COLL_TUNING_START_TABLE  (alltoall, 8)
@@ -557,24 +644,26 @@ int MV2_set_alltoall_tuning_table(int heterogeneity, struct coll_info *colls_arc
       MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 56, 4, GEN2_CMA__MAYER__56PPN)
       MV2_COLL_TUNING_FINISH_TABLE (alltoall)
     }
-    else if(MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
-                    MV2_ARCH_ARM_CAVIUM_V8_2S_32, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
-      /* Catalyst */
+    else if((MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                    MV2_ARCH_ARM_CAVIUM_V8_2S_32, MV2_HCA_MLX_CX_EDR) ||
+            MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                    MV2_ARCH_ARM_FUJITSU_V0_4S_48, MV2_HCA_MLX_CX_EDR)) && !heterogeneity) {
+      /* Catalyst & Ookami */
       MV2_COLL_TUNING_START_TABLE  (alltoall, 7)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  3, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__1PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 1,  3, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__1PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 2,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__2PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 2,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__2PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 4,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__4PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 4,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__4PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 8,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__8PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 8,  4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__8PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 16, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__16PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 16, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__16PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 32, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__32PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 32, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__32PPN)
-      MV2_COLL_TUNING_ADD_CONF     (alltoall, 64, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__64PPN)
-      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 64, 4, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__64PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 1,  5, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__1PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 1,  5, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__1PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 2,  6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 2,  6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__2PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 4,  6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 4,  6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__4PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 8,  6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__8PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 8,  6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__8PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 16, 6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__16PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 16, 6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__16PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 32, 6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__32PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 32, 6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__32PPN)
+      MV2_COLL_TUNING_ADD_CONF     (alltoall, 64, 6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__64PPN)
+      MV2_COLL_TUNING_ADD_CONF_CMA (alltoall, 64, 6, GEN2_CMA__ARM_CAVIUM_V8_2S_32_MLX_CX_EDR__64PPN)
       MV2_COLL_TUNING_FINISH_TABLE (alltoall)
     }
     else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),

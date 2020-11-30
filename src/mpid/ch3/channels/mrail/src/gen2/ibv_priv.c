@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,11 +32,11 @@ struct ibv_mr * register_memory(void * buf, size_t len, int hca_num)
     struct ibv_mr * mr;
 
     if (g_atomics_support) {
-        mr = ibv_reg_mr(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_num], buf, len,
+        mr = ibv_ops.reg_mr(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_num], buf, len,
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
             IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
     } else {
-        mr = ibv_reg_mr(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_num], buf, len,
+        mr = ibv_ops.reg_mr(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_num], buf, len,
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
             IBV_ACCESS_REMOTE_READ);
     }
@@ -48,7 +48,7 @@ int deregister_memory(struct ibv_mr * mr)
 {
     int ret;
 
-    ret = ibv_dereg_mr(mr);
+    ret = ibv_ops.dereg_mr(mr);
     DEBUG_PRINT("deregister mr %p, ret %d\n", mr, ret);
     return ret;
 }
@@ -58,6 +58,9 @@ int MRAILI_Send_select_rail(MPIDI_VC_t * vc)
 {
     static int i = 0;
 
+    if (mv2_process_placement_aware_hca_mapping) {
+        return mv2_closest_hca_offset;
+    }
     if (ROUND_ROBIN == rdma_rail_sharing_policy) {
         i = (i + 1) % rdma_num_rails;
         return i;
@@ -97,8 +100,8 @@ int mv2_preallocate_rdma_fp_bufs()
         goto fn_fail;
     }
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
-        ibv_cuda_register(mv2_vbuf_rdma_buf, (rdma_fp_buffer_size *
+    if (mv2_enable_device && rdma_eager_devicehost_reg) {
+        ibv_device_register(mv2_vbuf_rdma_buf, (rdma_fp_buffer_size *
                             rdma_polling_set_limit * num_rdma_buffer));
     }
 #endif
@@ -194,8 +197,8 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
             goto fn_exit;
         }
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
-            ibv_cuda_register(vbuf_rdma_buf, num_rdma_buffer * rdma_fp_buffer_size);
+        if (mv2_enable_device && rdma_eager_devicehost_reg) {
+            ibv_device_register(vbuf_rdma_buf, num_rdma_buffer * rdma_fp_buffer_size);
         }
 #endif
 

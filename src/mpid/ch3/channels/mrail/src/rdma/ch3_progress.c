@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,6 +26,7 @@
 #if defined(_MCST_SUPPORT_)
 #include "ibv_mcast.h"
 #endif
+#include "ibv_send_inline.h"
 
 #ifdef DEBUG
 #include "upmi.h"
@@ -380,7 +381,7 @@ handle_recv_pkt:
         }
 
 #if defined(_ENABLE_CUDA_)
-        MV2_CUDA_PROGRESS();
+        MV2_DEVICE_PROGRESS();
 #endif
         
         int made_progress = FALSE;
@@ -617,7 +618,7 @@ int MPIDI_CH3I_Progress_test()
     }
 #endif /* (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE) */
 
-    /*needed if early send complete doesnot occur */
+    /*needed if early send complete does not occur */
     if (SMP_INIT) {
         int smp_completions = MPIDI_CH3I_progress_completion_count;
 
@@ -773,7 +774,7 @@ test_handle_recv_pkt:
     }
 
 #if defined(_ENABLE_CUDA_)
-    MV2_CUDA_PROGRESS();
+    MV2_DEVICE_PROGRESS();
 #endif
 
     /* make progress on NBC schedules */
@@ -1444,11 +1445,7 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
                 PRINT_DEBUG(DEBUG_CM_verbose>0, "NOOP Received, RDMA CM is setting the proper status on the client side for multirail.\n");
                 if (mv2_use_eager_fast_send &&
                     !(SMP_INIT && (vc->smp.local_nodes >= 0))) {
-                    if (likely(rdma_use_coalesce)) {
-                        vc->eager_fast_fn = mv2_eager_fast_coalesce_send;
-                    } else {
-                        vc->eager_fast_fn = mv2_eager_fast_send;
-                    }
+		    vc->use_eager_fast_fn = 1;
                 }
             }
 
@@ -1500,7 +1497,7 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
         goto fn_exit;
 #ifdef _ENABLE_CUDA_
     case MPIDI_CH3_PKT_CUDA_CTS_CONTI:
-            MPIDI_CH3_Rendezvous_cuda_cts_conti(vc, (void *) header);
+            MPIDI_CH3_Rendezvous_device_cts_conti(vc, (void *) header);
         goto fn_exit;
 #endif
 #ifdef _ENABLE_UD_

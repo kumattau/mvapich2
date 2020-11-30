@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,9 +17,7 @@
  */
 
 #include "mpiimpl.h"
-#ifdef _OSU_MVAPICH_
 #include "coll_shmem.h"
-#endif /* _OSU_MVAPICH_ */
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===

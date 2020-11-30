@@ -649,7 +649,7 @@ int scr_rebuild_scan(const scr_path* dir, scr_hash* scan)
   return rc;
 }
 
-/* cheks scan hash for any missing files,
+/* checks scan hash for any missing files,
  * returns SCR_FAILURE if any dataset is missing any files
  * or if any dataset is marked as inconsistent,
  * SCR_SUCCESS otherwise */
@@ -1451,7 +1451,7 @@ int index_list(const scr_path* prefix)
 
       printf(" ");
 
-      /* to be valid, the dataset must be marked as vaild and it must
+      /* to be valid, the dataset must be marked as valid and it must
        * not have failed a fetch attempt */
       if (complete == 1 && failed_str == NULL) {
         printf("YES  ");

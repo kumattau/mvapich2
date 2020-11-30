@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1089,7 +1089,7 @@ int MPIDI_PG_Dup_vcr( MPIDI_PG_t *pg, int rank, MPIDI_VC_t **vc_p )
     /* Increase the reference count of the vc.  If the reference count 
        increases from 0 to 1, increase the reference count of the 
        process group *and* the reference count of the vc (this
-       allows us to distinquish between Comm_free and Comm_disconnect) */
+       allows us to distinguish between Comm_free and Comm_disconnect) */
     /* FIXME-MT: This should be a fetch and increment for thread-safety */
     if (MPIU_Object_get_ref(vc) == 0) {
 	MPIDI_PG_add_ref(pg);

@@ -9,6 +9,7 @@
 
 #include "mpl_utlist.h"
 #include "mpid_rma_types.h"
+#include "helper_fns.h"
 
 static inline int do_accumulate_op(void *source_buf, int source_count, MPI_Datatype source_dtp,
                                    void *target_buf, int target_count, MPI_Datatype target_dtp,
@@ -24,6 +25,10 @@ static inline int do_accumulate_op(void *source_buf, int source_count, MPI_Datat
         goto fn_exit;                           \
     }
 
+#undef FUNCNAME
+#define FUNCNAME shm_copy
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static inline int shm_copy(const void *src, int scount, MPI_Datatype stype,
                            void *dest, int dcount, MPI_Datatype dtype)
 {

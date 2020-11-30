@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -205,7 +205,7 @@ int MPIR_Iscatter_binomial(const void *sendbuf, int sendcount, MPI_Datatype send
         }
 
         /* This process is responsible for all processes that have bits
-           set from the LSB upto (but not including) mask.  Because of
+           set from the LSB up to (but not including) mask.  Because of
            the "not including", we start by shifting mask back down
            one. */
 
@@ -371,7 +371,7 @@ int MPIR_Iscatter_binomial(const void *sendbuf, int sendcount, MPI_Datatype send
         }
 
         /* This process is responsible for all processes that have bits
-           set from the LSB upto (but not including) mask.  Because of
+           set from the LSB up to (but not including) mask.  Because of
            the "not including", we start by shifting mask back down
            one. */
 

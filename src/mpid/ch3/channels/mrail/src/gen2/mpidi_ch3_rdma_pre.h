@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,7 +29,7 @@
 
 #define MPIDI_CH3I_MRAILI_FLUSH 1
 
-/* add this structure to the implemenation specific macro */
+/* add this structure to the implementation specific macro */
 #define MPIDI_CH3I_VC_RDMA_DECL MPIDI_CH3I_MRAIL_VC mrail;
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DEFS 1
 
@@ -91,18 +91,18 @@ typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
     uint32_t            rndv_qpn;
 #endif
 #ifdef _ENABLE_CUDA_
-    uint8_t             cuda_transfer_mode;
+    uint8_t             device_transfer_mode;
     uint32_t            buf_sz;
-    uint32_t            cuda_block_offset;
-    uint32_t            num_cuda_blocks;
+    uint32_t            device_block_offset;
+    uint32_t            num_device_blocks;
     uint32_t            buffer_rkey[MAX_CUDA_RNDV_BLOCKS][MAX_NUM_HCAS];
     void                *buffer_addr[MAX_CUDA_RNDV_BLOCKS];
 #if defined(HAVE_CUDA_IPC)
     void                *ipc_baseptr;
     uint64_t            ipc_size;
     uint64_t            ipc_displ;
-    cudaIpcMemHandle_t  ipc_memhandle;
-    cudaIpcEventHandle_t ipc_eventhandle;
+    deviceIpcMemHandle_t  ipc_memhandle;
+    deviceIpcEventHandle_t ipc_eventhandle;
 #endif
 #endif
 } MPIDI_CH3I_MRAILI_Rndv_info_t;
@@ -121,39 +121,39 @@ struct dreg_entry;
 #endif
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-#define MPIDI_CH3I_MRAILI_CUDA_IPC_REQ_DECL \
-        uint8_t cudaipc_stage_index;        \
+#define MPIDI_CH3I_MRAILI_DEVICE_IPC_REQ_DECL   \
+        uint8_t device_ipc_stage_index;         \
         void *ipc_baseptr;                  \
         uint64_t ipc_size;                  \
         uint64_t ipc_displ;                 \
-        cuda_event_t *ipc_cuda_event;       \
-        cudaEvent_t  ipc_event;             \
-        cudaIpcMemHandle_t ipc_memhandle;   \
-        cudaIpcEventHandle_t ipc_eventhandle;   \
-        cuda_regcache_entry_t *cuda_reg;
+        mv2_device_event_t *ipc_device_event;   \
+        deviceEvent_t  ipc_event;               \
+        deviceIpcMemHandle_t ipc_memhandle;     \
+        deviceIpcEventHandle_t ipc_eventhandle; \
+        device_regcache_entry_t *device_reg;
 #else
-#define MPIDI_CH3I_MRAILI_CUDA_IPC_REQ_DECL
+#define MPIDI_CH3I_MRAILI_DEVICE_IPC_REQ_DECL
 #endif
 
 #ifdef _ENABLE_CUDA_
-#define MPIDI_CH3I_MRAILI_CUDA_REQ_DECL \
-        cuda_transfer_mode_t  cuda_transfer_mode;   \
-        cuda_event_t *cuda_event;                   \
-        vbuf *cuda_vbuf[MAX_CUDA_RNDV_BLOCKS];      \
-        void *cuda_remote_addr[MAX_CUDA_RNDV_BLOCKS]; \
-        uint32_t cuda_remote_rkey[MAX_CUDA_RNDV_BLOCKS][MAX_NUM_HCAS]; \
-        uint16_t num_cuda_blocks;           \
-        uint16_t cuda_block_offset;         \
-        uint16_t num_send_cuda_copy;        \
+#define MPIDI_CH3I_MRAILI_DEVICE_REQ_DECL \
+        mv2_device_transfer_mode_t  device_transfer_mode;   \
+        mv2_device_event_t *device_event;                   \
+        vbuf *device_vbuf[MAX_CUDA_RNDV_BLOCKS];      \
+        void *device_remote_addr[MAX_CUDA_RNDV_BLOCKS]; \
+        uint32_t device_remote_rkey[MAX_CUDA_RNDV_BLOCKS][MAX_NUM_HCAS]; \
+        uint16_t num_device_blocks;           \
+        uint16_t device_block_offset;         \
+        uint16_t num_send_device_copy;        \
         uint16_t pipeline_nm;               \
-        uint8_t num_remote_cuda_pending;    \
-        uint8_t num_remote_cuda_done;       \
-        uint8_t num_remote_cuda_inflight;   \
-        uint8_t is_cuda_pipeline;           \
+        uint8_t num_remote_device_pending;    \
+        uint8_t num_remote_device_done;       \
+        uint8_t num_remote_device_inflight;   \
+        uint8_t is_device_pipeline;           \
         uint8_t cts_received;               \
-        MPIDI_CH3I_MRAILI_CUDA_IPC_REQ_DECL 
+        MPIDI_CH3I_MRAILI_DEVICE_IPC_REQ_DECL
 #else
-#define MPIDI_CH3I_MRAILI_CUDA_REQ_DECL 
+#define MPIDI_CH3I_MRAILI_DEVICE_REQ_DECL
 #endif
 
 #define MPIDI_CH3I_MRAILI_REQUEST_DECL \
@@ -177,7 +177,7 @@ struct dreg_entry;
         struct MPID_Request *next_inflow;  \
         uint8_t is_rma_last_stream_unit;   \
         MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL   \
-        MPIDI_CH3I_MRAILI_CUDA_REQ_DECL    \
+        MPIDI_CH3I_MRAILI_DEVICE_REQ_DECL    \
     } mrail;
 
 #ifndef MV2_DISABLE_HEADER_CACHING 
@@ -317,6 +317,8 @@ struct mrail_rail {
         int    hca_index;
         int    port;
         int    lid;
+        int    is_roce;
+        int    gid_index;
         int    s_weight;
         int    used_send_cq; 
         int    used_recv_cq; 
@@ -347,7 +349,7 @@ typedef struct MPIDI_CH3I_CR_msg_log_queue_entry {
 }MPIDI_CH3I_CR_msg_log_queue_entry_t;
 #endif
 
-/* sample implemenation structure */
+/* sample implementation structure */
 typedef struct MPIDI_CH3I_MRAIL_VC_t
 {
     int     	num_rails;
@@ -412,8 +414,8 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
     void    *nextflow;
     int     inflow;
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    void    *cudaipc_sreq_head; 
-    void    *cudaipc_sreq_tail;
+    void    *device_ipc_sreq_head;
+    void    *device_ipc_sreq_tail;
 #endif
     /* used to distinguish which VIA barrier synchronozations have
      * completed on this connection.  Currently, only used during
@@ -444,7 +446,7 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
 #endif
 } MPIDI_CH3I_MRAIL_VC;
 
-/* add this structure to the implemenation specific macro */
+/* add this structure to the implementation specific macro */
 #define MPIDI_CH3I_VC_RDMA_DECL MPIDI_CH3I_MRAIL_VC mrail;
 
 typedef struct MPIDI_CH3I_MRAIL_UD_CM {
@@ -462,6 +464,8 @@ typedef struct MPIDI_CH3I_MRAIL_CM_SHMEM_Region {
     MPIDI_CH3I_MRAIL_UD_CM_t    *ud_cm;
 #ifdef _ENABLE_UD_
     mv2_ud_exch_info_t          **remote_ud_info;
+    struct ibv_ah               **ud_ah;
+    uint16_t                    *ud_lid;
 #endif /*_ENABLE_UD_ */
 } MPIDI_CH3I_MRAIL_CM_SHMEM_Region_t;
 
@@ -469,7 +473,9 @@ typedef struct MPIDI_CH3I_MRAIL_CM {
     int cm_shmem_fd;
     char *cm_shmem_file;
     volatile void *cm_shmem_mmap_ptr;
-    struct ibv_ah   **cm_ah;        /* Address handle of peer */
+    struct ibv_ah   **cm_ah;        /* Address handle of LIDs */
+    struct ibv_ah   **cm_ah_peer;   /* Address handle of peer */
+    uint16_t        *cm_lid;
     MPIDI_CH3I_MRAIL_CM_SHMEM_Region_t cm_shmem;
 } MPIDI_CH3I_MRAIL_CM_t;
 
@@ -493,12 +499,12 @@ typedef struct MPIDI_CH3I_RDMA_put_get_list_t
 MPIDI_CH3I_RDMA_put_get_list;
 
 #ifdef _ENABLE_CUDA_
-typedef enum cuda_transfer_mode {
+typedef enum mv2_device_transfer_mode {
     NONE            = 0,  /* default: HOST_TO_HOST */
     DEVICE_TO_DEVICE,
     HOST_TO_DEVICE,
     DEVICE_TO_HOST
-} cuda_transfer_mode_t;
+} mv2_device_transfer_mode_t;
 
 #endif
 

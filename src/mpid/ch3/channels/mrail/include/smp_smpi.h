@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,20 +38,20 @@ extern int                  s_smp_cma_max_size;
 extern int                  s_smp_limic2_max_size;
 
 #if defined _ENABLE_CUDA_
-extern int                  s_smp_cuda_pipeline;
+extern int                  mv2_device_smp_pipeline;
 extern int                  s_smp_h2h_block_size;
 #endif
 
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-extern void **smp_cuda_region_send;
-extern void **smp_cuda_region_recv;
-extern int smp_cuda_region_size;
+extern void **smp_device_region_send;
+extern void **smp_device_region_recv;
+extern int smp_device_region_size;
 
-extern CUevent *sr_event;
-extern CUevent *sr_event_local;
-extern CUevent *loop_event;
-extern CUevent *loop_event_local;
+extern deviceEvent_t *sr_event;
+extern deviceEvent_t *sr_event_local;
+extern deviceEvent_t *loop_event;
+extern deviceEvent_t *loop_event_local;
 #endif 
 
 extern int                  g_smp_delay_shmem_pool_init;
@@ -150,10 +150,10 @@ typedef struct {
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
 typedef struct {
-    volatile unsigned int cuda_head; 
-    volatile unsigned int cuda_tail;    
+    volatile unsigned int device_head;
+    volatile unsigned int device_tail;
     char pad[SMPI_CACHE_LINE_SIZE/2 - 8];
-} smpi_cu_ipc_attr;
+} smpi_device_ipc_attr;
 #endif  
 
 typedef struct {
@@ -173,7 +173,7 @@ struct shared_mem {
     smpi_shared_tails **shared_tails;
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    smpi_cu_ipc_attr **cu_attrbs;
+    smpi_device_ipc_attr **cu_attrbs;
 #endif
 
     smpi_rq_limit *rqueues_limits_s;

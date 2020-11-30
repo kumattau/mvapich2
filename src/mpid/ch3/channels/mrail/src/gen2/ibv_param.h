@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,12 +20,16 @@
 extern int mv2_enable_eager_threshold_reduction;
 #if defined(_SHARP_SUPPORT_)
 extern int mv2_enable_sharp_coll;
+extern int mv2_sharp_min_node_count;
 extern int mv2_sharp_port;
 extern char * mv2_sharp_hca_name;
+extern int mv2_enable_sharp_allreduce;
+extern int mv2_enable_sharp_barrier;
 #endif
 extern int mv2_is_in_finalize;
 /* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
 extern int rdma_num_hcas;
+extern int mv2_closest_hca_offset;
 extern int rdma_num_req_hcas;
 extern int rdma_num_ports;
 extern int rdma_num_qp_per_port;
@@ -41,6 +45,7 @@ extern int rdma_default_max_recv_wqe;
 extern uint32_t rdma_default_max_sg_list;
 extern uint16_t rdma_default_pkey_ix;
 extern uint16_t rdma_default_pkey;
+extern uint32_t rdma_default_qkey;
 extern uint8_t rdma_default_qp_ous_rd_atom;
 extern uint8_t rdma_supported_max_qp_ous_rd_atom;
 extern uint8_t rdma_default_max_rdma_dst_ops;
@@ -59,6 +64,7 @@ extern float rdma_credit_update_threshold;
 extern int num_rdma_buffer;
 extern int rdma_iba_eager_threshold;
 extern unsigned int rdma_ndreg_entries;
+extern unsigned int rdma_ndreg_entries_max;
 extern int rdma_vbuf_max;
 extern int rdma_vbuf_pool_size;
 extern int rdma_vbuf_secondary_pool_size;
@@ -126,11 +132,15 @@ extern int mv2_show_env_info;
 extern int mv2_use_pmi_ibarrier;
 extern int mv2_shmem_backed_ud_cm;
 extern int mv2_show_runlog_level;
+extern int mv2_system_has_roce;
+extern int mv2_system_has_ib;
+extern int mv2_process_placement_aware_hca_mapping;
+extern int mv2_allow_heterogeneous_hca_selection;
 /* HSAM Definitions */
 
 extern int striping_threshold;
 extern int rdma_rail_sharing_policy;
-extern int alpha;
+extern double alpha;
 extern int stripe_factor;
 extern int apm_tester;
 
@@ -146,6 +156,7 @@ extern int rdma_use_xrc;
 extern int xrc_rdmafp_init;
 extern int rdma_use_smp;
 extern int use_iboeth;
+extern int mv2_use_post_srq_send;
 extern int rdma_iwarp_multiple_cq_threshold;
 extern int rdma_iwarp_use_multiple_cq;
 extern int using_mpirun_rsh;
@@ -168,46 +179,47 @@ extern int limic_get_threshold;
 extern int rdma_enable_hugepage;
 
 #ifdef _ENABLE_CUDA_
-extern int rdma_cuda_block_size;
-extern int rdma_num_cuda_rndv_blocks;
-extern int rdma_cuda_event_count;
+extern int mv2_enable_device;
+extern int mv2_device_stage_block_size;
+extern int mv2_device_num_rndv_blocks;
+extern int mv2_device_event_count;
 extern int rdma_enable_cuda;
-extern int rdma_cuda_dynamic_init;
+extern int mv2_device_dynamic_init;
 extern int rdma_cuda_vec_thread_blksz;
 extern int rdma_cuda_vec_thread_ysz;
 extern int rdma_cuda_subarr_thread_blksz;
 extern int rdma_cuda_subarr_thread_xdim;
 extern int rdma_cuda_subarr_thread_ydim;
 extern int rdma_cuda_subarr_thread_zdim;
-extern int rdma_cuda_nonblocking_streams;
-extern int rdma_eager_cudahost_reg;
+extern int mv2_device_nonblocking_streams;
+extern int rdma_eager_devicehost_reg;
 extern int rdma_cuda_vector_dt_opt;
 extern int rdma_cuda_kernel_dt_opt;
-extern int cuda_initialized; 
+extern int mv2_device_initialized; 
 #if defined(HAVE_CUDA_IPC)
-extern int rdma_cuda_ipc;
+extern int mv2_device_use_ipc;
 extern int rdma_enable_ipc_share_gpu;
-extern int rdma_cuda_smp_ipc;
-extern int rdma_cuda_enable_ipc_cache;
-extern int rdma_cuda_ipc_threshold;
-extern int cudaipc_cache_max_entries;
+extern int mv2_device_use_smp_eager_ipc;
+extern int mv2_device_enable_ipc_cache;
+extern int mv2_device_ipc_threshold;
+extern int mv2_device_ipc_cache_max_entries;
 #endif /*#if defined(HAVE_CUDA_IPC) */
-extern int rdma_cuda_use_naive;
-extern int rdma_cuda_register_naive_buf;
-extern int rdma_cuda_gather_naive_limit;
-extern int rdma_cuda_scatter_naive_limit;
-extern int rdma_cuda_gatherv_naive_limit;
-extern int rdma_cuda_scatterv_naive_limit;
-extern int rdma_cuda_allgather_naive_limit;
-extern int rdma_cuda_allgatherv_naive_limit;
-extern int rdma_cuda_alltoall_naive_limit;
-extern int rdma_cuda_alltoallv_naive_limit;
-extern int rdma_cuda_bcast_naive_limit;
-extern int rdma_cuda_alltoall_dynamic;
-extern int rdma_cuda_allgather_rd_limit;
-extern int rdma_cuda_allgather_fgp;
-extern int rdma_cuda_init_context;
-extern int rdma_check_cuda_attribute;
+extern int mv2_device_coll_use_stage;
+extern int mv2_device_coll_register_stage_buf_threshold;
+extern int mv2_device_gather_stage_limit;
+extern int mv2_device_scatter_stage_limit;
+extern int mv2_device_gatherv_stage_limit;
+extern int mv2_device_scatterv_stage_limit;
+extern int mv2_device_allgather_stage_limit;
+extern int mv2_device_allgatherv_stage_limit;
+extern int mv2_device_alltoall_stage_limit;
+extern int mv2_device_alltoallv_stage_limit;
+extern int mv2_device_bcast_stage_limit;
+extern int mv2_device_alltoall_dynamic;
+extern int mv2_device_allgather_rd_limit;
+extern int mv2_device_use_allgather_fgp;
+extern int mv2_device_init_context;
+extern int mv2_device_check_attribute;
 #endif /*#ifdef _ENABLE_CUDA_ */
 
 
@@ -217,6 +229,7 @@ extern uint16_t rdma_default_ud_mtu;
 extern uint8_t rdma_enable_hybrid;
 extern uint8_t rdma_enable_only_ud;
 extern uint8_t rdma_use_ud_zcopy;
+extern uint8_t rdma_ud_zcopy_enable_polling;
 extern uint32_t rdma_hybrid_enable_threshold;
 extern uint32_t rdma_default_max_ud_send_wqe;
 extern uint32_t rdma_default_max_ud_recv_wqe;
@@ -234,6 +247,7 @@ extern uint32_t rdma_ud_num_msg_limit;
 extern uint32_t rdma_ud_vbuf_pool_size;
 extern uint32_t rdma_ud_zcopy_threshold;
 extern uint32_t rdma_ud_zcopy_rq_size;
+extern uint32_t rdma_ud_zcopy_num_retry;
 extern uint16_t rdma_hybrid_max_rc_conn;
 extern uint16_t rdma_hybrid_pending_rc_conn;
 #ifdef _MV2_UD_DROP_PACKET_RATE_
@@ -282,6 +296,7 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_MAX_SG_LIST        (1)
 #define RDMA_DEFAULT_PKEY_IX            (0)
 #define RDMA_DEFAULT_PKEY               (0x0)
+#define RDMA_DEFAULT_QKEY               (0)
 #define RDMA_DEFAULT_MAX_RDMA_DST_OPS   (4)
 #define RDMA_DEFAULT_PSN                (0)
 #define RDMA_DEFAULT_MIN_RNR_TIMER      (12)
@@ -295,9 +310,13 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_IBA_NULL_HCA               "nohca"
 #define RDMA_DEFAULT_POLLING_SET_LIMIT  (64)
 #define RDMA_FP_DEFAULT_BUF_SIZE        (4096)
-#define MAX_NUM_HCAS                    (4)
+/* DGX-2 boxes have 8 or 9 HCAs. Updating MAX_NUM_HCAS to 10 */
+#define MAX_NUM_HCAS                    (10)
 #ifndef MAX_NUM_PORTS
-#define MAX_NUM_PORTS                   (2)
+/* Even multi-port HCAs are being detected as multiple, single
+ * port HCAS. Reduce MAX_NUM_PORTS to offset the increase in
+ * MAX_NUM_HCAS is going to have on on-demand messages */
+#define MAX_NUM_PORTS                   (1)
 #endif
 #ifndef MAX_NUM_QP_PER_PORT
 #define MAX_NUM_QP_PER_PORT             (2)
@@ -319,8 +338,9 @@ extern int rdma_default_async_thread_stack_size;
                                          MAX_NUM_PORTS* \
                                          MAX_NUM_QP_PER_PORT)
 
-#define RDMA_NDREG_ENTRIES              (1100)
-#define RDMA_NDREG_ENTRIES_MAX          (4096)
+#define RDMA_NDREG_ENTRIES              (8192)
+#define RDMA_NDREG_ENTRIES_MAX          (16384)
+#define RDMA_NDREG_ENTRIES_MIN          (4096)
 #define RDMA_VBUF_POOL_SIZE             (512)
 #define RDMA_OPT_VBUF_POOL_SIZE         (80)
 #define RDMA_UD_VBUF_POOL_SIZE          (8192)
@@ -339,7 +359,7 @@ extern int rdma_default_async_thread_stack_size;
 #define DEFAULT_MEDIUM_VBUF_SIZE         (5120)
 
 #ifdef _ENABLE_CUDA_
-#define DEFAULT_CUDA_VBUF_SIZES          {DEFAULT_SMALL_VBUF_SIZE, DEFAULT_MEDIUM_VBUF_SIZE, rdma_vbuf_total_size, rdma_cuda_block_size, rdma_cuda_block_size}
+#define DEFAULT_CUDA_VBUF_SIZES          {DEFAULT_SMALL_VBUF_SIZE, DEFAULT_MEDIUM_VBUF_SIZE, rdma_vbuf_total_size, mv2_device_stage_block_size, mv2_device_stage_block_size}
 #define DEFAULT_CUDA_VBUF_POOL_SIZE      {rdma_vbuf_pool_size, rdma_vbuf_pool_size, rdma_vbuf_pool_size, rdma_vbuf_pool_size, rdma_vbuf_pool_size}
 #define DEFAULT_CUDA_VBUF_SECONDARY_POOL_SIZE {rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size}
 #define DEFAULT_CUDA_BLOCK_SIZE          (262144)
@@ -355,6 +375,11 @@ extern int rdma_default_async_thread_stack_size;
 /* Inline not supported for PPC */
 #define HOSTNAME_LEN                    (255)
 #define RDMA_MAX_REGISTERED_PAGES       (0)
+
+/* SRQ related parameters */
+#define MV2_DEFAULT_SRQ_ALLOC_SIZE  32767
+#define MV2_DEFAULT_SRQ_FILL_SIZE   256
+#define MV2_DEFAULT_SRQ_LIMIT       30
 
 /* #define MIN(a,b) ((a)<(b)?(a):(b)) */
 
@@ -375,12 +400,6 @@ typedef enum _mv2_vbuf_pool_offsets {
 #endif /*_ENABLE_CUDA_*/
     MV2_MAX_NUM_VBUF_POOLS
 } mv2_vbuf_pool_offsets;
-
-typedef enum _mv2_iba_network_classes {
-    MV2_NETWORK_CLASS_UNKNOWN = 0,
-    MV2_NETWORK_CLASS_IB = 1,
-    MV2_NETWORK_CLASS_IWARP,
-} mv2_iba_network_classes;
 
 /* Below ROUND_ROBIN refers to the rails where the rails are alternately
  * given to any process asking for it. Where as FIXED_MAPPING refers
@@ -556,6 +575,7 @@ typedef enum mv2_env_param_id {
     MV2_DEFAULT_TIME_OUT,
     MV2_DEFAULT_MTU,
     MV2_DEFAULT_PKEY,
+    MV2_DEFAULT_QKEY,
     MV2_DEFAULT_PORT,
     MV2_DEFAULT_GID_INDEX,
     MV2_DEFAULT_PSN,
@@ -735,6 +755,7 @@ typedef enum mv2_env_param_id {
     MV2_UD_SENDWINDOW_SIZE,
     MV2_UD_VBUF_POOL_SIZE,
     MV2_UD_ZCOPY_RQ_SIZE,
+    MV2_UD_ZCOPY_NUM_RETRY,
     MV2_UD_ZCOPY_THRESHOLD,
     MV2_USE_UD_ZCOPY,
     MV2_USE_UD_HYBRID,

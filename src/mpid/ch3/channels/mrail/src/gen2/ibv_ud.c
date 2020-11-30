@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,7 @@
 #include "cm.h"
 #include "mv2_ud.h"
 #include "mv2_ud_inline.h"
+#include "ibv_send_inline.h"
 #include <debug_utils.h>
 
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
@@ -33,11 +34,12 @@ static inline void mv2_ud_flush_ext_window(MPIDI_VC_t *vc)
     while (q->head != NULL && 
             vc->mrail.rely.send_window.count < rdma_default_ud_sendwin_size) {
         next = (q->head)->extwin_msg.next;
-        mv2_MPIDI_CH3I_RDMA_Process.post_send(vc, q->head, (q->head)->rail);
+        post_send(vc, q->head, (q->head)->rail);
         PRINT_DEBUG(DEBUG_UD_verbose>1,"Send ext window message(%p) nextseqno :"
                 "%d\n", next, vc->mrail.seqnum_next_tosend);
         q->head = next;
         --q->count;
+        rdma_global_ext_sendq_size--;
         vc->mrail.rely.ext_win_send_count++;
     }
     if (q->head == NULL) {
@@ -63,7 +65,7 @@ static inline void mv2_ud_process_ack(MPIDI_VC_t *vc, uint16_t acknum)
 {
     vbuf *sendwin_head = vc->mrail.rely.send_window.head;
 
-    PRINT_DEBUG(DEBUG_UD_verbose>2,"ack: %d recieved from rank: %d, next_to_ack: %d\n", acknum, vc->pg_rank, vc->mrail.seqnum_next_toack);
+    PRINT_DEBUG(DEBUG_UD_verbose>2,"ack: %d received from rank: %d, next_to_ack: %d\n", acknum, vc->pg_rank, vc->mrail.seqnum_next_toack);
 
     while (sendwin_head != NULL && 
             INCL_BETWEEN (acknum, sendwin_head->seqnum, vc->mrail.seqnum_next_tosend))
@@ -224,6 +226,7 @@ static inline void mv2_ud_ext_sendq_send(MPIDI_VC_t *vc, mv2_ud_ctx_t *ud_ctx)
             ud_ctx->ext_send_queue.tail = NULL;
         }
         ud_ctx->ext_send_queue.count--;
+        rdma_global_ext_sendq_size--;
         v->desc.next = NULL;
 
         /* can we reset ack to latest? */
@@ -274,7 +277,7 @@ void mv2_ud_resend(vbuf *v)
 
     v->retry_count++;
     if (v->retry_count > rdma_ud_max_retry_count) {
-        PRINT_ERROR ("UD reliability error. Exeeced max retries(%d) "
+        PRINT_ERROR ("UD reliability error. Exceeded max retries(%d) "
                 "in resending the message(%p). current retry timeout(us): %lu. "
                 "This Error may happen on clusters based on the InfiniBand "
                 "topology and traffic patterns. Please try with increased "

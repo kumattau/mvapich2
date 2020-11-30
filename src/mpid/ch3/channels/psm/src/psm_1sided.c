@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -211,7 +211,7 @@ void psm_iput_rndv(int dest, void *buf, MPIDI_msg_sz_t buflen, int tag, int src,
     _psm_exit_;
 }
 
-/* used for fop, cas, fop response, cas resposne */
+/* used for fop, cas, fop response, cas response */
 int psm_1sided_atomicpkt(MPIDI_CH3_Pkt_t *pkt, MPL_IOV *iov, int iov_n, int rank,
                              int srank, MPID_Request **rptr)
 {
@@ -489,7 +489,7 @@ int psm_1sided_getaccumpkt(MPIDI_CH3_Pkt_get_accum_t *pkt, MPL_IOV *iov, int iov
         len = iov[iov_n-1].MPL_IOV_LEN;
         psm_iput_rndv(rank, iovp, len, pkt->rndv_tag, pkt->mapped_srank, rptr);
 
-        /*post rndv recieve for response*/
+        /*post rndv receive for response*/
         MPID_Request *resp_req = NULL, *orig_resp_req = NULL;
 
         MPID_Request_get_ptr(pkt->request_handle, orig_resp_req);
@@ -950,7 +950,7 @@ int psm_1sided_input(MPID_Request *req, MPIDI_msg_sz_t inlen)
             nreq = vc->ch.recv_active;
 
             if(MPIR_DATATYPE_IS_PREDEFINED(nreq->dev.datatype)) {
-                /*for contiguous buffer, ext_hdr has been copied insided accumulate packet handler function*/
+                /*for contiguous buffer, ext_hdr has been copied inside accumulate packet handler function*/
                 MPIU_Memcpy(nreq->dev.ext_hdr_ptr, (char *)ptr + sizeof(MPIDI_CH3_Pkt_t), nreq->dev.ext_hdr_sz);
                 MPIDI_CH3_ReqHandler_AccumMetadataRecvComplete(vc, nreq, &complete);
             }
@@ -1375,7 +1375,7 @@ static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *putreq, MPIDI_msg_sz_
     MAKE_PSM_SELECTOR(rtag, MPID_CONTEXT_RNDVPSM, rndv_tag,
                       source_rank);
 
-    /* if we're receiving non-contig addtitional processing needed */
+    /* if we're receiving non-contig additional processing needed */
     if(!MPIR_DATATYPE_IS_PREDEFINED(preq->dev.datatype)) {
         useraddr = psm_gen_packbuf(req, preq);
         rndv_len = req->pksz;

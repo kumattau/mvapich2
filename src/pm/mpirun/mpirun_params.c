@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -50,8 +50,8 @@ int aout_index = 0;
 
 /* xxx need to add checking for string overflow, do this more carefully ... */
 char *mpispawn_param_env = NULL;
-char *spawnfile;
-char *binary_dirname;
+char *spawnfile = NULL;
+char *binary_dirname = NULL;
 
 #if defined(USE_RSH)
 int use_rsh = 1;
@@ -174,6 +174,7 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 {
     int i;
     int c, option_index;
+    char *env_name = NULL;
 
     do {
         c = getopt_long_only(argc, argv, "+", option_table, &option_index);
@@ -344,7 +345,12 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     if (!hostfile_on) {
         /* get hostnames from argument list */
         if (strchr(argv[optind], '=') || argc - optind < nprocs + 1) {
-            sprintf(hostfile, "%s/.mpirun_hosts", env2str("HOME"));
+            env_name = env2str("HOME");
+            sprintf(hostfile, "%s/.mpirun_hosts", env_name);
+            if (env_name) {
+                free(env_name);
+                env_name = NULL;
+            }
             if (file_exists(hostfile)) {
                 hostfile_on = 1;
                 aout_index = optind;

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -132,8 +132,8 @@ typedef struct MPIDI_PG
        find a particular process group. */
     void * id;
 
-    /* Flag to mark a procress group which is finalizing. This means thay
-       the VCs for this process group are closing, (normally becuase
+    /* Flag to mark a process group which is finalizing. This means that
+       the VCs for this process group are closing, (normally because
        MPI_Finalize was called). This is required to avoid a reconnection
        of the VCs when the PG is closed due to unused elements in the event
        queue  */
@@ -516,7 +516,7 @@ extern MPIDI_Process_t MPIDI_Process;
 /* Note: In the current implementation, the mpid_xsend.c routines that
    make use of MPIDI_VC_FAI_send_seqnum are all protected by the 
    SINGLE_CS_ENTER/EXIT macros, so all uses of this macro are 
-   alreay within a critical section when needed.  If/when we move to
+   already within a critical section when needed.  If/when we move to
    a finer-grain model, we'll need to examine whether this requires
    a separate lock. */
 #if defined(MPID_USE_SEQUENCE_NUMBERS) || defined(CHANNEL_MRAIL)
@@ -838,17 +838,16 @@ typedef struct MPIDI_VC
     uint32_t rma_issued;
 #endif /* defined(CHANNEL_MRAIL) */
 
-    /* rendezvous function pointers.  Called to send a rendevous
+    /* rendezvous function pointers.  Called to send a rendezvous
        message or when one is matched */
     int (* rndvSend_fn)( struct MPID_Request **sreq_p, const void * buf, MPI_Aint count,
                          MPI_Datatype datatype, int dt_contig, MPIDI_msg_sz_t data_sz, 
                          MPI_Aint dt_true_lb, int rank, int tag,
                          struct MPID_Comm * comm, int context_offset );
     int (* rndvRecv_fn)( struct MPIDI_VC * vc, struct MPID_Request *rreq );
-    int (* eager_fast_fn)(struct MPIDI_VC* vc, const void * buf, MPIDI_msg_sz_t data_sz,
-                            int rank, int tag, MPID_Comm * comm, int context_offset, MPID_Request **sreq_p);
-    int (* eager_fast_rfp_fn)(struct MPIDI_VC* vc, const void * buf, MPIDI_msg_sz_t data_sz,
-                            int rank, int tag, MPID_Comm * comm, int context_offset, MPID_Request **sreq_p);
+    int use_eager_fast_fn;
+    int use_eager_fast_rfp_fn;
+    int use_smp_eager_fast_fn;
 
     /* eager message threshold */
     int eager_max_msg_sz;
@@ -962,8 +961,8 @@ extern MPIDI_CH3U_COLL_SRBuf_element_t * MPIDI_CH3U_COLL_SRBuf_pool;
         if (!MPIDI_CH3U_COLL_SRBuf_pool) {                                  \
             MPIDI_CH3U_COLL_SRBuf_pool = (MPIDI_CH3U_COLL_SRBuf_element_t *)\
                    MPIU_Malloc(sizeof(MPIDI_CH3U_COLL_SRBuf_element_t));    \
-            MPIU_Malloc_CUDA_HOST(MPIDI_CH3U_COLL_SRBuf_pool->buf,          \
-                            rdma_cuda_block_size);                          \
+            MPIU_Malloc_Device_Pinned_Host(MPIDI_CH3U_COLL_SRBuf_pool->buf, \
+                            mv2_device_stage_block_size);                   \
             MPIDI_CH3U_COLL_SRBuf_pool->next = NULL;                        \
         }                                                                   \
         srbuf = MPIDI_CH3U_COLL_SRBuf_pool;                                 \
@@ -1058,24 +1057,24 @@ extern MPIDI_CH3U_CUDA_SRBuf_element_t * MPIDI_CH3U_CUDA_SRBuf_pool;
         MPIDI_CH3U_CUDA_SRBuf_pool =                                    \
         MPIU_Malloc(sizeof(MPIDI_CH3U_CUDA_SRBuf_element_t));           \
         MPIDI_CH3U_CUDA_SRBuf_pool->next = NULL;                        \
-        MPIU_Malloc_CUDA(MPIDI_CH3U_CUDA_SRBuf_pool->buf,               \
+        MPIU_Malloc_Device(MPIDI_CH3U_CUDA_SRBuf_pool->buf,               \
                 MPIDI_CH3U_CUDA_SRBuf_size);                            \
     }                                                                   \
     tmp = MPIDI_CH3U_CUDA_SRBuf_pool;                                   \
     MPIDI_CH3U_CUDA_SRBuf_pool = MPIDI_CH3U_CUDA_SRBuf_pool->next;      \
     tmp->next = NULL;                                                   \
     (req_)->dev.tmpbuf = tmp->buf;                                      \
-    (req_)->dev.cuda_srbuf_entry = tmp;                                 \
+    (req_)->dev.device_srbuf_entry = tmp;                                 \
 }
 #endif
 #if !defined (MPIDI_CH3U_CUDA_SRBuf_free)
 #   define MPIDI_CH3U_CUDA_SRBuf_free(req_)                             \
 {                                                                       \
     MPIDI_CH3U_CUDA_SRBuf_element_t * tmp;                              \
-    tmp =  (req_)->dev.cuda_srbuf_entry;                                \
+    tmp =  (req_)->dev.device_srbuf_entry;                                \
     tmp->next = MPIDI_CH3U_CUDA_SRBuf_pool;                             \
     MPIDI_CH3U_CUDA_SRBuf_pool = tmp;                                   \
-    req->dev.cuda_srbuf_entry = NULL;                                   \
+    req->dev.device_srbuf_entry = NULL;                                   \
 }           
 #endif
 #if !defined(MPIDI_CH3U_CUDA_SRBuf_alloc)
@@ -1464,7 +1463,7 @@ int MPIDI_CH3I_Get_accumulate(const void *origin_addr, int origin_count,
     void MPIDI_CH3I_Progress_wakeup(void);
     /* MT TODO profiling is needed here.  We currently protect the completion
      * counter with the COMPLETION critical section, which could be a source of
-     * contention.  It should be possible to peform these updates atomically via
+     * contention.  It should be possible to perform these updates atomically via
      * OPA instead, but the additional complexity should be justified by
      * profiling evidence.  [goodell@ 2010-06-29] */
 #   define MPIDI_CH3_Progress_signal_completion()			\
@@ -1681,7 +1680,7 @@ void MPIDI_CH3U_Buffer_copy(const void * const sbuf, MPI_Aint scount,
 			    void * const rbuf, MPI_Aint rcount, MPI_Datatype rdt,
 			    MPIDI_msg_sz_t * rdata_sz, int * rmpi_errno);
 #ifdef _ENABLE_CUDA_
-void MPIDI_CH3U_Buffer_copy_cuda(const void * const sbuf, int scount,
+void MPIDI_CH3U_Buffer_copy_device(const void * const sbuf, int scount,
                             MPI_Datatype sdt, int * smpi_errno,
                             void * const rbuf, int rcount, MPI_Datatype rdt,
                             MPIDI_msg_sz_t * rdata_sz, int * rmpi_errno);
@@ -1738,7 +1737,7 @@ int MPIDI_CH3_GetParentPort(char ** parent_port_name);
 
 /*@
    MPIDI_CH3_FreeParentPort - This routine frees the storage associated with
-   a parent port (allocted with MPIDH_CH3_GetParentPort).
+   a parent port (allocated with MPIDH_CH3_GetParentPort).
 
   @*/
 void MPIDI_CH3_FreeParentPort( void );
@@ -2124,37 +2123,35 @@ int MPIDI_CH3_Req_handler_rma_op_complete(MPID_Request *);
 #if defined(CHANNEL_MRAIL)
 #if defined(_ENABLE_CUDA_)
 #if defined(HAVE_CUDA_IPC)
-void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank);
-void MPIDI_CH3_CUDAIPC_Rendezvous_recv(MPIDI_VC_t * vc, MPID_Request * rreq);
-void MPIDI_CH3_CUDAIPC_Rendezvous_push(MPIDI_VC_t * vc, MPID_Request * sreq);
-int MPIDI_CH3I_MRAIL_Prepare_rndv_recv_cuda_ipc_buffered(MPIDI_VC_t * vc, 
-                                            MPID_Request * rreq);
-int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc_buffered (MPIDI_VC_t * vc, 
-                                            MPID_Request * sreq); 
-int MPIDI_CH3I_MRAIL_Revert_rndv_cuda_ipc_buffered (MPIDI_VC_t * vc,
+void device_ipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank);
+void MPIDI_CH3_DEVICE_IPC_Rendezvous_recv(MPIDI_VC_t * vc, MPID_Request * rreq);
+void MPIDI_CH3_DEVICE_IPC_Rendezvous_push(MPIDI_VC_t * vc, MPID_Request * sreq);
+int MPIDI_CH3I_MRAIL_Prepare_rndv_device_ipc_buffered (MPIDI_VC_t * vc,
                                             MPID_Request * sreq);
-int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc (MPIDI_VC_t * vc, 
-                                            MPID_Request * sreq); 
-int MPIDI_CH3I_MRAIL_Rndv_transfer_cuda_ipc (MPIDI_VC_t * vc, 
-                                MPID_Request * rreq, 
+int MPIDI_CH3I_MRAIL_Revert_rndv_device_ipc_buffered (MPIDI_VC_t * vc,
+                                            MPID_Request * sreq);
+int MPIDI_CH3I_MRAIL_Prepare_rndv_device_ipc (MPIDI_VC_t * vc,
+                                            MPID_Request * sreq);
+int MPIDI_CH3I_MRAIL_Rndv_transfer_device_ipc (MPIDI_VC_t * vc,
+                                MPID_Request * rreq,
                                 MPIDI_CH3_Pkt_rndv_req_to_send_t *rts_pkt);
 #endif
-int MPIDI_CH3_Prepare_rndv_cts_cuda(MPIDI_VC_t * vc, 
+int MPIDI_CH3_Prepare_rndv_cts_device(MPIDI_VC_t * vc,
         MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt,
         MPID_Request * rreq);
 
-int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *);
-int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *);
-int MPIDI_CH3_ReqHandler_pack_cudabuf_stream(MPIDI_VC_t * vc, MPID_Request * rreq, int *, void *);
-int MPIDI_CH3_ReqHandler_unpack_cudabuf_stream(MPIDI_VC_t * vc, MPID_Request * rreq, int *, void *);
+int MPIDI_CH3_ReqHandler_pack_device(MPIDI_VC_t * vc, MPID_Request * rreq, int *);
+int MPIDI_CH3_ReqHandler_unpack_device(MPIDI_VC_t * vc, MPID_Request * rreq, int *);
+int MPIDI_CH3_ReqHandler_pack_device_stream(MPIDI_VC_t * vc, MPID_Request * rreq, int *, void *);
+int MPIDI_CH3_ReqHandler_unpack_device_stream(MPIDI_VC_t * vc, MPID_Request * rreq, int *, void *);
 
-void MPIDI_CH3I_CUDA_SMP_cuda_init(MPIDI_PG_t * pg);
-void MPIDI_CH3I_CUDA_SMP_cuda_finalize(MPIDI_PG_t * pg);
-void cuda_cleanup();
-void cuda_preinit(MPIDI_PG_t * pg);
-void cuda_init(MPIDI_PG_t * pg);
-void cuda_init_dynamic(MPIDI_PG_t * pg);
-void cudaipc_init_dynamic (MPIDI_VC_t *vc);
+void MPIDI_CH3I_CUDA_SMP_device_init(MPIDI_PG_t * pg);
+void MPIDI_CH3I_CUDA_SMP_device_finalize(MPIDI_PG_t * pg);
+void device_cleanup();
+void device_preinit(MPIDI_PG_t * pg);
+void device_init(MPIDI_PG_t * pg);
+void device_init_dynamic(MPIDI_PG_t * pg);
+void device_ipc_init_dynamic (MPIDI_VC_t *vc);
 #endif
 int MPIDI_CH3_ContigSend(MPID_Request **sreq_p,
                          MPIDI_CH3_Pkt_type_t reqtype,

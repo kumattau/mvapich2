@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -206,7 +206,7 @@ cvars:
       verbosity   : MPI_T_VERBOSITY_USER_BASIC
       scope       : MPI_T_SCOPE_ALL_EQ
       description : >-
-         This parameter determines the threshhold for message coalescing.
+         This parameter determines the threshold for message coalescing.
 
     - name        : USE_COALESCE
       category    : CH3
@@ -324,6 +324,8 @@ MPI_T_cvar_handle mv2_num_cqes_per_poll_handle = NULL;
 MPI_T_cvar_handle mv2_use_rdma_cm_handle = NULL;
 MPI_T_cvar_handle mv2_use_iwarp_mode_handle = NULL;
 MPI_T_cvar_handle mv2_support_dpm_handle = NULL;
+
+int mv2_set_force_arch_type();
 
 void mv2_free_cvar_handles()
 {
@@ -1026,10 +1028,6 @@ int mv2_set_use_mcast()
         if (!SMP_ONLY) {
             rdma_enable_mcast = !!read_value;
         } else {
-            PRINT_INFO(MPIDI_Process.my_pg_rank == 0 , "\nError setting CVAR:"
-                    " Multi-cast is only valid if we are either performing a"
-                    " multi-node job or if SMP only is disabled through one"
-                    " of many methods.\n");
             mpi_errno = MPI_ERR_INTERN;
             MPIR_ERR_POP(mpi_errno);
         }

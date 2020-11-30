@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,9 +18,7 @@
  */
 
 #include "mpiimpl.h"
-#ifdef _OSU_MVAPICH_
-#   include "coll_shmem.h"
-#endif /* _OSU_MVAPICH_ */
+#include "coll_shmem.h"
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -226,7 +224,7 @@ int MPIR_Scatter_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtype
         }
         
         /* This process is responsible for all processes that have bits
-           set from the LSB upto (but not including) mask.  Because of
+           set from the LSB up to (but not including) mask.  Because of
            the "not including", we start by shifting mask back down
            one. */
         
@@ -379,7 +377,7 @@ int MPIR_Scatter_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtype
         }
         
         /* This process is responsible for all processes that have bits
-           set from the LSB upto (but not including) mask.  Because of
+           set from the LSB up to (but not including) mask.  Because of
            the "not including", we start by shifting mask back down
            one. */
         

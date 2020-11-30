@@ -19,7 +19,7 @@ Functions to send/recv strings
 */
 
 /* sends a NUL-terminated string to a process,
- * allocates space and recieves a NUL-terminated string from a process,
+ * allocates space and receives a NUL-terminated string from a process,
  * can specify MPI_PROC_NULL as either send or recv rank */
 int scr_str_sendrecv(
   const char* send_str, int send_rank,

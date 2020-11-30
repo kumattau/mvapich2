@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -49,7 +49,7 @@ cvars:
       description : >-
         Size (in bytes) of available lock data this window can provided. If
         current buffered lock data is more than this value, the process will
-        drop the upcoming operation data. Requires a positive calue.
+        drop the upcoming operation data. Requires a positive value.
 
 === END_MPI_T_CVAR_INFO_BLOCK ===
 */
@@ -347,6 +347,8 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     (*win_ptr)->node_comm_ptr       = NULL;
 #endif /* defined(CHANNEL_MRAIL) */
 #ifdef _SMP_LIMIC_
+    /* FIXME: disable LiMIC2 when one-sided operations could be involved; see issue #1444 */
+    g_smp_use_limic2 = 0;
     mv2_MPIDI_CH3I_RDMA_Process.g_smp_can_fallback = 0;
 #endif
 #if defined (CHANNEL_PSM)

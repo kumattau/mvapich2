@@ -1,4 +1,4 @@
-# Copyright (c) 2001-2019, The Ohio State University. All rights
+# Copyright (c) 2001-2020, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -31,8 +31,8 @@
 **ch3|postrecv:failure occurred while posting a receive for message data
 **ch3|rmamsg:failure occurred while attempting to send an RMA message
 # <_OSU_MVAPICH_>
-**ch3|rndv:failure occured while preparing rendezvous transfer
-**ch3|rmarndvmsg:failure occured while MPIDI_CH3I_Send_rma_msg
+**ch3|rndv:failure occurred while preparing rendezvous transfer
+**ch3|rmarndvmsg:failure occurred while MPIDI_CH3I_Send_rma_msg
 # </_OSU_MVAPICH_>
 **ch3|rtspkt:failure occurred while attempting to send RTS packet
 **ch3|senddata:failure occurred while attempting to send message data

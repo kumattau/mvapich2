@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,6 +16,9 @@
 
 #include "mpidimpl.h"
 #include "mpidi_recvq_statistics.h"
+#if defined(CHANNEL_MRAIL)
+#include "ibv_send_inline.h"
+#endif
 
 /*
  * Send an eager message.  To optimize for the important, short contiguous
@@ -54,10 +57,10 @@ int MPIDI_CH3_SendNoncontig_iov( MPIDI_VC_t *vc, MPID_Request *sreq,
 
     mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq, &iov[1], &iov_n);
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && sreq->dev.OnDataAvail == 
-                        MPIDI_CH3_ReqHandler_pack_cudabuf) {
+    if (mv2_enable_device && sreq->dev.OnDataAvail ==
+                        MPIDI_CH3_ReqHandler_pack_device) {
         int complete ATTRIBUTE((unused));
-        MPIDI_CH3_ReqHandler_pack_cudabuf_stream(vc, sreq, &complete, NULL);
+        MPIDI_CH3_ReqHandler_pack_device_stream(vc, sreq, &complete, NULL);
         iov[1].MPL_IOV_BUF = (MPL_IOV_BUF_CAST)sreq->dev.tmpbuf;
         iov[1].MPL_IOV_LEN = sreq->dev.segment_size;
         iov_n = 1;
@@ -144,11 +147,11 @@ int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p,
     MPIDI_Request_set_seqnum(sreq, seqnum);
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    eager_pkt->in_cuda_region = 0;
-    if (rdma_enable_cuda && rdma_cuda_smp_ipc && 
+    eager_pkt->in_device_region = 0;
+    if (mv2_enable_device && mv2_device_use_smp_eager_ipc &&
             SMP_INIT && vc->smp.local_nodes >= 0 &&
-            vc->smp.can_access_peer == CUDA_IPC_ENABLED && is_device_buffer((void *)buf)) {
-        eager_pkt->in_cuda_region = 1;
+            vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED && is_device_buffer((void *)buf)) {
+        eager_pkt->in_device_region = 1;
     }
 #endif
 
@@ -246,11 +249,11 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
     MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    eager_pkt->in_cuda_region = 0;
-    if (rdma_enable_cuda && rdma_cuda_smp_ipc && 
+    eager_pkt->in_device_region = 0;
+    if (mv2_enable_device && mv2_device_use_smp_eager_ipc &&
             SMP_INIT && vc->smp.local_nodes >= 0 &&
-            vc->smp.can_access_peer == CUDA_IPC_ENABLED && is_device_buffer((void *)buf)) {
-        eager_pkt->in_cuda_region = 1;
+            vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED && is_device_buffer((void *)buf)) {
+        eager_pkt->in_device_region = 1;
     }
 #endif
     
@@ -314,14 +317,8 @@ int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p,
 #if defined(CHANNEL_MRAIL)
     {
         MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
-
-        if (vc->eager_fast_rfp_fn) {
-            mpi_errno = vc->eager_fast_rfp_fn(vc, buf, data_sz, rank,
-				                                tag, comm, context_offset, sreq_p);
-        } else {
-            mpi_errno = vc->eager_fast_fn(vc, buf, data_sz, rank, 
-				                            tag, comm, context_offset, sreq_p);
-        }
+	
+	mpi_errno = mv2_eager_fast_wrapper(vc, buf, data_sz, rank, tag, comm, context_offset, sreq_p);
         if (sreq) {
             MPIU_Object_set_ref(sreq, 1);
             MPID_cc_set(&sreq->cc, 0);
@@ -679,11 +676,11 @@ int MPIDI_CH3_EagerContigIsend( MPID_Request **sreq_p,
     MPIDI_Request_set_seqnum(sreq, seqnum);
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    eager_pkt->in_cuda_region = 0;
-    if (rdma_enable_cuda && rdma_cuda_smp_ipc && 
+    eager_pkt->in_device_region = 0;
+    if (mv2_enable_device && mv2_device_use_smp_eager_ipc &&
             SMP_INIT && vc->smp.local_nodes >= 0 &&
-            vc->smp.can_access_peer == CUDA_IPC_ENABLED && is_device_buffer((void *)buf)) {
-        eager_pkt->in_cuda_region = 1;
+            vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED && is_device_buffer((void *)buf)) {
+        eager_pkt->in_device_region = 1;
     }
 #endif
     
@@ -741,7 +738,7 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     int my_rank = 0, contig_avail = 0;
-    smpi_cu_ipc_attr *rem_base;
+    smpi_device_ipc_attr *rem_base;
     int cur_t;
     MPIDI_VC_t *my_vc;
 #endif
@@ -776,36 +773,30 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
 #if defined(CHANNEL_MRAIL)
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     if (vc->smp.local_nodes != -1
-            && eager_pkt->in_cuda_region == 1
+            && eager_pkt->in_device_region == 1
             && rreq->dev.recv_data_sz > 0
-            && rdma_enable_cuda
-            && rdma_cuda_smp_ipc
-            && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+            && mv2_enable_device
+            && mv2_device_use_smp_eager_ipc
+            && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
 
         *buflen = eager_pkt->data_sz;
         data_len = ((*buflen >= rreq->dev.recv_data_sz)
                 ? rreq->dev.recv_data_sz : *buflen );
 
-        if (cuStreamWaitEvent(0, sr_event_local[vc->pg_rank], 0) != CUDA_SUCCESS) {
-            PRINT_ERROR("Error in cuStreamWaitEvent\n");
-            exit(1);
-        }
+        MPIU_Device_StreamWaitEvent(0, sr_event_local[vc->pg_rank], 0);
         MPIDI_PG_Get_vc(MPIDI_Process.my_pg, MPIDI_Process.my_pg_rank, &my_vc);
         my_rank = my_vc->smp.local_nodes;
         rem_base = g_smpi_shmem->cu_attrbs[vc->smp.local_nodes];
-        cur_t = ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail;
-        contig_avail = smp_cuda_region_size - cur_t;
+        cur_t = ((smpi_device_ipc_attr *)rem_base + my_rank)->device_tail;
+        contig_avail = smp_device_region_size - cur_t;
 
         if (contig_avail >= data_len) {
-            data_buf = (void *) ((unsigned long)smp_cuda_region_recv[vc->smp.local_nodes] + cur_t);
+            data_buf = (void *) ((unsigned long)smp_device_region_recv[vc->smp.local_nodes] + cur_t);
             cur_t += data_len;
         }
         else {
-            data_buf = smp_cuda_region_recv[vc->smp.local_nodes];
-            if (cuEventRecord(loop_event[vc->pg_rank], 0) != CUDA_SUCCESS) {
-                PRINT_ERROR("cudaEventRecord failed in writev_contig\n");
-                exit(-1);
-            }
+            data_buf = smp_device_region_recv[vc->smp.local_nodes];
+            MPIU_Device_EventRecord(loop_event[vc->pg_rank], 0);
             cur_t = 0;
         }
     } else 
@@ -847,12 +838,12 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
         /* return the number of bytes processed in this function */
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-   if (rdma_enable_cuda && rdma_cuda_smp_ipc && eager_pkt->in_cuda_region == 1
-       && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+   if (mv2_enable_device && mv2_device_use_smp_eager_ipc && eager_pkt->in_device_region == 1
+       && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
        if (0 == cur_t) {
-           ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail = data_len;
+           ((smpi_device_ipc_attr *)rem_base + my_rank)->device_tail = data_len;
        } else {
-           ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail += data_len;
+           ((smpi_device_ipc_attr *)rem_base + my_rank)->device_tail += data_len;
        }
        data_len = 0;
    }
@@ -869,8 +860,8 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
    if (complete) 
    {
 #if defined(_ENABLE_CUDA_)
-       if (rdma_enable_cuda && 
-            rreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_unpack_cudabuf) {
+       if (mv2_enable_device &&
+            rreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_unpack_device) {
            mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, rreq, &complete);
            if (mpi_errno != MPI_SUCCESS) {
                MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**ch3|postrecv",
@@ -915,7 +906,7 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, void *
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     int my_rank = 0, contig_avail = 0;
-    smpi_cu_ipc_attr *rem_base;
+    smpi_device_ipc_attr *rem_base;
     int cur_t = 0;
     MPIDI_VC_t *my_vc;
 #endif
@@ -957,32 +948,26 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, void *
 #endif
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    if (vc->smp.local_nodes != -1 && eager_pkt->in_cuda_region == 1 &&
-            rreq->dev.recv_data_sz > 0 && rdma_enable_cuda && rdma_cuda_smp_ipc
-            && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+    if (vc->smp.local_nodes != -1 && eager_pkt->in_device_region == 1 &&
+            rreq->dev.recv_data_sz > 0 && mv2_enable_device && mv2_device_use_smp_eager_ipc
+            && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
 
         *buflen += eager_pkt->data_sz;
         data_len = ((*buflen - sizeof(MPIDI_CH3_Pkt_t) >= rreq->dev.recv_data_sz)
                 ? rreq->dev.recv_data_sz : *buflen - sizeof(MPIDI_CH3_Pkt_t));
-        if (cuStreamWaitEvent(0, sr_event_local[vc->pg_rank], 0) != CUDA_SUCCESS) {
-            PRINT_ERROR("Error in cuStreamWaitEvent\n");
-            exit(1);
-        }
+        MPIU_Device_StreamWaitEvent(0, sr_event_local[vc->pg_rank], 0);
         MPIDI_PG_Get_vc(MPIDI_Process.my_pg, MPIDI_Process.my_pg_rank, &my_vc);
         my_rank = my_vc->smp.local_nodes;
         rem_base = g_smpi_shmem->cu_attrbs[vc->smp.local_nodes];
-        cur_t = ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail;
-        contig_avail = smp_cuda_region_size - cur_t;
+        cur_t = ((smpi_device_ipc_attr *)rem_base + my_rank)->device_tail;
+        contig_avail = smp_device_region_size - cur_t;
         if (contig_avail >= data_len) {
-            data_buf = (void *) ((unsigned long)smp_cuda_region_recv[vc->smp.local_nodes] + cur_t);
+            data_buf = (void *) ((unsigned long)smp_device_region_recv[vc->smp.local_nodes] + cur_t);
             cur_t += data_len;
         }
         else {
-            data_buf = smp_cuda_region_recv[vc->smp.local_nodes];
-            if (cuEventRecord(loop_event[vc->pg_rank], 0) != CUDA_SUCCESS) {
-                PRINT_ERROR("cudaEventRecord failed in writev_contig\n");
-                exit(-1);
-            }
+            data_buf = smp_device_region_recv[vc->smp.local_nodes];
+            MPIU_Device_EventRecord(loop_event[vc->pg_rank], 0);
             cur_t = 0;
         }
     } else
@@ -1017,12 +1002,12 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, void *
         /* return the number of bytes processed in this function */
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-        if (rdma_enable_cuda && rdma_cuda_smp_ipc && eager_pkt->in_cuda_region == 1
-                && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+        if (mv2_enable_device && mv2_device_use_smp_eager_ipc && eager_pkt->in_device_region == 1
+                && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
             if (0 == cur_t) {
-                ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail = data_len;
+                ((smpi_device_ipc_attr *)rem_base + my_rank)->device_tail = data_len;
             } else {
-                ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail += data_len;
+                ((smpi_device_ipc_attr *)rem_base + my_rank)->device_tail += data_len;
             }
             data_len = 0;
         }
@@ -1032,8 +1017,8 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, void *
 
         if (complete) {
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda && 
-                    rreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_unpack_cudabuf) {
+            if (mv2_enable_device &&
+                    rreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_unpack_device) {
                 mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, rreq, &complete);
                 if (mpi_errno != MPI_SUCCESS) {
                     MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**ch3|postrecv",

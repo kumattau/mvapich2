@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2019, The Ohio State University. All rights
+ * Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -142,13 +142,15 @@
 #include "alltoall/gen2_cma_AMD_EPYC_16ppn.h"
 #include "alltoall/gen2_cma_AMD_EPYC_32ppn.h"
 #include "alltoall/gen2_cma_AMD_EPYC_64ppn.h"
+#include "alltoall/gen2_cma_AMD_EPYC_VENUS_64ppn.h"
 #include "alltoall/gen2_cma_AMD_EPYC_ROME_1ppn.h"
-#include "alltoall/gen2_cma_AMD_EPYC_ROME_2ppn.h"
 #include "alltoall/gen2_cma_AMD_EPYC_ROME_4ppn.h"
 #include "alltoall/gen2_cma_AMD_EPYC_ROME_8ppn.h"
 #include "alltoall/gen2_cma_AMD_EPYC_ROME_16ppn.h"
 #include "alltoall/gen2_cma_AMD_EPYC_ROME_32ppn.h"
 #include "alltoall/gen2_cma_AMD_EPYC_ROME_64ppn.h"
+#include "alltoall/gen2_cma_AMD_EPYC_ROME_120ppn.h"
+#include "alltoall/gen2_cma_AMD_EPYC_ROME_128ppn.h"
 #include "alltoall/gen2_cma_NOWHASWELL_1ppn.h"
 #include "alltoall/gen2_cma_NOWHASWELL_2ppn.h"
 #include "alltoall/gen2_cma_NOWHASWELL_4ppn.h"
@@ -178,3 +180,10 @@
 #include "alltoall/gen2_cma_ARM_CAVIUM_V8_2S_32_MLX_CX_EDR_16ppn.h"
 #include "alltoall/gen2_cma_ARM_CAVIUM_V8_2S_32_MLX_CX_EDR_32ppn.h"
 #include "alltoall/gen2_cma_ARM_CAVIUM_V8_2S_32_MLX_CX_EDR_64ppn.h"
+#include "alltoall/gen2_cma_AMD_EPYC_7401_24_1ppn.h"
+#include "alltoall/gen2_cma_AMD_EPYC_7401_24_2ppn.h"
+#include "alltoall/gen2_cma_AMD_EPYC_7401_24_4ppn.h"
+#include "alltoall/gen2_cma_AMD_EPYC_7401_24_8ppn.h"
+#include "alltoall/gen2_cma_AMD_EPYC_7401_24_16ppn.h"
+#include "alltoall/gen2_cma_AMD_EPYC_7401_24_32ppn.h"
+#include "alltoall/gen2_cma_AMD_EPYC_7401_24_48ppn.h"

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -46,21 +46,21 @@ static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PREPARE_RNDV);
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    if (rdma_enable_cuda
-        && rdma_cuda_ipc) {
-        if (cudaipc_stage_buffered &&
-            sreq->dev.iov[0].MPL_IOV_LEN < cudaipc_stage_buffered_limit) {
-            if (MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc_buffered (vc, sreq)) {
+    if (mv2_enable_device
+        && mv2_device_use_ipc) {
+        if (mv2_device_use_ipc_stage_buffer &&
+            sreq->dev.iov[0].MPL_IOV_LEN < mv2_device_ipc_stage_buffer_limit) {
+            if (MPIDI_CH3I_MRAIL_Prepare_rndv_device_ipc_buffered (vc, sreq)) {
                 goto fn_exit;
             }
         } else {
-            if (MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc (vc, sreq)) {
+            if (MPIDI_CH3I_MRAIL_Prepare_rndv_device_ipc (vc, sreq)) {
                 goto fn_exit;
             }
         }
     }
-    /* Use R3 for intra-node D-D transfer if CUDA IPC is not avaliable */
-    if (rdma_enable_cuda && IS_VC_SMP(vc) && sreq->mrail.cuda_transfer_mode != NONE) {
+    /* Use R3 for intra-node D-D transfer if CUDA IPC is not available */
+    if (mv2_enable_device && IS_VC_SMP(vc) && sreq->mrail.device_transfer_mode != NONE) {
         sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
         goto fn_exit;
     }
@@ -107,13 +107,6 @@ int MPIDI_CH3_iStartRndvMsg(MPIDI_VC_t * vc,
         PRINT_DEBUG(DEBUG_RNDV_verbose>1,
                 "Sending RTS to: %d, sreq: %p, protocol: %d, buf: %p, rndv_buf_alloc: %d\n",
                 vc->pg_rank, sreq, sreq->mrail.protocol, sreq->mrail.rndv_buf, sreq->mrail.rndv_buf_alloc);
-
-        if(1 == sreq->mrail.rndv_buf_alloc) {
-            MPIDI_CH3I_MRAIL_REVERT_RPUT(sreq);
-            if (MV2_RNDV_PROTOCOL_RGET == rndv_pkt->rndv.protocol) {
-                rndv_pkt->rndv.protocol = MV2_RNDV_PROTOCOL_RPUT;
-            }
-        }
 
         if ((mpi_errno = MPIDI_CH3_iStartMsg(
             vc,
@@ -322,7 +315,12 @@ int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t * vc,
     if (IS_VC_SMP(vc)) {
         sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
     } else {
-        sreq->mrail.protocol = MV2_RNDV_PROTOCOL_RPUT;
+#ifdef _ENABLE_UD_
+        if (vc->mrail.state & MRAILI_RC_CONNECTED)
+#endif /*ifdef _ENABLE_UD_*/
+        {
+            sreq->mrail.protocol = MV2_RNDV_PROTOCOL_RPUT;
+        }
     }
 
 #ifdef _ENABLE_UD_

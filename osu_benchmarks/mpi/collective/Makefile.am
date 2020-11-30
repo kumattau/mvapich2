@@ -1,10 +1,11 @@
 AUTOMAKE_OPTIONS = subdir-objects
 
 NVCC = nvcc
-NVCFLAGS = -cuda -maxrregcount 32 -ccbin $(CXX)
+NVCFLAGS = -cuda -maxrregcount 32 -ccbin $(CXX) $(NVCCFLAGS)
 SUFFIXES = .cu .cpp
 .cu.cpp:
-	$(NVCC) $(NVCFLAGS) $(INCLUDES) $(CPPFLAGS) --output-file $@ $<
+	$(NVCC) $(NVCFLAGS) $(INCLUDES) $(CPPFLAGS) --output-file $@.ii $<
+	mv $@.ii $@
 
 collectivedir = $(pkglibexecdir)/mpi/collective
 collective_PROGRAMS = osu_alltoallv osu_allgatherv osu_scatterv osu_gatherv osu_reduce_scatter osu_barrier osu_reduce osu_allreduce osu_alltoall osu_bcast osu_gather osu_allgather osu_scatter osu_iallgather osu_ibcast  osu_ialltoall osu_ibarrier osu_igather osu_iscatter osu_iscatterv osu_igatherv osu_iallgatherv osu_ialltoallv osu_ialltoallw osu_ireduce osu_iallreduce

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -49,7 +49,8 @@ struct sharp_reduce_datatyepe_size {
 };
 
 struct coll_sharp_component_t {
-        struct sharp_coll_context *sharp_coll_context;
+    struct sharp_coll_context *sharp_coll_context;
+    struct sharp_coll_caps sharp_caps;
 };
 typedef struct coll_sharp_component_t coll_sharp_component_t;
 
@@ -65,9 +66,12 @@ typedef struct sharp_info sharp_info_t;
 void  mv2_get_sharp_datatype(MPI_Datatype  mpi_datatype, struct
         sharp_reduce_datatyepe_size ** dt_size_out); 
 enum sharp_reduce_op mv2_get_sharp_reduce_op(MPI_Op mpi_op); 
-int     mv2_sharp_coll_init(sharp_conf_t *sharp_conf, int rank);
+int     mv2_sharp_coll_init(sharp_conf_t *sharp_conf, int rank, int local_rank);
 int     mv2_setup_sharp_env(sharp_conf_t *sharp_conf, MPI_Comm comm);
 int     mv2_sharp_coll_comm_init(coll_sharp_module_t *sharp_module);
 char *  sharp_create_hostlist(MPI_Comm comm);
 int     mv2_free_sharp_handlers (sharp_info_t * sharp_info);
+
+#define MV2_SHARP_DIRECT_ALGO_MAX_PROC 0
+
 #endif /* _IBV_SHARP_H_ */

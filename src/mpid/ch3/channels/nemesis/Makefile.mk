@@ -8,7 +8,8 @@
 if BUILD_CH3_NEMESIS
 
 AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/nemesis/include   \
-               -I$(top_builddir)/src/mpid/ch3/channels/nemesis/include
+               -I$(top_builddir)/src/mpid/ch3/channels/nemesis/include \
+			   -I$(top_srcdir)/src/mpi/coll
 
 noinst_HEADERS +=							\
     src/mpid/ch3/channels/nemesis/include/mpidi_ch3_impl.h		\

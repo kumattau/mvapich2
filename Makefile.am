@@ -200,7 +200,11 @@ lib_lib@MPICXXLIBNAME@_la_LIBADD = lib/lib@MPILIBNAME@.la
 endif BUILD_CXX_BINDING
 
 if BUILD_OSU_MVAPICH
-SUBDIRS += contrib/hwloc
+if BUILD_HWLOC_v1
+SUBDIRS += contrib/hwloc_v1
+else
+SUBDIRS += contrib/hwloc_v2
+endif
 endif
 
 # build the current directory and then the examples directory after everything else
@@ -211,8 +215,13 @@ endif
 DIST_SUBDIRS += . examples test
 
 if BUILD_OSU_MVAPICH
-AM_CPPFLAGS += -Icontrib/hwloc/include/ -I$(top_srcdir)/contrib/hwloc/include
-lib_lib@MPILIBNAME@_la_LIBADD += contrib/hwloc/src/libhwloc_embedded.la
+if BUILD_HWLOC_v1
+AM_CPPFLAGS += -Icontrib/hwloc_v1/include/ -I$(top_srcdir)/contrib/hwloc_v1/include
+lib_lib@MPILIBNAME@_la_LIBADD += contrib/hwloc_v1/src/libhwloc_embedded.la
+else
+AM_CPPFLAGS += -Icontrib/hwloc_v2/include/ -I$(top_srcdir)/contrib/hwloc_v2/include
+lib_lib@MPILIBNAME@_la_LIBADD += contrib/hwloc_v2/hwloc/libhwloc_embedded.la
+endif
 endif
 
 EXTRA_DIST += README CHANGES COPYRIGHT README.envvar

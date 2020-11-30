@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -328,7 +328,7 @@ int limic_init(void)
     mutex_init(&limic_lock);
 #endif
 
-    printk("LiMIC: module is successfuly loaded.\n");
+    printk("LiMIC: module is successfully loaded.\n");
     printk("LiMIC: device major number: %d.\n", MAJOR(limic_devnum));
 #ifndef CREATE_LIMIC_DEVICE
     printk("LiMIC: use 'mknod /dev/%s c %d 0' to create the device file.\n",

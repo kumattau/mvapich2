@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -13,6 +13,7 @@
 #ifndef __IB_COMM__
 #define __IB_COMM__
 
+#include <mpichconf.h>
 #include "thread_pool.h"
 #include "bitmap.h"
 
@@ -21,6 +22,9 @@
 
 #include "ckpt_file.h"
 #include "openhash.h"
+#ifdef _ENABLE_IBV_DLOPEN_
+#include <dlfcn.h>
+#endif /*_ENABLE_IBV_DLOPEN_*/
 
 #define USE_MPI                 // undef it if we dont need multiple client nodes
 #undef USE_MPI
@@ -30,6 +34,98 @@
 #define        MAX_QP_PER_CONNECTION    (16)
 
 #define     BUF_SLOT_COUNT    (256)
+
+#define MPIRUN_STRIGIFY(v_) #v_
+
+#ifdef _ENABLE_IBV_DLOPEN_
+#define MPIRUN_DLSYM(_struct_, _handle_, _prefix_, _function_)              \
+do {                                                                        \
+    _struct_._function_ = dlsym((_handle_),                                 \
+                                MPIRUN_STRIGIFY(_prefix_##_##_function_));  \
+    if (_struct_._function_ == NULL) {                                      \
+        fprintf(stderr, "Error opening %s: %s. Falling back.\n",            \
+                MPIRUN_STRIGIFY(_prefix_##_##_function_), dlerror());       \
+    }                                                                       \
+} while (0)
+#else /* _ENABLE_IBV_DLOPEN_ */
+#define MPIRUN_DLSYM(_struct_, _handle_, _prefix_, _function_)              \
+do {                                                                        \
+    _struct_._function_ = _prefix_##_##_function_;                          \
+} while (0)
+#endif /*_ENABLE_IBV_DLOPEN_*/
+
+typedef enum dl_err_t {
+    SUCCESS_DLOPEN = 0,
+    ERROR_DLOPEN = -1,
+    ERROR_DLSYM = -2
+} dl_err_t;
+
+/* Structure to abstract calls to verbs library */
+typedef struct _mpirun_ibv_ops_t {
+    /* Functions to manipulate list of devices */
+    struct ibv_device** (*get_device_list)(int *num_devices);
+    const char* (*get_device_name)(struct ibv_device *device);
+    void (*free_device_list)(struct ibv_device **list);
+    /* Functions to manipulate device context */
+    struct ibv_context* (*open_device)(struct ibv_device *device);
+    int (*close_device)(struct ibv_context *context);
+    /* Functions to manipulate completion channel */
+    struct ibv_comp_channel* (*create_comp_channel)(struct ibv_context *context);
+    int (*destroy_comp_channel)(struct ibv_comp_channel *channel);
+    /* Functions to manipulate PD */
+    struct ibv_pd* (*alloc_pd)(struct ibv_context *context);
+    int (*dealloc_pd)(struct ibv_pd *pd);
+    /* Functions to manipulate CQ */
+    struct ibv_cq* (*create_cq)(struct ibv_context *context, int cqe,
+                                void *cq_context, struct ibv_comp_channel *channel,
+                                int comp_vector);
+    int (*resize_cq)(struct ibv_cq *cq, int cqe);
+    int (*get_cq_event)(struct ibv_comp_channel *channel, struct ibv_cq **cq,
+                        void **cq_context);
+    void (*ack_cq_events)(struct ibv_cq *cq, unsigned int nevents);
+    int (*destroy_cq)(struct ibv_cq *cq);
+    /* Functions to manipulate QP */
+    struct ibv_qp* (*create_qp)(struct ibv_pd *pd,
+                                struct ibv_qp_init_attr *qp_init_attr);
+    int (*query_qp)(struct ibv_qp *qp, struct ibv_qp_attr *attr,
+                    int attr_mask, struct ibv_qp_init_attr *init_attr);
+    int (*modify_qp)(struct ibv_qp *qp, struct ibv_qp_attr *attr,
+                    int attr_mask);
+    int (*destroy_qp)(struct ibv_qp *qp);
+    /* Functions to manipulate SRQ */
+    struct ibv_srq* (*create_srq)(struct ibv_pd *pd, struct
+                               ibv_srq_init_attr *srq_init_attr);
+    int (*query_srq)(struct ibv_srq *srq, struct ibv_srq_attr *srq_attr);
+    int (*modify_srq)(struct ibv_srq *srq,
+                    struct ibv_srq_attr *srq_attr,
+                    int srq_attr_mask);
+    int (*destroy_srq)(struct ibv_srq *srq);
+    /* Functions to manipulate AH */
+    struct ibv_ah* (*create_ah)(struct ibv_pd *pd, struct ibv_ah_attr *attr);
+    int (*destroy_ah)(struct ibv_ah *ah);
+    /* Functions to query hardware */
+    int (*query_device)(struct ibv_context *context,
+                     struct ibv_device_attr *device_attr);
+    int (*query_port)(struct ibv_context *context, uint8_t port_num,
+                      struct ibv_port_attr *port_attr);
+    int (*query_gid)(struct ibv_context *context, uint8_t port_num,
+                    int index, union ibv_gid *gid);
+    int (*query_pkey)(struct ibv_context *context, uint8_t port_num,
+                    int index, uint16_t *pkey);
+    /* Functions to manipulate MR */
+    struct ibv_mr* (*reg_mr)(struct ibv_pd *pd, void *addr,
+                            size_t length, int access);
+    int (*dereg_mr)(struct ibv_mr *mr);
+    int (*fork_init)(void);
+    /* Functions related to debugging events */
+    const char* (*event_type_str)(enum ibv_event_type event_type);
+    const char* (*node_type_str)(enum ibv_node_type node_type);
+    const char* (*port_state_str)(enum ibv_port_state port_state);
+    const char* (*wc_status_str)(enum ibv_wc_status status);
+} mpirun_ibv_ops_t;
+
+extern mpirun_ibv_ops_t mpirun_ibv_ops;
+extern void *mpirun_ibv_dl_handle;
 
 // endpoint of a QP
 typedef struct qp_endpoint {
@@ -268,5 +364,63 @@ void pass_hash_table(hash_table_t * ht);
 
 int ib_connection_post_RR(struct ib_connection *conn, int qpidx, ib_packet_t * rrpkt);
 int ib_connection_send_chunk_RR_rqst(struct ib_connection *conn, ckpt_file_t * cfile, ckpt_chunk_t * chunk, void *arg);
+
+/* Calls to create abstractions */
+static inline int mv2_mpirun_ibv_dlopen_init()
+{
+#ifdef _ENABLE_IBV_DLOPEN_
+    mpirun_ibv_dl_handle = dlopen("libibverbs.so", RTLD_NOW);
+    if (!mpirun_ibv_dl_handle) {
+        return ERROR_DLOPEN;
+    }
+#endif /*_ENABLE_IBV_DLOPEN_*/
+
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, get_device_list);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, get_device_name);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, free_device_list);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, open_device);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, close_device);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, create_comp_channel);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, destroy_comp_channel);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, alloc_pd);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, dealloc_pd);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, create_cq);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, resize_cq);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, get_cq_event);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, ack_cq_events);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, destroy_cq);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, create_qp);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, query_qp);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, modify_qp);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, destroy_qp);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, create_srq);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, query_srq);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, modify_srq);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, destroy_srq);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, create_ah);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, destroy_ah);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, query_device);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, query_port);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, query_gid);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, query_pkey);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, reg_mr);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, dereg_mr);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, event_type_str);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, node_type_str);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, port_state_str);
+    MPIRUN_DLSYM(mpirun_ibv_ops, mpirun_ibv_dl_handle, ibv, wc_status_str);
+
+    return SUCCESS_DLOPEN;
+}
+
+/* Calls to finalize abstractions */
+static inline void mv2_mpirun_ibv_dlopen_finalize()
+{
+#ifdef _ENABLE_IBV_DLOPEN_
+    if (mpirun_ibv_dl_handle) {
+        dlclose(mpirun_ibv_dl_handle);
+    }
+#endif /*_ENABLE_IBV_DLOPEN_*/
+}
 
 #endif                          // __IB_COMM__

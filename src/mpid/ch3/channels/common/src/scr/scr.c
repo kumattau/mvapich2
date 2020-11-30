@@ -9,7 +9,7 @@
  * Please also read this file: LICENSE.TXT.
 */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -570,7 +570,7 @@ static int scr_get_params()
     scr_preserve_directories = atoi(value);
   }
 
-  /* wether to store files in containers when flushing to file system */
+  /* whether to store files in containers when flushing to file system */
   if ((value = scr_param_get("SCR_USE_CONTAINERS")) != NULL) {
     scr_use_containers = atoi(value);
 
@@ -635,7 +635,7 @@ static int scr_get_params()
   scr_prefix = scr_path_strdup(scr_prefix_path);
 
   /* connect to the SCR log database if enabled */
-  /* NOTE: We do this inbetween our existing calls to scr_param_init and scr_param_finalize,
+  /* NOTE: We do this in between our existing calls to scr_param_init and scr_param_finalize,
    * since scr_log_init itself calls param_init to read the db username and password from the
    * config file, which in turn requires a bcast.  However, only rank 0 calls scr_log_init(),
    * so the bcast would fail if scr_param_init really had to read the config file again. */
@@ -1540,7 +1540,7 @@ int SCR_Route_file(const char* file, char* newfile)
     /* simplify the absolute path (removes "." and ".." entries) */
     scr_path_reduce(path_abs);
 
-    /* cut absolute path into direcotry and file name */
+    /* cut absolute path into directory and file name */
     scr_path* path_name = scr_path_cut(path_abs, -1);
 
     /* store the full path and name of the original file */

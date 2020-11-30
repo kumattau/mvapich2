@@ -77,7 +77,7 @@ extern int MPIE_Debug;
 #endif
 
 
-/* Use the memory defintions from mpich/src/include */
+/* Use the memory definitions from mpich/src/include */
 /* #include "mpimem.h" */
 /* The memory routines no longer are available as utility routines.
    The choices are to use the original memory tracing routines or

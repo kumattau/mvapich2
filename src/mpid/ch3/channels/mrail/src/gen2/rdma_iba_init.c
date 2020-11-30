@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -31,6 +31,7 @@
 #if defined(_MCST_SUPPORT_)
 #include "ibv_mcast.h"
 #endif
+#include "ibv_send_inline.h"
 
 /* For mv2_system_report */
 #include "sysreport.h"
@@ -58,6 +59,27 @@ int MPIDI_CH3I_MRAIL_CM_Alloc(MPIDI_PG_t * pg)
 {
     int mpi_errno   = MPI_SUCCESS;
 
+    pg->ch.mrail->cm_ah = MPIU_Malloc(MPIDI_Get_num_nodes() * MAX_NUM_HCAS * sizeof(struct ibv_ah *));
+    if (pg->ch.mrail->cm_ah == NULL) {
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+                "**nomem %s", "cm_ah");
+    }
+    MPIU_Memset(pg->ch.mrail->cm_ah, 0, MPIDI_Get_num_nodes() * MAX_NUM_HCAS * sizeof(struct ibv_ah *));
+
+    pg->ch.mrail->cm_ah_peer = MPIU_Malloc(pg->size * sizeof(struct ibv_ah *));
+    if (pg->ch.mrail->cm_ah_peer == NULL) {
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+                "**nomem %s", "cm_ah_peer");
+    }
+    MPIU_Memset(pg->ch.mrail->cm_ah_peer, 0, pg->size * sizeof(struct ibv_ah *));
+
+    pg->ch.mrail->cm_lid = MPIU_Malloc(MPIDI_Get_num_nodes() * MAX_NUM_HCAS * sizeof(uint16_t));
+    if (pg->ch.mrail->cm_lid == NULL) {
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+                "**nomem %s", "cm_lid");
+    }
+    MPIU_Memset(pg->ch.mrail->cm_lid, 0, MPIDI_Get_num_nodes() * MAX_NUM_HCAS * sizeof(uint16_t));
+
 #ifdef _ENABLE_UD_
     pg->ch.mrail->cm_shmem.remote_ud_info = NULL;
     if (rdma_enable_hybrid) {
@@ -67,6 +89,24 @@ int MPIDI_CH3I_MRAIL_CM_Alloc(MPIDI_PG_t * pg)
             MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
                     "**nomem %s", "remote_ud_info");
         }
+        /* Allocate memory for UD Address Handles */
+        pg->ch.mrail->cm_shmem.ud_ah = (struct ibv_ah **)
+                        MPIU_Malloc(MPIDI_Get_num_nodes() * MAX_NUM_HCAS * sizeof(struct ibv_ah*));
+        if (pg->ch.mrail->cm_shmem.ud_ah == NULL) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+                    "**nomem %s", "ud_ah");
+        }
+        MPIU_Memset(pg->ch.mrail->cm_shmem.ud_ah, 0,
+                    MPIDI_Get_num_nodes() * MAX_NUM_HCAS * sizeof(struct ibv_ah *));
+        /* Allocate memory for remote LIDs */
+        pg->ch.mrail->cm_shmem.ud_lid = (uint16_t*)
+                        MPIU_Malloc(MPIDI_Get_num_nodes() * MAX_NUM_HCAS * sizeof(uint16_t));
+        if (pg->ch.mrail->cm_shmem.ud_lid == NULL) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
+                    "**nomem %s", "ud_lid");
+        }
+        MPIU_Memset(pg->ch.mrail->cm_shmem.ud_lid, 0,
+                    MPIDI_Get_num_nodes() * MAX_NUM_HCAS * sizeof(uint16_t));
     }
 #endif /* _ENABLE_UD_ */
 
@@ -84,9 +124,7 @@ int MPIDI_CH3I_MRAIL_CM_Alloc(MPIDI_PG_t * pg)
 #endif /* _ENABLE_UD_ */
     }
 
-#ifdef _ENABLE_UD_
   fn_fail:
-#endif
     return mpi_errno;
 }
 
@@ -129,11 +167,27 @@ int MPIDI_CH3I_MRAIL_CM_Dealloc(MPIDI_PG_t * pg)
         MPIU_Free(pg->ch.mrail->cm_shmem.remote_ud_info);
         pg->ch.mrail->cm_shmem.remote_ud_info = NULL;
     }
+    if (pg->ch.mrail->cm_shmem.ud_ah) {
+        MPIU_Free(pg->ch.mrail->cm_shmem.ud_ah);
+        pg->ch.mrail->cm_shmem.ud_ah = NULL;
+    }
+    if (pg->ch.mrail->cm_shmem.ud_lid) {
+        MPIU_Free(pg->ch.mrail->cm_shmem.ud_lid);
+        pg->ch.mrail->cm_shmem.ud_lid = NULL;
+    }
 #endif /* _ENABLE_UD_ */
 
     if (pg->ch.mrail->cm_ah) {
         MPIU_Free(pg->ch.mrail->cm_ah);
         pg->ch.mrail->cm_ah = NULL;
+    }
+    if (pg->ch.mrail->cm_ah_peer) {
+        MPIU_Free(pg->ch.mrail->cm_ah_peer);
+        pg->ch.mrail->cm_ah_peer = NULL;
+    }
+    if (pg->ch.mrail->cm_lid) {
+        MPIU_Free(pg->ch.mrail->cm_lid);
+        pg->ch.mrail->cm_lid = NULL;
     }
 
     if (pg->ch.mrail) {
@@ -149,7 +203,7 @@ static inline uint16_t get_local_lid(struct ibv_context *ctx, int port)
 {
     struct ibv_port_attr attr;
 
-    if (ibv_query_port(ctx, port, &attr)) {
+    if (ibv_ops.query_port(ctx, port, &attr)) {
         return -1;
     }
 
@@ -165,12 +219,12 @@ static inline uint16_t get_local_lid(struct ibv_context *ctx, int port)
 int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 {
 
-    /* Initialize the rdma implemenation. */
+    /* Initialize the rdma implementation. */
     /* This function is called after the RDMA channel has initialized its
      * structures - like the vc_table. */
 
     MPIDI_VC_t *vc = NULL;
-    int i = 0;
+    int i = 0, j = 0, val_len = 0, increment = 0;
     int error;
     int rail_index;
 
@@ -297,7 +351,9 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
         }
 
         /* Check heterogeneity */
-        rdma_param_handle_heterogeneity(init_info->arch_hca_type, pg_size);
+        if (!mv2_homogeneous_cluster) {
+            rdma_param_handle_heterogeneity(init_info->arch_hca_type, pg_size);
+        }
     }
 
     if (mv2_MPIDI_CH3I_RDMA_Process.has_apm) {
@@ -341,90 +397,97 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                 if (pg_rank == i) {
                     continue;
                 }
-                /* Generate the key and value pair */
-                MPL_snprintf(rdmakey, 512, "2-%d-%08x", pg_rank, i);
-                buf = rdmavalue;
-
-                for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
-                    if (use_iboeth) {
+                rail_index = j = 0;
+                increment = 16 + 16 + 8;
+                do {
+                    /* Generate the key and value pair */
+                    MPL_snprintf(rdmakey, 512, "2-%d-%08x-%08x", pg_rank, i, j);
+                    buf = rdmavalue;
+                    val_len = 0;
+                    for (; rail_index < rdma_num_rails; rail_index++) {
                         sprintf(buf, "%016" SCNx64,
                                 init_info->gid[i][rail_index].global.
                                 subnet_prefix);
-                        buf += 16;
+                        buf += 16; val_len +=16;
                         sprintf(buf, "%016" SCNx64,
                                 init_info->gid[i][rail_index].global.
                                 interface_id);
-                        buf += 16;
-                        PRINT_DEBUG(DEBUG_CM_verbose > 0,"[%d] put subnet prefix = %" PRIx64
-                                    " interface id = %" PRIx64 "\r\n", pg_rank,
+                        buf += 16; val_len +=16;
+                        PRINT_DEBUG(DEBUG_CM_verbose > 0,"[%d-%d] put subnet prefix = %" PRIx64
+                                    " interface id = %" PRIx64 "\r\n", pg_rank, j,
                                     init_info->gid[i][rail_index].global.
                                     subnet_prefix,
                                     init_info->gid[i][rail_index].global.
                                     interface_id);
-                    } else {
                         sprintf(buf, "%08x", init_info->lid[i][rail_index]);
                         PRINT_DEBUG(DEBUG_CM_verbose > 0,"put my hca %d lid %d\n", rail_index,
                                     init_info->lid[i][rail_index]);
-                        buf += 8;
+                        buf += 8; val_len +=8;
+                        PRINT_DEBUG(DEBUG_CM_verbose > 0,"val_len = %d, mv2_pmi_max_vallen = %d, j = %d, rail = %d\n",
+                                    val_len, mv2_pmi_max_vallen, j, rail_index);
+                        if (val_len+increment >= mv2_pmi_max_vallen) {
+                            j++;
+                            rail_index++;
+                            break;
+                        }
                     }
-                }
-
-                sprintf(buf, "%016lx", init_info->arch_hca_type[i]);
-                buf += 16;
-                sprintf(buf, "%016" SCNx64, init_info->vc_addr[i]);
-                buf += 16;
-                PRINT_DEBUG(DEBUG_CM_verbose > 0,"Put hca type %ld, vc addr %" PRIx64 ", max val %d\n",
-                            init_info->arch_hca_type[i], init_info->vc_addr[i],
-                            mv2_pmi_max_vallen);
-
-                /* put the kvs into PMI */
-                MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
-                MPIU_Strncpy(mv2_pmi_val, rdmavalue, mv2_pmi_max_vallen);
-                PRINT_DEBUG(DEBUG_CM_verbose > 0,"rdmavalue %s len:%lu \n",
-                            mv2_pmi_val, strlen(mv2_pmi_val));
-
-                error = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
-                if (error != UPMI_SUCCESS) {
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                              "**pmi_kvs_put",
-                                              "**pmi_kvs_put %d", error);
-                }
-
-                PRINT_DEBUG(DEBUG_CM_verbose > 0,"after put, before barrier\n");
-
-                error = UPMI_KVS_COMMIT(pg->ch.kvs_name);
-
-                if (error != UPMI_SUCCESS) {
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                              "**pmi_kvs_commit",
-                                              "**pmi_kvs_commit %d", error);
-                }
-
-                /*
-                 ** This barrer is placed here because PMI is not allowing to put
-                 ** multiple key-value pairs. otherwise this berrier is not required.
-                 ** This should be moved out of this loop if PMI allows multiple pairs.
-                 */
-                error = UPMI_BARRIER();
-                if (error != UPMI_SUCCESS) {
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                              "**pmi_barrier",
-                                              "**pmi_barrier %d", error);
-                }
+    
+                    /* put the kvs into PMI */
+                    MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
+                    MPIU_Strncpy(mv2_pmi_val, rdmavalue, mv2_pmi_max_vallen);
+                    PRINT_DEBUG(DEBUG_CM_verbose > 0,"key: %s; rdmavalue %s len:%lu \n",
+                                mv2_pmi_key, mv2_pmi_val, strlen(mv2_pmi_val));
+    
+                    error = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
+                    if (error != UPMI_SUCCESS) {
+                        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                                  "**pmi_kvs_put",
+                                                  "**pmi_kvs_put %d", error);
+                    }
+    
+                    PRINT_DEBUG(DEBUG_CM_verbose > 0,"after put, before barrier\n");
+    
+                    error = UPMI_KVS_COMMIT(pg->ch.kvs_name);
+    
+                    if (error != UPMI_SUCCESS) {
+                        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                                  "**pmi_kvs_commit",
+                                                  "**pmi_kvs_commit %d", error);
+                    }
+                    /*
+                     ** This barrer is placed here because PMI is not allowing to put
+                     ** multiple key-value pairs. otherwise this berrier is not required.
+                     ** This should be moved out of this loop if PMI allows multiple pairs.
+                     */
+                    error = UPMI_BARRIER();
+                    if (error != UPMI_SUCCESS) {
+                        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                                  "**pmi_barrier",
+                                                  "**pmi_barrier %d", error);
+                    }
+                } while (rail_index < rdma_num_rails);
             }
 
+            /*
+             ** This barrer is placed here because certain processes can skip
+             ** the necessary barriers placed in the loop above and proceed to
+             ** to the UPMI_GET step before all processes are done with UPMI_PUT.
+             */
+            error = UPMI_BARRIER();
+            if (error != UPMI_SUCCESS) {
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                          "**pmi_barrier",
+                                          "**pmi_barrier %d", error);
+            }
 
             /* Here, all the key and value pairs are put, now we can get them */
             for (i = 0; i < pg_size; i++) {
-                rail_index = 0;
                 if (pg_rank == i) {
-                    if (!use_iboeth) {
-                        init_info->lid[i][0] =
-                            get_local_lid(mv2_MPIDI_CH3I_RDMA_Process.
-                                          nic_context[0], rdma_default_port);
-                        init_info->arch_hca_type[i] =
-                            mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type;
-                    }
+                    init_info->lid[i][0] =
+                        get_local_lid(mv2_MPIDI_CH3I_RDMA_Process.
+                                      nic_context[0], rdma_default_port);
+                    init_info->arch_hca_type[i] =
+                        mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type;
                     PRINT_DEBUG(DEBUG_CM_verbose > 0,"[%d] get subnet prefix = %" PRIx64
                                 ", interface id = %" PRIx64 " from proc %d \n",
                                 pg_rank,
@@ -435,30 +498,33 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                     continue;
                 }
 
-                /* Generate the key */
-                MPL_snprintf(rdmakey, 512, "2-%d-%08x", i, pg_rank);
-                MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
+                rail_index = j = 0;
+                do {
+                    val_len = 0; 
+                    /* Generate the key */
+                    MPL_snprintf(rdmakey, 512, "2-%d-%08x-%08x", i, pg_rank, j);
+                    MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
+    
+                    PRINT_DEBUG(DEBUG_CM_verbose > 0,"mv2_pmi_key = %s\n", mv2_pmi_key);
+                    error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
+                    if (error != UPMI_SUCCESS) {
+                        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                                  "**pmi_kvs_get",
+                                                  "**pmi_kvs_get %d", error);
+                    }
+    
+                    MPIU_Strncpy(rdmavalue, mv2_pmi_val, mv2_pmi_max_vallen);
+                    buf = rdmavalue;
 
-                error = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
-                if (error != UPMI_SUCCESS) {
-                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                              "**pmi_kvs_get",
-                                              "**pmi_kvs_get %d", error);
-                }
-
-                MPIU_Strncpy(rdmavalue, mv2_pmi_val, mv2_pmi_max_vallen);
-                buf = rdmavalue;
-
-                for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
-                    if (use_iboeth) {
+                    for (; rail_index < rdma_num_rails; rail_index++) {
                         sscanf(buf, "%016" SCNx64, (uint64_t *)
                                & init_info->gid[i][rail_index].global.
                                subnet_prefix);
-                        buf += 16;
+                        buf += 16; val_len += 16;
                         sscanf(buf, "%016" SCNx64, (uint64_t *)
                                & init_info->gid[i][rail_index].global.
                                interface_id);
-                        buf += 16;
+                        buf += 16; val_len += 16;
                         PRINT_DEBUG(DEBUG_CM_verbose > 0,"[%d] get subnet prefix = %" PRIx64
                                     "interface id = %" PRIx64 " from proc %d\n",
                                     pg_rank,
@@ -466,20 +532,18 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                                     subnet_prefix,
                                     init_info->gid[i][rail_index].global.
                                     interface_id, i);
-                    } else {
                         sscanf(buf, "%08hx",
                                (uint16_t *) &init_info->lid[i][rail_index]);
-                        buf += 8;
+                        buf += 8; val_len += 8;
                         PRINT_DEBUG(DEBUG_CM_verbose > 0,"get rail %d, lid %08d\n", rail_index,
                                     (int) init_info->lid[i][rail_index]);
+                        if (val_len+increment >= mv2_pmi_max_vallen) {
+                            j++;
+                            rail_index++;
+                            break;
+                        }
                     }
-                }
-
-                sscanf(buf, "%016lx", &init_info->arch_hca_type[i]);
-                buf += 16;
-                sscanf(buf, "%016" SCNx64, &init_info->vc_addr[i]);
-                buf += 16;
-                PRINT_DEBUG(DEBUG_CM_verbose > 0,"Get vc addr %" PRIx64 "\n", init_info->vc_addr[i]);
+                } while (rail_index < rdma_num_rails);
             }
 
             /* This barrier is to prevent some process from
@@ -512,6 +576,11 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                                 init_info->qp_num_rdma[i][rail_index]);
                 }
 
+                sprintf(buf, "%016" SCNx64, init_info->vc_addr[i]);
+                buf += 16;
+                PRINT_DEBUG(DEBUG_CM_verbose > 0,"Put vc addr %" PRIx64 ", max val %d\n",
+                            init_info->vc_addr[i], mv2_pmi_max_vallen);
+    
                 PRINT_DEBUG(DEBUG_CM_verbose > 0,"put rdma value %s\n", rdmavalue);
                 /* Put the kvs into PMI */
                 MPIU_Strncpy(mv2_pmi_key, rdmakey, mv2_pmi_max_keylen);
@@ -545,6 +614,17 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                 }
             }
 
+            /*
+             ** This barrer is placed here because certain processes can skip
+             ** the necessary barriers placed in the loop above and proceed to
+             ** to the UPMI_GET step before all processes are done with UPMI_PUT.
+             */
+            error = UPMI_BARRIER();
+            if (error != UPMI_SUCCESS) {
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**pmi_barrier",
+                        "**pmi_barrier %d", error);
+            }
 
             /* Here, all the key and value pairs are put, now we can get them */
             for (i = 0; i < pg_size; i++) {
@@ -573,6 +653,9 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                                 __FUNCTION__, __LINE__,
                                 init_info->qp_num_rdma[i][rail_index], i);
                 }
+                sscanf(buf, "%016" SCNx64, &init_info->vc_addr[i]);
+                buf += 16;
+                PRINT_DEBUG(DEBUG_CM_verbose > 0,"Get vc addr %" PRIx64 "\n", init_info->vc_addr[i]);
             }
 
             error = UPMI_BARRIER();
@@ -637,11 +720,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
         MRAILI_Init_vc(vc);
         if (mv2_use_eager_fast_send &&
             !(SMP_INIT && (vc->smp.local_nodes >= 0))) {
-            if (likely(rdma_use_coalesce)) {
-                vc->eager_fast_fn = mv2_eager_fast_coalesce_send;
-            } else {
-                vc->eager_fast_fn = mv2_eager_fast_send;
-            }
+	    vc->use_eager_fast_fn = 1;
         }
     }
 
@@ -836,20 +915,20 @@ int MPIDI_CH3I_RDMA_finalize(void)
         if (!mv2_rdma_fast_path_preallocate_buffers) {
             for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
                 if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
-                    err = ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
+                    err = ibv_ops.dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
                     if (err)
                         MPL_error_printf("Failed to deregister mr (%d)\n", err);
                 }
                 if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
-                    err = ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+                    err = ibv_ops.dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
                     if (err)
                         MPL_error_printf("Failed to deregister mr (%d)\n", err);
                 }
             }
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
-                ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
-                ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
+            if (mv2_enable_device && rdma_eager_devicehost_reg) {
+                ibv_device_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
+                ibv_device_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
             }
 #endif
 
@@ -887,7 +966,7 @@ int MPIDI_CH3I_RDMA_finalize(void)
 #endif
 
         for (rail_index = 0; rail_index < vc->mrail.num_rails; rail_index++) {
-            err = ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
+            err = ibv_ops.destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
             if (err) {
                 MPL_error_printf("Failed to destroy QP (%d)\n", err);
             }
@@ -923,7 +1002,7 @@ int MPIDI_CH3I_RDMA_finalize(void)
 
             pthread_join(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);
 
-            err = ibv_destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
+            err = ibv_ops.destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
             pthread_mutex_unlock(&mv2_MPIDI_CH3I_RDMA_Process.
                                  async_mutex_lock[i]);
             pthread_mutex_destroy(&mv2_MPIDI_CH3I_RDMA_Process.
@@ -932,19 +1011,19 @@ int MPIDI_CH3I_RDMA_finalize(void)
                 MPL_error_printf("Failed to destroy SRQ (%d)\n", err);
         }
 
-        err = ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+        err = ibv_ops.destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
         if (err)
             MPL_error_printf("Failed to destroy CQ (%d)\n", err);
 
         if (mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]) {
-            err = ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
+            err = ibv_ops.destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
             if (err) {
                 MPL_error_printf("Failed to destroy CQ (%d)\n", err);
             }
         }
 
         if (mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]) {
-            err = ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
+            err = ibv_ops.destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
             if (err) {
                 MPL_error_printf("Failed to destroy CQ (%d)\n", err);
             }
@@ -952,7 +1031,7 @@ int MPIDI_CH3I_RDMA_finalize(void)
 
         if (rdma_use_blocking) {
             err =
-                ibv_destroy_comp_channel(mv2_MPIDI_CH3I_RDMA_Process.
+                ibv_ops.destroy_comp_channel(mv2_MPIDI_CH3I_RDMA_Process.
                                          comp_channel[i]);
             if (err)
                 MPL_error_printf("Failed to destroy CQ channel (%d)\n", err);
@@ -985,12 +1064,12 @@ int MPIDI_CH3I_RDMA_finalize(void)
     dreg_finalize();
 
     for (i = 0; i < rdma_num_hcas; i++) {
-        err = ibv_dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
+        err = ibv_ops.dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
         if (err) {
             MPL_error_printf("[%d] Failed to dealloc pd (%s)\n",
                               pg_rank, strerror(errno));
         }
-        err = ibv_close_device(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]);
+        err = ibv_ops.close_device(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]);
         if (err) {
             MPL_error_printf("[%d] Failed to close ib device (%s)\n",
                               pg_rank, strerror(errno));
@@ -1063,7 +1142,7 @@ static int mv2_xrc_init(MPIDI_PG_t * pg)
                                       "%s: %s", "open", strerror(errno));
         }
 
-        proc->xrc_domain[i] = ibv_open_xrc_domain(proc->nic_context[i],
+        proc->xrc_domain[i] = ibv_ops.open_xrc_domain(proc->nic_context[i],
                                                   proc->xrc_fd[i], O_CREAT);
 
         if (NULL == proc->xrc_domain[i]) {
@@ -1208,6 +1287,7 @@ int MPIDI_CH3I_Ring_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
     goto fn_exit;
 }
 
+/* TODO: Need to handle the case where sizeof(data) > mv2_pmi_max_vallen */
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Iallgather_Init_Info
 #undef FCNAME
@@ -1252,14 +1332,25 @@ int MPIDI_CH3I_Iallgather_Init_Info(MPIDI_PG_t * pg, int pg_rank,
 #endif /* _ENABLE_XRC_ */
         {
             if (mv2_homogeneous_cluster) {
-                MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
-                          "%08hx:%08x",
-                          my_info->lid[0][0], my_info->ud_cm_qpn);
+                if (mv2_system_has_roce) {
+                    PRINT_DEBUG(DEBUG_INIT_verbose, "Homogeneous cluster: System has RoCE HCAs. Snprintf GIDs\n");
+                    MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
+                                  "%08hx:%08x:%08x:%016" SCNx64 ":%016" SCNx64,
+                                  my_info->lid[0][0], my_info->ud_cm_qpn, my_info->hostid,
+                                  my_info->gid[0][0].global.subnet_prefix,
+                                  my_info->gid[0][0].global.interface_id);
+                } else {
+                    MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
+                                  "%08hx:%08x",
+                                  my_info->lid[0][0], my_info->ud_cm_qpn);
+                }
             } else {
                 MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
-                          "%08hx:%08x:%016lx",
-                          my_info->lid[0][0], my_info->ud_cm_qpn,
-                          my_info->my_arch_hca_type);
+                              "%08hx:%08x:%016lx:%016" SCNx64 ":%016" SCNx64,
+                              my_info->lid[0][0], my_info->ud_cm_qpn,
+                              my_info->my_arch_hca_type,
+                              my_info->gid[0][0].global.subnet_prefix,
+                              my_info->gid[0][0].global.interface_id);
             }
         }
     }
@@ -1327,7 +1418,8 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
 
     MPIDI_STATE_DECL(MPIDI_CH3I_PMI_GET_INIT_INFO);
     MPIDI_FUNC_ENTER(MPIDI_CH3I_PMI_GET_INIT_INFO);
-        
+
+    MPIU_Memset(mv2_pmi_val, 0, sizeof(char)*mv2_pmi_max_keylen);
     MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen,
                     "MV2INITINFO-%d", tgt_rank);
 
@@ -1400,35 +1492,60 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
 #ifdef _ENABLE_XRC_
         if (USE_XRC) {
             pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].xrc_hostid = hostid;
-	}
+        }
 #endif /* _ENABLE_XRC_ */
     } else {
 #ifdef _ENABLE_XRC_
         if (USE_XRC) {
             if (mv2_homogeneous_cluster) {
-                sscanf(mv2_pmi_val, "%08hx:%08x:%08x",
-                    (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
-                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn), &hostid);
+                if (mv2_system_has_roce) {
+                    PRINT_DEBUG(DEBUG_INIT_verbose, "Homogeneous cluster with XRC: System has RoCE HCAs. Sscanf GIDs\n");
+                    sscanf(mv2_pmi_val,
+                        "%08hx:%08x:%08x:%016" SCNx64 ":%016" SCNx64,
+                        (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
+                        &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn),
+                        &hostid, &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_gid.global.subnet_prefix),
+                        &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_gid.global.interface_id));
+                } else {
+                    sscanf(mv2_pmi_val, "%08hx:%08x:%08x",
+                        (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
+                        &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn), &hostid);
+                }
             } else {
-                sscanf(mv2_pmi_val, "%08hx:%08x:%016lx:%08x",
+                sscanf(mv2_pmi_val,
+                    "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016" SCNx64,
                     (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
-                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn), 
+                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn),
                     &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type),
-                    &hostid);
+                    &hostid, &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_gid.global.subnet_prefix),
+                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_gid.global.interface_id));
             }
             pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].xrc_hostid = hostid;
         } else
 #endif /* _ENABLE_XRC_ */
         {
             if (mv2_homogeneous_cluster) {
-                sscanf(mv2_pmi_val, "%08hx:%08x",
-                    (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
-                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn));
+                if (mv2_system_has_roce) {
+                    PRINT_DEBUG(DEBUG_INIT_verbose, "Homogeneous cluster: System has RoCE HCAs. Sscanf GIDs\n");
+                    sscanf(mv2_pmi_val,
+                        "%08hx:%08x:%08x:%016" SCNx64 ":%016" SCNx64,
+                        (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
+                        &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn), 
+                        &hostid, &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_gid.global.subnet_prefix),
+                        &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_gid.global.interface_id));
+                } else {
+                    sscanf(mv2_pmi_val, "%08hx:%08x",
+                        (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
+                        &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn));
+                }
             } else {
-                sscanf(mv2_pmi_val, "%08hx:%08x:%016lx",
+                sscanf(mv2_pmi_val,
+                    "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016" SCNx64,
                     (uint16_t *) &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_lid),
                     &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_ud_qpn), 
-                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type));
+                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].arch_hca_type),
+                    &hostid, &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_gid.global.subnet_prefix),
+                    &(pg->ch.mrail->cm_shmem.ud_cm[tgt_rank].cm_gid.global.interface_id));
             }
         }
         PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d, lid:%d, cm_ud_qpn: %d, arch_type: %ld\n",
@@ -1438,6 +1555,23 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
     }
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid) {
+        MPIU_Memset(mv2_pmi_val, 0, sizeof(char)*mv2_pmi_max_keylen);
+        MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen,
+                        "MV2UDINITINFO-%d", tgt_rank);
+
+        if (mv2_use_pmi_iallgather) {
+            MPIU_Assert(mv2_pmi_iallgather_buf);
+            offset = tgt_rank * mv2_pmi_max_vallen;
+            MPIU_Strncpy(mv2_pmi_val, (mv2_pmi_iallgather_buf + offset), mv2_pmi_max_vallen);
+        } else {
+            mpi_errno = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val,
+                    mv2_pmi_max_vallen);
+            if (mpi_errno != UPMI_SUCCESS) {
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get",
+                        "**pmi_kvs_get %d", mpi_errno);
+            }
+        }
+
         for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
             ptr = (char*) (mv2_pmi_val + mv2_ud_start_offset) + (hca_index * ud_width);
             sscanf(ptr, ":%08hx:%08x",
@@ -1487,6 +1621,7 @@ int MPIDI_CH3I_PMI_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
 
     pg_size = MPIDI_PG_Get_size(pg);
 
+    MPIU_Memset(mv2_pmi_val, 0, sizeof(char)*mv2_pmi_max_keylen);
     /* Generate the key and value pair */
     MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "MV2INITINFO-%d", pg_rank);
     if (use_iboeth) {
@@ -1500,59 +1635,59 @@ int MPIDI_CH3I_PMI_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
 #ifdef _ENABLE_XRC_
         if (USE_XRC) {
             if (mv2_homogeneous_cluster) {
-                MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
-                          "%08hx:%08x::%08x",
-                          my_info->lid[0][0], my_info->ud_cm_qpn,
-                          my_info->hostid);
+                if (mv2_system_has_roce) {
+                    PRINT_DEBUG(DEBUG_INIT_verbose, "XRC: Homogeneous cluster: System has RoCE HCAs. Snprintf GIDs\n");
+                    MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
+                                  "%08hx:%08x:%08x:%016" SCNx64 ":%016" SCNx64,
+                                  my_info->lid[0][0], my_info->ud_cm_qpn,
+                                  my_info->hostid,
+                                  my_info->gid[0][0].global.subnet_prefix,
+                                  my_info->gid[0][0].global.interface_id);
+                } else {
+                    MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
+                                  "%08hx:%08x:%08x",
+                                  my_info->lid[0][0], my_info->ud_cm_qpn,
+                                  my_info->hostid);
+                }
             } else {
                 MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
-                          "%08hx:%08x:%016lx:%08x",
-                          my_info->lid[0][0], my_info->ud_cm_qpn,
-                          my_info->my_arch_hca_type, my_info->hostid);
+                              "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016" SCNx64,
+                              my_info->lid[0][0], my_info->ud_cm_qpn,
+                              my_info->my_arch_hca_type, my_info->hostid,
+                              my_info->gid[0][0].global.subnet_prefix,
+                              my_info->gid[0][0].global.interface_id);
             }
         } else
 #endif /* _ENABLE_XRC_ */
         {
             if (mv2_homogeneous_cluster) {
-                MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
-                          "%08hx:%08x",
-                          my_info->lid[0][0], my_info->ud_cm_qpn);
+                if (mv2_system_has_roce) {
+                    PRINT_DEBUG(DEBUG_INIT_verbose, "Homogeneous cluster: System has RoCE HCAs. Snprintf GIDs\n");
+                    MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
+                                  "%08hx:%08x:%016" SCNx64 ":%016" SCNx64,
+                                  my_info->lid[0][0], my_info->ud_cm_qpn,
+                                  my_info->gid[0][0].global.subnet_prefix,
+                                  my_info->gid[0][0].global.interface_id);
+                } else {
+                    MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
+                                  "%08hx:%08x",
+                                  my_info->lid[0][0], my_info->ud_cm_qpn);
+                }
             } else {
                 MPL_snprintf(mv2_pmi_val, mv2_pmi_max_vallen,
-                          "%08hx:%08x:%016lx",
-                          my_info->lid[0][0], my_info->ud_cm_qpn,
-                          my_info->my_arch_hca_type);
+                              "%08hx:%08x:%016lx:%08x:%016" SCNx64 ":%016" SCNx64,
+                              my_info->lid[0][0], my_info->ud_cm_qpn,
+                              my_info->my_arch_hca_type, my_info->hostid,
+                              my_info->gid[0][0].global.subnet_prefix,
+                              my_info->gid[0][0].global.interface_id);
             }
         }
     }
 
     arch_hca_type_all[pg_rank] = my_info->my_arch_hca_type;
 
-#ifdef _ENABLE_UD_
-    if (rdma_enable_hybrid) {
-        mv2_ud_start_offset = strlen(mv2_pmi_val);
-
-        memset(temp1, 0, sizeof(temp1));
-        memset(temp2, 0, sizeof(temp2));
-
-        for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-            sprintf(temp2, ":%08hx:%08x", my_info->lid[hca_index][0],
-                    my_info->ud_data_qpn[hca_index]);
-            strcat(temp1, temp2);
-    
-            PRINT_DEBUG(DEBUG_CM_verbose > 0, "rank:%d Put lids: %d ud_qp: %d\n",
-                        pg_rank, my_info->lid[hca_index][0],
-                        my_info->ud_data_qpn[hca_index]);
-            pg->ch.mrail->cm_shmem.remote_ud_info[pg_rank][hca_index].lid = my_info->lid[hca_index][0];
-            pg->ch.mrail->cm_shmem.remote_ud_info[pg_rank][hca_index].qpn = my_info->ud_data_qpn[hca_index];
-        }
-        MPIU_Strnapp(mv2_pmi_val, temp1, mv2_pmi_max_vallen);
-    }
-#endif /* _ENABLE_UD_ */
-
-    PRINT_DEBUG(DEBUG_CM_verbose > 0, "Put: Init info: %s. Len: %lu\n",
+    PRINT_DEBUG(DEBUG_UD_verbose > 0,"Put: Init info: %s. Len: %lu\n",
                 mv2_pmi_val, strlen(mv2_pmi_val));
-
     mpi_errno = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
     if (mpi_errno != UPMI_SUCCESS) {
         MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put",
@@ -1564,6 +1699,57 @@ int MPIDI_CH3I_PMI_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank,
         MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit",
                                     "**pmi_kvs_commit %d", mpi_errno);
     }
+
+    if (mv2_use_pmi_ibarrier) {
+        mpi_errno = UPMI_IBARRIER();
+    } else {
+        mpi_errno = UPMI_BARRIER();
+    }
+
+    if (mpi_errno != UPMI_SUCCESS) {
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_barrier",
+                "**pmi_barrier %d", mpi_errno);
+    }
+
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        MPIU_Memset(mv2_pmi_val, 0, sizeof(char)*mv2_pmi_max_keylen);
+        /* Generate the key and value pair */
+        MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "MV2UDINITINFO-%d", pg_rank);
+        mv2_ud_start_offset = strlen(mv2_pmi_val);
+
+        memset(temp1, 0, sizeof(temp1));
+        memset(temp2, 0, sizeof(temp2));
+
+        for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+            sprintf(temp2, ":%08hx:%08x", my_info->lid[hca_index][0],
+                    my_info->ud_data_qpn[hca_index]);
+            strcat(temp1, temp2);
+    
+            PRINT_DEBUG(DEBUG_UD_verbose > 0, "rank:%d Put lids: %d ud_qp: %d\n",
+                        pg_rank, my_info->lid[hca_index][0],
+                        my_info->ud_data_qpn[hca_index]);
+            pg->ch.mrail->cm_shmem.remote_ud_info[pg_rank][hca_index].lid = my_info->lid[hca_index][0];
+            pg->ch.mrail->cm_shmem.remote_ud_info[pg_rank][hca_index].qpn = my_info->ud_data_qpn[hca_index];
+        }
+        MPIU_Strnapp(mv2_pmi_val, temp1, mv2_pmi_max_vallen);
+
+        PRINT_DEBUG(DEBUG_UD_verbose > 0,"Put: UD Init info: %s. Len: %lu\n",
+                    mv2_pmi_val, strlen(mv2_pmi_val));
+
+        mpi_errno = UPMI_KVS_PUT(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val);
+        if (mpi_errno != UPMI_SUCCESS) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put",
+                    "**pmi_kvs_put %d", mpi_errno);
+        }
+
+        mpi_errno = UPMI_KVS_COMMIT(pg->ch.kvs_name);
+        if (mpi_errno != UPMI_SUCCESS) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit",
+                    "**pmi_kvs_commit %d", mpi_errno);
+        }
+    }
+#endif /* _ENABLE_UD_ */
 
     if (mv2_use_pmi_ibarrier) {
         mpi_errno = UPMI_IBARRIER();
@@ -1610,8 +1796,12 @@ int MPIDI_CH3I_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank)
     int hca_index = 0;
 #endif /*_ENABLE_UD_*/
     int mpi_errno = MPI_SUCCESS;
+
+#ifdef _ENABLE_XRC_
     struct hostent *hostent = NULL;
     char hostname[HOSTNAME_LEN + 1];
+#endif /*_ENABLE_XRC_*/
+
     mv2_process_init_info_t my_proc_info;
     mv2_arch_hca_type *arch_hca_type_all = NULL;
 
@@ -1626,7 +1816,7 @@ int MPIDI_CH3I_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank)
     if (!arch_hca_type_all) {
         MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                                   "**nomem %s",
-                                  "archtype struct to exchange information");
+                                  "archetype struct to exchange information");
     }
 
 #ifdef _ENABLE_XRC_
@@ -1648,14 +1838,15 @@ int MPIDI_CH3I_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank)
     }
 #endif /*_ENABLE_XRC_*/
 
-    my_proc_info.ud_cm_qpn          = cm_ud_qp->qp_num;
+    /* If ONLY_UD is enabled, cm_ud_qp will be NULL */
+    if (cm_ud_qp) {
+        my_proc_info.ud_cm_qpn          = cm_ud_qp->qp_num;
+    }
     my_proc_info.my_arch_hca_type   = mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type;
     MPIU_Memcpy(&my_proc_info.lid, &mv2_MPIDI_CH3I_RDMA_Process.lids,
            sizeof(uint16_t) * MAX_NUM_HCAS * MAX_NUM_PORTS);
-    if (use_iboeth) {
-        MPIU_Memcpy(&my_proc_info.gid, &mv2_MPIDI_CH3I_RDMA_Process.gids,
-            sizeof(union ibv_gid) * MAX_NUM_HCAS * MAX_NUM_PORTS);
-    }
+    MPIU_Memcpy(&my_proc_info.gid, &mv2_MPIDI_CH3I_RDMA_Process.gids,
+           sizeof(union ibv_gid) * MAX_NUM_HCAS * MAX_NUM_PORTS);
 
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid) {
@@ -1670,10 +1861,8 @@ int MPIDI_CH3I_Exchange_Init_Info(MPIDI_PG_t * pg, int pg_rank)
     pg->ch.mrail->cm_shmem.ud_cm[pg_rank].arch_hca_type = my_proc_info.my_arch_hca_type;
     pg->ch.mrail->cm_shmem.ud_cm[pg_rank].cm_ud_qpn = my_proc_info.ud_cm_qpn;
     pg->ch.mrail->cm_shmem.ud_cm[pg_rank].cm_lid    = my_proc_info.lid[0][0];
-    if (use_iboeth) {
-        MPIU_Memcpy(&pg->ch.mrail->cm_shmem.ud_cm[pg_rank].cm_gid,
-                    &my_proc_info.gid, sizeof(union ibv_gid));
-    }
+    MPIU_Memcpy(&pg->ch.mrail->cm_shmem.ud_cm[pg_rank].cm_gid,
+           &my_proc_info.gid, sizeof(union ibv_gid));
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
         pg->ch.mrail->cm_shmem.ud_cm[pg_rank].xrc_hostid    = my_proc_info.hostid;
@@ -1748,8 +1937,13 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
         MPIR_ERR_POP(mpi_errno);
     }
 
-    if ((mpi_errno = MPICM_Init_UD_CM(&ud_qpn_self)) != MPI_SUCCESS) {
-        MPIR_ERR_POP(mpi_errno);
+#ifdef _ENABLE_UD_
+    if (!rdma_enable_only_ud)
+#endif /* _ENABLE_UD_ */
+    {
+        if ((mpi_errno = MPICM_Init_UD_CM(&ud_qpn_self)) != MPI_SUCCESS) {
+            MPIR_ERR_POP(mpi_errno);
+        }
     }
 
 #ifdef _ENABLE_UD_
@@ -1838,22 +2032,27 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
         MPIR_ERR_POP(mpi_errno);
     }
 
-    /* Create address handles for UD CM */
-    if (mv2_on_demand_ud_info_exchange) {
-        mpi_errno = MPICM_Init_Local_UD_struct(pg);
-    } else {
-        mpi_errno = MPICM_Init_UD_struct(pg);
-    }
-    if (mpi_errno) {
-        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s", "init_ud_struct");
-    }
+#ifdef _ENABLE_UD_
+    if (!rdma_enable_only_ud)
+#endif /*ifdef _ENABLE_UD_*/
+    {
+        /* Create address handles for UD CM */
+        if (mv2_on_demand_ud_info_exchange) {
+            mpi_errno = MPICM_Init_Local_UD_struct(pg);
+        } else {
+            mpi_errno = MPICM_Init_UD_struct(pg);
+        }
+        if (mpi_errno) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                      "**fail %s", "init_ud_struct");
+        }
 
-    /* Create threads for UD CM */
-    mpi_errno = MPICM_Create_UD_threads();
-    if (mpi_errno) {
-        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s", "create_ud_threads");
+        /* Create threads for UD CM */
+        mpi_errno = MPICM_Create_UD_threads();
+        if (mpi_errno) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                      "**fail %s", "create_ud_threads");
+        }
     }
 
     /* Create conn info */
@@ -1906,6 +2105,10 @@ int MPIDI_CH3I_CM_Finalize(void)
     int rail_index;
     int hca_index;
     int mpi_errno = MPI_SUCCESS;
+#ifdef _ENABLE_UD_
+    int hca_num = 0;
+    MPID_Node_id_t  node_id;
+#endif
 
     MPIDI_VC_t *vc = NULL;
 
@@ -1963,20 +2166,35 @@ int MPIDI_CH3I_CM_Finalize(void)
     }
 #endif
 
-    if ((retval = MPICM_Finalize_UD()) != 0) {
-        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                  "**fail", "**fail %d", retval);
+#ifdef _ENABLE_UD_
+    if (!rdma_enable_only_ud)
+#endif /*ifdef _ENABLE_UD_*/
+    {
+        if ((retval = MPICM_Finalize_UD()) != 0) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                      "**fail", "**fail %d", retval);
+        }
     }
 
     if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
         mv2_release_3d_torus_resources();
     }
 
-    for (; i < pg_size; ++i) {
+    for (i = 0; i < pg_size; ++i) {
 
         MPIDI_PG_Get_vc(pg, i, &vc);
 
 #ifdef _ENABLE_UD_
+        if (rdma_enable_hybrid) {
+            /* Get the unique node_id for the process */
+            node_id = pg->vct[i].node_id;
+            for (hca_num = 0; hca_num < rdma_num_hcas; ++hca_num) {
+                if (pg->ch.mrail->cm_shmem.ud_ah[node_id+hca_num] != NULL) {
+                    ibv_ops.destroy_ah(pg->ch.mrail->cm_shmem.ud_ah[node_id+hca_num]);
+                    pg->ch.mrail->cm_shmem.ud_ah[node_id+hca_num] = NULL;
+                }
+            }
+        }
         if (vc->mrail.ud) {
             MPIU_Free(vc->mrail.ud);
         }
@@ -2002,18 +2220,18 @@ int MPIDI_CH3I_CM_Finalize(void)
         if (!mv2_rdma_fast_path_preallocate_buffers) {
             for (hca_index = 0; hca_index < rdma_num_hcas; ++hca_index) {
                 if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
-                    ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
+                    ibv_ops.dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
                 }
 
                 if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
-                    ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+                    ibv_ops.dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
                 }
             }
 
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
-                ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
-                ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
+            if (mv2_enable_device && rdma_eager_devicehost_reg) {
+                ibv_device_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
+                ibv_device_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
             }
 #endif
             if (vc->mrail.rfp.RDMA_send_buf_DMA) {
@@ -2042,7 +2260,7 @@ int MPIDI_CH3I_CM_Finalize(void)
                 PRINT_DEBUG(DEBUG_XRC_verbose > 0, "unreg %d",
                             vc->ch.xrc_my_rqpn[rail_index]);
                 if ((retval =
-                     ibv_unreg_xrc_rcv_qp(mv2_MPIDI_CH3I_RDMA_Process.
+                    ibv_ops.unreg_xrc_rcv_qp(mv2_MPIDI_CH3I_RDMA_Process.
                                           xrc_domain[hca_index],
                                           vc->ch.
                                           xrc_my_rqpn[rail_index])) != 0) {
@@ -2059,7 +2277,7 @@ int MPIDI_CH3I_CM_Finalize(void)
 #endif
             {
                 if (vc->mrail.rails && vc->mrail.rails[rail_index].qp_hndl) {
-                    ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
+                    ibv_ops.destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
                 }
             }
         }
@@ -2081,12 +2299,12 @@ int MPIDI_CH3I_CM_Finalize(void)
 
             for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
                 mv2_ud_destroy_ctx(zcopy_info->rndv_ud_qps[hca_index]);
-                ibv_destroy_cq(zcopy_info->rndv_ud_cqs[hca_index]);
+                ibv_ops.destroy_cq(zcopy_info->rndv_ud_cqs[hca_index]);
             }
 
             for (i = 0; i < rdma_ud_num_rndv_qps; i++) {
-                ibv_destroy_qp(zcopy_info->rndv_qp_pool[i].ud_qp);
-                ibv_destroy_cq(zcopy_info->rndv_qp_pool[i].ud_cq);
+                ibv_ops.destroy_qp(zcopy_info->rndv_qp_pool[i].ud_qp);
+                ibv_ops.destroy_cq(zcopy_info->rndv_qp_pool[i].ud_cq);
             }
 
             MPIU_Free(zcopy_info->rndv_ud_qps);
@@ -2101,7 +2319,7 @@ int MPIDI_CH3I_CM_Finalize(void)
      * ptag
      *   and finally, release the hca */
     for (i = 0; i < rdma_num_hcas; ++i) {
-        ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+        ibv_ops.destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
 
         if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
             /* Signal thread if waiting */
@@ -2124,7 +2342,7 @@ int MPIDI_CH3I_CM_Finalize(void)
             pthread_cancel(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i]);
             pthread_join(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);
             PRINT_DEBUG(DEBUG_XRC_verbose > 0, "destroyed SRQ: %d\n", i);
-            ibv_destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
+            ibv_ops.destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
 #ifdef _ENABLE_XRC_
             if (USE_XRC) {
                 int err;
@@ -2133,7 +2351,7 @@ int MPIDI_CH3I_CM_Finalize(void)
                     MPL_snprintf(xrc_file, 512, "/dev/shm/%s-%d", ufile, hca_index);
                     unlink(xrc_file);
                 }
-                ibv_close_xrc_domain(mv2_MPIDI_CH3I_RDMA_Process.
+                ibv_ops.close_xrc_domain(mv2_MPIDI_CH3I_RDMA_Process.
                                      xrc_domain[i]);
                 if ((err = close(mv2_MPIDI_CH3I_RDMA_Process.xrc_fd[i]))) {
                     MPIR_ERR_SETFATALANDJUMP2(mpi_errno,
@@ -2154,8 +2372,8 @@ int MPIDI_CH3I_CM_Finalize(void)
     dreg_finalize();
 
     for (i = 0; i < rdma_num_hcas; ++i) {
-        ibv_dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
-        ibv_close_device(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]);
+        ibv_ops.dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
+        ibv_ops.close_device(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]);
     }
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
@@ -2183,7 +2401,7 @@ int MPIDI_CH3I_CM_Finalize(void)
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3I_RDMA_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 {
-    /* Initialize the rdma implemenation. */
+    /* Initialize the rdma implementation. */
     /* This function is called after the RDMA channel has initialized its
      * structures - like the vc_table. */
     MPIDI_VC_t *vc;
@@ -2399,18 +2617,18 @@ int MPIDI_CH3I_RDMA_CM_Finalize(void)
         if (!mv2_rdma_fast_path_preallocate_buffers) {
             for (hca_index = 0; hca_index < rdma_num_hcas; ++hca_index) {
                 if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
-                    ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
+                    ibv_ops.dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
                 }
 
                 if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
-                    ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+                    ibv_ops.dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
                 }
             }
 
 #if defined(_ENABLE_CUDA_)
-            if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
-                ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
-                ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
+            if (mv2_enable_device && rdma_eager_devicehost_reg) {
+                ibv_device_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
+                ibv_device_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
             }
 #endif
 
@@ -2456,7 +2674,7 @@ int MPIDI_CH3I_RDMA_CM_Finalize(void)
 
     for (i = 0; i < rdma_num_hcas; ++i) {
         if (mv2_MPIDI_CH3I_RDMA_Process.ptag[i]) {
-            ibv_dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
+            ibv_ops.dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
             mv2_MPIDI_CH3I_RDMA_Process.ptag[i] = NULL;
         }
     }

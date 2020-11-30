@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -150,7 +150,7 @@ psm_ssend:
 	mpi_errno = vc->rndvSend_fn( &sreq, buf, count, datatype, dt_contig,
                                      data_sz, dt_true_lb, rank, tag, comm, 
                                      context_offset );
-	/* Note that we don't increase the ref cound on the datatype
+	/* Note that we don't increase the ref count on the datatype
 	   because this is a blocking call, and the calling routine 
 	   must wait until sreq completes */
     }

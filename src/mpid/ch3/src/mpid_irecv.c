@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -116,7 +116,7 @@ int MPID_Irecv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int 
 
 #ifdef _ENABLE_CUDA_
     int device_buf = 0;
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         device_buf = is_device_buffer(buf);
     }
 #endif
@@ -125,18 +125,18 @@ int MPID_Irecv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int 
 	MPIDI_VC_t * vc;
 
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         if (device_buf) {
             /* buf is in the GPU device memory */
-            rreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+            rreq->mrail.device_transfer_mode = DEVICE_TO_DEVICE;
         } else {
             /* buf is in the host memory*/
-            rreq->mrail.cuda_transfer_mode = NONE;
+            rreq->mrail.device_transfer_mode = NONE;
         }
     }
 #endif
 	
-	/* Message was found in the unexepected queue */
+	/* Message was found in the unexpected queue */
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"request found in unexpected queue");
 
 	/* Release the message queue - we've removed this request from 
@@ -174,9 +174,9 @@ int MPID_Irecv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int 
                 {
                     MPIDI_CH3U_Request_unpack_uebuf(rreq);
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-                if (rdma_enable_cuda && rdma_cuda_smp_ipc 
+                if (mv2_enable_device && mv2_device_use_smp_eager_ipc
                         && is_device_buffer(rreq->dev.tmpbuf)) {
-                   cudaFree(rreq->dev.tmpbuf);
+                   MPIU_Free_Device(rreq->dev.tmpbuf);
                 }
                 else
 #endif
@@ -194,7 +194,7 @@ int MPID_Irecv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int 
                 /* there should never be outstanding completion events for an unexpected
                  * recv without also having a "pending recv" */
                 MPIU_Assert(recv_pending);
-		/* The data is still being transfered across the net.  We'll 
+		/* The data is still being transferred across the net.  We'll 
 		   leave it to the progress engine to handle once the
 		   entire message has arrived. */
 		if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN)
@@ -211,13 +211,13 @@ int MPID_Irecv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int 
          MPIDI_Comm_get_vc_set_active(comm, rreq->dev.match.parts.rank, &vc);
 
 #ifdef _ENABLE_CUDA_
-        if (rdma_enable_cuda) {
+        if (mv2_enable_device) {
             if (device_buf) {
                 /* buf is in the GPU device memory */
-                rreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+                rreq->mrail.device_transfer_mode = DEVICE_TO_DEVICE;
             } else {
                 /* buf is in the host memory*/
-                rreq->mrail.cuda_transfer_mode = NONE;
+                rreq->mrail.device_transfer_mode = NONE;
             }
         }
 #endif
@@ -268,13 +268,13 @@ int MPID_Irecv(void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int 
 	}
 
 #ifdef _ENABLE_CUDA_
-    if(rdma_enable_cuda) {
+    if(mv2_enable_device) {
         if (device_buf) {
             /* buf is in the GPU device memory */
-            rreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+            rreq->mrail.device_transfer_mode = DEVICE_TO_DEVICE;
         } else {
             /* buf is in the host memory*/
-            rreq->mrail.cuda_transfer_mode = NONE;
+            rreq->mrail.device_transfer_mode = NONE;
         }
     }
 #endif

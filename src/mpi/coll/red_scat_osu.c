@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -31,6 +31,8 @@ MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_reduce_scatter_ring);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_reduce_scatter_ring_2lvl);
 
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_ring);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_ring_2lvl);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_noncomm);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_basic);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_rec_halving);
@@ -61,6 +63,14 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_ring_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_ring_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_ring_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_ring_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_ring_2lvl_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_ring_2lvl_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_ring_2lvl_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_reduce_scatter_ring_2lvl_bytes_send);
                                
 int (*MV2_Red_scat_function)(const void *sendbuf,
                              void *recvbuf,
@@ -1026,6 +1036,8 @@ int MPIR_Reduce_scatter_ring(const void* sendbuf, void* recvbuf,
 
     MPIU_CHKLMEM_DECL(3);
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_scatter_ring, 1);
+
     /* get extent */
     MPI_Aint extent;
     MPID_Datatype_get_extent_macro(datatype, extent);
@@ -1130,6 +1142,8 @@ int MPIR_Reduce_scatter_ring(const void* sendbuf, void* recvbuf,
             }
 
             if (dist > 0) {
+                MPIR_PVAR_INC(reduce_scatter, ring, send, send_count, datatype);
+                MPIR_PVAR_INC(reduce_scatter, ring, recv, recv_count, datatype);                
                 /* exchange data with neighbors */
                 MPIC_Irecv(tmp_recvbuf, recv_count, datatype, rank_left,  0, comm_ptr,
                         &request[0]);
@@ -1137,7 +1151,7 @@ int MPIR_Reduce_scatter_ring(const void* sendbuf, void* recvbuf,
                         &request[1], errflag);
                 MPIC_Waitall(2, request, status, errflag);
             } else {
-                /* write the result to the ouput buffer */
+                /* write the result to the output buffer */
                 char* buf = output_buf + nread * extent;
                 MPIR_Localcopy(tmp_sendbuf, send_count, datatype,
                         buf, send_count, datatype);
@@ -1192,6 +1206,8 @@ int MPIR_Reduce_scatter_ring_2lvl(const void* sendbuf, void* recvbuf,
 
     MPIU_CHKLMEM_DECL(3);
 
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_reduce_scatter_ring_2lvl, 1);
+    
     /* get extent */
     MPI_Aint extent;
     MPID_Datatype_get_extent_macro(datatype, extent);
@@ -1303,6 +1319,8 @@ int MPIR_Reduce_scatter_ring_2lvl(const void* sendbuf, void* recvbuf,
             }
 
             if (dist > 0) {
+                MPIR_PVAR_INC(reduce_scatter, ring_2lvl, send, send_count, datatype);
+                MPIR_PVAR_INC(reduce_scatter, ring_2lvl, recv, recv_count, datatype);
                 /* exchange data with neighbors */
                 MPIC_Irecv(tmp_recvbuf, recv_count, datatype, rank_left,  0, comm_ptr,
                         &request[0]);
@@ -1310,7 +1328,7 @@ int MPIR_Reduce_scatter_ring_2lvl(const void* sendbuf, void* recvbuf,
                         &request[1], errflag);
                 MPIC_Waitall(2, request, status, errflag);
             } else {
-                /* write the result to the ouput buffer */
+                /* write the result to the output buffer */
                 char* buf = output_buf + nread * extent;
                 MPIR_Localcopy(tmp_sendbuf, send_count, datatype,
                         buf, send_count, datatype);
@@ -1808,29 +1826,29 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
     MPID_Datatype_get_extent_macro(datatype, extent);
     stride = total_count * MPIR_MAX(extent, true_extent);
 
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
        recv_mem_type = is_device_buffer(recvbuf);
        if ( sendbuf != MPI_IN_PLACE ){
            send_mem_type = is_device_buffer(sendbuf);
        }
     }
-    if (rdma_enable_cuda && send_mem_type) {
+    if (mv2_enable_device && send_mem_type) {
         send_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)send_host_buf, 
+        MPIU_Memcpy_Device((void *)send_host_buf,
                             (void *)sendbuf, 
                             stride, 
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         sendbuf = send_host_buf;
     }
 
-    if (rdma_enable_cuda && recv_mem_type) {
+    if (mv2_enable_device && recv_mem_type) {
         /* recvbuf will be treated as sendbuf if sendbuf is MPI_IN_PLACE */
         if (sendbuf == MPI_IN_PLACE) {
             recv_host_buf = (char*) MPIU_Malloc(stride);
-            MPIU_Memcpy_CUDA((void *)recv_host_buf,
+            MPIU_Memcpy_Device((void *)recv_host_buf,
                                 (void *)recvbuf,
                                 stride,
-                                cudaMemcpyDeviceToHost);
+                                deviceMemcpyDeviceToHost);
         } else {
             recv_host_buf = (char*) MPIU_Malloc(recvcnts[rank]*type_size);
         }
@@ -1887,20 +1905,20 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
 
 fn_exit:
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && recv_mem_type==1) {
+    if (mv2_enable_device && recv_mem_type==1) {
         recvbuf = temp_recvbuf;
-        MPIU_Memcpy_CUDA((void *)recvbuf, 
+        MPIU_Memcpy_Device((void *)recvbuf,
                            (void *)recv_host_buf, 
                             recvcnts[rank]*type_size, 
-                            cudaMemcpyHostToDevice);
+                            deviceMemcpyHostToDevice);
     }
-    if (rdma_enable_cuda && recv_mem_type) {
+    if (mv2_enable_device && recv_mem_type) {
         if (recv_host_buf) {
             MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
-    if (rdma_enable_cuda && send_mem_type) {
+    if (mv2_enable_device && send_mem_type) {
         if (send_host_buf) {
             MPIU_Free(send_host_buf);
             send_host_buf = NULL;

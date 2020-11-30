@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -155,11 +155,6 @@ void mv2_ud_zcopy_poll_cq(mv2_ud_zcopy_info_t *zcopy_info, mv2_ud_ctx_t *ud_ctx,
                                 vbuf *resend_buf, int hca_index, int *found);
 /* create UD QP */
 struct ibv_qp *mv2_ud_create_qp (mv2_ud_qp_info_t *qp_info, int hca_index);
-
-/* create ud vc */
-int mv2_ud_set_vc_info (mv2_ud_vc_info_t *,
-        mv2_ud_exch_info_t *rem_info, union ibv_gid gid,
-        struct ibv_pd *pd, int rdma_default_port);
 
 /* destroy ud context */
 void mv2_ud_destroy_ctx (mv2_ud_ctx_t *ctx);

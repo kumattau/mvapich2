@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -176,7 +176,7 @@ int MPID_nem_ib_get_cell(
             MPIR_ERR_POP(mpi_errno);
         }
 
-        /* Atleast one cell is available now! */
+        /* At least one cell is available now! */
 
         MPID_nem_ib_queue_dequeue(
                 MPID_nem_ib_cell_pool.queue,

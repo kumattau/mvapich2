@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,14 +29,14 @@ extern int mv2_shmem_coll_num_procs;
 extern int mv2_gather_status_alignment;
 extern int mv2_bcast_status_alignment;
 extern int mv2_max_limic_comms;
-volatile int *child_complete_bcast;   /* use for initial synchro */
-volatile int *child_complete_gather;   /* use for initial synchro */
-volatile int *root_complete_gather;  
-volatile int *barrier_gather;
-volatile int *barrier_bcast;
-volatile int *shmem_coll_block_status;
+extern volatile int *child_complete_bcast;   /* use for initial synchro */
+extern volatile int *child_complete_gather;   /* use for initial synchro */
+extern volatile int *root_complete_gather;
+extern volatile int *barrier_gather;
+extern volatile int *barrier_bcast;
+extern volatile int *shmem_coll_block_status;
 #if defined(_SMP_LIMIC_)
-volatile int *limic_progress;
+extern volatile int *limic_progress;
 #endif
 
 #define SHMEM_COLL_NUM_SYNC_ARRAY 4
@@ -88,6 +88,8 @@ typedef struct {
     volatile int cr_smc_cnt;
     volatile pthread_spinlock_t cr_smc_spinlock;
 #endif
+    /* Aligning the shmem_coll_buf on a address divisible by 16 */
+    long double real16_padding; 
     /* the collective buffer */
     char shmem_coll_buf;
 } shmem_coll_region;
@@ -97,8 +99,5 @@ typedef struct {
         SHMEM_COLL_STATUS_ARRAY_SIZE + LIMIC_COLL_SYNC_ARRAY_SIZE + \
         SHMEM_BCAST_SYNC_ARRAY_SIZE)
 
-shmem_coll_region *shmem_coll;
-
-
-
+extern shmem_coll_region *shmem_coll;
 #endif  /* _COLL_SHMEM_INTERNAL */

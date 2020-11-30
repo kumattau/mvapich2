@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -46,28 +46,28 @@ int MPIR_Scan_MV2(const void *sendbuf, void *recvbuf, int count, MPI_Datatype da
     MPID_Datatype_get_extent_macro(datatype, extent);
     stride = count * MPIR_MAX(extent, true_extent);
 
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
        recv_mem_type = is_device_buffer(recvbuf);
        if ( sendbuf != MPI_IN_PLACE ){
            send_mem_type = is_device_buffer(sendbuf);
        }
     }
 
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         send_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)send_host_buf, 
+        MPIU_Memcpy_Device((void *)send_host_buf,
                             (void *)sendbuf, 
                             stride, 
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         sendbuf = send_host_buf;
     }
 
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         recv_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)recv_host_buf, 
+        MPIU_Memcpy_Device((void *)recv_host_buf,
                             (void *)recvbuf, 
                             stride, 
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         recvbuf = recv_host_buf;
     }
 #endif
@@ -76,20 +76,20 @@ int MPIR_Scan_MV2(const void *sendbuf, void *recvbuf, int count, MPI_Datatype da
 			  op, comm_ptr, errflag);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 #ifdef _ENABLE_CUDA_
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         recvbuf = temp_recvbuf;
-        MPIU_Memcpy_CUDA((void *)recvbuf, 
+        MPIU_Memcpy_Device((void *)recvbuf,
                             (void *)recv_host_buf, 
                             stride, 
-                            cudaMemcpyHostToDevice);
+                            deviceMemcpyHostToDevice);
     }
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         if(recv_host_buf){
             MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         sendbuf = temp_sendbuf;
         if(send_host_buf){
             MPIU_Free(send_host_buf);

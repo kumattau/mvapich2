@@ -324,8 +324,7 @@ typedef struct {
    predefined operations but MPICH supports them when possible. */
 #define MPIR_OP_TYPE_GROUP_FLOATING_POINT_EXTRA                                               \
     MPIR_OP_TYPE_MACRO_HAVE_REAL4_CTYPE(MPI_REAL4, MPIR_REAL4_CTYPE, mpir_typename_real4)     \
-    MPIR_OP_TYPE_MACRO_HAVE_REAL8_CTYPE(MPI_REAL8, MPIR_REAL8_CTYPE, mpir_typename_real8)     \
-    MPIR_OP_TYPE_MACRO_HAVE_REAL16_CTYPE(MPI_REAL16, MPIR_REAL16_CTYPE, mpir_typename_real16)
+    MPIR_OP_TYPE_MACRO_HAVE_REAL8_CTYPE(MPI_REAL8, MPIR_REAL8_CTYPE, mpir_typename_real8)
 
 /* logical group */
 /* FIXME Is MPI_Fint really OK here? */

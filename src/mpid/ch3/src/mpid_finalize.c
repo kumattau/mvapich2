@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,6 +16,9 @@
  */
 
 #include "mpidimpl.h"
+#if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
+#include "mv2_mpit_cvars.h"
+#endif
 #ifdef CHANNEL_MRAIL
 #include "upmi.h"
 #endif
@@ -32,6 +35,8 @@
 extern void free_cvar_handles();
 #endif
 
+void mv2_free_hca_handle();
+void mv2_free_arch_handle();
 /* FIXME: This routine needs to be factored into finalize actions per module,
    In addition, we should consider registering callbacks for those actions
    rather than direct routine calls.
@@ -125,8 +130,8 @@ int MPID_Finalize(void)
 #endif 
 
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda) {
-        cuda_cleanup();
+    if (mv2_enable_device) {
+        device_cleanup();
     }
 #endif
 
@@ -212,7 +217,7 @@ int MPID_Finalize(void)
 	p = MPIDI_CH3U_COLL_SRBuf_pool;
 	while (p) {
 	    pNext = p->next;
-	    MPIU_Free_CUDA_HOST(p->buf);
+	    MPIU_Free_Device_Pinned_Host(p->buf);
         MPIU_Free(p);
 	    p = pNext;
 	}
@@ -227,7 +232,7 @@ int MPID_Finalize(void)
         p = MPIDI_CH3U_CUDA_SRBuf_pool;
         while (p) {
             pNext = p->next;
-            MPIU_Free_CUDA(p->buf);
+            MPIU_Free_Device(p->buf);
             MPIU_Free(p);
             p = pNext;
         }

@@ -600,7 +600,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag,
 
 	MPIDI_Request_create_rreq( rreq, mpi_errno, goto lock_exit );
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
         rreq->mrail.cts_received   = 1;
     }
 #endif

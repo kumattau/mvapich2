@@ -467,7 +467,7 @@ static int scr_split_sorted(
       k++;
     }
 
-    /* wait for communication to finsih */
+    /* wait for communication to finish */
     if (k > 0) {
       MPI_Waitall(k, request, status);
     }

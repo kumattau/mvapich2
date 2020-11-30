@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,7 +39,7 @@ typedef struct {
     munmap_t    munmap;
 } mvapich2_malloc_info_t;
 
-mvapich2_malloc_info_t mvapich2_minfo;
+extern mvapich2_malloc_info_t mvapich2_minfo;
 
 void mvapich2_mem_unhook(void *mem, size_t size);
 int  mvapich2_minit(void);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,6 +25,7 @@
 #include <infiniband/verbs.h>
 
 #include "ibutil.h"
+#include "ib_comm.h"
 
 char *ibv_wr_opcode_string(int opcode)
 {
@@ -102,7 +103,7 @@ const char *ibv_mtu_string(enum ibv_mtu mtu)
 
 const char *ibv_port_state_string(enum ibv_port_state state)
 {
-    return ibv_port_state_str(state);
+    return mpirun_ibv_ops.port_state_str(state);
 
     switch (state) {
     case IBV_PORT_NOP:
@@ -208,7 +209,7 @@ const char *ibv_vl_string(uint8_t vl_num)
 
 const char *ibv_wc_status_string(int status)
 {
-    return ibv_wc_status_str(status);
+    return mpirun_ibv_ops.wc_status_str(status);
 
     switch (status) {
     case IBV_WC_SUCCESS:

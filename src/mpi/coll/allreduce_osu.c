@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,6 +21,7 @@
 #include "common_tuning.h"
 #include "allreduce_tuning.h"
 #include "bcast_tuning.h"
+#include "reduce_tuning.h"
 #if defined(CKPT)
 #include <cr.h>
 #endif
@@ -82,6 +83,77 @@ int (*MV2_Allreduce_intra_function)(const void *sendbuf,
 
 static int (*MPIR_Rank_list_mapper)(MPID_Comm *, int)=NULL;
 
+#define RING_ALLREDUCE_FALLBACK(_sendbuf,_recvbuf,_count,_datatype,_op,_comm_ptr,_errflag,_nbytes,_comm_size)       \
+    do {                                                                                                            \
+    if (64*1024 <= _nbytes/_comm_size) {                                                                            \
+        mpi_errno = MPIR_Allreduce_pt2pt_ring_wrapper_MV2(_sendbuf, _recvbuf,                                       \
+                _count, _datatype, _op, _comm_ptr, _errflag);                                                       \
+    } else {                                                                                                        \
+        mpi_errno = MPIR_Allreduce_pt2pt_rs_MV2(_sendbuf, _recvbuf, _count,                                         \
+                _datatype, _op, _comm_ptr, _errflag);                                                               \
+    }                                                                                                               \
+    } while(0);
+
+
+#define ALLREDUCE_SKIP_SMALL_MESSAGE_TUNING_TABLES                                              \
+do {                                                                                            \
+    /* skip the tables for small messages using sock aware collectives  */                      \
+    if(nbytes <= mv2_socket_aware_allreduce_max_msg && nbytes >=                                \
+            mv2_socket_aware_allreduce_min_msg &&                                               \
+            mv2_enable_socket_aware_collectives &&                                              \
+            mv2_use_socket_aware_allreduce &&                                                   \
+            comm_ptr->dev.ch.use_intra_sock_comm == 1 && is_commutative)                        \
+    {                                                                                           \
+        if (local_size < mv2_socket_aware_allreduce_ppn_threshold) {                            \
+            goto use_tables;                                                                    \
+        }                                                                                       \
+        mpi_errno = MPIR_Allreduce_socket_aware_two_level_MV2(sendbuf,                          \
+                recvbuf, count, datatype, op, comm_ptr, errflag);                               \
+        return mpi_errno;                                                                       \
+    }                                                                                           \
+                                                                                                \
+    /* skip the tables for small messages using single leader shmem collectives */              \
+    if (likely(mv2_enable_shmem_allreduce &&                                                    \
+                mv2_enable_skip_tuning_table_search && (nbytes <=                               \
+                    mv2_coll_skip_table_threshold))) {                                          \
+        /* for small messages, force Shmem + RD */                                              \
+        MV2_Allreduce_intra_function = MPIR_Allreduce_reduce_shmem_MV2;                         \
+        MV2_Allreduce_function = MPIR_Allreduce_pt2pt_rd_MV2;                                   \
+        is_two_level = 1;                                                                       \
+        goto skip_tuning_tables;                                                                \
+    }                                                                                           \
+                                                                                                \
+} while(0);
+
+
+#define ALLREDUCE_SKIP_LARGE_MESSAGE_TUNING_TABLES                                              \
+do {                                                                                            \
+    /* skip the tables for large messages with low PPN using ring collective */                 \
+    if (mv2_allred_use_ring == 1 && mv2_allreduce_ring_algo_threshold <=                        \
+            nbytes && local_size <= mv2_allreduce_ring_algo_ppn_threshold) {                    \
+        /* flat ring-based Allreduce */                                                         \
+        return MPIR_Allreduce_pt2pt_ring_wrapper_MV2(sendbuf, recvbuf,                          \
+                count, datatype, op, comm_ptr, errflag);                                        \
+    }                                                                                           \
+                                                                                                \
+                                                                                                \
+    /* skip the tables for large messages with high PPN using ring-based
+     * reduce_scatter followed by Allgather  collective */                                      \
+    if ((comm_ptr->dev.ch.allgather_comm_ok != 0 &&                                             \
+                comm_ptr->dev.ch.is_blocked == 0 &&                                             \
+                mv2_allreduce_cyclic_algo_threshold <= nbytes) ||                               \
+            (mv2_allreduce_red_scat_allgather_algo_threshold <= nbytes                          \
+             && local_size >                                                                    \
+             mv2_allreduce_red_scat_allgather_algo_ppn_threshold)) {                            \
+                                                                                                \
+        /* for large messages or cyclic hostfiles for medium messages, use
+         * red-scat-allgather algorithm  */                                                     \
+        return MPIR_Allreduce_pt2pt_reduce_scatter_allgather_MV2(sendbuf, recvbuf, count,       \
+                datatype, op, comm_ptr, errflag);                                               \
+    }                                                                                           \
+} while(0);
+
+
 #if defined (_SHARP_SUPPORT_)
 #undef FCNAME
 #define FCNAME "MPIR_Sharp_Allreduce_MV2"
@@ -131,20 +203,30 @@ int MPIR_Sharp_Allreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
             reduce_spec.sbuf_desc.buffer.ptr    = MPIU_Malloc(reduce_spec.sbuf_desc.buffer.length);
             MPIU_Memcpy(reduce_spec.sbuf_desc.buffer.ptr, recvbuf, reduce_spec.sbuf_desc.buffer.length);
         }
-        reduce_spec.sbuf_desc.type          = SHARP_DATA_BUFFER;
+        reduce_spec.sbuf_desc.type              = SHARP_DATA_BUFFER;
+        reduce_spec.sbuf_desc.mem_type          = SHARP_MEM_TYPE_HOST;
         reduce_spec.sbuf_desc.buffer.mem_handle = NULL;
         reduce_spec.rbuf_desc.buffer.ptr    = recvbuf;
         reduce_spec.rbuf_desc.buffer.length = count * dt_size->size;
         reduce_spec.rbuf_desc.type          = SHARP_DATA_BUFFER;
+        reduce_spec.rbuf_desc.mem_type      = SHARP_MEM_TYPE_HOST;
+        reduce_spec.aggr_mode               = SHARP_AGGREGATION_NONE;
         reduce_spec.rbuf_desc.buffer.mem_handle = NULL;    
     } else {
-        /* NOT implementated in Sharp */
+        /* NOT implemented in Sharp */
         mpi_errno = SHARP_COLL_ENOT_SUPP;
         goto fn_fail;
     }
 
     reduce_spec.length = count;     
     sharp_comm = ((sharp_info_t *)comm_ptr->dev.ch.sharp_coll_info)->sharp_comm_module->sharp_coll_comm;
+
+    /* Ensure that all messages in non-sharp channels are progressed first
+     * to prevent deadlocks in subsequent blocking sharp API calls */
+    while (rdma_global_ext_sendq_size) {
+        MPIDI_CH3_Progress_test();
+    }
+
     mpi_errno = sharp_coll_do_allreduce(sharp_comm, &reduce_spec);
     if (mpi_errno != SHARP_COLL_SUCCESS) {
         goto fn_fail;
@@ -274,7 +356,6 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
 
-    
     /* homogeneous */
 
     /* set op_errno to 0. stored in perthread structure */
@@ -314,10 +395,13 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
     MPID_Datatype_get_extent_macro(datatype, extent);
 
-    MPIU_CHKLMEM_MALLOC(tmp_buf, void *,
-                        count * (MPIR_MAX(extent, true_extent)), mpi_errno,
-                        "temporary buffer");
-
+    if ((comm_ptr->dev.ch.shmem_coll_ok == 1) &&
+        ((count * (MPIR_MAX(extent, true_extent)) <  mv2_coll_tmp_buf_size))) {
+        tmp_buf = (void *) ((char *)comm_ptr->dev.ch.coll_tmp_buf);
+    } else {
+        MPIU_CHKLMEM_MALLOC(tmp_buf, void *, count * (MPIR_MAX(extent, true_extent)),
+                            mpi_errno, "temporary buffer");
+    }
     /* adjust for potential negative lower bound in datatype */
     tmp_buf = (void *) ((char *) tmp_buf - true_lb);
 
@@ -1691,7 +1775,7 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
             }
     }
 
-    /* Broadcasting the mesage from leader to the rest */
+    /* Broadcasting the message from leader to the rest */
     mpi_errno = MPIR_Shmem_Bcast_MV2(recvbuf, count, datatype, 0, shmem_commptr, errflag);
     if (mpi_errno) {
         /* for communication errors, just record the error but continue */
@@ -1708,7 +1792,7 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
     goto fn_exit;
 }
 
-int MPIR_Allreduce_socket_aware_two_level_MV2(const void *sendbuf,
+int MPIR_Allreduce_socket_aware_two_level_old_MV2(const void *sendbuf,
                                           void *recvbuf,
                                           int count,
                                           MPI_Datatype datatype,
@@ -1734,25 +1818,22 @@ int MPIR_Allreduce_socket_aware_two_level_MV2(const void *sendbuf,
     leader_comm = comm_ptr->dev.ch.leader_comm;
     MPID_Comm_get_ptr(leader_comm, leader_commptr);
 
-    int intra_sock_rank = -1, intra_sock_size;
+    int intra_sock_rank = -1;
     MPID_Comm * intra_sock_commptr;
     MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_comm, intra_sock_commptr);
     intra_sock_rank = intra_sock_commptr->rank;
-    intra_sock_size = intra_sock_commptr->local_size;
-
-    MPIDI_msg_sz_t nbytes;
-    MPI_Aint type_size;
-    MPID_Datatype_get_size_macro(datatype, type_size);
-    nbytes = (MPIDI_msg_sz_t) (count) * (type_size);
 
     /* Step 1. Socket leaders do an intra-socket reduce using shared memory*/
 
     if (intra_sock_rank == 0) {
         /* root ranks */
-        mpi_errno = MPIR_Reduce_shmem_MV2(sendbuf, recvbuf, count, datatype, 
-                                          op, 0, intra_sock_commptr, errflag);
+	if(mv2_use_optimized_release_allreduce == 1) {
+	    mpi_errno = MPIR_Reduce_shmem_MV2_optrels(sendbuf, recvbuf, count, datatype, op, 0, intra_sock_commptr, errflag);
+	} else {
+	    mpi_errno = MPIR_Reduce_shmem_MV2(sendbuf, recvbuf, count, datatype, op, 0, intra_sock_commptr, errflag);
+	}
         if(mpi_errno)
-        { 
+        {
         /* for communication errors, just record the error but continue */
         *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
         MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
@@ -1762,11 +1843,17 @@ int MPIR_Allreduce_socket_aware_two_level_MV2(const void *sendbuf,
     } else {
         /* non-root ranks */
         if (sendbuf != MPI_IN_PLACE) {
-            mpi_errno = MPIR_Reduce_shmem_MV2(sendbuf, recvbuf, count, datatype, 
-                                              op, 0, intra_sock_commptr, errflag);
+	    if(mv2_use_optimized_release_allreduce == 1) {
+		mpi_errno = MPIR_Reduce_shmem_MV2_optrels(sendbuf, recvbuf, count, datatype, op, 0, intra_sock_commptr, errflag);
+	    } else {
+		mpi_errno = MPIR_Reduce_shmem_MV2(sendbuf, recvbuf, count, datatype, op, 0, intra_sock_commptr, errflag);
+	    }
         } else {
-            mpi_errno = MPIR_Reduce_shmem_MV2(recvbuf, NULL,  count, datatype, 
-                                              op, 0, intra_sock_commptr, errflag);
+	    if(mv2_use_optimized_release_allreduce == 1) {
+		mpi_errno = MPIR_Reduce_shmem_MV2_optrels(recvbuf, NULL,  count, datatype, op, 0, intra_sock_commptr, errflag);
+	    } else {
+		mpi_errno = MPIR_Reduce_shmem_MV2(recvbuf, NULL,  count, datatype, op, 0, intra_sock_commptr, errflag);
+	    }
         }
 
         if (mpi_errno) {
@@ -1781,15 +1868,94 @@ int MPIR_Allreduce_socket_aware_two_level_MV2(const void *sendbuf,
     
     MPID_Comm *shmem_leader_commptr = NULL;
     MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_leader_comm,shmem_leader_commptr);
-    if(intra_sock_rank == 0)
+
+    if(intra_sock_rank == 0 && shmem_leader_commptr->local_size > 1)
     {
-        // Binomial seemed to give the best performance for intra-node socket leaders.
-        mpi_errno = MPIR_Reduce_binomial_MV2(MPI_IN_PLACE,recvbuf,count,datatype,op,0,shmem_leader_commptr,errflag);
-        if (mpi_errno) {
-             /* for communication errors, just record the error but continue */
-             *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
-             MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-             MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+        // Fall back to binomial if shmem coll not ok for shmem leaders
+        if(shmem_leader_commptr->dev.ch.shmem_coll_ok != 1)
+        {
+            mpi_errno = MPIR_Reduce_binomial_MV2(MPI_IN_PLACE,recvbuf,count,datatype,op,0,shmem_leader_commptr,errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+        else
+        {
+            MPID_Comm *shmem_leader_shmemcomm = NULL;
+            MPID_Comm_get_ptr(shmem_leader_commptr->dev.ch.shmem_comm, shmem_leader_shmemcomm);
+            int i, stride, leader_rank, leader_size, leader_shmem_comm_rank;
+            MPI_User_function *uop;
+            MPID_Op *op_ptr;
+            char *shmem_buf = NULL;
+            void *local_buf = NULL;
+            MPI_Aint true_lb, true_extent, extent;
+#ifdef HAVE_CXX_BINDING
+            int is_cxx_uop = 0;
+#endif
+
+            MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+            MPID_Datatype_get_extent_macro(datatype, extent);
+            stride = count * MPIR_MAX(extent, true_extent);
+
+            leader_rank = shmem_leader_shmemcomm->rank;
+            leader_size = shmem_leader_shmemcomm->local_size;
+            leader_shmem_comm_rank = shmem_leader_shmemcomm->dev.ch.shmem_comm_rank;
+
+            /* Get the operator and check whether it is commutative or not */
+            if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
+                /* get the function by indexing into the op table */
+                uop = MPIR_Op_table[op % 16 - 1];
+            } else {
+                MPID_Op_get_ptr(op, op_ptr);
+#if defined(HAVE_CXX_BINDING)
+                if (op_ptr->language == MPID_LANG_CXX) {
+                    uop = (MPI_User_function *) op_ptr->function.c_function;
+                    is_cxx_uop = 1;
+                } else {
+#endif                          /* defined(HAVE_CXX_BINDING) */
+                    if (op_ptr->language == MPID_LANG_C) {
+                        uop = (MPI_User_function *) op_ptr->function.c_function;
+                    } else {
+                        uop = (MPI_User_function *) op_ptr->function.f77_function;
+                    }
+#if defined(HAVE_CXX_BINDING)
+                }
+#endif                          /* defined(HAVE_CXX_BINDING) */
+            }
+
+            if (leader_rank == 0) {
+                MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(leader_size, leader_rank,
+                        leader_shmem_comm_rank, (void *) &shmem_buf);
+                for (i = 1; i < leader_size; i++) {
+                    local_buf = (char *) shmem_buf + stride * i;
+#if defined(HAVE_CXX_BINDING)
+                    if (is_cxx_uop) {
+                        (*MPIR_Process.cxx_call_op_fn) (local_buf, recvbuf,
+                                count, datatype, uop);
+                    } else {
+#endif                          /* defined(HAVE_CXX_BINDING) */
+                        (*uop) (local_buf, recvbuf, &count, &datatype);
+#if defined(HAVE_CXX_BINDING)
+                    }
+#endif
+                }
+                MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(leader_size,
+                        leader_rank, leader_shmem_comm_rank);
+            } else {
+                MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(leader_size, leader_rank,
+                        leader_shmem_comm_rank, (void *) &shmem_buf);
+                local_buf = (char *) shmem_buf + stride * leader_rank;
+                mpi_errno = MPIR_Localcopy(recvbuf, count, datatype,
+                        local_buf, count, datatype);
+                if (mpi_errno) {
+                    MPIR_ERR_POP(mpi_errno);
+                }
+                MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(leader_size, leader_rank,
+                        leader_shmem_comm_rank);
+            }
         }
     }
 
@@ -1797,8 +1963,7 @@ int MPIR_Allreduce_socket_aware_two_level_MV2(const void *sendbuf,
 
     if(local_rank == 0 && leader_commptr->local_size > 1)
     {
-        mv2_use_socket_aware_allreduce = 0;
-        mpi_errno = MPIR_Allreduce_impl(MPI_IN_PLACE, recvbuf, count, datatype, op,
+        mpi_errno = MPIR_Allreduce_pt2pt_rd_MV2(MPI_IN_PLACE, recvbuf, count, datatype, op,
                                                        leader_commptr, errflag);
         if (mpi_errno) {
              /* for communication errors, just record the error but continue */
@@ -1806,50 +1971,207 @@ int MPIR_Allreduce_socket_aware_two_level_MV2(const void *sendbuf,
              MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
              MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
-        mv2_use_socket_aware_allreduce = 1;
     }
 
-    /* Step 4. Rank 0 broadcasts message to socket-leaders within the node */
+    /* Step 4. Intra-node Bcast on shmem comm from root (rank 0) */
 
-    if(intra_sock_rank == 0)
-    {
-        // Binomial seemed to give the best performance for intra-node socket leaders.
-        mpi_errno = MPIR_Bcast_binomial_MV2(recvbuf, count, datatype,0, shmem_leader_commptr, errflag);
-        if (mpi_errno) {
-             /* for communication errors, just record the error but continue */
-             *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
-             MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-             MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
-        }
-    }
-
-    /* Step 5. All socket leaders do an intra-node shared memory broadcast. Part of the bcast
-               shmem code has been taken in due to incompatability between communicator and
-               slotted shmem collectives. 
-    */
-
-    int shmem_comm_rank;
-    shmem_comm_rank = intra_sock_commptr->dev.ch.shmem_comm_rank;
-    void *shmem_buf = NULL;
-
-    if (intra_sock_rank == 0) {
-        MPIDI_CH3I_SHMEM_Bcast_GetBuf(intra_sock_size, intra_sock_rank,
-                                      shmem_comm_rank, (void *) &shmem_buf);
-        mpi_errno = MPIR_Localcopy(recvbuf, count, datatype, shmem_buf, nbytes, MPI_BYTE);
-        MPIDI_CH3I_SHMEM_Bcast_Complete(intra_sock_size, intra_sock_rank, shmem_comm_rank);
-    } else {
-        MPIDI_CH3I_SHMEM_Bcast_GetBuf(intra_sock_size, intra_sock_rank,
-                                      shmem_comm_rank, (void *) &shmem_buf);
-        mpi_errno = MPIR_Localcopy(shmem_buf, nbytes, MPI_BYTE, recvbuf, count, datatype);
-        MPIDI_CH3I_SHMEM_Bcast_Complete(intra_sock_size, intra_sock_rank, shmem_comm_rank);
-    }
+    mpi_errno = MPIR_Shmem_Bcast_MV2(recvbuf, count, datatype, 0, shmem_commptr, errflag);
 
     if (mpi_errno) {
         *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
         MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
         MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
     }
+
+    fn_exit:
+        return (mpi_errno);
+
+    fn_fail:
+        goto fn_exit;
+}
+
+int MPIR_Allreduce_socket_aware_two_level_MV2(const void *sendbuf,
+                                          void *recvbuf,
+                                          int count,
+                                          MPI_Datatype datatype,
+                                          MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    MPIU_Assert(comm_ptr->dev.ch.use_intra_sock_comm && comm_ptr->dev.ch.shmem_coll_ok == 1);
     
+	if(!mv2_use_slot_shmem_coll) {
+		return MPIR_Allreduce_socket_aware_two_level_old_MV2(sendbuf, recvbuf, count, datatype, op,
+												comm_ptr, errflag);
+	}
+
+	MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_2lvl, 1);
+    shmem_info_t *shmem = NULL;
+    int mpi_errno = MPI_SUCCESS, mpi_errno_ret = MPI_SUCCESS;
+    MPI_Aint true_lb = 0, true_extent = 0, extent = 0;
+    void *in_buf = NULL, *buf = NULL;
+    int local_rank = -1, is_cxx_uop = 0, rindex = 0, len = 0;
+    MPI_User_function *uop = NULL;
+    MPID_Op *op_ptr = NULL;
+    MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
+    MPID_Comm *intra_sock_commptr = NULL, *shmem_leader_commptr = NULL;
+
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+    len = count * MPIR_MAX(extent, true_extent);
+
+    if (count == 0) {
+        return MPI_SUCCESS;
+    }
+    /* Get details shmem_comm */
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+    local_rank = shmem_commptr->rank;
+    /* Get details leader_comm */
+    leader_comm = comm_ptr->dev.ch.leader_comm;
+    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+    /* Get details intra_sock_comm */
+    MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_comm, intra_sock_commptr);
+    /* Get the operator and check whether it is commutative or not */
+    if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
+        /* get the function by indexing into the op table */
+        uop = MPIR_Op_table[op % 16 - 1];
+    } else {
+        MPID_Op_get_ptr(op, op_ptr);
+#if defined(HAVE_CXX_BINDING)
+        if (op_ptr->language == MPID_LANG_CXX) {
+            uop = (MPI_User_function *) op_ptr->function.c_function;
+            is_cxx_uop = 1;
+        } else
+#endif /* defined(HAVE_CXX_BINDING) */
+        {
+            if (op_ptr->language == MPID_LANG_C) {
+                uop = (MPI_User_function *) op_ptr->function.c_function;
+            } else {
+                uop = (MPI_User_function *) op_ptr->function.f77_function;
+            }
+        }
+    }
+
+    /* Get details of the datatype */
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+    
+    if (sendbuf != MPI_IN_PLACE) {
+        in_buf = (void *)sendbuf;
+    } else {
+        in_buf = recvbuf;
+    }
+
+    /* Step 1. intra-socket reduce using shared memory */
+    /* Get shmem region */
+    shmem = intra_sock_commptr->dev.ch.shmem_info;
+    /* Get rindex */
+    rindex = shmem->read % mv2_shm_window_size;
+    buf = shmem->queue[shmem->local_rank].shm_slots[rindex]->buf;
+    mv2_shm_tree_reduce(shmem, in_buf, len, count, 0, uop,
+            datatype, is_cxx_uop);
+    shmem->write++;
+    shmem->read++;
+    if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %llu \n", shmem->write);
+        mv2_shm_barrier(shmem);
+        shmem->tail = shmem->read;
+    }
+    /* in_buf contains the result of the operation */
+    in_buf = buf;
+
+    /* Step 2. Socket level leaders within the node do an intra-node reduce to rank 0*/
+    MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_leader_comm,shmem_leader_commptr);
+
+    if (intra_sock_commptr->rank == 0 && shmem_leader_commptr != NULL && shmem_leader_commptr->local_size > 1) {
+        /* Fall back to binomial if shmem coll not ok for shmem leaders */
+        if (shmem_leader_commptr->dev.ch.shmem_coll_ok != 1) {
+            mpi_errno = MPIR_Reduce_binomial_MV2(MPI_IN_PLACE, in_buf, count, datatype,
+                    op, 0, shmem_leader_commptr, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        } else {
+            /* Get shmem region */
+            shmem = shmem_leader_commptr->dev.ch.shmem_info;
+            /* Get rindex */
+            rindex = shmem->read % mv2_shm_window_size;
+            buf = shmem->queue[shmem->local_rank].shm_slots[rindex]->buf;
+            mv2_shm_tree_reduce(shmem, in_buf, len, count, 0, uop,
+                    datatype, is_cxx_uop);
+            shmem->write++;
+            shmem->read++;
+            if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
+                PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %llu \n", shmem->write);
+                mv2_shm_barrier(shmem);
+                shmem->tail = shmem->read;
+            }
+            in_buf = buf;
+        }
+    }
+
+    /* Step 3. Leaders across nodes do an inter-node allreduce */
+    if (local_rank == 0 && leader_commptr->local_size > 1) {
+#if defined (_SHARP_SUPPORT_)
+        MPI_Aint type_size = 0;
+        /* Get size of data */
+        MPID_Datatype_get_size_macro(datatype, type_size);
+        MPIDI_msg_sz_t nbytes = (MPIDI_msg_sz_t) (count) * (type_size);
+        if (comm_ptr->dev.ch.is_sharp_ok == 1 && nbytes <=
+                mv2_sharp_tuned_msg_size && mv2_enable_sharp_coll == 1 &&
+                mv2_enable_sharp_allreduce) {
+            mpi_errno = MPIR_Sharp_Allreduce_MV2(MPI_IN_PLACE, in_buf, count,
+                    datatype, op, comm_ptr , errflag);
+            if (mpi_errno != MPI_SUCCESS) {
+                /* fall back to RD algorithm if SHArP is not supported */
+                mpi_errno = MPIR_Allreduce_pt2pt_rd_MV2(MPI_IN_PLACE, in_buf, count,
+                        datatype, op, leader_commptr,
+                        errflag);
+                if (mpi_errno) {
+                    /* for communication errors, just record the error but continue */
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+            }
+        } else
+#endif /* #if defined (_SHARP_SUPPORT_) */  
+        {
+            mpi_errno = MPIR_Allreduce_pt2pt_rd_MV2(MPI_IN_PLACE, in_buf, count,
+                    datatype, op, leader_commptr,
+                    errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+    }
+
+    /* Step 4. Inter-socket-leader Bcast on shmem_leader_comm */
+    if (intra_sock_commptr->rank == 0 && shmem_leader_commptr != NULL && shmem_leader_commptr->local_size > 1) {
+        /* Fall back to binomial if shmem coll not ok for shmem leaders */
+        if (shmem_leader_commptr->dev.ch.shmem_coll_ok != 1) {
+            mpi_errno = MPIR_Bcast_binomial_MV2(in_buf, count, datatype, 0, shmem_leader_commptr, errflag);
+            if (mpi_errno) {
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        } else {
+            MPIR_Shmem_Bcast_MV2(in_buf, count, datatype, 0, shmem_leader_commptr, errflag);
+        }
+    }
+
+    /* Step 5. Intra-socket Bcast on intra_sock_comm */
+    MPIR_Shmem_Bcast_MV2(in_buf, count, datatype, 0, intra_sock_commptr, errflag);
+
+    MPIR_Localcopy(in_buf, count, datatype, recvbuf, count, datatype);
+
     fn_exit:
         return (mpi_errno);
 
@@ -2036,7 +2358,7 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
         }
     }
 
-    /* Broadcasting the mesage from leader to the rest */
+    /* Broadcasting the message from leader to the rest */
     /* Note: shared memory broadcast could improve the performance */
     if (local_size > 1) {
         MPIR_Bcast_MV2(recvbuf, count, datatype, 0, shmem_commptr, errflag);
@@ -2073,7 +2395,8 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
     MPI_Aint true_lb, true_extent;
    /*We use reduce (at rank =0) followed by mcst-bcast to implement the 
     * allreduce operation */
-    int root=0, nbytes=0;
+    int root=0;
+    MPI_Aint nbytes=0;
     MPI_Aint type_size=0, position=0; 
     int mpi_errno=MPI_SUCCESS;
     int mpi_errno_ret=MPI_SUCCESS;
@@ -2240,7 +2563,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
 
     MPI_Aint sendtype_size = 0;
-    int nbytes = 0;
+    MPI_Aint nbytes = 0;
     int range = 0, range_threshold = 0, range_threshold_intra = 0;
     int is_two_level = 0;
     int is_commutative = 0;
@@ -2275,28 +2598,28 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     char *temp_recvbuf = recvbuf;
     const char *temp_sendbuf = sendbuf;
 
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
        recv_mem_type = is_device_buffer(recvbuf);
        if ( sendbuf != MPI_IN_PLACE ){
            send_mem_type = is_device_buffer(sendbuf);
        }
     }
 
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         send_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)send_host_buf, 
+        MPIU_Memcpy_Device((void *)send_host_buf,
                             (void *)sendbuf, 
                             stride, 
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         sendbuf = send_host_buf;
     }
 
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         recv_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)recv_host_buf, 
+        MPIU_Memcpy_Device((void *)recv_host_buf,
                             (void *)recvbuf, 
                             stride, 
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         recvbuf = recv_host_buf;
     }
 #endif
@@ -2332,7 +2655,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
             range++;
         }
         /* Search for corresponding inter-leader function */
-        /* skip mcast poiters if mcast is not available */
+        /* skip mcast pointers if mcast is not available */
         if(mv2_allreduce_thresholds_table[range].mcast_enabled != 1){
             while ((range_threshold < (mv2_allreduce_thresholds_table[range].size_inter_table - 1)) 
                     && ((mv2_allreduce_thresholds_table[range].
@@ -2416,20 +2739,20 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     } 
 
 #ifdef _ENABLE_CUDA_
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         recvbuf = temp_recvbuf;
-        MPIU_Memcpy_CUDA((void *)recvbuf, 
+        MPIU_Memcpy_Device((void *)recvbuf,
                             (void *)recv_host_buf, 
                             stride, 
-                            cudaMemcpyHostToDevice);
+                            deviceMemcpyHostToDevice);
     }
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         if(recv_host_buf){
             MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         sendbuf = temp_sendbuf;
         if(send_host_buf){
             MPIU_Free(send_host_buf);
@@ -2494,7 +2817,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
     MPI_Comm shmem_comm;
     int rank = 0, comm_size = 0;
     MPI_Aint sendtype_size = 0;
-    int nbytes = 0;
+    MPI_Aint nbytes = 0;
     int is_two_level = 0;
     int is_commutative = 0;
     MPI_Aint true_lb, true_extent;
@@ -2528,7 +2851,7 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
     //If is_socket_aware == 1 then Sharp allreduce will be called from within the socket-aware 
     //allreduce function
     if (comm_ptr->dev.ch.is_sharp_ok == 1 && nbytes <= mv2_sharp_tuned_msg_size
-        && mv2_enable_sharp_coll == 2 && !is_socket_aware) {
+        && mv2_enable_sharp_coll == 2 && !is_socket_aware && mv2_enable_sharp_allreduce) {
         /* Direct flat algorithm in which every process calls Sharp
          * MV2_ENABLE_SHARP should be set to 2 */
         mpi_errno = MPIR_Sharp_Allreduce_MV2(sendbuf, recvbuf, count,
@@ -2565,33 +2888,32 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
     char *send_host_buf = NULL;
     char *temp_recvbuf = recvbuf;
 
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
 	recv_mem_type = is_device_buffer(recvbuf);
 	if ( sendbuf != MPI_IN_PLACE ){
 	    send_mem_type = is_device_buffer(sendbuf);
 	}
     }
 
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         send_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)send_host_buf, 
+        MPIU_Memcpy_Device((void *)send_host_buf,
 			 (void *)sendbuf, 
 			 stride, 
-			 cudaMemcpyDeviceToHost);
+			 deviceMemcpyDeviceToHost);
         sendbuf = send_host_buf;
     }
 
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         recv_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)recv_host_buf, 
+        MPIU_Memcpy_Device((void *)recv_host_buf,
 			 (void *)recvbuf, 
 			 stride, 
-			 cudaMemcpyDeviceToHost);
+			 deviceMemcpyDeviceToHost);
         recvbuf = recv_host_buf;
     }
 #endif
     
-    /* check if safe to use partial subscription mode */
     if (comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_uniform) {
     
         shmem_comm = comm_ptr->dev.ch.shmem_comm;
@@ -2602,33 +2924,15 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
             conf_index = 0;
             goto conf_check_end;
         }
-        if (mv2_allred_use_ring == 1 && mv2_allreduce_ring_algo_threshold <=
-                nbytes && local_size <= mv2_allreduce_ring_algo_ppn_threshold) {
-            /* flat ring-based Allreduce */
-            return MPIR_Allreduce_pt2pt_ring_wrapper_MV2(sendbuf, recvbuf, count, datatype,
-                op, comm_ptr, errflag, comm_size, sendtype_size);
+   
+        if (mv2_enable_allreduce_skip_small_message_tuning_table_search) {
+            ALLREDUCE_SKIP_SMALL_MESSAGE_TUNING_TABLES
+        }
+        if (mv2_enable_allreduce_skip_large_message_tuning_table_search) {
+            ALLREDUCE_SKIP_LARGE_MESSAGE_TUNING_TABLES
         }
 
-        if(nbytes <= mv2_socket_aware_allreduce_max_msg && nbytes >= mv2_socket_aware_allreduce_min_msg 
-           && mv2_enable_socket_aware_collectives
-           && mv2_use_socket_aware_allreduce && comm_ptr->dev.ch.shmem_coll_ok == 1
-           && comm_ptr->dev.ch.allreduce_coll_count >= shmem_coll_count_threshold
-           && comm_ptr->dev.ch.use_intra_sock_comm == 1
-           && is_commutative) {
-
-            mpi_errno = MPIR_Allreduce_socket_aware_two_level_MV2(sendbuf, recvbuf, count, datatype, op,
-                                                                  comm_ptr, errflag);
-            return mpi_errno;
-        }
-
-        if (likely(mv2_enable_shmem_allreduce && mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
-            /* for small messages, force Shmem + RD */
-            MV2_Allreduce_intra_function = MPIR_Allreduce_reduce_shmem_MV2;
-            MV2_Allreduce_function = MPIR_Allreduce_pt2pt_rd_MV2;
-            is_two_level = 1;
-            goto skip_tuning_tables;
-        }
-
+use_tables: 
         FIND_PPN_INDEX  (allreduce, local_size,conf_index, partial_sub_ok)
 
     }
@@ -2638,18 +2942,6 @@ int MPIR_Allreduce_index_tuned_intra_MV2(const void *sendbuf,
     }
 
  
-    if ((comm_ptr->dev.ch.allgather_comm_ok != 0 &&
-          comm_ptr->dev.ch.is_blocked == 0 &&
-          mv2_allreduce_cyclic_algo_threshold <= nbytes) ||
-        (mv2_allreduce_red_scat_allgather_algo_threshold <= nbytes &&
-                  local_size > mv2_allreduce_red_scat_allgather_algo_ppn_threshold)) {
-
-        /* for large messages or cyclic hostfiles for medium messages, use
-         * red-scat-allgather algorithm  */
-        return MPIR_Allreduce_pt2pt_reduce_scatter_allgather_MV2(sendbuf, recvbuf, count,
-                datatype, op, comm_ptr, errflag);
-    }
-
 conf_check_end:
 
 
@@ -2708,7 +3000,7 @@ conf_check_end:
 		}
 	    }
 	    /* Search for corresponding inter-leader function */
-	    /* skip mcast poiters if mcast is not available */
+	    /* skip mcast pointers if mcast is not available */
     
 	    last_inter = mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].size_inter_table - 1;
 	    table_min_inter_size = mv2_allreduce_indexed_thresholds_table[conf_index][comm_size_index].inter_leader[0].msg_sz;
@@ -2769,6 +3061,22 @@ conf_check_end:
 		intra_node[intra_node_algo_index].MV2_pt_Allreduce_function;
 
 skip_tuning_tables:
+
+        if (MV2_Allreduce_function == &MPIR_Allreduce_socket_aware_two_level_MV2) {
+            if(nbytes <= mv2_socket_aware_allreduce_max_msg && nbytes >= mv2_socket_aware_allreduce_min_msg
+               && mv2_enable_socket_aware_collectives
+               && mv2_use_socket_aware_allreduce && comm_ptr->dev.ch.shmem_coll_ok == 1
+               && comm_ptr->dev.ch.use_intra_sock_comm == 1
+               && is_commutative && local_size >= mv2_socket_aware_allreduce_ppn_threshold) {
+
+                return MPIR_Allreduce_socket_aware_two_level_MV2(sendbuf, recvbuf, count, datatype, op,
+                                                                      comm_ptr, errflag);
+            } else {
+                return MPIR_Allreduce_pt2pt_rd_MV2(sendbuf, recvbuf, count,
+                        datatype, op, comm_ptr, errflag);
+            }
+        }
+
 	    /* check if mcast is ready, otherwise replace mcast with other algorithm */
 	    if((MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2)||
 	       (MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2)){
@@ -2787,7 +3095,7 @@ skip_tuning_tables:
 	    }
 #if defined (_SHARP_SUPPORT_)
         if (comm_ptr->dev.ch.is_sharp_ok == 1 && nbytes <= mv2_sharp_tuned_msg_size
-                && mv2_enable_sharp_coll == 1) {
+                && mv2_enable_sharp_coll == 1 && mv2_enable_sharp_allreduce) {
             is_two_level = 1;
             MV2_Allreduce_function = &MPIR_Sharp_Allreduce_MV2;
 
@@ -2823,20 +3131,20 @@ skip_tuning_tables:
 	}
 
 #ifdef _ENABLE_CUDA_
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         recvbuf = temp_recvbuf;
-        MPIU_Memcpy_CUDA((void *)recvbuf, 
+        MPIU_Memcpy_Device((void *)recvbuf,
 			 (void *)recv_host_buf, 
 			 stride, 
-			 cudaMemcpyHostToDevice);
+			 deviceMemcpyHostToDevice);
     }
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         if(recv_host_buf){
             MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         if(send_host_buf){
             MPIU_Free(send_host_buf);
             send_host_buf = NULL;
@@ -3067,28 +3375,28 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
     char *temp_recvbuf = recvbuf;
     const char *temp_sendbuf = sendbuf;
 
-    if (rdma_enable_cuda) {
+    if (mv2_enable_device) {
        recv_mem_type = is_device_buffer(recvbuf);
        if ( sendbuf != MPI_IN_PLACE ){
            send_mem_type = is_device_buffer(sendbuf);
        }
     }
 
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         send_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)send_host_buf, 
+        MPIU_Memcpy_Device((void *)send_host_buf,
                             (void *)sendbuf, 
                             stride, 
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         sendbuf = send_host_buf;
     }
 
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         recv_host_buf = (char*) MPIU_Malloc(stride);
-        MPIU_Memcpy_CUDA((void *)recv_host_buf, 
+        MPIU_Memcpy_Device((void *)recv_host_buf,
                             (void *)recvbuf, 
                             stride, 
-                            cudaMemcpyDeviceToHost);
+                            deviceMemcpyDeviceToHost);
         recvbuf = recv_host_buf;
     }
 #endif
@@ -3121,20 +3429,20 @@ int MPIR_Allreduce_old_MV2(const void *sendbuf,
     } 
 
 #ifdef _ENABLE_CUDA_
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         recvbuf = temp_recvbuf;
-        MPIU_Memcpy_CUDA((void *)recvbuf, 
+        MPIU_Memcpy_Device((void *)recvbuf,
                             (void *)recv_host_buf, 
                             stride, 
-                            cudaMemcpyHostToDevice);
+                            deviceMemcpyHostToDevice);
     }
-    if(rdma_enable_cuda && recv_mem_type){
+    if(mv2_enable_device && recv_mem_type){
         if(recv_host_buf){
             MPIU_Free(recv_host_buf);
             recv_host_buf = NULL;
         }
     }
-    if(rdma_enable_cuda && send_mem_type){
+    if(mv2_enable_device && send_mem_type){
         sendbuf = temp_sendbuf;
         if(send_host_buf){
             MPIU_Free(send_host_buf);
@@ -3206,12 +3514,32 @@ int MPIR_Allreduce_MV2(const void *sendbuf,
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Allreduce_pt2pt_ring_wrapper_MV2(const void *sendbuf, void *recvbuf,
         int count, MPI_Datatype datatype, MPI_Op op, MPID_Comm * comm_ptr,
-        MPIR_Errflag_t *errflag, int comm_size, int sendtype_size) {
+        MPIR_Errflag_t *errflag) {
 
-    int mpi_errno;
-    int chunk           = count / comm_size;
-    int new_count       = chunk * comm_size;
-    int remaining_count = count - new_count;
+    /* TODO make this algo cyclic process mapping aware */
+    int mpi_errno           = MPI_SUCCESS;
+    int comm_size           = 0;
+    int chunk               = 0;
+    int new_count           = 0;
+    int remaining_count     = 0;
+    MPI_Aint sendtype_size  = 0;
+
+    comm_size       = comm_ptr->local_size;
+    mpi_errno       = MPI_SUCCESS;
+    chunk           = count / comm_size;
+    new_count       = chunk * comm_size;
+    remaining_count = count - new_count;
+
+    MPI_Aint true_lb, true_extent, extent;
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+    sendtype_size = MPIR_MAX(extent, true_extent);
+
+    if((comm_ptr->local_size == 1) || (comm_ptr->dev.ch.allgather_comm_ok != 0 && comm_ptr->dev.ch.is_blocked == 0)) {
+        /* for local size 1 or cyclic hostfiles use red-scat-allgather algorithm */
+        return MPIR_Allreduce_pt2pt_rs_MV2(sendbuf, recvbuf, count, datatype,
+                op, comm_ptr, errflag);    
+    }
 
     if (sendbuf != MPI_IN_PLACE)
         mpi_errno = MPIR_Allreduce_pt2pt_ring_MV2(sendbuf, recvbuf, new_count, datatype,
@@ -3225,16 +3553,14 @@ int MPIR_Allreduce_pt2pt_ring_wrapper_MV2(const void *sendbuf, void *recvbuf,
     
     /* now Allreduce the remaining count */ 
     if (sendbuf != MPI_IN_PLACE)
-        return MPIR_Allreduce_pt2pt_rd_MV2(sendbuf+new_count*sendtype_size,
+        return MPIR_Allreduce_pt2pt_rs_MV2(sendbuf+new_count*sendtype_size,
                 recvbuf+new_count*sendtype_size, remaining_count, datatype,
                 op, comm_ptr, errflag);
     else 
-        return MPIR_Allreduce_pt2pt_rd_MV2(MPI_IN_PLACE,
+        return MPIR_Allreduce_pt2pt_rs_MV2(MPI_IN_PLACE,
                 recvbuf+new_count*sendtype_size, remaining_count, datatype,
                 op, comm_ptr, errflag);
 }
-
-
 
 /* This is flat ring-allreduce  allreduce */
 #undef FCNAME
@@ -3308,7 +3634,7 @@ int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
     MPID_Datatype_get_extent_macro(datatype, extent);
 
-    int type_size = MPIR_MAX(extent, true_extent);
+    MPI_Aint type_size = MPIR_MAX(extent, true_extent);
 
 
     if (count % comm_size != 0 || sendbuf == MPI_IN_PLACE ||
@@ -3320,7 +3646,7 @@ int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
     //memset(recvbuf, 0, type_size*count);
 
     MPIU_Assert((count * type_size) % comm_size == 0);
-    int chunk_size  = (count * type_size) / comm_size;
+    MPI_Aint chunk_size  = (count * type_size) / comm_size;
     int chunk_count = count / comm_size;
 
     {
@@ -3517,7 +3843,7 @@ int MPIR_Allreduce_pt2pt_ring_inplace_MV2(const void *sendbuf,
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
     MPID_Datatype_get_extent_macro(datatype, extent);
 
-    int type_size = MPIR_MAX(extent, true_extent);
+    MPI_Aint type_size = MPIR_MAX(extent, true_extent);
 
 
     if (count % comm_size != 0 || sendbuf == MPI_IN_PLACE ||
@@ -3529,7 +3855,7 @@ int MPIR_Allreduce_pt2pt_ring_inplace_MV2(const void *sendbuf,
     //memset(recvbuf, 0, type_size*count);
 
     MPIU_Assert((count * type_size) % comm_size == 0);
-    int chunk_size  = (count * type_size) / comm_size;
+    MPI_Aint chunk_size  = (count * type_size) / comm_size;
     int chunk_count = count / comm_size;
     
 

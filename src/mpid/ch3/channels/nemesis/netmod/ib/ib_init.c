@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -156,7 +156,7 @@ int MPID_nem_ib_pmi_init()
 				 "**pmi_get_appnum %d", pmi_errno);
 	}
 
-    / * Note that if pmi is not availble, the value of MPI_APPNUM is
+    / * Note that if pmi is not available, the value of MPI_APPNUM is
        not set * /
     if (appnum != -1) {
         MPIR_Process.attrs.appnum = appnum;

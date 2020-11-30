@@ -10,7 +10,7 @@
 */
 
 /*
- * The scr_transfer program is a deamon process that SCR launches as
+ * The scr_transfer program is a daemon process that SCR launches as
  * one process per compute node.  It sleeps in the background, waking
  * periodically to read the transfer.scrinfo file from cache, which
  * the library will fill with info regarding asynchronous flushes.
@@ -107,7 +107,7 @@ int clear_parameters(char** src, char** dst, off_t* position)
 }
 
 /* given a hash of files and a file name, check whether the named
- * file needs data transfered, if so, strdup its destination name
+ * file needs data transferred, if so, strdup its destination name
  * and set its position and filesize */
 int need_transfer(scr_hash* files, char* src, char** dst, off_t* position, off_t* filesize)
 {
@@ -145,7 +145,7 @@ int need_transfer(scr_hash* files, char* src, char** dst, off_t* position, off_t
 }
 
 /* given a hash of transfer file data, look for a file which needs to
- * be transfered. If src file is set, try to continue with that file,
+ * be transferred. If src file is set, try to continue with that file,
  * otherwise, pick the first available file */
 int find_file(scr_hash* hash, char** src, char** dst, off_t* position, off_t* filesize)
 {
@@ -169,7 +169,7 @@ int find_file(scr_hash* hash, char** src, char** dst, off_t* position, off_t* fi
          * ignoring that change */
         free(tmp_dst);
       } else {
-        /* otherwise, this file no longer needs transfered,
+        /* otherwise, this file no longer needs transferred,
          * so free the strings */
         clear_parameters(src, dst, position);
       }
@@ -186,11 +186,11 @@ int find_file(scr_hash* hash, char** src, char** dst, off_t* position, off_t* fi
         /* get the filename */
         char* name = scr_hash_elem_key(elem);
 
-        /* check whether this file needs transfered */
+        /* check whether this file needs transferred */
         if (name != NULL &&
             need_transfer(files, name, dst, position, filesize) == SCR_SUCCESS)
         {
-          /* found a file, copy its name (the destination and postion
+          /* found a file, copy its name (the destination and position
            * are set in need_transfer) */
           *src = strdup(name);
           found_a_file = 1;
@@ -701,7 +701,7 @@ int main (int argc, char *argv[])
     buf = NULL;
   }
 
-  /* free the strdup'd tranfer file name */
+  /* free the strdup'd transfer file name */
   if (scr_transfer_file != NULL) {
     free(scr_transfer_file);
     scr_transfer_file = NULL;

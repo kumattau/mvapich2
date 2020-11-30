@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -30,11 +30,27 @@
 #define MPIDI_CH3I_HOST_DESCRIPTION_KEY "description"
 
 MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
-int (*check_cq_overflow) (MPIDI_VC_t *c, int rail);
-int (*perform_blocking_progress) (int hca_num, int num_cqs);
-void (*handle_multiple_cqs) (int num_cqs, int cq_choice, int is_send_completion);
+int mv2_use_ib_channel = 1;
 extern int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank);
 extern void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg);
+
+ibv_ops_t ibv_ops;
+void *ibv_dl_handle = NULL;
+
+#if defined(_MCST_SUPPORT_)
+mad_ops_t mad_ops;
+void *mad_dl_handle = NULL;
+#endif /*defined(_MCST_SUPPORT_)*/
+
+#if defined(HAVE_LIBIBUMAD)
+umad_ops_t umad_ops;
+void *umad_dl_handle = NULL;
+#endif /*defined(HAVE_LIBIBUMAD)*/
+
+#if defined(RDMA_CM)
+rdma_ops_t rdma_ops;
+void *rdma_dl_handle = NULL;
+#endif /*defined(RDMA_CM)*/
 
 #undef FUNCNAME
 #define FUNCNAME split_type
@@ -126,6 +142,12 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
     }
 
+    if ((value = getenv("MV2_IOV_DENSITY_MIN")) != NULL) {
+        mv2_iov_density_min = atoi(value);
+        if (mv2_iov_density_min < 0) {
+            mv2_iov_density_min = MPIDI_IOV_DENSITY_MIN;
+        }
+    }
     /*check ON_DEMAND_THRESHOLD */
     value = getenv("MV2_ON_DEMAND_THRESHOLD");
     if (value) {
@@ -182,6 +204,11 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
 #endif
 
+#ifdef _ENABLE_CUDA_
+    /* set general device support, this can be extended for supporting other third-party devices with similar runtime designs */
+    mv2_enable_device = rdma_enable_cuda;
+#endif
+
 #ifdef _ENABLE_UD_
     int i = 0;
     for (i = 0; i < MAX_NUM_HCAS; ++i) {
@@ -217,7 +244,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         rdma_enable_only_ud = 0;
         rdma_enable_hybrid = 0;
     }
-    if(rdma_enable_hybrid == 1) { 
+    if (rdma_enable_hybrid) { 
         /* The zero-copy bcast design is disabled when 
          * hybrid is used */ 
         mv2_enable_zcpy_bcast = 0; 
@@ -341,23 +368,14 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         setenv("MV2_USE_RDMA_CM", "1", 1);
         if (mv2_MPIDI_CH3I_RDMA_Process.use_iwarp_mode ||
                 (((value = getenv("MV2_USE_IWARP_MODE")) != NULL) && !!atoi(value))) {
-            check_cq_overflow           = check_cq_overflow_for_iwarp;
-            handle_multiple_cqs         = handle_multiple_cqs_for_iwarp;
-            MPIDI_CH3I_MRAILI_Cq_poll   = MPIDI_CH3I_MRAILI_Cq_poll_iwarp;
-            perform_blocking_progress   = perform_blocking_progress_for_iwarp;
+	    mv2_use_ib_channel = 0;
         } else {
-            check_cq_overflow           = check_cq_overflow_for_ib;
-            handle_multiple_cqs         = handle_multiple_cqs_for_ib;
-            MPIDI_CH3I_MRAILI_Cq_poll   = MPIDI_CH3I_MRAILI_Cq_poll_ib;
-            perform_blocking_progress   = perform_blocking_progress_for_ib;
+	    mv2_use_ib_channel = 1;
         }
     } else 
 #endif /* defined(RDMA_CM) && !defined(CKPT) */
     {
-        check_cq_overflow           = check_cq_overflow_for_ib;
-        handle_multiple_cqs         = handle_multiple_cqs_for_ib;
-        MPIDI_CH3I_MRAILI_Cq_poll   = MPIDI_CH3I_MRAILI_Cq_poll_ib;
-        perform_blocking_progress   = perform_blocking_progress_for_ib;
+	mv2_use_ib_channel = 1;
     }
 
     /* save my vc_ptr for easy access */
@@ -389,7 +407,23 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     if ((value = getenv("MV2_POLLING_LEVEL")) != NULL) {
         rdma_polling_level = atoi(value);
     }
+    /* Use abstractions to remove dependency on OFED */
+    mpi_errno = mv2_dlopen_init();
+    if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+    }
     if (!SMP_ONLY) {
+        /* ibv_fork_init() initializes libibverbs's data structures to handle
+         * fork() function calls correctly and avoid data corruption, whether
+         * fork() is called explicitly or implicitly (such as in system()).
+         * If the user requested support for fork safety, call ibv_fork_init */
+        if (((value = getenv("MV2_SUPPORT_FORK_SAFETY")) != NULL) && !!atoi(value)) {
+            mpi_errno = ibv_ops.fork_init();
+            if (mpi_errno) {
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                        "**fail %s", "ibv_fork_init");
+            }
+        }
         /*
          * Identify local rank and number of local processes
          */
@@ -557,7 +591,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
                 vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                 /* Enable fast send */
                 if (mv2_use_eager_fast_send) {
-                    vc->eager_fast_fn = mv2_smp_fast_write_contig;
+		    vc->use_eager_fast_fn = 1;
                 }
                 if (SMP_ONLY) {
                     MPIDI_CH3I_SMP_Init_VC(vc);
@@ -644,21 +678,6 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
                     "Error in create multicast UD context for multicast");
         }
         PRINT_DEBUG(DEBUG_MCST_verbose,"Created multicast UD context \n");
-    }
-#endif
-
-#if defined(_SHARP_SUPPORT_)
-    if ((value = getenv("MV2_ENABLE_SHARP")) != NULL) {
-        mv2_enable_sharp_coll = atoi(value);
-    } else {
-        mv2_enable_sharp_coll = MPIR_CVAR_ENABLE_SHARP; 
-    }
-    if ((value = getenv("MV2_SHARP_PORT")) != NULL) {
-        mv2_sharp_port = atoi(value);
-    }
-    if ((value = getenv("MV2_SHARP_HCA_NAME")) != NULL) {
-        mv2_sharp_hca_name = MPIU_Malloc(sizeof(value));
-        MPIU_Memcpy(mv2_sharp_hca_name, value, sizeof(value));
     }
 #endif
 
@@ -924,13 +943,6 @@ int MPIDI_CH3_PG_Init(MPIDI_PG_t * pg)
                 "**nomem %s", "ud_cm mrail");
     }
     MPIU_Memset(pg->ch.mrail, 0, sizeof(MPIDI_CH3I_MRAIL_CM_t));
-
-    pg->ch.mrail->cm_ah = MPIU_Malloc(pg->size * sizeof(struct ibv_ah *));
-    if (pg->ch.mrail->cm_ah == NULL) {
-        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
-                "**nomem %s", "cm_ah");
-    }
-    MPIU_Memset(pg->ch.mrail->cm_ah, 0, pg->size * sizeof(struct ibv_ah *));
 
     if (!mv2_shmem_backed_ud_cm) {
         pg->ch.mrail->cm_shmem.ud_cm =

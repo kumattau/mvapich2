@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,9 +20,7 @@
 #include "mpidimpl.h"
 #include "mpicomm.h"
 
-#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) || defined(CHANNEL_NEMESIS_IB)
 #include "coll_shmem.h"
-#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) || defined(CHANNEL_NEMESIS_IB) */
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===

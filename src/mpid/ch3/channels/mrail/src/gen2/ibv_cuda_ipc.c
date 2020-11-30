@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,10 +21,10 @@
 
 #define CUDAIPC_CACHE_INVALID 0x01
 
-cuda_regcache_entry_t **cudaipc_cache_list = NULL;
+device_regcache_entry_t **cudaipc_cache_list = NULL;
 int *num_cudaipc_cache_entries = NULL;
-int cudaipc_num_local_procs = 0;
-int cudaipc_my_local_id = -1;
+int deviceipc_num_local_procs = 0;
+int deviceipc_my_local_id = -1;
 static char *cuda_shmem_file = NULL;
 static char *cuda_shmem_ptr = NULL;
 static int cuda_shmem_fd = -1;
@@ -35,11 +35,11 @@ cudaipc_local_info_t *cudaipc_local_data;
 cudaipc_remote_info_t *cudaipc_remote_data;
 int cudaipc_num_stage_buffers = 2;
 int cudaipc_stage_buffer_size = (1 << 19);
-int cudaipc_stage_buffered = 1;
-size_t cudaipc_stage_buffered_limit = (1 << 25);
+int mv2_device_use_ipc_stage_buffer = 1;
+size_t mv2_device_ipc_stage_buffer_limit = (1 << 25);
 int cudaipc_sync_limit = 16 * 1024;
 
-static inline int cudaipc_openmemhandle(cuda_regcache_entry_t *reg)
+static inline int cudaipc_openmemhandle(device_regcache_entry_t *reg)
 {
     cudaError_t cudaerr = cudaSuccess;
     cudaIpcMemHandle_t memhandle;
@@ -52,7 +52,7 @@ static inline int cudaipc_openmemhandle(cuda_regcache_entry_t *reg)
 
     return CUDAIPC_SUCESS;
 }
-static inline int cudaipc_closememhandle(cuda_regcache_entry_t *reg)
+static inline int cudaipc_closememhandle(device_regcache_entry_t *reg)
 {
     cudaError_t cudaerr = cudaSuccess;
     cudaerr = cudaIpcCloseMemHandle(reg->remote_base);
@@ -62,16 +62,16 @@ static inline int cudaipc_closememhandle(cuda_regcache_entry_t *reg)
     return CUDAIPC_SUCESS;
 }
 
-static inline int is_cudaipc_cachable(cuda_regcache_entry_t *reg)
+static inline int is_cudaipc_cachable(device_regcache_entry_t *reg)
 {
     return !(reg->flags & CUDAIPC_CACHE_INVALID);
 }
 
 
 static inline void cudaipc_regcache_find (void *addr, int size, 
-                            cuda_regcache_entry_t **reg, int rank)
+                            device_regcache_entry_t **reg, int rank)
 {
-    cuda_regcache_entry_t *temp = NULL;
+    device_regcache_entry_t *temp = NULL;
     temp = cudaipc_cache_list[rank];
     *reg = NULL;
     while(temp) {
@@ -84,10 +84,10 @@ static inline void cudaipc_regcache_find (void *addr, int size,
     }
 }
 
-static inline void cudaipc_regcache_insert(cuda_regcache_entry_t *new_reg)
+static inline void cudaipc_regcache_insert(device_regcache_entry_t *new_reg)
 {
     int rank = new_reg->rank;
-    if (num_cudaipc_cache_entries[rank] >= cudaipc_cache_max_entries) {
+    if (num_cudaipc_cache_entries[rank] >= mv2_device_ipc_cache_max_entries) {
         /*flush a entry from the cache */
         cudaipc_flush_regcache(rank, 1);
     }
@@ -104,7 +104,7 @@ static inline void cudaipc_regcache_insert(cuda_regcache_entry_t *new_reg)
     }
 }
 
-void cudaipc_regcache_delete(cuda_regcache_entry_t *reg)
+void cudaipc_regcache_delete(device_regcache_entry_t *reg)
 {
     if (reg == NULL) {
         return;
@@ -129,12 +129,12 @@ void cudaipc_regcache_delete(cuda_regcache_entry_t *reg)
 }
 
 void cudaipc_register(void *base_ptr, size_t size, int rank, 
-        cudaIpcMemHandle_t memhandle, cuda_regcache_entry_t **cuda_reg)
+        cudaIpcMemHandle_t memhandle, device_regcache_entry_t **cuda_reg)
 {
-    cuda_regcache_entry_t *reg = NULL, *new_reg = NULL;
+    device_regcache_entry_t *reg = NULL, *new_reg = NULL;
 
 start_find:
-    if (rdma_cuda_enable_ipc_cache) {
+    if (mv2_device_enable_ipc_cache) {
         cudaipc_regcache_find(base_ptr, size, &reg, rank);
     }
 
@@ -160,7 +160,7 @@ start_find:
     }
 
     if (reg == NULL) {
-        new_reg = MPIU_Malloc(sizeof (cuda_regcache_entry_t));
+        new_reg = MPIU_Malloc(sizeof (device_regcache_entry_t));
         new_reg->addr = base_ptr;
         new_reg->size = size;
         new_reg->refcount = 0;
@@ -175,9 +175,9 @@ start_find:
             }
         }
             
-        if (rdma_cuda_enable_ipc_cache) {
+        if (mv2_device_enable_ipc_cache) {
             cudaipc_regcache_insert(new_reg);
-            PRINT_DEBUG(CUDAIPC_DEBUG, "cahce miss. New entry added: base_ptr: "
+            PRINT_DEBUG(CUDAIPC_DEBUG, "cache miss. New entry added: base_ptr: "
                     "%p end:%p size:%lu, memhandle:%lu rank:%d\n", base_ptr, 
                      (char *)base_ptr + size, size, new_reg->cuda_memHandle[0], rank);
         }
@@ -186,15 +186,15 @@ start_find:
     *cuda_reg = new_reg;
 }
 
-void cudaipc_deregister(cuda_regcache_entry_t *reg)
+void cudaipc_deregister(device_regcache_entry_t *reg)
 {
     MPIU_Assert(reg->refcount > 0);
     reg->refcount--;
     if (reg->refcount > 0) {
         return;
     }
-    if (!(rdma_cuda_enable_ipc_cache && is_cudaipc_cachable(reg))) {
-        if (rdma_cuda_enable_ipc_cache) {
+    if (!(mv2_device_enable_ipc_cache && is_cudaipc_cachable(reg))) {
+        if (mv2_device_enable_ipc_cache) {
             cudaipc_regcache_delete(reg);
         }
         PRINT_DEBUG(CUDAIPC_DEBUG, "deleted entry: base_ptr:%p size:%lu, "
@@ -207,7 +207,7 @@ void cudaipc_deregister(cuda_regcache_entry_t *reg)
 
 void cudaipc_flush_regcache(int rank, int count)
 {
-    cuda_regcache_entry_t *reg = NULL;
+    device_regcache_entry_t *reg = NULL;
     int n = 0;
     while(cudaipc_cache_list[rank] && n < count) {
         reg = cudaipc_cache_list[rank];
@@ -221,13 +221,13 @@ void cudaipc_flush_regcache(int rank, int count)
     }
 }
 
-void cudaipc_initialize_cache()
+void device_ipc_initialize_cache()
 {
     int i;
-    cudaipc_cache_list = (cuda_regcache_entry_t **) 
-                MPIU_Malloc(cudaipc_num_local_procs * sizeof(cuda_regcache_entry_t *));
-    num_cudaipc_cache_entries = (int *) MPIU_Malloc(cudaipc_num_local_procs * sizeof(int));
-    for (i=0; i< cudaipc_num_local_procs; i++) {
+    cudaipc_cache_list = (device_regcache_entry_t **)
+                MPIU_Malloc(deviceipc_num_local_procs * sizeof(device_regcache_entry_t *));
+    num_cudaipc_cache_entries = (int *) MPIU_Malloc(deviceipc_num_local_procs * sizeof(int));
+    for (i=0; i< deviceipc_num_local_procs; i++) {
         num_cudaipc_cache_entries[i] = 0;
         cudaipc_cache_list[i] = NULL;
     }
@@ -274,12 +274,12 @@ void cudaipc_allocate_shared_region (MPIDI_PG_t *pg, int num_processes, int my_r
         ibv_error_abort(GEN_EXIT_ERR,"mem alloacation filed\n");
     }
 
-    if (cudaipc_stage_buffered) { 
-        cuda_shmem_size = (cudaipc_num_local_procs*sizeof(cudaipc_device_id_t)) + 
-                (cudaipc_num_local_procs * cudaipc_num_local_procs *  
+    if (mv2_device_use_ipc_stage_buffer) {
+        cuda_shmem_size = (deviceipc_num_local_procs*sizeof(cudaipc_device_id_t)) +
+                (deviceipc_num_local_procs * deviceipc_num_local_procs *
                 cudaipc_num_stage_buffers * sizeof(cudaipc_shared_info_t));
     } else {
-        cuda_shmem_size = (cudaipc_num_local_procs*sizeof(cudaipc_device_id_t));
+        cuda_shmem_size = (deviceipc_num_local_procs*sizeof(cudaipc_device_id_t));
     }
     
     sprintf(cuda_shmem_file, "%s/cudaipc_shmem-%s-%s-%d.tmp",
@@ -322,21 +322,21 @@ void cudaipc_allocate_shared_region (MPIDI_PG_t *pg, int num_processes, int my_r
 
     cudaipc_shared_device_id = (cudaipc_device_id_t *)cuda_shmem_ptr;
     if (vc->smp.local_rank == 0) {
-        for (i=0; i<cudaipc_num_local_procs; i++) { 
+        for (i=0; i<deviceipc_num_local_procs; i++) {
             cudaipc_shared_device_id[i] = -1;
         }
     }
 
-    if (cudaipc_stage_buffered) {
-        cudaipc_shared_data = (cudaipc_shared_info_t *) ((uintptr_t) cuda_shmem_ptr 
-                    + sizeof(cudaipc_device_id_t) * cudaipc_num_local_procs);
+    if (mv2_device_use_ipc_stage_buffer) {
+        cudaipc_shared_data = (cudaipc_shared_info_t *) ((uintptr_t) cuda_shmem_ptr
+                    + sizeof(cudaipc_device_id_t) * deviceipc_num_local_procs);
 
-        cudaipc_local_data = (cudaipc_local_info_t *) 
-                    MPIU_Malloc(cudaipc_num_local_procs * cudaipc_num_stage_buffers * 
+        cudaipc_local_data = (cudaipc_local_info_t *)
+                    MPIU_Malloc(deviceipc_num_local_procs * cudaipc_num_stage_buffers *
                             sizeof (cudaipc_local_info_t));
 
         cudaipc_remote_data = (cudaipc_remote_info_t *)
-                    MPIU_Malloc(cudaipc_num_local_procs * cudaipc_num_stage_buffers
+                    MPIU_Malloc(deviceipc_num_local_procs * cudaipc_num_stage_buffers
                                         * sizeof(cudaipc_remote_info_t));
     }
 
@@ -356,7 +356,7 @@ cleanup_shmem_file:
 
 void cudaipc_share_device_info ()
 {
-    CUDA_CHECK(cudaGetDevice((int*)&cudaipc_shared_device_id[cudaipc_my_local_id]));
+    CUDA_CHECK(cudaGetDevice((int*)&cudaipc_shared_device_id[deviceipc_my_local_id]));
 }
 
 void cudaipc_allocate_ipc_region (MPIDI_PG_t *pg, int num_processes, int my_rank)
@@ -368,10 +368,10 @@ void cudaipc_allocate_ipc_region (MPIDI_PG_t *pg, int num_processes, int my_rank
         if (j == my_rank) continue;
         MPIDI_PG_Get_vc(pg, j, &vc);
 
-        if (vc->smp.local_rank != -1 && vc->smp.can_access_peer != CUDA_IPC_DISABLED) {
+        if (vc->smp.local_rank != -1 && vc->smp.can_access_peer != MV2_DEVICE_IPC_DISABLED) {
             local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
             shared_index = 
-            CUDAIPC_BUF_SHARED_IDX(cudaipc_my_local_id, vc->smp.local_rank);
+            CUDAIPC_BUF_SHARED_IDX(deviceipc_my_local_id, vc->smp.local_rank);
 
             for (i = 0; i < cudaipc_num_stage_buffers; i++) {
                 CUDA_CHECK(cudaEventCreateWithFlags(
@@ -380,7 +380,7 @@ void cudaipc_allocate_ipc_region (MPIDI_PG_t *pg, int num_processes, int my_rank
                 CUDA_CHECK(cudaIpcGetEventHandle(
                     &cudaipc_shared_data[shared_index + i].ipcEventHandle,
                     cudaipc_local_data[local_index + i].ipcEvent));
-                MPIU_Malloc_CUDA(cudaipc_local_data[local_index + i].buffer, 
+                MPIU_Malloc_Device(cudaipc_local_data[local_index + i].buffer,
                                     cudaipc_stage_buffer_size);
                 CUDA_CHECK(cudaIpcGetMemHandle(
                     &cudaipc_shared_data[shared_index + i].ipcMemHanlde,
@@ -394,10 +394,10 @@ void cudaipc_allocate_ipc_region (MPIDI_PG_t *pg, int num_processes, int my_rank
         }
     }
 
-    CUDA_CHECK(cudaGetDevice((int*)&cudaipc_shared_device_id[cudaipc_my_local_id]));
+    CUDA_CHECK(cudaGetDevice((int*)&cudaipc_shared_device_id[deviceipc_my_local_id]));
 }
 
-void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
+void device_ipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
 {
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     int i, j, local_index, shared_index;
@@ -416,10 +416,10 @@ void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
         if (j == my_rank) continue;
 
         MPIDI_PG_Get_vc(pg, j, &vc);
-        if (vc->smp.local_rank != -1 && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+        if (vc->smp.local_rank != -1 && vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
             local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
             shared_index = 
-                CUDAIPC_BUF_SHARED_IDX(vc->smp.local_rank, cudaipc_my_local_id);
+                CUDAIPC_BUF_SHARED_IDX(vc->smp.local_rank, deviceipc_my_local_id);
 
             MPIU_Assert (cudaipc_shared_device_id[vc->smp.local_rank] != -1);
 
@@ -442,7 +442,7 @@ void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
     /*shared memory region is cleaned up during ipc finalize*/
 }
 
-void cudaipc_init_dynamic (MPIDI_VC_t *vc)
+void device_ipc_init_dynamic (MPIDI_VC_t *vc)
 {
     int i, local_index, shared_index;
     int my_device_id, peer_device_id;
@@ -453,27 +453,27 @@ void cudaipc_init_dynamic (MPIDI_VC_t *vc)
     }
 
     /*check if peer device is IPC accessible*/
-    my_device_id = cudaipc_shared_device_id[cudaipc_my_local_id];
+    my_device_id = cudaipc_shared_device_id[deviceipc_my_local_id];
     peer_device_id = cudaipc_shared_device_id[vc->smp.local_rank];   
     if(rdma_enable_ipc_share_gpu){    
         if (my_device_id == peer_device_id) {
-            vc->smp.can_access_peer = CUDA_IPC_ENABLED;
+            vc->smp.can_access_peer = MV2_DEVICE_IPC_ENABLED;
         } else {
             CUDA_CHECK(cudaDeviceCanAccessPeer((int*)&vc->smp.can_access_peer, 
                            my_device_id, peer_device_id));
-            vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
+            vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? MV2_DEVICE_IPC_DISABLED : MV2_DEVICE_IPC_ENABLED;
         }
     }else{
         CUDA_CHECK(cudaDeviceCanAccessPeer((int*)&vc->smp.can_access_peer,
                            my_device_id, peer_device_id));
-            vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
+            vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? MV2_DEVICE_IPC_DISABLED : MV2_DEVICE_IPC_ENABLED;
     }    
     
-    if (vc->smp.can_access_peer == CUDA_IPC_ENABLED && cudaipc_stage_buffered) {
+    if (vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED && mv2_device_use_ipc_stage_buffer) {
         /*compute the local and peer indices*/
         local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
         shared_index = 
-             CUDAIPC_BUF_SHARED_IDX(vc->smp.local_rank, cudaipc_my_local_id);
+             CUDAIPC_BUF_SHARED_IDX(vc->smp.local_rank, deviceipc_my_local_id);
 
         /* Open remote ipc event and mem handles for the process*/
         for (i = 0; i < cudaipc_num_stage_buffers; i++) {
@@ -500,7 +500,7 @@ void cudaipc_finalize()
     int i, j, pg_size, my_rank, local_index;
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;
  
-    if (!cudaipc_stage_buffered) {
+    if (!mv2_device_use_ipc_stage_buffer) {
         goto cleanup_shmem_file;
     }
   
@@ -512,7 +512,7 @@ void cudaipc_finalize()
             if (j == my_rank) continue;
             MPIDI_PG_Get_vc(pg, j, &vc);
  
-            if (vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+            if (vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
                 local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
                 for (i = 0; i < cudaipc_num_stage_buffers; i++) {
                     CUDA_CHECK(cudaEventDestroy(cudaipc_remote_data[local_index + i].ipcEvent));        
@@ -530,11 +530,11 @@ void cudaipc_finalize()
             if (j == my_rank) continue;
             MPIDI_PG_Get_vc(pg, j, &vc);
  
-            if (vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+            if (vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
                 local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
                 for (i = 0; i < cudaipc_num_stage_buffers; i++) {
                     CUDA_CHECK(cudaEventDestroy(cudaipc_local_data[local_index + i].ipcEvent));
-                    CUDA_CHECK(cudaFree(cudaipc_local_data[local_index + i].buffer));
+                    MPIU_Free_Device(cudaipc_local_data[local_index + i].buffer);
                 }
             }
         }

@@ -6,6 +6,7 @@
 
 #include "mpiimpl.h"
 #include "collutil.h"
+#include "helper_fns.h"
 
 int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
                                MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr,

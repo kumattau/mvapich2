@@ -4,7 +4,7 @@ AC_PREREQ(2.63)
 #     See COPYRIGHT in top-level directory.
 #
 
-# Copyright (c) 2001-2019, The Ohio State University. All rights
+# Copyright (c) 2001-2020, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -536,6 +536,23 @@ dnl load to access the MPICH internal data structures.
 
 dnl "default" is a special device that allows MPICH to choose one
 dnl based on the environment.
+AC_ARG_WITH(hwloc,
+	AC_HELP_STRING([--with-hwloc=version],
+                   [Specify the hwloc version to use with MVAPICH2
+                    (Options: v1, v2) (Default: v1)]),,
+	               with_hwloc=v1)
+ 
+AM_CONDITIONAL([BUILD_HWLOC_v1], [test x$with_hwloc = xv1])
+AM_CONDITIONAL([BUILD_HWLOC_v2], [test x$with_hwloc = xv2])
+
+if test "$with_hwloc" = "v1" ; then
+    AC_CONFIG_SUBDIRS([contrib/hwloc_v1])
+    AC_DEFINE([_USE_HWLOC_V1_], 1, [Define when using HWLOC V1])
+else
+    AC_CONFIG_SUBDIRS([contrib/hwloc_v2])
+    AC_DEFINE([_USE_HWLOC_V2_], 1, [Define when using HWLOC V2])
+fi
+
 AC_ARG_WITH(device,
 	AC_HELP_STRING([--with-device=name], [Specify the communication device for MVAPICH2]),,
 	with_device=default)
@@ -6150,7 +6167,7 @@ PAC_GET_EXENAME("mpifort", MPIFORT_NAME)
 PAC_GET_EXENAME("mpif90", MPIF90_NAME)
 PAC_GET_EXENAME("mpif77", MPIF77_NAME)
 
-AC_CONFIG_SUBDIRS([test/mpi contrib/hwloc])
+AC_CONFIG_SUBDIRS([test/mpi])
 dnl
 dnl Generate the Makefiles from Makefile.in
 dnl Also generate mpi.h from mpi.h.in so that we can eliminate all ifdefs

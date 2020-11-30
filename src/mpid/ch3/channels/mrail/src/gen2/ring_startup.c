@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -67,7 +67,7 @@ static union ibv_gid get_local_gid(struct ibv_context * ctx, int port)
 {
     union ibv_gid gid;
 
-    ibv_query_gid(ctx, port, rdma_default_gid_index, &gid);
+    ibv_ops.query_gid(ctx, port, rdma_default_gid_index, &gid);
 
     return gid;
 }
@@ -76,7 +76,7 @@ static uint16_t get_local_lid(struct ibv_context * ctx, int port)
 {
     struct ibv_port_attr attr;
 
-    if (ibv_query_port(ctx, port, &attr)) {
+    if (ibv_ops.query_port(ctx, port, &attr)) {
         return -1;
     }
 
@@ -183,18 +183,33 @@ static struct ibv_qp *create_qp(struct ibv_pd *pd,
     boot_attr.send_cq = scq;
     boot_attr.recv_cq = rcq;
 
-    return ibv_create_qp(pd, &boot_attr);
+    return ibv_ops.create_qp(pd, &boot_attr);
 }
 
-static int _find_active_port(struct ibv_context *context) 
+static int _find_active_port(struct ibv_context *context, int *mv2_port_is_ethernet) 
 {
     struct ibv_port_attr port_attr;
     int j;
 
-    for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; ++ j) {
-        if ((! ibv_query_port(context, j, &port_attr)) &&
+    if (rdma_default_port < 0 || rdma_num_ports > 1) {
+        for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; ++ j) {
+            if ((!ibv_ops.query_port(context, j, &port_attr)) &&
+                 port_attr.state == IBV_PORT_ACTIVE) {
+                if (port_attr.link_layer == IBV_LINK_LAYER_ETHERNET) {
+                    PRINT_DEBUG(DEBUG_CM_verbose,"port_attr.link_layer == IBV_LINK_LAYER_ETHERNET\n");
+                    *mv2_port_is_ethernet = 1;
+                }
+                return j;
+            }
+        }
+    } else {
+        if ((!ibv_ops.query_port(context, rdma_default_port, &port_attr)) &&
              port_attr.state == IBV_PORT_ACTIVE) {
-            return j;
+            if (port_attr.link_layer == IBV_LINK_LAYER_ETHERNET) {
+                PRINT_DEBUG(DEBUG_CM_verbose,"port_attr.link_layer == IBV_LINK_LAYER_ETHERNET\n");
+                *mv2_port_is_ethernet = 1;
+            }
+            return rdma_default_port;
         }
     }
 
@@ -203,7 +218,7 @@ static int _find_active_port(struct ibv_context *context)
 
 static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
                               struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
-                              int port)
+                              int port, int mv2_port_is_ethernet)
 {
     struct ibv_qp_attr      qp_attr;
     uint32_t    qp_attr_mask = 0;
@@ -215,16 +230,16 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
         IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ;
     qp_attr.port_num        = port;
 
-    DEBUG_PRINT("default port %d, qpn %x\n", port,
+    PRINT_DEBUG(DEBUG_CM_verbose, "default port %d, qpn %x\n", port,
             proc->boot_qp_hndl[0]->qp_num);
 
-    ret = ibv_modify_qp(proc->boot_qp_hndl[0],&qp_attr,(IBV_QP_STATE
+    ret = ibv_ops.modify_qp(proc->boot_qp_hndl[0],&qp_attr,(IBV_QP_STATE
                         | IBV_QP_PKEY_INDEX
                         | IBV_QP_PORT
                         | IBV_QP_ACCESS_FLAGS));
     CHECK_RETURN(ret, "Could not modify boot qp to INIT");
 
-    ret = ibv_modify_qp(proc->boot_qp_hndl[1],&qp_attr,(IBV_QP_STATE
+    ret = ibv_ops.modify_qp(proc->boot_qp_hndl[1],&qp_attr,(IBV_QP_STATE
                         | IBV_QP_PKEY_INDEX
                         | IBV_QP_PORT
                         | IBV_QP_ACCESS_FLAGS));
@@ -241,7 +256,7 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
     qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
     qp_attr.ah_attr.port_num    =   port;
 
-    if (use_iboeth) {
+    if (use_iboeth || mv2_port_is_ethernet) {
         qp_attr.ah_attr.grh.dgid.global.subnet_prefix = 0;
         qp_attr.ah_attr.grh.dgid.global.interface_id = 0;
         qp_attr.ah_attr.grh.flow_label = 0;
@@ -266,7 +281,7 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
     /* lhs */
     for (i = 0; i < 2; i++) {
         qp_attr.dest_qp_num     = neighbor_addr[i].qp_num[1 - i];
-        if (use_iboeth) {
+        if (use_iboeth || mv2_port_is_ethernet) {
            qp_attr.ah_attr.grh.dgid = neighbor_addr[i].gid;
         } else {
            qp_attr.ah_attr.dlid    = neighbor_addr[i].lid;
@@ -274,7 +289,7 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
         qp_attr_mask            |=  IBV_QP_DEST_QPN;
 
         /* Path SL Lookup */
-        if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
+        if (!(use_iboeth || mv2_port_is_ethernet) && (rdma_3dtorus_support || rdma_path_sl_query)) {
             struct ibv_context *context = proc->boot_context;
              struct ibv_pd *pd  = proc->boot_ptag;
             /* don't know our local LID yet, so set it to 0 to let
@@ -288,10 +303,10 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
                                                  rdma_num_sa_query_retries);
         }
 
-        ret = ibv_modify_qp(proc->boot_qp_hndl[i],&qp_attr, qp_attr_mask);
+        ret = ibv_ops.modify_qp(proc->boot_qp_hndl[i],&qp_attr, qp_attr_mask);
         CHECK_RETURN(ret, "Could not modify boot qp to RTR");
 
-        DEBUG_PRINT("local QP=%x\n", proc->boot_qp_hndl[i]->qp_num);
+        PRINT_DEBUG(DEBUG_CM_verbose, "local QP=%x\n", proc->boot_qp_hndl[i]->qp_num);
     }
 
     /************** RTS *******************/
@@ -311,12 +326,12 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
                       IBV_QP_SQ_PSN             |
                       IBV_QP_MAX_QP_RD_ATOMIC;
 
-    ret = ibv_modify_qp(proc->boot_qp_hndl[0],&qp_attr,qp_attr_mask);
+    ret = ibv_ops.modify_qp(proc->boot_qp_hndl[0],&qp_attr,qp_attr_mask);
         CHECK_RETURN(ret, "Could not modify boot qp to RTS");
-    ret = ibv_modify_qp(proc->boot_qp_hndl[1],&qp_attr,qp_attr_mask);
+    ret = ibv_ops.modify_qp(proc->boot_qp_hndl[1],&qp_attr,qp_attr_mask);
         CHECK_RETURN(ret, "Could not modify boot qp to RTS");
 
-    DEBUG_PRINT("Modified to RTS..Qp\n");
+    PRINT_DEBUG(DEBUG_CM_verbose, "Modified to RTS..Qp\n");
     return MPI_SUCCESS;
 }
 
@@ -376,6 +391,7 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
     union ibv_gid gid;
     int mpi_errno = MPI_SUCCESS;
     int port;
+    int mv2_port_is_ethernet = 0;
     char *value = NULL;
 
     if (!ring_rdma_get_hca_context(proc)) {
@@ -390,19 +406,13 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
         rdma_default_gid_index = atoi(value);
     }
 
-    if (rdma_default_port < 0 || rdma_num_ports > 1) {
-        /* Find active port if user has not asked us to use one */
-        port = _find_active_port(proc->boot_context);
-        if (port < 0) {
-            MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out, "**fail",
-                    "**fail %s", "could not find active port");
-        }
-    } else {
-        /* Use port specified by user */
-        port = rdma_default_port;
+    port = _find_active_port(proc->boot_context, &mv2_port_is_ethernet);
+    if (port < 0) {
+        MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out, "**fail",
+                "**fail %s", "could not find active port");
     }
 
-    proc->boot_cq_hndl = ibv_create_cq(proc->boot_context,
+    proc->boot_cq_hndl = ibv_ops.create_cq(proc->boot_context,
                                        rdma_default_max_cq_size,
                                        NULL, NULL, 0);
     if (!proc->boot_cq_hndl) {
@@ -424,7 +434,7 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
                 "**fail", "%s%d", "Fail to create qp on rank ", pg_rank);
     }
 
-    if (use_iboeth) {
+    if (use_iboeth || mv2_port_is_ethernet) {
         gid = get_local_gid(proc->boot_context, port);
         sprintf(ring_qp_out, "%016"SCNx64":%016"SCNx64":%08x:%08x:",
                  gid.global.subnet_prefix, gid.global.interface_id,
@@ -432,7 +442,7 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
                  proc->boot_qp_hndl[1]->qp_num
                );
     
-        DEBUG_PRINT("After setting GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
+        PRINT_DEBUG(DEBUG_CM_verbose, "After setting GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
                 gid.global.subnet_prefix, gid.global.interface_id,
                 proc->boot_qp_hndl[0]->qp_num,
                 proc->boot_qp_hndl[1]->qp_num
@@ -445,7 +455,7 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
                  proc->boot_qp_hndl[1]->qp_num
                );
     
-        DEBUG_PRINT("After setting LID: %d, qp0: %x, qp1: %x\n",
+        PRINT_DEBUG(DEBUG_CM_verbose, "After setting LID: %d, qp0: %x, qp1: %x\n",
                 get_local_lid(proc->boot_context,
                               port),
                 proc->boot_qp_hndl[0]->qp_num,
@@ -457,7 +467,7 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
     _rdma_pmi_exchange_addresses(pg_rank, pg_size, ring_qp_out,
             bootstrap_len, ring_qp_in);
 
-    if (use_iboeth) {
+    if (use_iboeth || mv2_port_is_ethernet) {
         sscanf(&ring_qp_in[0], "%016"SCNx64":%016"SCNx64":%08x:%08x:", 
                &neighbor_addr[0].gid.global.subnet_prefix,
                &neighbor_addr[0].gid.global.interface_id,
@@ -468,12 +478,12 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
                &neighbor_addr[1].gid.global.interface_id,
                &neighbor_addr[1].qp_num[0],
                &neighbor_addr[1].qp_num[1]);
-        DEBUG_PRINT("After retrieving GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
+        PRINT_DEBUG(DEBUG_CM_verbose, "After retrieving GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
                neighbor_addr[0].gid.global.subnet_prefix,
                neighbor_addr[0].gid.global.interface_id,
                neighbor_addr[0].qp_num[0],
                neighbor_addr[0].qp_num[1]);
-        DEBUG_PRINT("After retrieving GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
+        PRINT_DEBUG(DEBUG_CM_verbose, "After retrieving GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
                neighbor_addr[1].gid.global.subnet_prefix,
                neighbor_addr[1].gid.global.interface_id,
                neighbor_addr[1].qp_num[0],
@@ -489,7 +499,7 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
                &neighbor_addr[1].qp_num[1]);
     }
 
-    mpi_errno = _setup_ib_boot_ring(neighbor_addr, proc, port);
+    mpi_errno = _setup_ib_boot_ring(neighbor_addr, proc, port, mv2_port_is_ethernet);
     UPMI_BARRIER();
 
 out:
@@ -507,17 +517,17 @@ int rdma_cleanup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
     UPMI_BARRIER();
     
-    if(ibv_destroy_qp(proc->boot_qp_hndl[0])) {
+    if(ibv_ops.destroy_qp(proc->boot_qp_hndl[0])) {
         MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                 "**fail %s", "could not destroy lhs QP");
     }
 
-    if(ibv_destroy_qp(proc->boot_qp_hndl[1])) {
+    if(ibv_ops.destroy_qp(proc->boot_qp_hndl[1])) {
         MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                 "**fail %s", "could not destroy rhs QP");
     }
 
-    if(ibv_destroy_cq(proc->boot_cq_hndl)) {
+    if(ibv_ops.destroy_cq(proc->boot_cq_hndl)) {
         MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                 "**fail %s", "could not destroy CQ");
     }
@@ -541,7 +551,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
     struct ibv_mr *addr_hndl = NULL;
     int mpi_errno = MPI_SUCCESS;
 
-    addr_hndl = ibv_reg_mr(proc->boot_ptag, rbuf, data_size*pg_size,
+    addr_hndl = ibv_ops.reg_mr(proc->boot_ptag, rbuf, data_size*pg_size,
                            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
     if (addr_hndl == NULL) {
@@ -552,7 +562,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
                 "ibv_reg_mr failed for addr_hndl\n");
     }
 
-    DEBUG_PRINT("val of addr_pool is: %p, handle: %08x\n",
+    PRINT_DEBUG(DEBUG_CM_verbose, "val of addr_pool is: %p, handle: %08x\n",
             rbuf, addr_hndl->handle);
 
     /* Now start exchanging data*/
@@ -656,7 +666,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
             } else if (ne == 1) {
                 if (rc.status != IBV_WC_SUCCESS) {
                     if (rc.status == IBV_WC_RETRY_EXC_ERR) {
-                        DEBUG_PRINT("Got IBV_WC_RETRY_EXC_ERR\n");
+                        PRINT_DEBUG(DEBUG_CM_verbose, "Got IBV_WC_RETRY_EXC_ERR\n");
                     }
                     MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
                             MPI_ERR_INTERN,
@@ -698,7 +708,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
         /*Now all send and recv finished*/
     }
 
-    ibv_dereg_mr(addr_hndl);
+    ibv_ops.dereg_mr(addr_hndl);
 fn_exit:
     return mpi_errno;
 
@@ -744,7 +754,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
      * initial send
      */
 
-    DEBUG_PRINT("Posting recvs\n");
+    PRINT_DEBUG(DEBUG_CM_verbose, "Posting recvs\n");
     char* addr_poolProxy = (char*) addr_pool;
     pg_size = MPIDI_PG_Get_size(pg);
     
@@ -767,7 +777,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         }
     }
 
-    DEBUG_PRINT("done posting recvs\n");
+    PRINT_DEBUG(DEBUG_CM_verbose, "done posting recvs\n");
 
     index_to_send = 0;
 
@@ -789,13 +799,13 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
     /* send information for each rail */
 
-    DEBUG_PRINT("rails: %d\n", rdma_num_rails);
+    PRINT_DEBUG(DEBUG_CM_verbose, "rails: %d\n", rdma_num_rails);
 
     UPMI_BARRIER();
 
     for(rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
 
-        DEBUG_PRINT("doing rail %d\n", rail_index);
+        PRINT_DEBUG(DEBUG_CM_verbose, "doing rail %d\n", rail_index);
 
         send_packet          = addr_packet_buffer(addr_poolProxy, index_to_send,
                                                   pg_size);
@@ -819,7 +829,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
             }
         }
 
-        DEBUG_PRINT("starting to do sends\n");
+        PRINT_DEBUG(DEBUG_CM_verbose, "starting to do sends\n");
         for(i = 0; i < pg_size - 1; i++) {
 
             sr.opcode         = IBV_WR_SEND;
@@ -866,7 +876,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
                 } else if (ne == 1) {
                     if (rc.status != IBV_WC_SUCCESS) {
                         if(rc.status == IBV_WC_RETRY_EXC_ERR) {
-                            DEBUG_PRINT("Got IBV_WC_RETRY_EXC_ERR\n");
+                            PRINT_DEBUG(DEBUG_CM_verbose, "Got IBV_WC_RETRY_EXC_ERR\n");
                         }
 
                         MPIR_ERR_SETFATALANDJUMP1(mpi_errno,
@@ -969,7 +979,7 @@ int rdma_ring_boot_exchange(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     int pg_size = MPIDI_PG_Get_size(pg);
     int mpi_errno = MPI_SUCCESS;
     addr_pool = MPIU_Malloc(MPD_WINDOW * addr_packet_size(pg_size));
-    addr_hndl = ibv_reg_mr(proc->boot_ptag,
+    addr_hndl = ibv_ops.reg_mr(proc->boot_ptag,
             addr_pool, MPD_WINDOW * addr_packet_size(pg_size),
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
@@ -985,7 +995,7 @@ int rdma_ring_boot_exchange(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     if(mpi_errno) {
         MPIR_ERR_POP(mpi_errno);
     }
-    ibv_dereg_mr(addr_hndl);
+    ibv_ops.dereg_mr(addr_hndl);
     MPIU_Free(addr_pool);
 
 fn_exit:

@@ -38,7 +38,7 @@ int scr_str_send(const char* str, int rank, MPI_Comm comm)
   return SCR_SUCCESS;
 }
 
-/* recieves a NUL-terminated string from a process,
+/* receives a NUL-terminated string from a process,
  * and returns pointer to newly allocated string,
  * returns NULL if rank is MPI_PROC_NULL */
 int scr_str_recv(char** str, int rank, MPI_Comm comm)
@@ -79,7 +79,7 @@ int scr_str_recv(char** str, int rank, MPI_Comm comm)
 }
 
 /* sends a NUL-terminated string to a process,
- * allocates space and recieves a NUL-terminated string from a process,
+ * allocates space and receives a NUL-terminated string from a process,
  * can specify MPI_PROC_NULL as either send or recv rank */
 int scr_str_sendrecv(
   const char* send_str, int send_rank,
@@ -95,7 +95,7 @@ int scr_str_sendrecv(
   }
 
   /* exchange length of strings, note that we initialize recv_len
-   * so that it's valid if we recieve from MPI_PROC_NULL */
+   * so that it's valid if we receive from MPI_PROC_NULL */
   int recv_len = 0;
   MPI_Sendrecv(
     &send_len, 1, MPI_INT, send_rank, 999,

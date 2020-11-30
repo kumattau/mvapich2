@@ -334,7 +334,7 @@ static int scr_swap_files_move(
 
   /* close file and cleanup */
   if (have_outgoing && have_incoming) {
-    /* sent and received a file; close it, truncate it to corect size, rename it */
+    /* sent and received a file; close it, truncate it to correct size, rename it */
     scr_close(file_send, fd);
     truncate(file_send, write_pos);
     rename(file_send, file_recv);
@@ -585,7 +585,7 @@ static int scr_reddesc_apply_xor(scr_filemap* map, const scr_reddesc* c, int id)
     );
   }
 
-  /* allocate buffer to read a piece of the recevied chunk file */
+  /* allocate buffer to read a piece of the received chunk file */
   char* recv_buf = (char*) scr_align_malloc(scr_mpi_buf_size, scr_page_size);
   if (recv_buf == NULL) {
     scr_abort(-1, "Allocating memory for recv buffer: malloc(%d) errno=%d %s @ %s:%d",

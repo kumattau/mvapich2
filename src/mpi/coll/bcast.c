@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -19,9 +19,7 @@
 
 #include "mpiimpl.h"
 #include "collutil.h"
-#ifdef _OSU_MVAPICH_
-#   include "coll_shmem.h"
-#endif /* _OSU_MVAPICH_ */
+#include "coll_shmem.h"
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -226,7 +224,7 @@ static int MPIR_Bcast_binomial(
 
        Do subdivision.  There are two phases:
        1. Wait for arrival of data.  Because of the power of two nature
-       of the subtree roots, the source of this message is alwyas the
+       of the subtree roots, the source of this message is always the
        process whose relative rank has the least significant 1 bit CLEARED.
        That is, process 4 (100) receives from process 0, process 7 (111) 
        from process 6 (110), etc.   
@@ -271,7 +269,7 @@ static int MPIR_Bcast_binomial(
     }
 
     /* This process is responsible for all processes that have bits
-       set from the LSB upto (but not including) mask.  Because of
+       set from the LSB up to (but not including) mask.  Because of
        the "not including", we start by shifting mask back down one.
 
        We can easily change to a different algorithm at any power of two
@@ -420,7 +418,7 @@ static int scatter_for_bcast(
     }
 
     /* This process is responsible for all processes that have bits
-       set from the LSB upto (but not including) mask.  Because of
+       set from the LSB up to (but not including) mask.  Because of
        the "not including", we start by shifting mask back down
        one. */
 

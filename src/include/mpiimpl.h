@@ -12,7 +12,7 @@
  * excludes the implied warranties of merchantability, fitness for a
  * particular purpose and non-infringement.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -3976,15 +3976,13 @@ struct coll_runtime {
    other internal operations. They are wrappers around MPID send/recv
    functions. They do sends/receives by setting the context offset to
    MPID_CONTEXT_INTRA(INTER)_COLL. */
-int MPIR_Localcopy(const void *sendbuf, MPI_Aint sendcount, MPI_Datatype sendtype,
-                   void *recvbuf, MPI_Aint recvcount, MPI_Datatype recvtype);
 #ifdef _ENABLE_CUDA_
-void cuda_init_thread_context();
+void device_init_thread_context();
 int is_device_buffer(const void *buffer);
-int cuda_stage_alloc_v (void **, int *, MPI_Datatype, int **, int,
+int device_stage_alloc_v (void **, int *, MPI_Datatype, int **, int,
             void **, int *, MPI_Datatype, int **, int,
             int , int, int);
-void cuda_stage_free_v (void **, int *, MPI_Datatype, int **, int,
+void device_stage_free_v (void **, int *, MPI_Datatype, int **, int,
             void **, int *, MPI_Datatype, int **, int,
             int , int, int);
 int MPIR_Alltoall_CUDA_intra_MV2(const void *, int, MPI_Datatype, void *, 
@@ -3993,32 +3991,6 @@ int MPIR_Alltoall_CUDA_cleanup();
 int MPIR_Allgather_cuda_intra_MV2 (const void *, int, MPI_Datatype, void *,
             int, MPI_Datatype, MPID_Comm*, MPIR_Errflag_t*);
 #endif
-int MPIC_Wait(MPID_Request * request_ptr, MPIR_Errflag_t *errflag);
-int MPIC_Probe(int source, int tag, MPI_Comm comm, MPI_Status *status);
-
-/* FT versions of te MPIC_ functions */
-int MPIC_Send(const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
-                 MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag);
-int MPIC_Recv(void *buf, MPI_Aint count, MPI_Datatype datatype, int source, int tag,
-                 MPID_Comm *comm_ptr, MPI_Status *status, MPIR_Errflag_t *errflag);
-int MPIC_Ssend(const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
-                  MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag);
-int MPIC_Sendrecv(const void *sendbuf, MPI_Aint sendcount, MPI_Datatype sendtype,
-                     int dest, int sendtag, void *recvbuf, MPI_Aint recvcount,
-                     MPI_Datatype recvtype, int source, int recvtag,
-                     MPID_Comm *comm_ptr, MPI_Status *status, MPIR_Errflag_t *errflag);
-int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
-                             int dest, int sendtag,
-                             int source, int recvtag,
-                             MPID_Comm *comm_ptr, MPI_Status *status, MPIR_Errflag_t *errflag);
-int MPIC_Isend(const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
-                  MPID_Comm *comm_ptr, MPID_Request **request, MPIR_Errflag_t *errflag);
-int MPIC_Issend(const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
-                  MPID_Comm *comm_ptr, MPID_Request **request, MPIR_Errflag_t *errflag);
-int MPIC_Irecv(void *buf, MPI_Aint count, MPI_Datatype datatype, int source,
-                  int tag, MPID_Comm *comm_ptr, MPID_Request **request);
-int MPIC_Waitall(int numreq, MPID_Request *requests[], MPI_Status statuses[], MPIR_Errflag_t *errflag);
-
 
 void MPIR_MAXF  ( void *, void *, int *, MPI_Datatype * ) ;
 void MPIR_MINF  ( void *, void *, int *, MPI_Datatype * ) ;

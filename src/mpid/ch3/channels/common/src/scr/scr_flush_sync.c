@@ -349,7 +349,7 @@ static int scr_flush_files_list(scr_hash* file_list, scr_hash* summary)
       /* get segments hash for this file */
       scr_hash* segments = scr_hash_get(hash, SCR_SUMMARY_6_KEY_SEGMENT);
 
-      /* flush the file to the containers listed in its segmenets */
+      /* flush the file to the containers listed in its segments */
       if (scr_flush_file_to_containers(file, meta, segments, containers) == SCR_SUCCESS) {
         /* successfully flushed this file, record the filesize */
         unsigned long filesize = 0;
@@ -505,7 +505,7 @@ static int scr_flush_data(scr_hash* file_list, scr_hash* data)
 
     /* flush files if we've had success so far, otherwise skip the flush and return failure */
     if (start == SCR_SUCCESS) {
-      /* flush each of my files and fill in meta data strucutre */
+      /* flush each of my files and fill in meta data structure */
       if (scr_flush_files_list(file_list, data) != SCR_SUCCESS) {
         flushed = SCR_FAILURE;
       }

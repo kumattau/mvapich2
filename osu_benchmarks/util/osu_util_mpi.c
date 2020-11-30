@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2002-2019 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2020 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University.
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -82,6 +82,11 @@ void set_device_memory (void * ptr, int data, size_t size)
             }
             break;
 #endif
+#ifdef _ENABLE_ROCM_
+        case ROCM:
+            ROCM_CHECK(hipMemset(ptr, data, size));
+            break;
+#endif
         default:
             break;
     }
@@ -89,6 +94,8 @@ void set_device_memory (void * ptr, int data, size_t size)
 
 int free_device_buffer (void * buf)
 {
+    if (buf == NULL)
+        return 0;
     switch (options.accel) {
 #ifdef _ENABLE_CUDA_
         case CUDA:
@@ -98,6 +105,11 @@ int free_device_buffer (void * buf)
 #ifdef _ENABLE_OPENACC_
         case OPENACC:
             acc_free(buf);
+            break;
+#endif
+#ifdef _ENABLE_ROCM_
+        case ROCM:
+            ROCM_CHECK(hipFree(buf));
             break;
 #endif
         default:
@@ -132,7 +144,7 @@ void usage_one_sided (char const * name)
 
     if (accel_enabled) {
         fprintf(stdout, "  -d --accelerator <type>       accelerator device buffers can be of <type> "
-                   "`cuda' or `openacc'\n");
+                   "`cuda', `openacc', or `rocm'\n");
     }
     fprintf(stdout, "\n");
 
@@ -173,6 +185,11 @@ void usage_one_sided (char const * name)
     }
     fprintf(stdout, "  -x, --warmup ITER           number of warmup iterations to skip before timing"
                    "(default 100)\n");
+    
+    if(options.subtype == BW) {
+        fprintf(stdout, "  -W, --window-size SIZE      set number of messages to send before synchronization (default 64)\n");
+    }
+    
     fprintf(stdout, "  -i, --iterations ITER       number of iterations for timing (default 10000)\n");
 
     fprintf(stdout, "  -h, --help                  print this help message\n");
@@ -258,7 +275,7 @@ void usage_mbw_mr()
     }
     if (accel_enabled) {
         fprintf(stdout, "  -d, --accelerator  TYPE     use accelerator device buffers, which can be of TYPE `cuda', \n");
-        fprintf(stdout, "                              `managed' or `openacc' (uses standard host buffers if not specified)\n");
+        fprintf(stdout, "                              `managed', `openacc', or `rocm' (uses standard host buffers if not specified)\n");
     }
     fprintf(stdout, "  -h, --help                     Print this help\n");
     fprintf(stdout, "\n");
@@ -304,9 +321,9 @@ void print_help_message (int rank)
         fprintf(stdout, "Options:\n");
     }
 
-    if (accel_enabled && (options.subtype != LAT_MT)) {
+    if (accel_enabled && (options.subtype != LAT_MT) && (options.subtype != LAT_MP)) {
         fprintf(stdout, "  -d, --accelerator  TYPE     use accelerator device buffers, which can be of TYPE `cuda', \n");
-        fprintf(stdout, "                              `managed' or `openacc' (uses standard host buffers if not specified)\n");
+        fprintf(stdout, "                              `managed', `openacc', or `rocm' (uses standard host buffers if not specified)\n");
     }
 
     if (options.show_size) {
@@ -353,7 +370,16 @@ void print_help_message (int rank)
         fprintf(stdout, "                              -t 4        // receiver threads = 4 and sender threads = 1\n");
         fprintf(stdout, "                              -t 4:6      // sender threads = 4 and receiver threads = 6\n");
         fprintf(stdout, "                              -t 2:       // not defined\n");
-        fprintf(stdout, "  -M, --mem-limit SIZE        set per process maximum memory consumption to SIZE bytes\n");
+    }
+
+    if (LAT_MP == options.subtype) {
+        fprintf(stdout, "  -t, --num_processes         SEND:[RECV]  set the sender and receiver number of processes \n");
+        fprintf(stdout, "                              min: %d default: (receiver processes: %d sender processes: 1), max: %d.\n",\
+                                                       MIN_NUM_PROCESSES, DEF_NUM_PROCESSES, MAX_NUM_PROCESSES);
+        fprintf(stdout, "                              Examples: \n");
+        fprintf(stdout, "                              -t 4        // receiver processes = 4 and sender processes = 1\n");
+        fprintf(stdout, "                              -t 4:6      // sender processes = 4 and receiver processes = 6\n");
+        fprintf(stdout, "                              -t 2:       // not defined\n");
     }
 
     fprintf(stdout, "  -h, --help                  print this help\n");
@@ -420,6 +446,9 @@ void print_header_one_sided (int rank, enum WINDOW win, enum SYNC sync)
             case OPENACC:
                 printf(benchmark_header, "-OPENACC");
                 break;
+            case ROCM:
+                printf(benchmark_header, "-ROCM");
+                break;
             default:
                 printf(benchmark_header, "");
                 break;
@@ -432,6 +461,7 @@ void print_header_one_sided (int rank, enum WINDOW win, enum SYNC sync)
         switch (options.accel) {
             case CUDA:
             case OPENACC:
+            case ROCM:
                 fprintf(stdout, "# Rank 0 Memory on %s and Rank 1 Memory on %s\n",
                        'M' == options.src ? "MANAGED (M)" : ('D' == options.src ? "DEVICE (D)" : "HOST (H)"),
                        'M' == options.dst ? "MANAGED (M)" : ('D' == options.dst ? "DEVICE (D)" : "HOST (H)"));
@@ -462,6 +492,9 @@ void print_version_message (int rank)
         case MANAGED:
             printf(benchmark_header, "-CUDA MANAGED");
             break;
+        case ROCM:
+            printf(benchmark_header, "-ROCM");
+            break;
         default:
             printf(benchmark_header, "");
             break;
@@ -487,6 +520,9 @@ void print_preamble_nbc (int rank)
             break;
         case MANAGED:
             printf(benchmark_header, "-MANAGED");
+            break;
+        case ROCM:
+            printf(benchmark_header, "-ROCM");
             break;
         default:
             printf(benchmark_header, "");
@@ -550,6 +586,9 @@ void print_preamble (int rank)
             break;
         case OPENACC:
             printf(benchmark_header, "-OPENACC");
+            break;
+        case ROCM:
+            printf(benchmark_header, "-ROCM");
             break;
         default:
             printf(benchmark_header, "");
@@ -734,6 +773,11 @@ void set_buffer_pt2pt (void * buffer, int rank, enum accel_type type, int data, 
                 CUDA_CHECK(cudaMemset(buffer, data, size));
             }
 #endif
+#ifdef _ENABLE_ROCM_
+            {
+                ROCM_CHECK(hipMemset(buffer, data, size));
+            }
+#endif
             break;
     }
 }
@@ -760,6 +804,11 @@ void set_buffer (void * buffer, enum accel_type type, int data, size_t size)
             for (i = 0; i < size; i++) {
                 p[i] = data;
             }
+#endif
+            break;
+        case ROCM:
+#ifdef _ENABLE_ROCM_
+            ROCM_CHECK(hipMemset(buffer, data, size));
 #endif
             break;
     }
@@ -793,6 +842,11 @@ int allocate_memory_coll (void ** buffer, size_t size, enum accel_type type)
                 return 0;
             }
 #endif
+#ifdef _ENABLE_ROCM_
+        case ROCM:
+            ROCM_CHECK(hipMalloc(buffer, size));
+            return 0;
+#endif
         default:
             return 1;
     }
@@ -813,6 +867,11 @@ int allocate_device_buffer (char ** buffer)
                 fprintf(stderr, "Could not allocate device memory\n");
                 return 1;
             }
+            break;
+#endif
+#ifdef _ENABLE_ROCM_
+        case ROCM:
+             ROCM_CHECK(hipMalloc((void **)buffer, options.max_message_size));
             break;
 #endif
         default:
@@ -841,6 +900,11 @@ int allocate_device_buffer_one_sided (char ** buffer, size_t size)
                 fprintf(stderr, "Could not allocate device memory\n");
                 return 1;
             }
+            break;
+#endif
+#ifdef _ENABLE_ROCM_
+        case ROCM:
+             ROCM_CHECK(hipMalloc((void **)buffer, size));
             break;
 #endif
         default:
@@ -1021,14 +1085,19 @@ int allocate_memory_pt2pt (char ** sbuf, char ** rbuf, int rank)
     return 0;
 }
 
-void allocate_memory_one_sided(int rank, char **sbuf, char **rbuf,
+void allocate_memory_one_sided(int rank, char **user_buf,
         char **win_base, size_t size, enum WINDOW type, MPI_Win *win)
 {
     int page_size;
+    int purehost = 0;
     int mem_on_dev = 0;
 
     page_size = getpagesize();
     assert(page_size <= MAX_ALIGNMENT);
+
+    if ('H' == options.src && 'H' == options.dst) {
+        purehost = 1;
+    }
 
     if (rank == 0) {
         mem_on_dev = ('H' == options.src) ? 0 : 1;
@@ -1036,16 +1105,21 @@ void allocate_memory_one_sided(int rank, char **sbuf, char **rbuf,
         mem_on_dev = ('H' == options.dst) ? 0 : 1;
     }
 
+    /* always allocate device buffers explicitly since most MPI libraries do not
+     * support allocating device buffers during window creation */
     if (mem_on_dev) {
-        CHECK(allocate_device_buffer_one_sided(sbuf, size));
-        set_device_memory(*sbuf, 'a', size);
-        CHECK(allocate_device_buffer_one_sided(rbuf, size));
-        set_device_memory(*rbuf, 'b', size);
+        CHECK(allocate_device_buffer_one_sided(user_buf, size));
+        set_device_memory(*user_buf, 'a', size);
+        CHECK(allocate_device_buffer_one_sided(win_base, size));
+        set_device_memory(*win_base, 'a', size);
     } else {
-        CHECK(posix_memalign((void **)sbuf, page_size, size));
-        memset(*sbuf, 'a', size);
-        CHECK(posix_memalign((void **)rbuf, page_size, size));
-        memset(*rbuf, 'b', size);
+        CHECK(posix_memalign((void **)user_buf, page_size, size));
+        memset(*user_buf, 'a', size);
+        /* only explicitly allocate buffer for win_base when NOT using MPI_Win_allocate */
+        if (type != WIN_ALLOCATE) {
+            CHECK(posix_memalign((void **)win_base, page_size, size));
+            memset(*win_base, 'a', size);
+        }
     }
 
 #if MPI_VERSION >= 3
@@ -1068,10 +1142,10 @@ void allocate_memory_one_sided(int rank, char **sbuf, char **rbuf,
             }
             break;
         default:
-            if (mem_on_dev) {
-                MPI_CHECK(MPI_Win_create(*win_base, size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, win));
+            if (purehost) {
+                MPI_CHECK(MPI_Win_allocate(size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, (void*) win_base, win));
             } else {
-                MPI_CHECK(MPI_Win_allocate(size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, *win_base, win));
+                MPI_CHECK(MPI_Win_create(*win_base, size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, win));
             }
             break;
     }
@@ -1097,6 +1171,11 @@ void free_buffer (void * buffer, enum accel_type type)
             acc_free(buffer);
 #endif
             break;
+        case ROCM:
+#ifdef _ENABLE_ROCM_
+            ROCM_CHECK(hipFree(buffer));
+#endif
+            break;
     }
 
     /* Free dummy compute related resources */
@@ -1111,7 +1190,7 @@ void free_buffer (void * buffer, enum accel_type type)
     }
 }
 
-#if defined(_ENABLE_OPENACC_) || defined(_ENABLE_CUDA_)
+#if defined(_ENABLE_OPENACC_) || defined(_ENABLE_CUDA_) || defined(_ENABLE_ROCM_)
 int omb_get_local_rank()
 {
     char *str = NULL;
@@ -1120,6 +1199,8 @@ int omb_get_local_rank()
     if ((str = getenv("MV2_COMM_WORLD_LOCAL_RANK")) != NULL) {
         local_rank = atoi(str);
     } else if ((str = getenv("OMPI_COMM_WORLD_LOCAL_RANK")) != NULL) {
+        local_rank = atoi(str);
+    } else if ((str = getenv("MPI_LOCALRANKID")) != NULL) {
         local_rank = atoi(str);
     } else if ((str = getenv("LOCAL_RANK")) != NULL) {
         local_rank = atoi(str);
@@ -1131,7 +1212,7 @@ int omb_get_local_rank()
 
     return local_rank;
 }
-#endif /* defined(_ENABLE_OPENACC_) || defined(_ENABLE_CUDA_) */
+#endif /* defined(_ENABLE_OPENACC_) || defined(_ENABLE_CUDA_) || defined(_ENABLE_ROCM_) */
 
 int init_accel (void)
 {
@@ -1139,7 +1220,7 @@ int init_accel (void)
     CUresult curesult = CUDA_SUCCESS;
     CUdevice cuDevice;
 #endif
-#if defined(_ENABLE_OPENACC_) || defined(_ENABLE_CUDA_)
+#if defined(_ENABLE_OPENACC_) || defined(_ENABLE_CUDA_) || defined(_ENABLE_ROCM_)
     int local_rank = -1, dev_count = 0;
     int dev_id = 0;
 
@@ -1183,8 +1264,17 @@ int init_accel (void)
             acc_set_device_num (dev_id, acc_device_not_host);
             break;
 #endif
+#ifdef _ENABLE_ROCM_
+        case ROCM:
+            if (local_rank >= 0) {
+                ROCM_CHECK(hipGetDeviceCount(&dev_count));
+                dev_id = local_rank % dev_count;
+            }
+            ROCM_CHECK(hipSetDevice(dev_id));
+            break;
+#endif
         default:
-            fprintf(stderr, "Invalid device type, should be cuda or openacc\n");
+            fprintf(stderr, "Invalid device type, should be cuda, openacc, or rocm\n");
             return 1;
     }
 
@@ -1208,6 +1298,11 @@ int cleanup_accel (void)
 #ifdef _ENABLE_OPENACC_
         case OPENACC:
             acc_shutdown(acc_device_nvidia);
+            break;
+#endif
+#ifdef _ENABLE_ROCM_
+        case ROCM:
+            ROCM_CHECK(hipDeviceReset());
             break;
 #endif
         default:
@@ -1261,8 +1356,12 @@ void free_memory (void * sbuf, void * rbuf, int rank)
                 free_device_buffer(sbuf);
                 free_device_buffer(rbuf);
             } else {
-                free(sbuf);
-                free(rbuf);
+                if (sbuf) {
+                    free(sbuf);
+                }
+                if (rbuf) {
+                    free(rbuf);
+                }
             }
             break;
         case 1:
@@ -1270,8 +1369,12 @@ void free_memory (void * sbuf, void * rbuf, int rank)
                 free_device_buffer(sbuf);
                 free_device_buffer(rbuf);
             } else {
-                free(sbuf);
-                free(rbuf);
+                if (sbuf) {
+                    free(sbuf);
+                }
+                if (rbuf) {
+                    free(rbuf);
+                }
             }
             break;
     }
@@ -1298,10 +1401,16 @@ void free_memory_pt2pt_mul (void * sbuf, void * rbuf, int rank, int pairs)
     }
 }
 
-void free_memory_one_sided (void *sbuf, void *rbuf, MPI_Win win, int rank)
+void free_memory_one_sided (void *user_buf, void *win_baseptr, enum WINDOW win_type, MPI_Win win, int rank)
 {
     MPI_CHECK(MPI_Win_free(&win));
-    free_memory(sbuf, rbuf, rank);
+    /* if MPI_Win_allocate is specified, win_baseptr would be freed by MPI_Win_free,
+     * so only need to free the user_buf */
+    if (win_type == WIN_ALLOCATE) {
+        free_memory(user_buf, NULL, rank);
+    } else {
+        free_memory(user_buf, win_baseptr, rank);
+    }
 }
 
 double dummy_compute(double seconds, MPI_Request* request)
@@ -1462,14 +1571,19 @@ void allocate_host_arrays()
 }
 
 void allocate_atomic_memory(int rank,
-        char **sbuf, char **rbuf, char **tbuf, char **cbuf,
+        char **sbuf, char **tbuf, char **cbuf,
         char **win_base, size_t size, enum WINDOW type, MPI_Win *win)
 {
     int page_size;
+    int purehost = 0;
     int mem_on_dev = 0;
 
     page_size = getpagesize();
     assert(page_size <= MAX_ALIGNMENT);
+
+    if ('H' == options.src && 'H' == options.dst) {
+        purehost = 1;
+    }
 
     if (rank == 0) {
         mem_on_dev = ('D' == options.src) ? 1 : 0;
@@ -1480,8 +1594,8 @@ void allocate_atomic_memory(int rank,
     if (mem_on_dev) {
         CHECK(allocate_device_buffer(sbuf));
         set_device_memory(*sbuf, 'a', size);
-        CHECK(allocate_device_buffer(rbuf));
-        set_device_memory(*rbuf, 'b', size);
+        CHECK(allocate_device_buffer(win_base));
+        set_device_memory(*win_base, 'b', size);
         CHECK(allocate_device_buffer(tbuf));
         set_device_memory(*tbuf, 'c', size);
         if (cbuf != NULL) {
@@ -1491,8 +1605,10 @@ void allocate_atomic_memory(int rank,
     } else {
         CHECK(posix_memalign((void **)sbuf, page_size, size));
         memset(*sbuf, 'a', size);
-        CHECK(posix_memalign((void **)rbuf, page_size, size));
-        memset(*rbuf, 'b', size);
+        if (type != WIN_ALLOCATE) {
+            CHECK(posix_memalign((void **)win_base, page_size, size));
+            memset(*win_base, 'b', size);
+        }
         CHECK(posix_memalign((void **)tbuf, page_size, size));
         memset(*tbuf, 'c', size);
         if (cbuf != NULL) {
@@ -1521,10 +1637,10 @@ void allocate_atomic_memory(int rank,
             }
             break;
         default:
-            if (mem_on_dev) {
-                MPI_CHECK(MPI_Win_create(*win_base, size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, win));
+            if (purehost) {
+                MPI_CHECK(MPI_Win_allocate(size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, (void *) win_base, win));
             } else {
-                MPI_CHECK(MPI_Win_allocate(size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, *win_base, win));
+                MPI_CHECK(MPI_Win_create(*win_base, size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, win));
             }
             break;
     }
@@ -1533,7 +1649,7 @@ void allocate_atomic_memory(int rank,
 #endif
 }
 
-void free_atomic_memory (void *sbuf, void *rbuf, void *tbuf, void *cbuf, MPI_Win win, int rank)
+void free_atomic_memory (void *sbuf, void *win_baseptr, void *tbuf, void *cbuf, enum WINDOW win_type, MPI_Win win, int rank)
 {
     int mem_on_dev = 0;
     MPI_CHECK(MPI_Win_free(&win));
@@ -1546,14 +1662,16 @@ void free_atomic_memory (void *sbuf, void *rbuf, void *tbuf, void *cbuf, MPI_Win
 
     if (mem_on_dev) {
         free_device_buffer(sbuf);
-        free_device_buffer(rbuf);
+        free_device_buffer(win_baseptr);
         free_device_buffer(tbuf);
         if (cbuf != NULL) {
             free_device_buffer(cbuf);
         }
     } else {
         free(sbuf);
-        free(rbuf);
+        if (win_type != WIN_ALLOCATE) {
+            free(win_baseptr);
+        }
         free(tbuf);
         if (cbuf != NULL) {
             free(cbuf);

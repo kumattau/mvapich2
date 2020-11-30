@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -76,7 +76,7 @@ cvars:
 
 /* What is the arrangement of VCRT and VCR and VC? 
    
-   Each VC (the virtual connection itself) is refered to by a reference 
+   Each VC (the virtual connection itself) is referred to by a reference 
    (pointer) or VCR.  
    Each communicator has a VCRT, which is nothing more than a 
    structure containing a count (size) and an array of pointers to 
@@ -131,7 +131,7 @@ int MPIDI_VCRT_Create(int size, struct MPIDI_VCRT **vcrt_ptr)
   This is called when a communicator duplicates its group of processes.
   It is used in 'commutil.c' and in routines to create communicators from
   dynamic process operations.  It does not change the state of any of the
-  virtural connections (VCs).
+  virtual connections (VCs).
   @*/
 #undef FUNCNAME
 #define FUNCNAME MPIDI_VCRT_Add_ref
@@ -311,7 +311,7 @@ int MPIDI_VCRT_Get_ptr(struct MPIDI_VCRT *vcrt, MPIDI_VCR **vc_pptr)
   Notes:
   If the VC is being used for the first time in a VC reference
   table, the reference count is set to two, not one, in order to
-  distinquish between freeing a communicator with 'MPI_Comm_free' and
+  distinguish between freeing a communicator with 'MPI_Comm_free' and
   'MPI_Comm_disconnect', and the reference count on the process group
   is incremented (to indicate that the process group is in use).
   While this has no effect on the process group of 'MPI_COMM_WORLD',
@@ -685,8 +685,8 @@ int MPIDI_VC_Init( MPIDI_VC_t *vc, MPIDI_PG_t *pg, int rank )
     MPIDI_VC_Init_seqnum_recv(vc);
     vc->rndvSend_fn      = MPIDI_CH3_RndvSend;
     vc->rndvRecv_fn      = MPIDI_CH3_RecvRndv;
-    vc->eager_fast_fn    = NULL;
-    vc->eager_fast_rfp_fn= NULL;
+    vc->use_eager_fast_fn       = 0;
+    vc->use_eager_fast_rfp_fn   = 0;
 #if defined(CHANNEL_MRAIL)
     vc->free_vc = 0;
     vc->tmp_dpmvc = 0;
@@ -808,7 +808,7 @@ fn_fail:
 #define parse_error() MPIR_ERR_INTERNALANDJUMP(mpi_errno, "parse error")
 /* advance _c until we find a non whitespace character */
 #define skip_space(_c) while (isspace(*(_c))) ++(_c)
-/* return true iff _c points to a character valid as an indentifier, i.e., [-_a-zA-Z0-9] */
+/* return true iff _c points to a character valid as an identifier, i.e., [-_a-zA-Z0-9] */
 #define isident(_c) (isalnum(_c) || (_c) == '-' || (_c) == '_')
 
 /* give an error iff *_c != _e */
@@ -1191,9 +1191,16 @@ int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
     }
 
     my_host_id = gethostid();
+    PRINT_DEBUG(DEBUG_CM_verbose, "my host id = %ld\n", my_host_id);
 
     host_ids = (long *) MPIU_Malloc(pg->size * sizeof(long));
     unique_host_ids = (long *) MPIU_Malloc(pg->size * sizeof(long));
+
+    /* Initialize arrays */
+    for (i = 0; i < pg->size; ++i) {
+        host_ids[i] = -1;
+        unique_host_ids[i] = -1;
+    }
 
     pmi_errno = UPMI_KVS_GET_KEY_LENGTH_MAX(&key_max_sz);
     MPIR_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
@@ -1241,13 +1248,19 @@ int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
             }
         }
 
-        if (j == g_max_node_id && g_max_node_id < pg->size) {
+        if (j == g_max_node_id) {
             unique_host_ids[g_max_node_id] = host_ids[i];
+            PRINT_DEBUG(DEBUG_CM_verbose, "unique_host_ids[%d] = %ld\n",
+                        g_max_node_id, unique_host_ids[g_max_node_id]);
+            pg->vct[i].node_id = g_max_node_id;
             ++g_max_node_id;
+            MPIU_Assert(g_max_node_id <= pg->size);
+        } else {
+            pg->vct[i].node_id = j;
         }
 
         host_ids[i] = -1;
-        pg->vct[i].node_id = g_max_node_id - 1;
+        PRINT_DEBUG(DEBUG_CM_verbose, "Peer = %d, node_id = %d\n", i, pg->vct[i].node_id);
     }
 
 fn_fail:
@@ -1293,7 +1306,7 @@ void MPIDI_Get_local_host_mapping(MPIDI_PG_t *pg, int our_pg_rank)
    processes (g_num_global).  Each process determines maximum node id
    (g_max_node_id) and assigns a node id to each process (g_node_ids[]):
 
-     For each hostname the process seaches the list of unique nodes
+     For each hostname the process searches the list of unique nodes
      names (node_names[]) for a match.  If a match is found, the node id
      is recorded for that matching process.  Otherwise, the hostname is
      added to the list of node names.
@@ -1388,7 +1401,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         MPIR_ERR_CHKINTERNAL(!did_map, mpi_errno, "unable to populate node ids from PMI_process_mapping");
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
-        /* We can relay on Hydra proccess mapping info on signle node case.*/
+        /* We can relay on Hydra process mapping info on single node case.*/
 #if defined(CHANNEL_MRAIL) 
         if (g_max_node_id == 1 || using_slurm != NULL) 
 #endif  
@@ -1459,6 +1472,8 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         }
     } else {
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+#if 0
+        /* TODO: Ticket #1582 */
         int mv2_use_mpirun_mapping = 1;
         char *val;
 
@@ -1472,6 +1487,9 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         } else {
             mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
         }
+#else
+        mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
+#endif /*ifdef _ENABLE_UD_*/
         if (mpi_errno) {
             MPIR_ERR_POP(mpi_errno);
         }

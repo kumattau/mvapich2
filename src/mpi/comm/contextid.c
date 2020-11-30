@@ -10,6 +10,7 @@
 
 #include "mpl_utlist.h"
 #include "mpiu_uthash.h"
+#include "helper_fns.h"
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===

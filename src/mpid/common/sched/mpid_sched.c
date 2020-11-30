@@ -3,7 +3,7 @@
  *  (C) 2011 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,7 @@
 
 #include "mpidimpl.h"
 #include "mpl_utlist.h"
+#include "helper_fns.h"
 
 /* A random guess at an appropriate value, we can tune it later.  It could also
  * be a real tunable parameter. */

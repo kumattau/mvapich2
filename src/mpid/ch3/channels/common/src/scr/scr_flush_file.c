@@ -42,7 +42,7 @@ int print_usage()
 }
 
 struct arglist {
-  char* dir;      /* direcotry containing flush file */
+  char* dir;      /* directory containing flush file */
   int need_flush; /* check whether a certain dataset id needs to be flushed */
   int latest;     /* return the id of the latest (most recent) dataset in cache */
   int location;   /* return the location of dataset with specified id in cache */

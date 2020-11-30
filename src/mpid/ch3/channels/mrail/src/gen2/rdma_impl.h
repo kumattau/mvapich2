@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,16 +23,10 @@
 #include "mpidi_ch3_rdma_pre.h"
 #include "upmi.h"
 
-#include <infiniband/verbs.h>
+#include <ofed_abstraction.h>
 #include "ibv_param.h"
 #include "mv2_arch_hca_detect.h"
 #include "rdma_3dtorus.h"
-
-#ifdef RDMA_CM
-#include <rdma/rdma_cma.h>
-#include <semaphore.h>
-#include <pthread.h>
-#endif /* RDMA_CM */
 
 #include <errno.h>
 
@@ -87,6 +81,8 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     int                         global_used_send_cq;
     int                         global_used_recv_cq;
     uint8_t                     lmc;
+    uint8_t                     link_layer[MAX_NUM_HCAS][MAX_NUM_PORTS];
+    int                         gid_index[MAX_NUM_HCAS][MAX_NUM_PORTS];
 
     struct ibv_context          *nic_context[MAX_NUM_HCAS];
     struct ibv_device           *ib_dev[MAX_NUM_HCAS];
@@ -100,8 +96,6 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     int ports[MAX_NUM_HCAS][MAX_NUM_PORTS];
     uint16_t lids[MAX_NUM_HCAS][MAX_NUM_PORTS];
     union ibv_gid gids[MAX_NUM_HCAS][MAX_NUM_PORTS];
-
-    int    (*post_send)(MPIDI_VC_t * vc, vbuf * v, int rail);
 
     uint32_t                    pending_r3_sends[MAX_NUM_SUBRAILS];
     struct ibv_srq              *srq_hndl[MAX_NUM_HCAS];
@@ -195,13 +189,9 @@ extern win_elem_t *mv2_win_list;
 
 extern int mv2_get_verbs_ips_dev_names(int *num_interfaces,  ip_address_enabled_devices_t * mv2_get_verbs_ips_dev_names );
 extern mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
-extern int (*perform_blocking_progress) (int hca_num, int num_cqs);
-extern void (*handle_multiple_cqs) (int num_cqs, int cq_choice, int is_send_completion);
-extern int (*MPIDI_CH3I_MRAILI_Cq_poll) (vbuf **vbuf_handle,
-        MPIDI_VC_t * vc_req, int receiving, int is_blocking);
-extern int (*check_cq_overflow) (MPIDI_VC_t *c, int rail);
 extern ip_address_enabled_devices_t * ip_address_enabled_devices;
 extern int num_ip_enabled_devices;
+extern int mv2_use_ib_channel;
 #define GEN_EXIT_ERR     -1     /* general error which forces us to abort */
 #define GEN_ASSERT_ERR   -2     /* general assert error */
 #define IBV_RETURN_ERR   -3     /* gen2 function return error */
@@ -332,7 +322,7 @@ inline static void print_info(vbuf* v, char* title, int err)
 		memset(&attr, 0, sizeof(attr));
 		memset(&init_attr, 0, sizeof(init_attr) );
 	
-		int rv = ibv_query_qp( vc->mrail.rails[0].qp_hndl, &attr,
+		int rv = ibv_ops.query_qp( vc->mrail.rails[0].qp_hndl, &attr,
 			0xffffffff, &init_attr ); 
 		/* sleep(1000000); */
 	}
@@ -366,9 +356,9 @@ inline static void print_info(vbuf* v, char* title, int err)
     __ret = ibv_post_recv(_c->mrail.rails[(_rail)].qp_hndl,     \
                           &((_vbuf)->desc.u.rr),                \
             &((_vbuf)->desc.y.bad_rr));                         \
-    if (unlikely(__ret)) {                                                \
+    if (unlikely(__ret)) {                                      \
         ibv_va_error_abort(IBV_RETURN_ERR,                      \
-            "ibv_post_recv err with %d",          \
+            "ibv_post_recv err with %d",                        \
                 __ret);                                         \
     }                                                           \
 }
@@ -486,10 +476,12 @@ struct ibv_mr * register_memory(void *, size_t len, int hca_num);
 int deregister_memory(struct ibv_mr * mr);
 int MRAILI_Backlog_send(MPIDI_VC_t * vc, int subrail);
 int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
-int rdma_find_active_port(struct ibv_context *context, struct ibv_device *ib_dev);
-int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
-                           struct ibv_device **usable_dev_list, int *num_usable_hcas);
+int rdma_find_active_port(struct ibv_context *context, struct ibv_device *ib_dev, int *hca_rate);
 int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type);
+int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
+                           struct ibv_device **usable_dev_list,
+                           struct ibv_device **usable_devs_on_my_sock,
+                           int *num_usable_hcas, int *num_usable_hcas_on_my_sock);
 int  rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 void  rdma_set_default_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 void rdma_get_user_parameters(int num_proc, int me);
@@ -506,21 +498,12 @@ int rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 void rdma_param_handle_heterogeneity(mv2_arch_hca_type hca_type[], int pg_size);
 int MRAILI_Process_send(void *vbuf_addr);
 void MRAILI_Process_recv(vbuf *v); 
-int post_send(MPIDI_VC_t *vc, vbuf *v, int rail);
-int post_srq_send(MPIDI_VC_t *vc, vbuf *v, int rail);
-int perform_blocking_progress_for_iwarp(int hca_num, int num_cqs);
-int perform_blocking_progress_for_ib(int hca_num, int num_cqs);
-void handle_multiple_cqs_for_ib(int num_cqs, int cq_choice, int is_send_completion);
-void handle_multiple_cqs_for_iwarp(int num_cqs, int cq_choice, int is_send_completion);
 int MPIDI_CH3I_MRAILI_Cq_poll_iwarp(vbuf **vbuf_handle,
         MPIDI_VC_t * vc_req, int receiving, int is_blocking);
 int MPIDI_CH3I_MRAILI_Cq_poll_ib(vbuf **vbuf_handle,
         MPIDI_VC_t * vc_req, int receiving, int is_blocking);
-int check_cq_overflow_for_ib(MPIDI_VC_t *c, int rail);
-int check_cq_overflow_for_iwarp(MPIDI_VC_t *c, int rail);
 
 #ifdef _ENABLE_UD_
-int post_hybrid_send(MPIDI_VC_t *vc, vbuf *v, int rail);
 int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *);
 int mv2_post_ud_recv_buffers(int num_bufs, mv2_ud_ctx_t *ud_ctx);
 void mv2_ud_update_send_credits(vbuf *v);
@@ -585,6 +568,9 @@ int reload_alternate_path(struct ibv_qp *qp);
 
 int power_two(int x);
 int qp_required(MPIDI_VC_t* vc, int my_rank, int dst_rank);
+
+const int get_link_width(uint8_t width);
+const float get_link_speed(uint8_t speed);
 
 int init_MV2_collops(MPID_Comm *comm);
 int MPIDI_CH3I_comm_create(MPID_Comm *comm, void *param);

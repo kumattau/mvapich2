@@ -153,7 +153,7 @@ static inline int ADD_SUFFIX(send_normal)(struct MPIDI_VC *vc,
 
     if (send_type == MPID_SYNC_SEND) {
         /* ---------------------------------------------------- */
-        /* For syncronous send, we post a receive to catch the  */
+        /* For synchronous send, we post a receive to catch the  */
         /* match ack, but use the tag protocol bits to avoid    */
         /* matching with MPI level messages.                    */
         /* ---------------------------------------------------- */

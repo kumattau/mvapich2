@@ -917,7 +917,7 @@ cut, slice, and subpath functions
 =========================================
 */
 
-/* keeps upto length components of path starting at specified location
+/* keeps up to length components of path starting at specified location
  * and discards the rest, offset can be negative to count
  * from back, a negative length copies the remainder of the string */
 int scr_path_slice(scr_path* path, int offset, int length)
@@ -952,7 +952,7 @@ int scr_path_slice(scr_path* path, int offset, int length)
     elem = prev;
   }
 
-  /* remember our starting element and intialize tail to NULL */
+  /* remember our starting element and initialize tail to NULL */
   scr_path_elem* head = current;
   scr_path_elem* tail = NULL;
 
@@ -1018,7 +1018,7 @@ int scr_path_basename(scr_path* path)
   return rc;
 }
 
-/* copies upto length components of path starting at specified location
+/* copies up to length components of path starting at specified location
  * and returns subpath as new path, offset can be negative to count
  * from back, a negative length copies the remainder of the string */
 scr_path* scr_path_sub(scr_path* path, int offset, int length)

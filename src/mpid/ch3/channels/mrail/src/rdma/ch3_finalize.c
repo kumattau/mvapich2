@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -92,7 +92,7 @@ int MPIDI_CH3_Finalize()
 #endif
 
 #ifdef _ENABLE_CUDA_
-    CUDA_COLL_Finalize();
+    DEVICE_COLL_Finalize();
 #endif
 
     /* Shutdown the progress engine */
@@ -109,6 +109,8 @@ int MPIDI_CH3_Finalize()
     /* Deallocate PMI Key Value Pair */
     mv2_free_pmi_keyval();
 
+    /* Clear functions used for OFED abstraction */
+    mv2_dlopen_finalize();
 fn_exit:
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
     MPIDI_FUNC_EXIT(MPIDI_CH3_FINALIZE);

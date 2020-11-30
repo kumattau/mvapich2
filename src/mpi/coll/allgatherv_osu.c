@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -114,11 +114,12 @@ int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
     int curr_cnt, dst, total_count;
     void *tmp_buf;
     int mask, dst_tree_root, my_tree_root, is_homogeneous, position,
-        send_offset, recv_offset, last_recv_cnt, nprocs_completed, k,
-        offset, tmp_mask, tree_root;
+        last_recv_cnt, nprocs_completed, k,
+        tmp_mask, tree_root;
+    MPI_Aint send_offset, recv_offset, offset;
 
 #ifdef MPID_HAS_HETERO
-    int tmp_buf_size, nbytes;
+    MPI_Aint tmp_buf_size, nbytes;
 #endif
     MPIU_CHKLMEM_DECL(1);
 
@@ -821,10 +822,10 @@ int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
      * on the default stream (0) but subsequent MPI_Isend/Irecv calls access
      * GPU buffers using non-default streams which don't wait for the initial
      * local copy to complete*/
-    if (rdma_enable_cuda && cuda_initialized
-        && rdma_cuda_nonblocking_streams) {
-            CUDA_CHECK(cudaEventRecord(cuda_nbstream_sync_event, 0));
-            CUDA_CHECK(cudaStreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 0));
+    if (mv2_enable_device && mv2_device_initialized
+        && mv2_device_nonblocking_streams) {
+        MPIU_Device_EventRecord(cuda_nbstream_sync_event, 0);
+        MPIU_Device_StreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 0);
     }
 #endif
 
@@ -1005,10 +1006,10 @@ int MPIR_Allgatherv_Ring_Cyclic_MV2(const void *sendbuf,
      * on the default stream (0) but subsequent MPI_Isend/Irecv calls access
      * GPU buffers using non-default streams which don't wait for the initial
      * local copy to complete*/
-    if (rdma_enable_cuda && cuda_initialized
-        && rdma_cuda_nonblocking_streams) {
-            CUDA_CHECK(cudaEventRecord(cuda_nbstream_sync_event, 0));
-            CUDA_CHECK(cudaStreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 0));
+    if (mv2_enable_device && mv2_device_initialized
+        && mv2_device_nonblocking_streams) {
+        MPIU_Device_EventRecord(cuda_nbstream_sync_event, 0);
+        MPIU_Device_StreamWaitEvent(stream_d2h, cuda_nbstream_sync_event, 0);
     }
 #endif
 
@@ -1150,7 +1151,7 @@ int MPIR_Allgatherv_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
     int mpi_errno = MPI_SUCCESS;
     int range = 0, comm_size, total_count, recvtype_size, i;
     int range_threshold = 0;
-    int nbytes = 0;
+    MPI_Aint nbytes = 0;
 
     comm_size = comm_ptr->local_size;
     total_count = 0;
@@ -1161,7 +1162,7 @@ int MPIR_Allgatherv_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
         goto fn_exit;
 
     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
-    nbytes = total_count * recvtype_size;
+    nbytes = (MPI_Aint) total_count * recvtype_size;
 
     /* Search for the corresponding system size inside the tuning table */
     while ((range < (mv2_size_allgatherv_tuning_table - 1)) &&

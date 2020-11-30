@@ -14,7 +14,7 @@
 /*                    auxiliary functions                      */
 /* =========================================================== */
 
-/* immed_copy() copys data from origin buffer to
+/* immed_copy() copies data from origin buffer to
    IMMED packet header. */
 #undef FUNCNAME
 #define FUNCNAME immed_copy

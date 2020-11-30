@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -44,7 +44,7 @@
 #define COLL_VBUF_FLAG (666)
 /*
 ** FIXME: Change the size of VBUF_FLAG_TYPE to 4 bytes when size of
-** MPIDI_CH3_Pkt_send is changed to mutliple of 4. This will fix the 
+** MPIDI_CH3_Pkt_send is changed to multiple of 4. This will fix the 
 ** issue of recv memcpy alignment.
 */
 #define VBUF_FLAG_TYPE uint64_t

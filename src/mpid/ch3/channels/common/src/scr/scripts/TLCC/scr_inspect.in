@@ -76,7 +76,7 @@ if (defined $conf{nodeset_down}) {
 # format up and down node sets for pdsh command
 my $upnodes   = scr_hostlist::compress(@upnodes);
 
-# TODO: should check that .scr direcotry exists
+# TODO: should check that .scr directory exists
 # build the output filenames
 my $pwd = `pwd`;
 chomp $pwd;

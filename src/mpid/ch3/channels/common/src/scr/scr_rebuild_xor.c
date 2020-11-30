@@ -472,7 +472,7 @@ int main(int argc, char* argv[])
   for (chunk_id = 0; chunk_id < xor_set_size && rc == 0; chunk_id++) {
     size_t nread = 0;
     while (nread < chunk_size && rc == 0) {
-      /* read upto buffer_size bytes at a time */
+      /* read up to buffer_size bytes at a time */
       size_t count = chunk_size - nread;
       if (count > buffer_size) {
         count = buffer_size;

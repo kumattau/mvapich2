@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH software package developed by the
@@ -80,7 +80,7 @@ typedef struct _xrc_hash {
 #define XRC_HASH_SIZE       1024
 #define XRC_HASH_MASK       (XRC_HASH_SIZE - 1)
 
-xrc_hash_t *xrc_hash[XRC_HASH_SIZE];
+extern xrc_hash_t *xrc_hash[];
 void cm_activate_xrc_qp_reuse(int peer_rank);
 int compute_xrc_hash(uint32_t v);
 void clear_xrc_hash(void);

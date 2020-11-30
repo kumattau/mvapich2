@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -27,10 +27,12 @@
 
 #include "upmi.h"
 #include "mpi.h"
-#if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
+#if CHANNEL_MRAIL
 #include "rdma_impl.h"
+#if ENABLE_PVAR_MV2
 #include "mv2_mpit_cvars.h"
-#endif
+#endif /* ENABLE_PVAR_MV2 */
+#endif /* CHANNEL_MRAIL */
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -65,6 +67,7 @@ static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
 #define MV2_STR_CXGB4        "cxgb4"
 #define MV2_STR_NES0         "nes0"
 #define MV2_STR_QEDR         "qedr"
+#define MV2_STR_BRDCM        "bnxt"
 
 #if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
 MPI_T_cvar_handle mv2_force_hca_type_handle = NULL;
@@ -82,6 +85,11 @@ typedef struct _mv2_hca_types_log_t{
     mv2_hca_type hca_type;
     char *hca_name;
 }mv2_hca_types_log_t;
+
+typedef struct _mv2_network_types_log_t{
+    mv2_iba_network_classes network_type;
+    char *network_name;
+}mv2_network_types_log_t;
 
 #define MV2_HCA_LAST_ENTRY MV2_HCA_LIST_END
 static mv2_hca_types_log_t mv2_hca_types_log[] = 
@@ -121,9 +129,35 @@ static mv2_hca_types_log_t mv2_hca_types_log[] =
     /* Marvel RoCE Cards */
     {MV2_HCA_MARVEL_QEDR,   "MV2_HCA_MARVEL_QEDR"},
 
+    /* Broadcom RoCE Cards */
+    {MV2_HCA_BROADCOM_BNXTRE,"MV2_HCA_BROADCOM_BNXTRE"},
+
     /* Last Entry */
     {MV2_HCA_LAST_ENTRY,    "MV2_HCA_LAST_ENTRY"},
 };
+
+static mv2_network_types_log_t mv2_network_types_log[] =
+{
+    {MV2_NETWORK_CLASS_UNKNOWN, "MV2_NETWORK_CLASS_UNKNOWN"},
+    {MV2_NETWORK_CLASS_IB,      "MV2_NETWORK_CLASS_IB"},
+    {MV2_NETWORK_CLASS_IWARP,   "MV2_NETWORK_CLASS_IWARP"},
+    {MV2_NETWORK_CLASS_MARVEL,  "MV2_NETWORK_CLASS_MARVEL"},
+    {MV2_NETWORK_CLASS_BROADCOM,"MV2_NETWORK_CLASS_BROADCOM"},
+};
+
+
+char* mv2_get_network_name(mv2_iba_network_classes network_type)
+{
+    int i=0;
+    while(mv2_network_types_log[i].network_type != MV2_NETWORK_LAST_ENTRY){
+
+        if(mv2_network_types_log[i].network_type == network_type){
+            return(mv2_network_types_log[i].network_name);
+        }
+        i++;
+    }
+    return("MV2_NETWORK_CLASS_UNKNOWN");
+}
 
 char* mv2_get_hca_name(mv2_hca_type hca_type)
 {
@@ -166,7 +200,7 @@ static int get_rate(umad_ca_t *umad_ca)
 }
 #endif
 
-static const int get_link_width(uint8_t width)
+const int get_link_width(uint8_t width)
 {
     switch (width) {
     case 1:  return 1;
@@ -182,7 +216,7 @@ static const int get_link_width(uint8_t width)
     }
 }
 
-static const float get_link_speed(uint8_t speed)
+const float get_link_speed(uint8_t speed)
 {
     switch (speed) {
     case 1:  return 2.5;  /* SDR */
@@ -271,7 +305,11 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
         }
     }
 
+#if CHANNEL_MRAIL
+    dev_name = (char*) ibv_ops.get_device_name( ib_dev );
+#elif CHANNEL_PSM
     dev_name = (char*) ibv_get_device_name( ib_dev );
+#endif
 
     if ((!dev_name) && !mv2_suppress_hca_warnings) {
         PRINT_INFO((my_rank==0), "**********************WARNING***********************\n");
@@ -282,7 +320,13 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
     }
 
     memset(&device_attr, 0, sizeof(struct ibv_device_attr));
-    if(!ibv_query_device(ctx, &device_attr)){
+    if (
+#if CHANNEL_MRAIL
+        !ibv_ops.query_device(ctx, &device_attr)
+#elif CHANNEL_PSM
+        !ibv_query_device(ctx, &device_attr)
+#endif
+       ){
         max_ports = device_attr.phys_port_cnt;
         *guid = device_attr.node_guid;
     }
@@ -302,7 +346,13 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
             query_port = (default_port <= max_ports) ? default_port : 1;
         }
 
-        if (!ibv_query_port(ctx, query_port, &port_attr)) {
+        if (
+#if CHANNEL_MRAIL
+            !ibv_ops.query_port(ctx, query_port, &port_attr)
+#elif CHANNEL_PSM
+            !ibv_query_port(ctx, query_port, &port_attr)
+#endif
+           ) {
             rate = (int) (get_link_width(port_attr.active_width)
                     * get_link_speed(port_attr.active_speed));
             PRINT_DEBUG(DEBUG_INIT_verbose, "rate : %d\n", rate);
@@ -363,6 +413,9 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
     } else if (!strncmp(dev_name, MV2_STR_QEDR, 4)) {
         hca_type = MV2_HCA_MARVEL_QEDR;
 
+    } else if (!strncmp(dev_name, MV2_STR_BRDCM, 4)) {
+        hca_type = MV2_HCA_BROADCOM_BNXTRE;
+
     } else {
         hca_type = MV2_HCA_UNKWN;
     }    
@@ -408,7 +461,11 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
         }
     }
 
+#if CHANNEL_MRAIL
+    dev_name = (char*) ibv_ops.get_device_name( dev );
+#elif CHANNEL_PSM
     dev_name = (char*) ibv_get_device_name( dev );
+#endif
 
     if ((!dev_name) && !mv2_suppress_hca_warnings) {
         PRINT_INFO((my_rank==0), "**********************WARNING***********************\n");
@@ -419,7 +476,7 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
     }
 
 #ifdef HAVE_LIBIBUMAD
-    static char last_name[UMAD_CA_NAME_LEN] = { '\0' };
+    static char last_name[UMAD_CA_NAME_LEN+1] = { '\0' };
     static mv2_hca_type last_type = MV2_HCA_UNKWN;
     if (!strncmp(dev_name, last_name, UMAD_CA_NAME_LEN)) {
         return last_type;
@@ -439,7 +496,11 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
         struct ibv_port_attr port_attr;
 
 
+#if CHANNEL_MRAIL
+        ctx = ibv_ops.open_device(dev);
+#elif CHANNEL_PSM
         ctx = ibv_open_device(dev);
+#endif
         if (!ctx) {
             return MV2_HCA_UNKWN;
         }
@@ -452,13 +513,24 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
             int default_port = atoi(value);
             
             memset(&device_attr, 0, sizeof(struct ibv_device_attr));
-            if(!ibv_query_device(ctx, &device_attr)){
+            if (
+#if CHANNEL_MRAIL
+                !ibv_ops.query_device(ctx, &device_attr)
+#elif CHANNEL_PSM
+                !ibv_query_device(ctx, &device_attr)
+#endif
+               ){
                 max_ports = device_attr.phys_port_cnt;
             }
             query_port = (default_port <= max_ports) ? default_port : 1;
         }
         
-        if (!ibv_query_port(ctx, query_port, &port_attr) &&
+        if (
+#if CHANNEL_MRAIL
+            !ibv_ops.query_port(ctx, query_port, &port_attr) &&
+#elif CHANNEL_PSM
+            !ibv_query_port(ctx, query_port, &port_attr) &&
+#endif
             (port_attr.state == IBV_PORT_ACTIVE)) {
             rate = (int) (get_link_width(port_attr.active_width)
                     * get_link_speed(port_attr.active_speed));
@@ -466,30 +538,28 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
         }
 #else
         umad_ca_t umad_ca;
-        if (umad_init() < 0) {
+        if (umad_ops.init() < 0) {
             last_type = hca_type;
             return hca_type;
         }
 
         memset(&umad_ca, 0, sizeof(umad_ca_t));
 
-        if (umad_get_ca(dev_name, &umad_ca) < 0) {
+        if (umad_ops.get_ca(dev_name, &umad_ca) < 0) {
             last_type = hca_type;
             return hca_type;
         }
 
-        if (!getenv("MV2_USE_RoCE")) {
-            rate = get_rate(&umad_ca);
-            if (!rate) {
-                umad_release_ca(&umad_ca);
-                umad_done();
-                last_type = hca_type;
-                return hca_type;
-            }
+        rate = get_rate(&umad_ca);
+        if (!rate) {
+            umad_ops.release_ca(&umad_ca);
+            umad_ops.done();
+            last_type = hca_type;
+            return hca_type;
         }
 
-        umad_release_ca(&umad_ca);
-        umad_done();
+        umad_ops.release_ca(&umad_ca);
+        umad_ops.done();
 
         if (!strncmp(dev_name, MV2_STR_MTHCA, 5)) {
             hca_type = MV2_HCA_MLX_PCI_X;
@@ -575,6 +645,9 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 
     } else if (!strncmp(dev_name, MV2_STR_QEDR, 4)) {
         hca_type = MV2_HCA_MARVEL_QEDR;
+
+    } else if (!strncmp(dev_name, MV2_STR_BRDCM, 4)) {
+        hca_type = MV2_HCA_BROADCOM_BNXTRE;
 
     } else {
         hca_type = MV2_HCA_UNKWN;
@@ -666,7 +739,11 @@ mv2_multirail_info_type mv2_get_multirail_info()
         struct ibv_device **dev_list = NULL;
 
         /* Get the number of rails */
+#if CHANNEL_MRAIL
+        dev_list = ibv_ops.get_device_list(&num_devices);
+#elif CHANNEL_PSM
         dev_list = ibv_get_device_list(&num_devices);
+#endif
 
         switch (num_devices){
             case 1:
@@ -686,7 +763,11 @@ mv2_multirail_info_type mv2_get_multirail_info()
                 break;
         }
         if (dev_list) {
+#if CHANNEL_MRAIL
+            ibv_ops.free_device_list(dev_list);
+#elif CHANNEL_PSM
             ibv_free_device_list(dev_list);
+#endif
         }
     }
     return g_mv2_multirail_info;

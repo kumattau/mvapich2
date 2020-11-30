@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -58,8 +58,8 @@ int aout_index = 0;
 
 /* xxx need to add checking for string overflow, do this more carefully ... */
 char *mpispawn_param_env = NULL;
-char *spawnfile;
-char *binary_dirname;
+char *spawnfile = NULL;
+char *binary_dirname = NULL;
 
 #if defined(USE_RSH)
 int use_rsh = 1;

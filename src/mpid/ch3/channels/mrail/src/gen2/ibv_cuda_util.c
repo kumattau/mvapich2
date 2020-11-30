@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -41,7 +41,7 @@ void MPIU_IOV_pack_cuda(void *buf, MPL_IOV *iov, int n_iov,
     void *ptr;
     ptr = (char *) buf + position;
     for (i = 0; i < n_iov; i++) {
-        MPIU_Memcpy_CUDA_Async(ptr, iov[i].MPL_IOV_BUF, iov[i].MPL_IOV_LEN,
+        MPIU_Memcpy_Device_Async(ptr, iov[i].MPL_IOV_BUF, iov[i].MPL_IOV_LEN,
                                     cudaMemcpyDefault, stream);
         ptr = (char *)ptr + iov[i].MPL_IOV_LEN;
     }
@@ -56,7 +56,7 @@ void MPIU_IOV_unpack_cuda(void *buf, MPL_IOV *iov, int n_iov,
     int total_len = 0;
 
     for (i = 0; i < n_iov; i++) {
-        MPIU_Memcpy_CUDA_Async(iov[i].MPL_IOV_BUF, ptr, iov[i].MPL_IOV_LEN,
+        MPIU_Memcpy_Device_Async(iov[i].MPL_IOV_BUF, ptr, iov[i].MPL_IOV_LEN,
                                 cudaMemcpyDefault, stream);
         ptr = (char *)ptr + iov[i].MPL_IOV_LEN;
         total_len += iov[i].MPL_IOV_LEN;
@@ -370,12 +370,12 @@ int hindexed_unpack_cudabuf(void *src, MPL_IOV *iov, MPID_Datatype *dtp, int siz
 }
 #endif
 
-int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *complete)
+int MPIDI_CH3_ReqHandler_pack_device(MPIDI_VC_t * vc, MPID_Request * rreq, int *complete)
 {
-    return MPIDI_CH3_ReqHandler_pack_cudabuf_stream(vc, rreq, complete, NULL);
+    return MPIDI_CH3_ReqHandler_pack_device_stream(vc, rreq, complete, NULL);
 }
 
-int MPIDI_CH3_ReqHandler_pack_cudabuf_stream(
+int MPIDI_CH3_ReqHandler_pack_device_stream(
         MPIDI_VC_t *vc ATTRIBUTE((unused)), 
         MPID_Request *req, int *complete ATTRIBUTE((unused)), void* stream)
 {
@@ -491,12 +491,12 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf_stream(
     return MPI_SUCCESS;
 }
 
-int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc, MPID_Request *req, int *complete)
+int MPIDI_CH3_ReqHandler_unpack_device(MPIDI_VC_t *vc, MPID_Request *req, int *complete)
 {
-    return MPIDI_CH3_ReqHandler_unpack_cudabuf_stream(vc, req, complete, NULL);
+    return MPIDI_CH3_ReqHandler_unpack_device_stream(vc, req, complete, NULL);
 }
 
-int MPIDI_CH3_ReqHandler_unpack_cudabuf_stream(
+int MPIDI_CH3_ReqHandler_unpack_device_stream(
         MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID_Request *req,
         int *complete, void *stream)
 {
@@ -620,7 +620,7 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf_stream(
     return MPI_SUCCESS;
 }
 
-void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
+void MPID_Segment_pack_device(DLOOP_Segment *segp, DLOOP_Offset first,
         DLOOP_Offset *lastp, MPID_Datatype *dt_ptr, void *streambuf)
 {
     int iov_n;
@@ -635,7 +635,7 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
 
     /* allocate temp device pack buffer */
     if (!is_device_buffer(streambuf)) {
-        MPIU_Malloc_CUDA(tmpbuf, *lastp);
+        MPIU_Malloc_Device(tmpbuf, *lastp);
         device_pack_buf = 0;
     } else {
         tmpbuf = streambuf;
@@ -711,13 +711,13 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
 
     /* copy to device pack buffer to host pack buffer */
     if (!device_pack_buf) {
-        MPIU_Memcpy_CUDA(streambuf, tmpbuf, *lastp, 
+        MPIU_Memcpy_Device(streambuf, tmpbuf, *lastp,
                                     cudaMemcpyDeviceToHost);
-        MPIU_Free_CUDA(tmpbuf);
+        MPIU_Free_Device(tmpbuf);
     }
 }
 
-void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
+void MPID_Segment_unpack_device(DLOOP_Segment *segp, DLOOP_Offset first,
         DLOOP_Offset *lastp, MPID_Datatype *dt_ptr, void *inbuf)
 {
     int iov_n;
@@ -734,8 +734,8 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     /* allocate temp device unpack buffer */
     if (!is_device_buffer(inbuf)) {
         device_unpack_buf = 0;
-        MPIU_Malloc_CUDA(tmpbuf, *lastp);
-        MPIU_Memcpy_CUDA(tmpbuf, inbuf, *lastp, cudaMemcpyHostToDevice);
+        MPIU_Malloc_Device(tmpbuf, *lastp);
+        MPIU_Memcpy_Device(tmpbuf, inbuf, *lastp, cudaMemcpyHostToDevice);
     } else {
         tmpbuf = inbuf;
     }
@@ -812,7 +812,7 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     cudaStreamSynchronize (stream_kernel);
 
     if (!device_unpack_buf) {
-        MPIU_Free_CUDA(tmpbuf);
+        MPIU_Free_Device(tmpbuf);
     }
 }
 
@@ -827,7 +827,7 @@ int is_device_buffer(const void *buffer)
         return 0;
     }
 
-    if (rdma_cuda_dynamic_init && (mv2_save_cuda_context == NULL)) {
+    if (mv2_device_dynamic_init && (mv2_save_cuda_context == NULL)) {
         cu_err = cuCtxGetCurrent(&mv2_save_cuda_context);
         if (cu_err != CUDA_SUCCESS || mv2_save_cuda_context == NULL) { 
             return 0;
@@ -838,28 +838,32 @@ int is_device_buffer(const void *buffer)
                     CU_POINTER_ATTRIBUTE_MEMORY_TYPE, 
                     (CUdeviceptr) buffer);
     if (cu_err != CUDA_SUCCESS) {
-        if (rdma_check_cuda_attribute) {
+        if (mv2_device_check_attribute) {
             cuda_err = cudaPointerGetAttributes (&attributes, buffer);
             if (cuda_err == cudaSuccess) {
+#if CUDA_VERSION >= 11000
+                is_dev = (attributes.type == cudaMemoryTypeDevice) ? 1 : 0;
+#else
                 is_dev = (attributes.memoryType == cudaMemoryTypeDevice) ? 1 : 0;
+#endif
             }
         }
     } else {
         is_dev = (memory_type == CU_MEMORYTYPE_DEVICE) ? 1 : 0;
     }
 
-    if (is_dev && rdma_cuda_dynamic_init && !cuda_initialized) { 
-        cuda_init_dynamic (MPIDI_Process.my_pg);
+    if (is_dev && mv2_device_dynamic_init && !mv2_device_initialized) {
+        device_init_dynamic (MPIDI_Process.my_pg);
     }
 
     return is_dev;
 }
 
-void ibv_cuda_register(void *ptr, size_t size)
+void ibv_device_register(void *ptr, size_t size)
 {
     cudaError_t cuerr = cudaSuccess;
 
-    if(ptr == NULL || (rdma_cuda_dynamic_init && !cuda_initialized)) {
+    if(ptr == NULL || (mv2_device_dynamic_init && !mv2_device_initialized)) {
         return;
     }
 
@@ -871,10 +875,10 @@ void ibv_cuda_register(void *ptr, size_t size)
             "cudaHostRegister success ptr:%p size:%lu\n", ptr, size);
 }
 
-void ibv_cuda_unregister(void *ptr)
+void ibv_device_unregister(void *ptr)
 {
     cudaError_t cuerr = cudaSuccess;
-    if (ptr == NULL || (rdma_cuda_dynamic_init && !cuda_initialized)) {
+    if (ptr == NULL || (mv2_device_dynamic_init && !mv2_device_initialized)) {
         return;
     }
     cuerr = cudaHostUnregister(ptr);
@@ -888,7 +892,7 @@ void cuda_get_user_parameters() {
     char *value = NULL; 
 
     if ((value = getenv("MV2_EAGER_CUDAHOST_REG")) != NULL) {
-        rdma_eager_cudahost_reg = atoi(value);
+        rdma_eager_devicehost_reg = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_VECTOR_OPT")) != NULL) {
@@ -930,77 +934,77 @@ void cuda_get_user_parameters() {
     }
 
     if ((value = getenv("MV2_CUDA_NUM_EVENTS")) != NULL) {
-        rdma_cuda_event_count = atoi(value);
+        mv2_device_event_count = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_INIT_CONTEXT")) != NULL) {
-        rdma_cuda_init_context = atoi(value);
+        mv2_device_init_context = atoi(value);
     }
 
     if ((value = getenv("MV2_CHECK_CUDA_ATTRIBUTE")) != NULL) {
-        rdma_check_cuda_attribute = atoi(value);
+        mv2_device_check_attribute = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_USE_NAIVE")) != NULL) {
-        rdma_cuda_use_naive = atoi(value);
+        mv2_device_coll_use_stage = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_ALLTOALL_DYNAMIC")) != NULL) {
-        rdma_cuda_alltoall_dynamic = atoi(value);
+        mv2_device_alltoall_dynamic = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_REGISTER_NAIVE_BUF")) != NULL) {
-        rdma_cuda_register_naive_buf = atoi(value);
+        mv2_device_coll_register_stage_buf_threshold = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_GATHER_NAIVE_LIMIT")) != NULL) {
-        rdma_cuda_gather_naive_limit = atoi(value);
+        mv2_device_gather_stage_limit = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_SCATTER_NAIVE_LIMIT")) != NULL) {
-        rdma_cuda_scatter_naive_limit = atoi(value);
+        mv2_device_scatter_stage_limit = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_ALLTOALL_NAIVE_LIMIT")) != NULL) {
-        rdma_cuda_alltoall_naive_limit = atoi(value);
+        mv2_device_alltoall_stage_limit = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_ALLTOALLV_NAIVE_LIMIT")) != NULL) {
-        rdma_cuda_alltoallv_naive_limit = atoi(value);
+        mv2_device_alltoallv_stage_limit = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_ALLGATHER_NAIVE_LIMIT")) != NULL) {
-        rdma_cuda_allgather_naive_limit = atoi(value);
+        mv2_device_allgather_stage_limit = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_ALLGATHERV_NAIVE_LIMIT")) != NULL) {
-        rdma_cuda_allgatherv_naive_limit = atoi(value);
+        mv2_device_allgatherv_stage_limit = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_BCAST_NAIVE_LIMIT")) != NULL) {
-        rdma_cuda_bcast_naive_limit = atoi(value);
+        mv2_device_bcast_stage_limit = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_GATHERV_NAIVE_LIMIT")) != NULL) {
-        rdma_cuda_gatherv_naive_limit = atoi(value);
+        mv2_device_gatherv_stage_limit = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_SCATTERV_NAIVE_LIMIT")) != NULL) {
-        rdma_cuda_scatterv_naive_limit = atoi(value);
+        mv2_device_scatterv_stage_limit = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_ALLGATHER_RD_LIMIT")) != NULL) {
-        rdma_cuda_allgather_rd_limit = atoi(value);
+        mv2_device_allgather_rd_limit = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_ALLGATHER_FGP")) != NULL) {
-        rdma_cuda_allgather_fgp = atoi(value);
+        mv2_device_use_allgather_fgp = atoi(value);
     }
 
 
 #if defined(HAVE_CUDA_IPC)
     if ((value = getenv("MV2_CUDA_IPC")) != NULL) {
-        rdma_cuda_ipc = atoi(value);
+        mv2_device_use_ipc = atoi(value);
     }
     
     if ((value = getenv("MV2_CUDA_IPC_SHARE_GPU")) != NULL) {
@@ -1008,27 +1012,27 @@ void cuda_get_user_parameters() {
     }
 
     if ((value = getenv("MV2_CUDA_SMP_IPC")) != NULL) {
-        rdma_cuda_smp_ipc = atoi(value);
+        mv2_device_use_smp_eager_ipc = atoi(value);
     }
-    if (!rdma_cuda_ipc) { 
-        rdma_cuda_smp_ipc = 0;
+    if (!mv2_device_use_ipc) {
+        mv2_device_use_smp_eager_ipc = 0;
     }
 
-    if (rdma_cuda_ipc
+    if (mv2_device_use_ipc
         && CUDART_VERSION < 4010) {
-        PRINT_DEBUG(DEBUG_CUDA_verbose > 1, "IPC is availabe only"
-            "from version 4.1 or later, version availabe : %d",
+        PRINT_DEBUG(DEBUG_CUDA_verbose > 1, "IPC is available only"
+            "from version 4.1 or later, version available : %d",
             CUDART_VERSION);
-        rdma_cuda_ipc = 0;
-        rdma_cuda_smp_ipc = 0;
+        mv2_device_use_ipc = 0;
+        mv2_device_use_smp_eager_ipc = 0;
     }
 
     if ((value = getenv("MV2_CUDA_ENABLE_IPC_CACHE")) != NULL) {
-        rdma_cuda_enable_ipc_cache= atoi(value);
+        mv2_device_enable_ipc_cache= atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_IPC_MAX_CACHE_ENTRIES")) != NULL) {
-        cudaipc_cache_max_entries = atoi(value);
+        mv2_device_ipc_cache_max_entries = atoi(value);
     }
     
     if ((value = getenv("MV2_CUDA_IPC_NUM_STAGE_BUFFERS")) != NULL) {
@@ -1038,39 +1042,39 @@ void cuda_get_user_parameters() {
         cudaipc_stage_buffer_size = atoi(value);
     }
     if ((value = getenv("MV2_CUDA_IPC_BUFFERED")) != NULL) {
-        cudaipc_stage_buffered = atoi(value);
+        mv2_device_use_ipc_stage_buffer = atoi(value);
     }
-    if (cudaipc_stage_buffered) {
-        rdma_cuda_ipc_threshold = 0;
+    if (mv2_device_use_ipc_stage_buffer) {
+        mv2_device_ipc_threshold = 0;
     }
     if ((value = getenv("MV2_CUDA_IPC_THRESHOLD")) != NULL) {
-        rdma_cuda_ipc_threshold = user_val_to_bytes(value, "MV2_CUDA_IPC_THRESHOLD");
+        mv2_device_ipc_threshold = user_val_to_bytes(value, "MV2_CUDA_IPC_THRESHOLD");
     }
     if ((value = getenv("MV2_CUDA_IPC_BUFFERED_LIMIT")) != NULL) {
-        cudaipc_stage_buffered_limit = atoi(value);
+        mv2_device_ipc_stage_buffer_limit = atoi(value);
     }
     if ((value = getenv("MV2_CUDA_IPC_SYNC_LIMIT")) != NULL) {
         cudaipc_sync_limit = atoi(value);
     }
-    MPIU_Assert(cudaipc_stage_buffered_limit >= rdma_cuda_ipc_threshold);
+    MPIU_Assert(mv2_device_ipc_stage_buffer_limit >= mv2_device_ipc_threshold);
 
     if ((value = getenv("MV2_CUDA_DYNAMIC_INIT")) != NULL) {
-        rdma_cuda_dynamic_init = atoi(value);
+        mv2_device_dynamic_init = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_NONBLOCKING_STREAMS")) != NULL) {
-        rdma_cuda_nonblocking_streams = atoi(value);
+        mv2_device_nonblocking_streams = atoi(value);
     }
 
     /*TODO: remove this dependency*/
     /*disabling cuda_smp_ipc (disabled by default) when dynamic initialization us used*/
-    if (rdma_cuda_dynamic_init) { 
-        rdma_cuda_smp_ipc = 0;
+    if (mv2_device_dynamic_init) {
+        mv2_device_use_smp_eager_ipc = 0;
     }
 #endif
 }
 
-void cuda_init (MPIDI_PG_t * pg)
+void device_init (MPIDI_PG_t * pg)
 {
 #if defined(HAVE_CUDA_IPC)
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;
@@ -1088,9 +1092,9 @@ void cuda_init (MPIDI_PG_t * pg)
     num_processes = comm_world->local_size;
     my_rank = comm_world->rank;
 
-    curesult = cuCtxGetCurrent(&mv2_save_cuda_context); 
-    if (curesult != CUDA_SUCCESS || mv2_save_cuda_context == NULL) { 
-        if (rdma_cuda_init_context) { 
+    curesult = cuCtxGetCurrent(&mv2_save_cuda_context);
+    if (curesult != CUDA_SUCCESS || mv2_save_cuda_context == NULL) {
+        if (mv2_device_init_context) {
             /*use has not selected a device or not created a context, 
              *select device internally*/
             my_local_rank = MPIDI_Process.my_pg->ch.local_process_id; 
@@ -1138,38 +1142,38 @@ void cuda_init (MPIDI_PG_t * pg)
     for (i=0; i<num_processes; i++) {
         if (i == my_rank) continue;
         MPIDI_Comm_get_vc(comm_world, i, &vc);
-        vc->smp.can_access_peer = CUDA_IPC_UNINITIALIZED;
+        vc->smp.can_access_peer = MV2_DEVICE_IPC_UNINITIALIZED;
         if (vc->smp.local_rank != -1) {
                 if(rdma_enable_ipc_share_gpu){
                 /*if both processes are using the same device, IPC works 
                     but cudaDeviceCanAccessPeer returns 0, or
                     else decide based on result of cudaDeviceCanAccessPeer*/
                     if (device[my_rank] == device[i]) { 
-                        vc->smp.can_access_peer = CUDA_IPC_ENABLED;
+                        vc->smp.can_access_peer = MV2_DEVICE_IPC_ENABLED;
                     } else {
                         cudaerr = cudaDeviceCanAccessPeer((int*)&vc->smp.can_access_peer, device[my_rank], device[i]);
                         if (cudaerr != cudaSuccess) {
                             ibv_error_abort(GEN_EXIT_ERR,"cudaDeviceCanAccessPeer failed");
                         }
-                        vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
+                        vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? MV2_DEVICE_IPC_DISABLED : MV2_DEVICE_IPC_ENABLED;
                     }
                 }else{
                     cudaerr = cudaDeviceCanAccessPeer((int*)&vc->smp.can_access_peer, device[my_rank], device[i]);
                         if (cudaerr != cudaSuccess) {
                             ibv_error_abort(GEN_EXIT_ERR,"cudaDeviceCanAccessPeer failed");
                         }
-                        vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
+                        vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? MV2_DEVICE_IPC_DISABLED : MV2_DEVICE_IPC_ENABLED;
                }     
-            if (vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+            if (vc->smp.can_access_peer == MV2_DEVICE_IPC_ENABLED) {
                 has_cudaipc_peer = 1;
             }
         } else { 
-            vc->smp.can_access_peer = CUDA_IPC_DISABLED;
+            vc->smp.can_access_peer = MV2_DEVICE_IPC_DISABLED;
         }
     }
     
-    cudaipc_num_local_procs =  MPIDI_Num_local_processes(pg);
-    cudaipc_my_local_id = MPIDI_Get_local_process_id(pg);
+    deviceipc_num_local_procs =  MPIDI_Num_local_processes(pg);
+    deviceipc_my_local_id = MPIDI_Get_local_process_id(pg);
         
     mpi_errno = MPIR_Allreduce_impl(&has_cudaipc_peer, &cudaipc_init, 1, 
                             MPI_INT, MPI_SUM, comm_world, &errflag);
@@ -1178,32 +1182,32 @@ void cuda_init (MPIDI_PG_t * pg)
     }
     cudaipc_init_global = cudaipc_init;
 
-    if (rdma_cuda_ipc && cudaipc_stage_buffered) {
+    if (mv2_device_use_ipc && mv2_device_use_ipc_stage_buffer) {
         if (cudaipc_init) {
-            cudaipc_initialize(pg, num_processes, my_rank);
+            device_ipc_initialize(pg, num_processes, my_rank);
         }
     }
 
-    if (rdma_cuda_ipc && !cudaipc_stage_buffered 
-            && rdma_cuda_enable_ipc_cache && has_cudaipc_peer) {
-        cudaipc_initialize_cache();
+    if (mv2_device_use_ipc && !mv2_device_use_ipc_stage_buffer
+            && mv2_device_enable_ipc_cache && has_cudaipc_peer) {
+        device_ipc_initialize_cache();
     }
     MPIU_Free(device);
 #endif
 
     can_use_cuda = 1;
-    cuda_initialized = 1; 
+    mv2_device_initialized = 1;
 
     if (stream_d2h == 0 && stream_h2d == 0) {
         allocate_cuda_rndv_streams();
     }
 
     if (SMP_INIT) {
-        MPIDI_CH3I_CUDA_SMP_cuda_init(pg);
+        MPIDI_CH3I_CUDA_SMP_device_init(pg);
     }
 }
 
-void cuda_preinit (MPIDI_PG_t * pg)
+void device_preinit (MPIDI_PG_t * pg)
 {
     int dev_count; 
     cudaError_t cuda_err = CUDA_SUCCESS; 
@@ -1221,16 +1225,16 @@ void cuda_preinit (MPIDI_PG_t * pg)
     }
 
 #if defined(HAVE_CUDA_IPC)
-    if (rdma_cuda_ipc) { 
+    if (mv2_device_use_ipc) {
         comm_world = MPIR_Process.comm_world;
         num_processes = comm_world->local_size;
         my_rank = comm_world->rank;
 
-        cudaipc_num_local_procs =  MPIDI_Num_local_processes(pg);
-        cudaipc_my_local_id = MPIDI_Get_local_process_id(pg);
+        deviceipc_num_local_procs =  MPIDI_Num_local_processes(pg);
+        deviceipc_my_local_id = MPIDI_Get_local_process_id(pg);
 
         /*check if any one of the nodes have multiple processes/node and a GPU*/
-        cudaipc_init = (cudaipc_num_local_procs > 1 && can_use_cuda == 1) ? 1 : 0; 
+        cudaipc_init = (deviceipc_num_local_procs > 1 && can_use_cuda == 1) ? 1 : 0;
         mpi_errno = MPIR_Allreduce_impl (&cudaipc_init, &cudaipc_init_global, 1,
                             MPI_INT, MPI_SUM, comm_world, &errflag);
 
@@ -1242,13 +1246,13 @@ void cuda_preinit (MPIDI_PG_t * pg)
             /*set can_access_peer to pre-setup value*/
             for (i=0; i<num_processes; i++) {
                 MPIDI_Comm_get_vc(comm_world, i, &vc);
-                vc->smp.can_access_peer = CUDA_IPC_UNINITIALIZED;
+                vc->smp.can_access_peer = MV2_DEVICE_IPC_UNINITIALIZED;
             }
         } else {
             /*set can_access_peer to disabled value*/
             for (i=0; i<num_processes; i++) {
                 MPIDI_Comm_get_vc(comm_world, i, &vc);
-                vc->smp.can_access_peer = CUDA_IPC_DISABLED;
+                vc->smp.can_access_peer = MV2_DEVICE_IPC_DISABLED;
             }
         }    
     
@@ -1260,13 +1264,13 @@ void cuda_preinit (MPIDI_PG_t * pg)
 #endif
 }
 
-void cuda_init_dynamic (MPIDI_PG_t * pg)
+void device_init_dynamic (MPIDI_PG_t * pg)
 {
     int i, num_processes, my_rank;
     MPID_Comm *comm_world = NULL;
     MPIDI_VC_t *vc = NULL; 
 
-    cuda_initialized = 1; 
+    mv2_device_initialized = 1;
 
     /*allocate CUDA streams*/
     MPIU_Assert(stream_d2h == 0 && stream_h2d == 0);
@@ -1274,7 +1278,7 @@ void cuda_init_dynamic (MPIDI_PG_t * pg)
 
     /*initialize and register shared memory buffers*/
     if (SMP_INIT) {
-        MPIDI_CH3I_CUDA_SMP_cuda_init(pg);
+        MPIDI_CH3I_CUDA_SMP_device_init(pg);
     }
 
     /*register vbufs*/
@@ -1288,29 +1292,29 @@ void cuda_init_dynamic (MPIDI_PG_t * pg)
     for (i=0; i<num_processes; i++) {
         MPIDI_Comm_get_vc (comm_world, i, &vc); 
         if (vc->mrail.rfp.RDMA_send_buf_DMA) {
-            if (rdma_eager_cudahost_reg) {
-                ibv_cuda_register (vc->mrail.rfp.RDMA_send_buf_DMA, 
+            if (rdma_eager_devicehost_reg) {
+                ibv_device_register (vc->mrail.rfp.RDMA_send_buf_DMA,
                         num_rdma_buffer * rdma_fp_buffer_size);
             }
         }
     }
 
-    if (rdma_cuda_ipc && cudaipc_init) { 
-        if (cudaipc_stage_buffered) {
+    if (mv2_device_use_ipc && cudaipc_init) {
+        if (mv2_device_use_ipc_stage_buffer) {
             /*allocate ipc region locally*/
             cudaipc_allocate_ipc_region (pg, num_processes, my_rank);
         } else { 
-            if (rdma_cuda_enable_ipc_cache) {
+            if (mv2_device_enable_ipc_cache) {
                 /*set device info in shared region*/
                 cudaipc_share_device_info ();
                 /*initialize ipc cache*/
-                cudaipc_initialize_cache();
+                device_ipc_initialize_cache();
             }
         }
     }
 }
 
-void cuda_cleanup()
+void device_cleanup()
 {
     int mpi_errno = MPI_SUCCESS;
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;
@@ -1321,7 +1325,7 @@ void cuda_cleanup()
 
     /*TODO: this synchronization can be made local to the node*/
 #if defined(HAVE_CUDA_IPC)
-    if (rdma_cuda_ipc && cudaipc_stage_buffered) {
+    if (mv2_device_use_ipc && mv2_device_use_ipc_stage_buffer) {
         MPIR_Barrier_impl(MPIR_Process.comm_world, &errflag);
         if (MPI_SUCCESS != mpi_errno) {
             ibv_error_abort (GEN_EXIT_ERR, "MPI_Barrier failed in cuda_cleanup \n");
@@ -1333,13 +1337,13 @@ void cuda_cleanup()
     deallocate_cuda_rndv_streams();
 
 #if defined(HAVE_CUDA_IPC)
-    if (rdma_cuda_ipc) {
+    if (mv2_device_use_ipc) {
         cudaipc_finalize();
     }
 
-    if (rdma_cuda_ipc && cudaipc_cache_list != NULL) {
+    if (mv2_device_use_ipc && cudaipc_cache_list != NULL) {
         int i;
-        for (i = 0; i < cudaipc_num_local_procs; i++) {
+        for (i = 0; i < deviceipc_num_local_procs; i++) {
             cudaipc_flush_regcache(i, num_cudaipc_cache_entries[i]);
         }
         MPIU_Free(cudaipc_cache_list);
@@ -1348,7 +1352,7 @@ void cuda_cleanup()
 #endif
 
     if (SMP_INIT) {
-        MPIDI_CH3I_CUDA_SMP_cuda_finalize(MPIDI_Process.my_pg);
+        MPIDI_CH3I_CUDA_SMP_device_finalize(MPIDI_Process.my_pg);
     }
 
     if (mv2_cuda_context != NULL) {
@@ -1356,7 +1360,7 @@ void cuda_cleanup()
     }
 }
 
-void cuda_init_thread_context()
+void device_init_thread_context()
 {
     CUresult curesult = CUDA_SUCCESS;
     curesult = cuCtxSetCurrent(mv2_save_cuda_context); 
@@ -1366,3 +1370,14 @@ void cuda_init_thread_context()
     }
 }
 #endif
+
+int MPIX_Query_cuda_support() {
+#if defined(_ENABLE_CUDA_)
+    /* NOTE: Ideally, we may want to return 'rdma_enable_cuda'.
+     * However, this function can be called before performing MPI_Init,
+     * where we initialize rdma_enable_cuda based on MV2_USE_CUDA. */
+    return 1;
+#else
+    return 0;
+#endif
+}

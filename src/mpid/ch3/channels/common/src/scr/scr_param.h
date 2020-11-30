@@ -29,11 +29,11 @@ int scr_param_init();
 /* free contents from config files */
 int scr_param_finalize();
 
-/* searchs for name and returns a character pointer to its value if set,
+/* searches for name and returns a character pointer to its value if set,
  * returns NULL if not found */
 char* scr_param_get(char* name);
 
-/* searchs for name and returns a newly allocated hash of its value if set,
+/* searches for name and returns a newly allocated hash of its value if set,
  * returns NULL if not found */
 scr_hash* scr_param_get_hash(char* name);
 

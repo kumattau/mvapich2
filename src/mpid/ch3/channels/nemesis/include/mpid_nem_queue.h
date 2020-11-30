@@ -284,7 +284,7 @@ MPID_nem_queue_head (MPID_nem_queue_ptr_t qhead)
     return MPID_NEM_REL_TO_ABS(qhead->my_head);
 }
 
-/* Assumption: regular loads & stores are atomic.  This may not be univerally
+/* Assumption: regular loads & stores are atomic.  This may not be universally
    true, but it's not uncommon.  We often need to use these "lock-ful" queues on
    platforms where atomics are not yet implemented, so we can't rely on the
    atomics to provide atomic load/store operations for us. */

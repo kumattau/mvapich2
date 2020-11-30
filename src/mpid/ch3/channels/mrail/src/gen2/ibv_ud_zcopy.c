@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -78,7 +78,11 @@ static inline int MPIDI_CH3_Rendezvous_zcopy_resend_cts(MPIDI_VC_t * vc,
     }
     else
     {
-        cts_pkt->recv_sz = rreq->dev.segment_size;
+        if (rreq->dev.segment_size > 0) {
+            cts_pkt->recv_sz = rreq->dev.segment_size;
+        } else {
+            cts_pkt->recv_sz = rreq->mrail.rndv_buf_sz;
+        }
     }
 
     MPIDI_CH3I_MRAIL_SET_PKT_RNDV(cts_pkt, rreq);
@@ -118,8 +122,7 @@ static inline void MRAILI_Rndv_send_zcopy_finish(MPIDI_VC_t * vc,
     v->flags |= UD_VBUF_RETRY_ALWAYS;
 
     vbuf_init_send(v, sizeof(MPIDI_CH3_Pkt_zcopy_finish_t), hca_index);
-    /* need to send on same UD qp on which zcopy data transfered */
-    vc->mrail.rely.total_messages++;
+    /* need to send on same UD qp on which zcopy data transferred */
     post_ud_send(vc, v, hca_index, zcopy_info->rndv_ud_qps[hca_index]);
 }
 
@@ -138,8 +141,7 @@ static inline void MRAILI_Rndv_send_zcopy_ack(MPIDI_VC_t * vc,  MPID_Request * r
     zcopy_ack->sender_req_id = rreq->dev.sender_req_id;
     
     vbuf_init_send(v, sizeof(MPIDI_CH3_Pkt_zcopy_ack_t), hca_index);
-    /* need to send on same UD qp on which zcopy data transfered */
-    vc->mrail.rely.total_messages++;
+    /* need to send on same UD qp on which zcopy data transferred */
     post_ud_send(vc, v, hca_index, NULL);
     
 }
@@ -154,7 +156,7 @@ static inline void mv2_flush_zcopy_rndv_qp(mv2_rndv_qp_t *rqp, int num_to_flush)
     qp_attr.qp_state = IBV_QPS_ERR;
 
     /* Transition to error state to flush remaining buffers */
-    if(ibv_modify_qp(rqp->ud_qp, &qp_attr, IBV_QP_STATE)) {
+    if(ibv_ops.modify_qp(rqp->ud_qp, &qp_attr, IBV_QP_STATE)) {
         ibv_error_abort(IBV_RETURN_ERR, "Error in changing QP state to err\n");
     }
         
@@ -169,7 +171,7 @@ static inline void mv2_flush_zcopy_rndv_qp(mv2_rndv_qp_t *rqp, int num_to_flush)
     memset(&qp_attr, 0, sizeof(qp_attr));
     qp_attr.qp_state = IBV_QPS_RESET;
 
-    if(ibv_modify_qp(rqp->ud_qp, &qp_attr, IBV_QP_STATE)) {
+    if(ibv_ops.modify_qp(rqp->ud_qp, &qp_attr, IBV_QP_STATE)) {
         ibv_error_abort(IBV_RETURN_ERR, "Error in changing QP state to err\n");
     }
 
@@ -253,7 +255,7 @@ void MPIDI_CH3I_MRAIL_Prepare_rndv_zcopy(MPIDI_VC_t * vc, MPID_Request * req)
     
     MPIDI_CH3I_MRAIL_Prepare_rndv(vc, req);
  
-    /* return if selected protocl is R3 */
+    /* return if selected protocol is R3 */
     if (req->mrail.protocol == MV2_RNDV_PROTOCOL_R3) {
         return;
     }
@@ -397,7 +399,9 @@ void MPIDI_CH3I_MRAILI_Rendezvous_zcopy_push(MPIDI_VC_t * vc,
 void MPIDI_CH3_Rendezvous_zcopy_finish(MPIDI_VC_t * vc,
                              MPIDI_CH3_Pkt_zcopy_finish_t * zcopy_finish)
 {
-    int i, ne, posted_buffers, count = 0, complete;
+    static int num_retry_print = 0;
+
+    int i, ne, posted_buffers, count = 0, complete, num_retries = 0;
     int out_of_order = 0, next_to_recv = 0, empty = 0;
     struct ibv_wc *wc; 
     MPID_Request *rreq;
@@ -409,6 +413,7 @@ void MPIDI_CH3_Rendezvous_zcopy_finish(MPIDI_VC_t * vc,
     posted_buffers = ((rreq->mrail.rndv_buf_sz + MRAIL_MAX_UD_SIZE - 1) / MRAIL_MAX_UD_SIZE);
     wc = (struct ibv_wc *) MPIU_Malloc (sizeof(struct ibv_wc) * posted_buffers);
     
+zcopy_recv_polling:
     do {
         ne = ibv_poll_cq(rqp->ud_cq, posted_buffers - 1, wc);
         if (ne < 0) {
@@ -439,7 +444,7 @@ void MPIDI_CH3_Rendezvous_zcopy_finish(MPIDI_VC_t * vc,
 
     PRINT_DEBUG(DEBUG_ZCY_verbose>1, "Done polling RNDV UD. got %d of %d. remote:%d\n",
                                     count, posted_buffers, vc->pg_rank);
-    
+
     if (count == posted_buffers && !out_of_order) {
         /* send zcopy ack */
         MRAILI_Rndv_send_zcopy_ack(vc, rreq);
@@ -464,6 +469,25 @@ void MPIDI_CH3_Rendezvous_zcopy_finish(MPIDI_VC_t * vc,
         PRINT_DEBUG(DEBUG_ZCY_verbose>1, "zcopy Rndv recv failed. "
             "posted: %d recv'ed: %d out_of_order:%d remote:%d\n",
                 posted_buffers, count, out_of_order, vc->pg_rank);
+
+        if (!out_of_order) {
+            if (num_retries < rdma_ud_zcopy_num_retry) {
+                if (!rdma_ud_zcopy_enable_polling) {
+                    num_retries++;
+                }
+                goto zcopy_recv_polling;
+            }
+
+            if (num_retry_print == 0 && !rdma_ud_zcopy_enable_polling) {
+                num_retry_print = 1;
+                PRINT_ERROR(
+                    "[Performance Impact Warning]: Out-of-order Packets detected. "
+                    "Can you please try to set MV2_UD_ZCOPY_NUM_RETRY to larger value"
+                    "(current value: %d) to get better performance,\n"
+                    , rdma_ud_zcopy_num_retry);
+            }
+        }
+
         if (posted_buffers != count) {
             MPIU_Assert(posted_buffers > count);
             mv2_flush_zcopy_rndv_qp(rqp, posted_buffers - count);

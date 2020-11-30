@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -375,8 +375,9 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     MPIDI_CH3_Win_fns_init(&MPIDI_CH3U_Win_fns);
     MPIDI_CH3_Win_hooks_init(&MPIDI_CH3U_Win_hooks);
 
-#if defined(CHANNEL_PSM)
-    /* CPU affinity must be set before opening PSM contexts */
+#if defined(CHANNEL_PSM) || defined(CHANNEL_MRAIL)
+    /* Setting CPU affinity before opening PSM contexts and opening IB HCAs. For
+     * IB HCAs, the change is to ensure HCA aware process mapping */
     if (MPIDI_CH3I_set_affinity(pg, pg_rank) != MPI_SUCCESS) {
         MPIR_ERR_POP(mpi_errno);
     }
@@ -395,14 +396,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     if (mpi_errno != MPI_SUCCESS) {
 	MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
-
-#if defined(CHANNEL_MRAIL)
-    /* For mrail, CPU affinity is set later because of dependency on 
-     * SMP and HCA aware process mapping */
-    if (MPIDI_CH3I_set_affinity(pg, pg_rank) != MPI_SUCCESS) {
-        MPIR_ERR_POP(mpi_errno);
-    }
-#endif /* defined(CHANNEL_MRAIL) */
 
 #if !defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM)
     MPIR_CVAR_ENABLE_SMP_COLLECTIVES = 0;
@@ -599,12 +592,16 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 #endif /* defined(CHANNEL_MRAIL) && defined(CKPT) */
 
 #if defined(CHANNEL_MRAIL) && defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        if (rdma_cuda_dynamic_init) { 
-            cuda_preinit(pg);
+    if (mv2_enable_device) {
+        if (mv2_device_dynamic_init) {
+            device_preinit(pg);
         } else {
-            cuda_init(pg);
+            device_init(pg);
         }
+	if (pg_rank == 0 && mv2_show_env_info >= 2) {
+		mv2_show_cuda_params();
+		fprintf(stderr, "---------------------------------------------------------------------\n");
+	}
     }
 #endif /* defined(CHANNEL_MRAIL) && defined(_ENABLE_CUDA_) */
 
@@ -699,7 +696,7 @@ static int init_pg( int *argc, char ***argv,
        return errors if the routines are in fact used */
     if (usePMI) {
 	/*
-	 * Initialize the process manangement interface (PMI), 
+	 * Initialize the process management interface (PMI), 
 	 * and get rank and size information about our process group
 	 */
 
@@ -727,7 +724,7 @@ static int init_pg( int *argc, char ***argv,
 				 "**pmi_get_appnum %d", pmi_errno);
 	}
 
-	/* Note that if pmi is not availble, the value of MPI_APPNUM is 
+	/* Note that if pmi is not available, the value of MPI_APPNUM is 
 	   not set */
 	if (appnum != -1) {
 	    MPIR_Process.attrs.appnum = appnum;
@@ -839,7 +836,7 @@ int MPIDI_CH3I_BCInit( char **bc_val_p, int *val_max_sz_p )
                              "**pmi_kvs_get_value_length_max",
                              "**pmi_kvs_get_value_length_max %d", pmi_errno);
     }
-    /* This memroy is returned by this routine */
+    /* This memory is returned by this routine */
     *bc_val_p = MPIU_Malloc(*val_max_sz_p);
     if (*bc_val_p == NULL) {
 	MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**nomem","**nomem %d",

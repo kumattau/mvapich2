@@ -19,6 +19,12 @@
 #define MPIR_LLAND(a,b) ((a)&&(b))
 #endif
 
+#ifdef __ibmxl__
+void real16_land(void *invec, void *inoutvec, int *Len);
+#else
+void real16_land_(void *invec, void *inoutvec, int *Len);
+#endif
+
 #undef FUNCNAME
 #define FUNCNAME MPIR_LAND
 #undef FCNAME
@@ -72,6 +78,18 @@ void MPIR_LAND (
         MPIR_OP_TYPE_GROUP(FLOATING_POINT_EXTRA)
 #undef MPIR_OP_TYPE_MACRO
         /* --BEGIN ERROR HANDLING-- */
+#ifdef HAVE_FORTRAN_BINDING
+#ifndef __PGI
+        /* As of v20.1, PGI compilers only support real8 */
+        case (MPI_REAL16):
+#ifdef __ibmxl__
+            real16_land(invec, inoutvec, Len);
+#else
+            real16_land_(invec, inoutvec, Len);
+#endif
+            break;
+#endif /*ifndef __PGI*/
+#endif /*#ifdef HAVE_FORTRAN_BINDING*/
         default: {
             MPID_THREADPRIV_DECL;
             MPID_THREADPRIV_GET;
@@ -104,6 +122,12 @@ int MPIR_LAND_check_dtype ( MPI_Datatype type )
            their utility in logical boolean ops [goodell@ 2009-03-16] */
         MPIR_OP_TYPE_GROUP(FLOATING_POINT)
         MPIR_OP_TYPE_GROUP(FLOATING_POINT_EXTRA)
+#ifdef HAVE_FORTRAN_BINDING
+#ifndef __PGI
+        /* As of v20.1, PGI compilers only support real8 */
+        case (MPI_REAL16):
+#endif /*ifndef __PGI*/
+#endif /*#ifdef HAVE_FORTRAN_BINDING*/
 #undef MPIR_OP_TYPE_MACRO
             return MPI_SUCCESS;
         /* --BEGIN ERROR HANDLING-- */

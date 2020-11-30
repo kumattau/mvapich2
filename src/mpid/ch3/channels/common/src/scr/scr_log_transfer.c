@@ -68,7 +68,7 @@ void print_usage()
   printf("  -C <id>        Checkpoint id (integer)\n");
   printf("  -S <start>     Transfer start time as UNIX timestamp (integer)\n");
   printf("  -D <duration>  Duration in seconds (integer)\n");
-  printf("  -B <bytes>     Number of bytes transfered (integer)\n");
+  printf("  -B <bytes>     Number of bytes transferred (integer)\n");
   printf("\n");
   return;
 }

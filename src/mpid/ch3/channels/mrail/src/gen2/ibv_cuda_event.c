@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,17 +25,17 @@ MPIR_T_PVAR_ULONG_LEVEL_DECL_EXTERN(MV2, mv2_ud_vbuf_available);
 
 #ifdef _ENABLE_CUDA_
 void *cuda_event_region = NULL;
-cuda_event_t *free_cudaipc_event_list_head = NULL;
-cuda_event_t *free_cuda_event_list_head = NULL;
-cuda_event_t *busy_cuda_event_list_head = NULL;
-cuda_event_t *busy_cuda_event_list_tail = NULL;
+mv2_device_event_t *free_cudaipc_event_list_head = NULL;
+mv2_device_event_t *free_cuda_event_list_head = NULL;
+mv2_device_event_t *busy_cuda_event_list_head = NULL;
+mv2_device_event_t *busy_cuda_event_list_tail = NULL;
 
 cudaStream_t  stream_d2h = 0, stream_h2d = 0, stream_kernel = 0;
 cudaEvent_t cuda_nbstream_sync_event = 0;
 
 void allocate_cuda_rndv_streams()
 {
-    if (rdma_cuda_nonblocking_streams) {
+    if (mv2_device_nonblocking_streams) {
         CUDA_CHECK(cudaStreamCreateWithFlags(&stream_d2h, cudaStreamNonBlocking));
         CUDA_CHECK(cudaStreamCreateWithFlags(&stream_h2d, cudaStreamNonBlocking));
         CUDA_CHECK(cudaStreamCreateWithFlags(&stream_kernel, cudaStreamNonBlocking));
@@ -68,18 +68,18 @@ void allocate_cuda_events()
 {
     int i;
     cudaError_t result;
-    cuda_event_t *curr;
-    cuda_event_region = (void *) MPIU_Malloc(sizeof(cuda_event_t)
-                                              * rdma_cuda_event_count);
+    mv2_device_event_t *curr;
+    cuda_event_region = (void *) MPIU_Malloc(sizeof(mv2_device_event_t)
+                                              * mv2_device_event_count);
     if (stream_d2h == 0 && stream_h2d == 0) {
         allocate_cuda_rndv_streams();
     }
     MPIU_Assert(free_cuda_event_list_head == NULL);
     free_cuda_event_list_head = cuda_event_region;
-    curr = (cuda_event_t *) cuda_event_region;
-    for (i = 1; i <= rdma_cuda_event_count; i++) {
-        curr->next = (cuda_event_t *) ((size_t) cuda_event_region +
-                                        i * sizeof(cuda_event_t));
+    curr = (mv2_device_event_t *) cuda_event_region;
+    for (i = 1; i <= mv2_device_event_count; i++) {
+        curr->next = (mv2_device_event_t *) ((size_t) cuda_event_region +
+                                        i * sizeof(mv2_device_event_t));
         result = cudaEventCreateWithFlags(&(curr->event), cudaEventDisableTiming
 #if defined(HAVE_CUDA_IPC)
             | cudaEventInterprocess
@@ -89,7 +89,7 @@ void allocate_cuda_events()
             ibv_error_abort(GEN_EXIT_ERR, "Cuda Event Creation failed \n");
         }
         curr->op_type = -1;
-        if (i == rdma_cuda_event_count) {
+        if (i == mv2_device_event_count) {
             curr->next = NULL;
         }
         curr->prev = NULL;
@@ -100,7 +100,7 @@ void allocate_cuda_events()
 
 void deallocate_cuda_events()
 {
-    cuda_event_t *curr_event = free_cuda_event_list_head;
+    mv2_device_event_t *curr_event = free_cuda_event_list_head;
     MPIU_Assert(busy_cuda_event_list_head == NULL);
     while(curr_event) {
         cudaEventDestroy(curr_event->event);
@@ -120,35 +120,41 @@ void deallocate_cuda_events()
     }
 }
 
-int allocate_cuda_event(cuda_event_t **cuda_event)
+int allocate_cuda_event(mv2_device_event_t **cuda_event)
 {
     cudaError_t result;
-    *cuda_event = (cuda_event_t *) MPIU_Malloc(sizeof(cuda_event_t));
+    *cuda_event = (mv2_device_event_t *) MPIU_Malloc(sizeof(mv2_device_event_t));
     result = cudaEventCreateWithFlags(&((*cuda_event)->event), cudaEventDisableTiming
 #if defined(HAVE_CUDA_IPC)
             | cudaEventInterprocess
 #endif
             );
+    /* if OOM for allocating CUDA event, return NULL and we will try it later */
+    if (cudaErrorMemoryAllocation == result) {
+        MPIU_Free(*cuda_event);
+        *cuda_event = NULL;
+        return 0;
+    }
     if (result != cudaSuccess) {
         ibv_error_abort(GEN_EXIT_ERR, "Cuda Event Creation failed \n");
     }
     (*cuda_event)->next = (*cuda_event)->prev = NULL;
-    (*cuda_event)->cuda_vbuf_head = (*cuda_event)->cuda_vbuf_tail = NULL;
+    (*cuda_event)->device_vbuf_head = (*cuda_event)->device_vbuf_tail = NULL;
     (*cuda_event)->flags = CUDA_EVENT_DEDICATED;
     return 0;
 }
 
-void deallocate_cuda_event(cuda_event_t **cuda_event)
+void deallocate_cuda_event(mv2_device_event_t **cuda_event)
 {
-    cudaEventDestroy((*cuda_event)->event);
+    CUDA_CHECK(cudaEventDestroy((*cuda_event)->event));
     MPIU_Free(*cuda_event);
     *cuda_event = NULL;
 }
 
 #if defined(HAVE_CUDA_IPC)
-cuda_event_t *get_free_cudaipc_event()
+mv2_device_event_t *get_free_cudaipc_event()
 {
-    cuda_event_t *curr_event;
+    mv2_device_event_t *curr_event;
 
     if (NULL == free_cudaipc_event_list_head) {
         allocate_cuda_event(&curr_event);
@@ -163,7 +169,7 @@ cuda_event_t *get_free_cudaipc_event()
     return curr_event;
 }
 
-void release_cudaipc_event(cuda_event_t *event) 
+void release_cudaipc_event(mv2_device_event_t *event)
 {
     /* add event to the free list */
     event->next = free_cudaipc_event_list_head;
@@ -171,12 +177,12 @@ void release_cudaipc_event(cuda_event_t *event)
 }
 #endif
 
-void process_cuda_event_op(cuda_event_t * event)
+void process_cuda_event_op(mv2_device_event_t * event)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *req = event->req;
     MPIDI_VC_t *vc = (MPIDI_VC_t *) event->vc;
-    vbuf *cuda_vbuf = event->cuda_vbuf_head; 
+    vbuf *cuda_vbuf = event->device_vbuf_head;
     int displacement = event->displacement;
     int is_finish = event->is_finish;
     int is_pipeline = (!displacement && is_finish) ? 0 : 1;
@@ -187,9 +193,9 @@ void process_cuda_event_op(cuda_event_t * event)
     if (event->op_type == SEND) {
 
         req->mrail.pipeline_nm++;
-        is_finish = (req->mrail.pipeline_nm == req->mrail.num_cuda_blocks)? 1 : 0;
+        is_finish = (req->mrail.pipeline_nm == req->mrail.num_device_blocks)? 1 : 0;
  
-        if (req->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE) {
+        if (req->mrail.device_transfer_mode == DEVICE_TO_DEVICE) {
             if (size <= rdma_large_msg_rail_sharing_threshold) {
                 rail = MRAILI_Send_select_rail(vc);
 
@@ -199,8 +205,8 @@ void process_cuda_event_op(cuda_event_t * event)
                 MRAILI_RDMA_Put(vc, v,
                     (char *) (v->buffer),
                     v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
-                    (char *) (req->mrail.cuda_remote_addr[req->mrail.num_remote_cuda_done]),
-                    req->mrail.cuda_remote_rkey[req->mrail.num_remote_cuda_done]
+                    (char *) (req->mrail.device_remote_addr[req->mrail.num_remote_device_done]),
+                    req->mrail.device_remote_rkey[req->mrail.num_remote_device_done]
                             [vc->mrail.rails[rail].hca_index], size, rail);
             } else {
                 stripe_avg = size / rdma_num_rails;
@@ -217,19 +223,19 @@ void process_cuda_event_op(cuda_event_t * event)
                     MRAILI_RDMA_Put(vc, v,
                         (char *) (orig_vbuf->buffer) + offset,
                         orig_vbuf->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
-                        (char *) (req->mrail.cuda_remote_addr[req->mrail.num_remote_cuda_done]) 
+                        (char *) (req->mrail.device_remote_addr[req->mrail.num_remote_device_done])
                         + offset,
-                        req->mrail.cuda_remote_rkey[req->mrail.num_remote_cuda_done]
+                        req->mrail.device_remote_rkey[req->mrail.num_remote_device_done]
                                 [vc->mrail.rails[rail].hca_index], stripe_size, rail);
                 }
             }
 
             for(rail = 0; rail < rdma_num_rails; rail++) {
-                MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline, is_finish,
-                                        rdma_cuda_block_size * displacement);
+                MRAILI_RDMA_Put_finish_device(vc, req, rail, is_pipeline, is_finish,
+                                        mv2_device_stage_block_size * displacement);
             }
-            req->mrail.num_remote_cuda_done++;
-        } else if (req->mrail.cuda_transfer_mode == DEVICE_TO_HOST) {
+            req->mrail.num_remote_device_done++;
+        } else if (req->mrail.device_transfer_mode == DEVICE_TO_HOST) {
             if (size <= rdma_large_msg_rail_sharing_threshold) {
                 rail = MRAILI_Send_select_rail(vc);
 
@@ -240,7 +246,7 @@ void process_cuda_event_op(cuda_event_t * event)
                     (char *) (v->buffer),
                     v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
                     (char *) (req->mrail.remote_addr) + displacement * 
-                    rdma_cuda_block_size,
+                    mv2_device_stage_block_size,
                     req->mrail.rkey[vc->mrail.rails[rail].hca_index],
                     size, rail);
             } else {   
@@ -259,16 +265,16 @@ void process_cuda_event_op(cuda_event_t * event)
                         (char *) (orig_vbuf->buffer) + offset,
                         orig_vbuf->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
                         (char *) (req->mrail.remote_addr) + displacement *
-                        rdma_cuda_block_size + offset,
+                        mv2_device_stage_block_size + offset,
                         req->mrail.rkey[vc->mrail.rails[rail].hca_index],
                         stripe_size, rail);
                 } 
             }
             if (is_finish) {
                for(rail = 0; rail < rdma_num_rails; rail++) {
-                    MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline,
+                    MRAILI_RDMA_Put_finish_device(vc, req, rail, is_pipeline,
                                         is_finish,
-                                        rdma_cuda_block_size *
+                                        mv2_device_stage_block_size *
                                         displacement);
                }
             }
@@ -277,14 +283,16 @@ void process_cuda_event_op(cuda_event_t * event)
         PRINT_DEBUG(DEBUG_CUDA_verbose > 1, "RDMA write block: "
                     "send offset:%d  rem idx: %d is_fin:%d"
                     "addr offset:%d strm:%p\n", displacement,
-                    req->mrail.num_remote_cuda_done, is_finish,
-                    rdma_cuda_block_size * displacement, event);
+                    req->mrail.num_remote_device_done, is_finish,
+                    mv2_device_stage_block_size * displacement, event);
 
-        req->mrail.num_remote_cuda_pending--;
-        if (req->mrail.num_send_cuda_copy != req->mrail.num_cuda_blocks) {
+        req->mrail.num_remote_device_pending--;
+        if (req->mrail.num_send_device_copy != req->mrail.num_device_blocks) {
             PUSH_FLOWLIST(vc);
         }
-
+        if (event->flags == CUDA_EVENT_DEDICATED) {
+            deallocate_cuda_event(&event);
+        }
     } else if (event->op_type == RECV) {
 
         vbuf *temp_buf;
@@ -298,14 +306,14 @@ void process_cuda_event_op(cuda_event_t * event)
             release_vbuf(cuda_vbuf);
             cuda_vbuf = temp_buf;
         }
-        event->cuda_vbuf_head = event->cuda_vbuf_tail = NULL; 
+        event->device_vbuf_head = event->device_vbuf_tail = NULL;
         
         if (event->is_finish) {
             int complete = 0;
             MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(req);
             /* deallocate the stream if request is finished */
-            if (req->mrail.cuda_event) {
-                deallocate_cuda_event(&req->mrail.cuda_event);
+            if (req->mrail.device_event) {
+                deallocate_cuda_event(&req->mrail.device_event);
             }
             
             mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, req, &complete);
@@ -338,13 +346,13 @@ void process_cuda_event_op(cuda_event_t * event)
         }
 
         /* deallocate the stream if it is allocated */
-        if (req->mrail.cuda_event) {
-            deallocate_cuda_event(&req->mrail.cuda_event);
+        if (req->mrail.device_event) {
+            deallocate_cuda_event(&req->mrail.device_event);
         }
 
-        if (req->mrail.cuda_reg) {
-            cudaipc_deregister(req->mrail.cuda_reg);
-            req->mrail.cuda_reg = NULL;
+        if (req->mrail.device_reg) {
+            cudaipc_deregister(req->mrail.device_reg);
+            req->mrail.device_reg = NULL;
         }
         MRAILI_RDMA_Get_finish(vc, req, 0);
 
@@ -352,17 +360,17 @@ void process_cuda_event_op(cuda_event_t * event)
         int complete;
         if (req->mrail.rndv_buf_alloc == 1 && 
                 req->mrail.rndv_buf != NULL) { 
-            /* a temporary host rndv buffer would have been allocaed only when the 
+            /* a temporary host rndv buffer would have been allocated only when the 
                sender buffers is noncontiguous and is in the host memory */
-            MPIU_Assert(req->mrail.cuda_transfer_mode == HOST_TO_DEVICE);
-            MPIU_Free_CUDA_HOST(req->mrail.rndv_buf);
+            MPIU_Assert(req->mrail.device_transfer_mode == HOST_TO_DEVICE);
+            MPIU_Free_Device_Pinned_Host(req->mrail.rndv_buf);
             req->mrail.rndv_buf_alloc = 0;
             req->mrail.rndv_buf = NULL;
         }
         MPIDI_CH3U_Handle_send_req(vc, req, &complete);
         MPIU_Assert(complete == TRUE);
         if (event->flags == CUDA_EVENT_DEDICATED) {
-            deallocate_cuda_event(&req->mrail.cuda_event);
+            deallocate_cuda_event(&req->mrail.device_event);
         }
     } else if (event->op_type == CUDAIPC_RECV) {
         int complete;
@@ -374,16 +382,16 @@ void process_cuda_event_op(cuda_event_t * event)
         }
         MPIU_Assert(complete == TRUE);
         if (event->flags == CUDA_EVENT_DEDICATED) {
-            deallocate_cuda_event(&req->mrail.cuda_event);
+            deallocate_cuda_event(&req->mrail.device_event);
         }
 #endif
     } else if (event->op_type == SMP_SEND) {
-        smp_cuda_send_copy_complete(event->vc, event->req, event->smp_ptr);
+        smp_device_send_copy_complete(event->vc, event->req, event->smp_ptr);
         if (event->flags == CUDA_EVENT_DEDICATED) {
             deallocate_cuda_event(&event);
         }         
     } else if (event->op_type == SMP_RECV) {
-        smp_cuda_recv_copy_complete(event->vc, event->req, event->smp_ptr);
+        smp_device_recv_copy_complete(event->vc, event->req, event->smp_ptr);
         if (event->flags == CUDA_EVENT_DEDICATED) {
             deallocate_cuda_event(&event);
         }
@@ -395,8 +403,8 @@ void process_cuda_event_op(cuda_event_t * event)
 void progress_cuda_events()
 {
     cudaError_t result = cudaSuccess;
-    cuda_event_t *curr_event = busy_cuda_event_list_head;
-    cuda_event_t *next_event;
+    mv2_device_event_t *curr_event = busy_cuda_event_list_head;
+    mv2_device_event_t *next_event;
     uint8_t event_pool_flag;
 
     while (NULL != curr_event) {
@@ -408,7 +416,7 @@ void progress_cuda_events()
             if ((SEND == curr_event->op_type) &&
                 ((1 != ((MPID_Request *) curr_event->req)->mrail.cts_received)
                 || !((MPID_Request *) curr_event->req)->mrail.
-                num_remote_cuda_pending)) {
+                num_remote_device_pending)) {
                 curr_event = curr_event->next;
             } else {
                 next_event = curr_event->next;
@@ -447,14 +455,23 @@ void progress_cuda_events()
     }
 }
 
-cuda_event_t *get_cuda_event()
+mv2_device_event_t *get_device_event()
 {
 
-    cuda_event_t *curr_event;
+    mv2_device_event_t *curr_event;
    
     if (NULL == free_cuda_event_list_head) {
         if (NULL != busy_cuda_event_list_head) {
-            return NULL;
+            /* if there are no more free events in the list, allocate a temporary one */
+            mv2_device_event_t *dedicate_cuda_event = NULL;
+            allocate_cuda_event(&dedicate_cuda_event);
+            if (NULL != dedicate_cuda_event) {
+                /* add to the busy list */
+                dedicate_cuda_event->is_query_done = 0;
+                CUDA_LIST_ADD(dedicate_cuda_event,
+                    busy_cuda_event_list_head, busy_cuda_event_list_tail);
+            }
+            return dedicate_cuda_event;
         } else {
             allocate_cuda_events();
         }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -109,23 +109,24 @@ enum sharp_reduce_op mv2_get_sharp_reduce_op(MPI_Op mpi_op)
     /* undefined sharp reduce op type */
     return SHARP_OP_NULL;
 }
-
 int mv2_oob_bcast(void *comm_context, void *buf, int size, int root)
 {
     MPI_Comm comm;
     MPID_Comm *comm_ptr = NULL;
-    int rank;
     MPIR_Errflag_t errflag = FALSE;
     int mpi_errno = MPI_SUCCESS;
-    
-    if (comm_context == NULL) {
-        comm = mv2_sharp_comm;
+
+    /* currently only comm_world has SHARP support */
+    comm = MPI_COMM_WORLD;
+    MPID_Comm_get_ptr(comm, comm_ptr);
+
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 && comm_context != NULL) {
+        comm = ((coll_sharp_module_t*) comm_context)->comm;
     } else {
-        comm = ((coll_sharp_module_t *) comm_context)->comm;
+        comm = MPI_COMM_WORLD;
     }
 
-    MPI_Comm_rank (comm, &rank);
-    MPID_Comm_get_ptr(comm, comm_ptr); 
+    MPID_Comm_get_ptr(comm, comm_ptr);
     mpi_errno = MPIR_Bcast_impl(buf, size, MPI_BYTE, root, comm_ptr, &errflag);
     if (mpi_errno) {
         PRINT_ERROR("sharp mv2_oob_bcast failed\n");
@@ -143,17 +144,19 @@ int mv2_oob_barrier(void *comm_context)
 {
     MPI_Comm comm;
     MPID_Comm *comm_ptr = NULL;
-    int rank = 0;
     MPIR_Errflag_t errflag = FALSE;
     int mpi_errno = MPI_SUCCESS;
-    
-    if (comm_context == NULL) {
-        comm = mv2_sharp_comm;
-    } else {
+
+    /* currently only comm_world has SHARP support */
+    comm = MPI_COMM_WORLD;
+    MPID_Comm_get_ptr(comm, comm_ptr);
+
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 && comm_context != NULL) {
         comm = ((coll_sharp_module_t*) comm_context)->comm;
+    } else {
+        comm = MPI_COMM_WORLD;
     }
 
-    MPI_Comm_rank (comm, &rank); 
     MPID_Comm_get_ptr(comm, comm_ptr);
     mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
     if (mpi_errno) {
@@ -168,22 +171,25 @@ fn_fail:
     goto fn_exit;
 }
 
+
 int mv2_oob_gather(void *comm_context, int root, void *sbuf, void *rbuf, int len)
 {
     MPI_Comm comm;
     MPID_Comm *comm_ptr = NULL;
-    int rank = 0;
     MPIR_Errflag_t errflag = FALSE;
     int mpi_errno = MPI_SUCCESS;
-    
-    if (comm_context == NULL) {
-        comm = mv2_sharp_comm;
-    } else {
-        comm = ((coll_sharp_module_t*) comm_context)->comm;
-    }
 
-    MPI_Comm_rank (comm, &rank); 
+    /* currently only comm_world has SHARP support */
+    comm = MPI_COMM_WORLD;
     MPID_Comm_get_ptr(comm, comm_ptr);
+
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 && comm_context != NULL) {
+        comm = ((coll_sharp_module_t*) comm_context)->comm;
+    } else {
+        comm = MPI_COMM_WORLD;
+    }
+    MPID_Comm_get_ptr(comm, comm_ptr);
+
     mpi_errno = MPIR_Gather_impl(sbuf, len, MPI_BYTE, rbuf, len, MPI_BYTE, root, comm_ptr, &errflag);
     if (mpi_errno) {
         PRINT_ERROR("sharp mv2_oob_gather failed\n");
@@ -197,8 +203,8 @@ fn_fail:
     goto fn_exit;
 }
 
-/* initilize sharp */
-int mv2_sharp_coll_init(sharp_conf_t *sharp_conf, int rank)
+/* initialize sharp */
+int mv2_sharp_coll_init(sharp_conf_t *sharp_conf, int rank, int local_rank)
 {
     int mpi_errno = SHARP_COLL_SUCCESS;
     struct sharp_coll_init_spec * init_spec = 
@@ -206,7 +212,8 @@ int mv2_sharp_coll_init(sharp_conf_t *sharp_conf, int rank)
 
     init_spec->progress_func             = NULL;
     init_spec->job_id                    = atol(sharp_conf->jobid);
-    init_spec->hostlist                  = sharp_conf->hostlist; 
+    init_spec->world_local_rank          = local_rank;
+    init_spec->enable_thread_support     = 0;
     init_spec->oob_colls.barrier         = mv2_oob_barrier;
     init_spec->oob_colls.bcast           = mv2_oob_bcast;
     init_spec->oob_colls.gather          = mv2_oob_gather;
@@ -217,10 +224,27 @@ int mv2_sharp_coll_init(sharp_conf_t *sharp_conf, int rank)
     MPI_Comm_size(MPI_COMM_WORLD, &(init_spec->world_size));
 
     mpi_errno = sharp_coll_init(init_spec, &(coll_sharp_component.sharp_coll_context));   
+
     if (mpi_errno != SHARP_COLL_SUCCESS) {
         if(rank == 0)
         {
-            PRINT_ERROR("SHARP initialization failed. Continuing without SHARP support. Errno: %d (%s) \n", mpi_errno, sharp_coll_strerror(mpi_errno));
+            PRINT_DEBUG(DEBUG_Sharp_verbose, "SHARP initialization failed. Continuing without SHARP"
+                    " support. Errno: %d (%s) \n ", mpi_errno,
+                    sharp_coll_strerror(mpi_errno));
+        }
+        mpi_errno = MPI_ERR_INTERN;
+        goto fn_exit;
+    }
+
+    mpi_errno = sharp_coll_caps_query(coll_sharp_component.sharp_coll_context,
+            &coll_sharp_component.sharp_caps);
+
+    if (mpi_errno != SHARP_COLL_SUCCESS) {
+        if(rank == 0)
+        {
+            PRINT_DEBUG(DEBUG_Sharp_verbose, "SHARP cap query failed. Continuing without SHARP"
+                    " support. Errno: %d (%s) \n ", mpi_errno,
+                    sharp_coll_strerror(mpi_errno));
         }
         mpi_errno = MPI_ERR_INTERN;
         goto fn_exit;
@@ -246,7 +270,7 @@ int sharp_get_hca_name_and_port ()
     struct ibv_device_attr dev_attr;
     mv2_hca_type hca_type = 0;
 
-    dev_list = ibv_get_device_list(&num_devices);
+    dev_list = ibv_ops.get_device_list(&num_devices);
     for(i=0; i<num_devices; i++){
         hca_type = mv2_get_hca_type(dev_list[i]);
         if(!MV2_IS_IB_CARD(hca_type)) {
@@ -257,15 +281,15 @@ int sharp_get_hca_name_and_port ()
         
         ctx = mv2_MPIDI_CH3I_RDMA_Process.nic_context[i];
         if (ctx == NULL) {
-            ctx = ibv_open_device(dev_list[i]);
+            ctx = ibv_ops.open_device(dev_list[i]);
         }
-        if ((ibv_query_device(ctx, &dev_attr))) {
+        if ((ibv_ops.query_device(ctx, &dev_attr))) {
             PRINT_ERROR("ibv_query_device failed \n");
             mpi_errno = MPI_ERR_INTERN;
             MPIR_ERR_POP(mpi_errno);
         }
     
-        sharp_port = rdma_find_active_port(ctx, ctx->device);
+        sharp_port = rdma_find_active_port(ctx, ctx->device, NULL);
         if (sharp_port != -1) {
             /* found a open port to be used for SHArP */
             goto finished_query;
@@ -274,7 +298,7 @@ int sharp_get_hca_name_and_port ()
 
 finished_query: 
     g_sharp_port = sharp_port;
-    g_sharp_dev_name = (char*) ibv_get_device_name( dev_list[i] ); 
+    g_sharp_dev_name = (char*) ibv_ops.get_device_name( dev_list[i] ); 
     if (!g_sharp_dev_name) { 
         PRINT_ERROR( "Unable to get the device name, please set MV2_SHARP_HCA_NAME and MV2_SHARP_PORT, then rerun the program\n");
         mpi_errno = MPI_ERR_INTERN;
@@ -282,7 +306,7 @@ finished_query:
     }  
 
     if (dev_list) {
-        ibv_free_device_list(dev_list);
+        ibv_ops.free_device_list(dev_list);
     }
     return 0;
 #else
@@ -376,7 +400,6 @@ int mv2_sharp_coll_comm_init(coll_sharp_module_t *sharp_module)
     MPI_Comm_rank(comm, &rank);
     comm_spec->rank              = rank;
     comm_spec->size              = size;
-    comm_spec->is_comm_world     = (comm == MPI_COMM_WORLD);
     comm_spec->oob_ctx           = sharp_module;
 
     mpi_errno = sharp_coll_comm_init(coll_sharp_component.sharp_coll_context,

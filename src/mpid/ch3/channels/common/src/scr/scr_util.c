@@ -415,7 +415,7 @@ int scr_unpack_uint16_t(const void* buf, size_t buf_size, size_t* buf_pos, uint1
   uint16_t val_network;
   memcpy(&val_network, buf + pos, sizeof(val_network));
 
-  /* conver to host order */
+  /* convert to host order */
   *val = scr_ntoh16(val_network);
 
   /* update position */
@@ -453,7 +453,7 @@ int scr_unpack_uint32_t(const void* buf, size_t buf_size, size_t* buf_pos, uint3
   uint32_t val_network;
   memcpy(&val_network, buf + pos, sizeof(val_network));
 
-  /* conver to host order */
+  /* convert to host order */
   *val = scr_ntoh32(val_network);
 
   /* update position */
@@ -491,7 +491,7 @@ int scr_unpack_uint64_t(const void* buf, size_t buf_size, size_t* buf_pos, uint6
   uint64_t val_network;
   memcpy(&val_network, buf + pos, sizeof(val_network));
 
-  /* conver to host order */
+  /* convert to host order */
   *val = scr_ntoh64(val_network);
 
   /* update position */

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -497,7 +497,7 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
         }
 
         /* This process is responsible for all processes that have bits
-           set from the LSB upto (but not including) mask.  Because of
+           set from the LSB up to (but not including) mask.  Because of
            the "not including", we start by shifting mask back down
            one. */
 
@@ -677,7 +677,7 @@ int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
         }
 
         /* This process is responsible for all processes that have bits
-           set from the LSB upto (but not including) mask.  Because of
+           set from the LSB up to (but not including) mask.  Because of
            the "not including", we start by shifting mask back down
            one. */
 
@@ -2101,27 +2101,27 @@ int MPIR_Scatter_MV2(const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
    int recv_mem_type = 0;
    int comm_size = comm_ptr->local_size;
    int rank = comm_ptr->rank;
-   if (rdma_enable_cuda) {
+   if (mv2_enable_device) {
        send_mem_type = is_device_buffer(sendbuf);
        recv_mem_type = is_device_buffer(recvbuf);
    }
 
-   if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-       rdma_cuda_use_naive && (nbytes <= rdma_cuda_scatter_naive_limit*comm_size)) {
+   if (mv2_enable_device && (send_mem_type || recv_mem_type) &&
+       mv2_device_coll_use_stage && (nbytes <= mv2_device_scatter_stage_limit*comm_size)) {
        if (sendbuf != MPI_IN_PLACE) {
             if (rank == root) {
-                mpi_errno = cuda_stage_alloc ((void **)&sendbuf, sendcnt*sendtype_extent*comm_size,
+                mpi_errno = device_stage_alloc ((void **)&sendbuf, sendcnt*sendtype_extent*comm_size,
                           NULL, 0, 
                           send_mem_type, 0, 
                           0);
             } else {
-                mpi_errno = cuda_stage_alloc (NULL, 0,
+                mpi_errno = device_stage_alloc (NULL, 0,
                           &recvbuf, recvcnt*recvtype_extent, 
                           0, recv_mem_type, 
                           0);
             }
        } else {
-            mpi_errno = cuda_stage_alloc ((void **)&sendbuf, recvcnt*recvtype_extent*comm_size,
+            mpi_errno = device_stage_alloc ((void **)&sendbuf, recvcnt*recvtype_extent*comm_size,
                       &recvbuf, recvcnt*recvtype_extent, 
                       0, recv_mem_type, 
                       rank*recvcnt*recvtype_extent);
@@ -2150,14 +2150,14 @@ int MPIR_Scatter_MV2(const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     }
 
 #ifdef _ENABLE_CUDA_ 
-    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-        rdma_cuda_use_naive && (nbytes <= rdma_cuda_scatter_naive_limit*comm_size)){
+    if (mv2_enable_device && (send_mem_type || recv_mem_type) &&
+        mv2_device_coll_use_stage && (nbytes <= mv2_device_scatter_stage_limit*comm_size)){
         if (rank == root) {
-            cuda_stage_free ((void **)&sendbuf, 
+            device_stage_free ((void **)&sendbuf,
                         &recvbuf, 0,
                         send_mem_type, recv_mem_type);
         } else {
-            cuda_stage_free (NULL, 
+            device_stage_free (NULL,
                         &recvbuf, recvcnt*recvtype_extent,
                         send_mem_type, recv_mem_type);
         }

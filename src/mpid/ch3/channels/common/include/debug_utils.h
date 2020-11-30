@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -164,6 +164,12 @@ extern int DEBUG_1SC_verbose;
 
 // Verbosity level for dreg cache
 extern int DEBUG_DREG_verbose;
+
+// Verbosity level for vbuf cache
+extern int DEBUG_VBUF_verbose;
+
+// Verbosity level for P2P send
+extern int DEBUG_SEND_verbose;
 
 // Initialize the verbosity level of the above variables
 extern int initialize_debug_variables();

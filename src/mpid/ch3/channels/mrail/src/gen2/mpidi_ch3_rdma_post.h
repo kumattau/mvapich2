@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -71,10 +71,9 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
 
 #if defined(_ENABLE_CUDA_)
 
-#define IS_CUDA_RNDV_REQ(rreq)  (NONE != rreq->mrail.cuda_transfer_mode)            
+#define IS_DEVICE_RNDV_REQ(rreq)  (NONE != rreq->mrail.device_transfer_mode)
 #else
-#define MPIDI_CH3I_MRAIL_FREE_CUDA_RNDV_BUFFER(rreq)           
-#define IS_CUDA_RNDV_REQ(rreq)  (0)               
+#define IS_DEVICE_RNDV_REQ(rreq)  (0)
 #endif
 
 #define MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq)                    \
@@ -170,43 +169,43 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
 }
 
 #ifdef _ENABLE_CUDA_
-#define MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA(_pkt, _req)          \
+#define MPIDI_CH3I_MRAIL_SET_PKT_RNDV_DEVICE(_pkt, _req)        \
 {                                                               \
-    int _i, _k;                                                     \
+    int _i, _k;                                                 \
     (_pkt)->rndv.protocol = (_req)->mrail.protocol;             \
-        (_pkt)->rndv.num_cuda_blocks = MIN(((_req)->mrail.num_cuda_blocks - (_req)->mrail.cuda_block_offset), rdma_num_cuda_rndv_blocks); \
+        (_pkt)->rndv.num_device_blocks = MIN(((_req)->mrail.num_device_blocks - (_req)->mrail.device_block_offset), mv2_device_num_rndv_blocks); \
     if ( (MV2_RNDV_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||       \
             (MV2_RNDV_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {   \
-        for (_i = 0; _i < (_pkt)->rndv.num_cuda_blocks; _i++) {   \
-        (_pkt)->rndv.buffer_addr[_i] = (_req)->mrail.cuda_vbuf[_i]->buffer;    \
+        for (_i = 0; _i < (_pkt)->rndv.num_device_blocks; _i++) {   \
+        (_pkt)->rndv.buffer_addr[_i] = (_req)->mrail.device_vbuf[_i]->buffer;    \
             for(_k = 0; _k < rdma_num_hcas; _k++) {             \
                 (_pkt)->rndv.buffer_rkey[_i][_k] =              \
-                    (_req)->mrail.cuda_vbuf[_i]->region->mem_handle[_k]->rkey;\
+                    (_req)->mrail.device_vbuf[_i]->region->mem_handle[_k]->rkey;\
             }                                                   \
         }                                                       \
-        (_pkt)->rndv.cuda_block_offset = (_req)->mrail.cuda_block_offset;  \
+        (_pkt)->rndv.device_block_offset = (_req)->mrail.device_block_offset;  \
     }                                                           \
 } 
 #endif
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-#define MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA_IPC(_pkt, _req)      \
+#define MPIDI_CH3I_MRAIL_SET_PKT_RNDV_DEVICE_IPC(_pkt, _req)      \
 {                                                               \
     if ( MV2_RNDV_PROTOCOL_RGET == (_pkt)->rndv.protocol            \
-         && IS_CUDA_RNDV_REQ(_req)) {                           \
+         && IS_DEVICE_RNDV_REQ(_req)) {                           \
         (_pkt)->rndv.ipc_displ = (_req)->mrail.ipc_displ;       \
         (_pkt)->rndv.ipc_baseptr = (_req)->mrail.ipc_baseptr;   \
         (_pkt)->rndv.ipc_size = (_req)->mrail.ipc_size;         \
         MPIU_Memcpy(&(_pkt)->rndv.ipc_memhandle,                \
                     &(_req)->mrail.ipc_memhandle,               \
-                    sizeof(cudaIpcMemHandle_t));                \
+                    sizeof(deviceIpcMemHandle_t));              \
         MPIU_Memcpy(&(_pkt)->rndv.ipc_eventhandle,              \
                     &(_req)->mrail.ipc_eventhandle,             \
-                    sizeof(cudaIpcEventHandle_t));              \
+                    sizeof(deviceIpcEventHandle_t));            \
     }                                                           \
 }
 #else
-#define MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA_IPC(_pkt, _req)
+#define MPIDI_CH3I_MRAIL_SET_PKT_RNDV_DEVICE_IPC(_pkt, _req)
 #endif
 
 #define MPIDI_CH3I_MRAIL_SET_PKT_RNDV(_pkt, _req)               \
@@ -215,7 +214,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     (_pkt)->rndv.protocol = (_req)->mrail.protocol;             \
     if ( (MV2_RNDV_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||       \
             (MV2_RNDV_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {   \
-        if (!IS_CUDA_RNDV_REQ(_req) && ((_req)->mrail.d_entry)) {   \
+        if (!IS_DEVICE_RNDV_REQ(_req) && ((_req)->mrail.d_entry)) {   \
             for (_i = 0; _i < rdma_num_hcas; _i ++) {           \
                 (_pkt)->rndv.rkey[_i] =                         \
                 ((_req)->mrail.d_entry)->memhandle[_i]->rkey;   \
@@ -224,7 +223,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
         (_pkt)->rndv.buf_addr = (_req)->mrail.rndv_buf;         \
     }                                                           \
     (_pkt)->rndv.reqtype = MPIDI_Request_get_type(_req);       \
-    MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA_IPC(_pkt, _req);         \
+    MPIDI_CH3I_MRAIL_SET_PKT_RNDV_DEVICE_IPC(_pkt, _req);         \
 }
 
 #define MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req)                  \
@@ -270,13 +269,6 @@ int MPIDI_CH3I_RDMA_cq_poll(void);
 
 void MRAILI_Init_vc(struct MPIDI_VC* vc);
 
-int MPIDI_CH3I_MRAILI_Eager_send(   struct MPIDI_VC* vc,
-                                    MPL_IOV * iov,
-                                    int n_iov,
-                                    size_t len,
-                                    int * num_bytes_ptr,
-                                    vbuf **buf_handle);
-
 /* Following functions are defined in ibv_channel_manager.c */
 
 /* return type predefinition */
@@ -293,7 +285,7 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(struct MPIDI_VC** vc_ptr, vbuf** vbuf_ptr);
 
 int MPIDI_CH3I_MRAILI_Waiting_msg(struct MPIDI_VC* vc, vbuf**, int blocking);
 
-int (*MPIDI_CH3I_MRAILI_Cq_poll) (vbuf**, struct MPIDI_VC*, int, int);
+extern int (*MPIDI_CH3I_MRAILI_Cq_poll) (vbuf**, struct MPIDI_VC*, int, int);
 
 void MRAILI_Send_noop(struct MPIDI_VC* c, int rail);
 

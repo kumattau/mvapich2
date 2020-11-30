@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2019, The Ohio State University. All rights
+/* Copyright (c) 2001-2020, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,7 @@
 #include "vbuf.h"
 #include "dreg.h"
 #include "mpiutil.h"
+#include "ibv_send_inline.h"
 
 #undef DEBUG_PRINT
 #ifdef DEBUG
@@ -76,7 +77,9 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
         }
     }
 #endif
-    else {
+    /* This ensures that if R3 was selected in MPID_MRAIL_RndvSend
+     * then that decision is respected */
+    else if (req->mrail.protocol != MV2_RNDV_PROTOCOL_R3) {
         req->mrail.protocol = rdma_rndv_protocol;
     }
 
@@ -85,14 +88,16 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
         || req->dev.OnDataAvail == req->dev.OnFinal
         || req->dev.OnDataAvail == MPIDI_CH3_ReqHandler_UnpackSRBufComplete
 #if defined(_ENABLE_CUDA_)
-        || req->dev.OnDataAvail == MPIDI_CH3_ReqHandler_unpack_cudabuf
+        || req->dev.OnDataAvail == MPIDI_CH3_ReqHandler_unpack_device
 #endif 
         ))
     {
         req->mrail.rndv_buf = req->dev.iov[0].MPL_IOV_BUF;
         req->mrail.rndv_buf_sz = req->dev.iov[0].MPL_IOV_LEN;
         req->mrail.rndv_buf_alloc = 0;
-    } else {
+    /* This buffer allocation is not needed for R3 protocol,
+     * as R3 does eager send directly from IOVs*/    
+    } else if(req->mrail.protocol != MV2_RNDV_PROTOCOL_R3){
         req->mrail.rndv_buf_sz = req->dev.segment_size;
         req->mrail.rndv_buf = MPIU_Malloc(req->mrail.rndv_buf_sz);
 
@@ -112,7 +117,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
     /* Step 1.5: If use R3 for smaller messages */
     if (req->mrail.rndv_buf_sz <= MPIDI_CH3_R3_THRESHOLD(vc)
 #ifdef _ENABLE_CUDA_
-        && !rdma_enable_cuda
+        && !mv2_enable_device
 #endif
         ) {
         PRINT_DEBUG(DEBUG_RNDV_verbose>1,
@@ -122,7 +127,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
         MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req);
     }
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && req->mrail.cuda_transfer_mode != NONE) {
+    if (mv2_enable_device && req->mrail.device_transfer_mode != NONE) {
         if ( (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol) ||
                 (MV2_RNDV_PROTOCOL_RGET == req->mrail.protocol) ) {
             return 1;
@@ -148,7 +153,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
        might be possible */
     if (
 #ifdef _ENABLE_CUDA_
-        (!rdma_enable_cuda || !SMP_INIT || vc->smp.local_nodes == -1) && 
+        (!mv2_enable_device || !SMP_INIT || vc->smp.local_nodes == -1) &&
 #endif
         (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol ||
             MV2_RNDV_PROTOCOL_RGET == req->mrail.protocol ||
@@ -226,29 +231,29 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
 #endif
 #ifdef _ENABLE_CUDA_
         int i;
-        if( rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
+        if( mv2_enable_device && sreq->mrail.device_transfer_mode != NONE) {
             sreq->mrail.cts_received = 1;
-            sreq->mrail.num_send_cuda_copy = 0;
-	    if (rndv->cuda_transfer_mode == NONE || rndv->cuda_transfer_mode == DEVICE_TO_HOST) {
-                sreq->mrail.cuda_transfer_mode = DEVICE_TO_HOST;
+            sreq->mrail.num_send_device_copy = 0;
+	    if (rndv->device_transfer_mode == NONE || rndv->device_transfer_mode == DEVICE_TO_HOST) {
+                sreq->mrail.device_transfer_mode = DEVICE_TO_HOST;
             }
-            if (sreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE
-                || sreq->mrail.cuda_transfer_mode == HOST_TO_DEVICE) {
-                for (i = 0; i < rndv->num_cuda_blocks; i++) {
-                    sreq->mrail.cuda_remote_addr[i] = rndv->buffer_addr[i];
+            if (sreq->mrail.device_transfer_mode == DEVICE_TO_DEVICE
+                || sreq->mrail.device_transfer_mode == HOST_TO_DEVICE) {
+                for (i = 0; i < rndv->num_device_blocks; i++) {
+                    sreq->mrail.device_remote_addr[i] = rndv->buffer_addr[i];
                     for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-                        sreq->mrail.cuda_remote_rkey[i][hca_index] = 
+                        sreq->mrail.device_remote_rkey[i][hca_index] =
                             rndv->buffer_rkey[i][hca_index];
                     }
-                    sreq->mrail.num_remote_cuda_pending = rndv->num_cuda_blocks;
-                    sreq->mrail.cuda_block_offset = rndv->cuda_block_offset;
-                    sreq->mrail.num_remote_cuda_done = 0;
+                    sreq->mrail.num_remote_device_pending = rndv->num_device_blocks;
+                    sreq->mrail.device_block_offset = rndv->device_block_offset;
+                    sreq->mrail.num_remote_device_done = 0;
                 }
-            } else if (sreq->mrail.cuda_transfer_mode == DEVICE_TO_HOST) {
-                sreq->mrail.num_remote_cuda_pending = 
-                        ROUNDUP(sreq->mrail.rndv_buf_sz, rdma_cuda_block_size);
-                sreq->mrail.cuda_block_offset = 0;
-                sreq->mrail.num_remote_cuda_done = 0;
+            } else if (sreq->mrail.device_transfer_mode == DEVICE_TO_HOST) {
+                sreq->mrail.num_remote_device_pending =
+                        ROUNDUP(sreq->mrail.rndv_buf_sz, mv2_device_stage_block_size);
+                sreq->mrail.device_block_offset = 0;
+                sreq->mrail.num_remote_device_done = 0;
                 sreq->mrail.remote_addr = rndv->buf_addr;
                 for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++)
                     sreq->mrail.rkey[hca_index] = rndv->rkey[hca_index];
@@ -321,8 +326,8 @@ void MRAILI_RDMA_Put_finish(MPIDI_VC_t * vc,
 
     MPIDI_Pkt_init(&rput_pkt, MPIDI_CH3_PKT_RPUT_FINISH);
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda) {
-        rput_pkt.is_cuda = 0;
+    if (mv2_enable_device) {
+        rput_pkt.is_device = 0;
     }
 #endif
     rput_pkt.receiver_req_id = sreq->mrail.partner_id;
@@ -712,8 +717,8 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
     }
 
 #ifdef _ENABLE_CUDA_
-    if (rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
-        MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(vc, sreq);
+    if (mv2_enable_device && sreq->mrail.device_transfer_mode != NONE) {
+        MPIDI_CH3I_MRAILI_Rendezvous_rput_push_device(vc, sreq);
         return;
     }
 #endif
@@ -903,7 +908,7 @@ int MPIDI_CH3I_MRAILI_Rendezvous_r3_ack_send(MPIDI_VC_t *vc)
     DEBUG_PRINT("[[eager send] len %d vbuf: %p\n",total_len, v);
     vbuf_init_send(v, total_len, rail);
     
-    mpi_errno = mv2_MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
+    mpi_errno = post_send(vc, v, rail);
 
     return mpi_errno;
 }
