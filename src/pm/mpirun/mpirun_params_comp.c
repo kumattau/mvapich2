@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -50,10 +50,11 @@
 #define NSIG _NSIG
 #endif                          /* defined(_NSIG) */
 
-extern int read_hostfile(char const * hostfile_name);
+extern int read_hostfile(char const * hostfile_name, int using_pbs);
 
 process *plist = NULL;
 int nprocs = 0;
+int nprocs_per_node = 0;
 int aout_index = 0;
 
 /* xxx need to add checking for string overflow, do this more carefully ... */
@@ -77,8 +78,12 @@ int dpm = 0;
 extern spawn_info_t spinf;
 int USE_LINEAR_SSH = 1;         /* By default, use linear ssh. Enable
                                    -fastssh for tree based ssh */
+int USE_SRUN = 0;               /* By default, use ssh. Enable
+                                   -srun for using slurm's srun */
+#define LAUNCHER_LEN 4          /* set for srun as the longest name */
 
 char hostfile[HOSTFILE_LEN + 1];
+char launcher[LAUNCHER_LEN + 1];
 
 /*
   The group active for mpispawn. NULL if no group change is required.
@@ -95,8 +100,7 @@ enum param_code {
     PARAM_F,
     PARAM_MACHINEFILE,
     PARAM_SHOW,
-    PARAM_RSH,
-    PARAM_SSH,
+    PARAM_LAUNCHER,
     PARAM_HELP,
     PARAM_V,
     PARAM_TV,
@@ -120,8 +124,7 @@ static struct option option_table[] = {
     {"f", required_argument, 0, 0},
     {"machinefile", required_argument, 0, 0},
     {"show", no_argument, 0, 0},
-    {"rsh", no_argument, 0, 0},
-    {"ssh", no_argument, 0, 0},
+    {"launcher", required_argument, 0, 0},
     {"help", no_argument, 0, 0},
     {"v", no_argument, 0, 0},
     {"tv", no_argument, 0, 0},
@@ -140,6 +143,43 @@ static struct option option_table[] = {
     {"export-all", no_argument, 0, 0},
     {0, 0, 0, 0}
 };
+
+static inline int mpirun_get_launcher(char *launcher_arg) 
+{ 
+    const char* const mpirun_launcher_options[] = { "ssh", "rsh", "srun" };
+    int launchers = 3;
+    int i, ret = 0;
+    for (i = 0; i < launchers; i++) {
+        if (!strcmp(launcher_arg, mpirun_launcher_options[i])) {
+            break;
+        }
+    }
+    switch (i) {
+        case 0:
+            use_rsh = 0;
+            USE_SRUN = 0;
+            DBG(fprintf(stderr, "ssh => use_rsh: %d, USE_SRUN: %d\n", use_rsh, USE_SRUN));
+            break;
+        case 1:
+            use_rsh = 1;
+            USE_SRUN = 0;
+            DBG(fprintf(stderr, "rsh => use_rsh: %d, USE_SRUN: %d\n", use_rsh, USE_SRUN));
+            break;
+        case 2:
+            use_rsh = 0;
+            USE_SRUN = 1;
+            DBG(fprintf(stderr, "srun => use_rsh: %d, USE_SRUN: %d\n", use_rsh, USE_SRUN));
+            break;
+        defaut:
+            fprintf(stderr, "Invalid launcher selected. Launcher must be one of:\n");
+            for (i = 0; i < launchers; i++) {
+                fprintf(stderr, "\t%s\n", mpirun_launcher_options[i]);
+            }
+            ret = -1;
+            break;
+    }
+    return ret;
+}
 
 #if !defined(HAVE_GET_CURRENT_DIR_NAME)
 char *get_current_dir_name()
@@ -233,11 +273,12 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
     case PARAM_SHOW:
         show_on = 1;
         break;
-    case PARAM_RSH:
-        use_rsh = 1;
-        break;
-    case PARAM_SSH:
-        use_rsh = 0;
+    case PARAM_LAUNCHER:
+        strncpy(launcher, optarg, LAUNCHER_LEN);
+        if (mpirun_get_launcher(launcher)) {
+            usage(argv[0]);
+            exit(EXIT_FAILURE);
+        }
         break;
     case PARAM_HELP:
         usage(argv[0]);
@@ -451,14 +492,14 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
      * Populate plist
      */ 
     if (hostfile_on) {
-        read_hostfile(hostfile);
+        read_hostfile(hostfile, 0);
     }
 
     /*
      * SLURM environment handling
      */
     else if (using_slurm) {
-        if (slurm_startup(nprocs)) {
+        if (slurm_startup(nprocs, 0)) {
             exit(EXIT_FAILURE);
         }
     }
@@ -467,7 +508,7 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
      * PBS environment handling
      */
     else if (using_pbs) {
-        if (read_hostfile(pbs_nodefile())) {
+        if (read_hostfile(pbs_nodefile(), 0)) {
             PRINT_ERROR("Unable to parse PBS_NODEFILE [%s]", pbs_nodefile());
             exit(EXIT_FAILURE);
         }
@@ -487,11 +528,10 @@ void usage (char const * arg0)
 {
     char * path = strdup(arg0);
 
-    fprintf(stderr, "usage: %s [-v] [-sg group] [-rsh|-ssh] " "[-gdb] -[tv] [-xterm] [-show] [-legacy] [-export-all] -n N" "[-machinefile hfile | -f hfile] a.out args | -config configfile\n", basename(path));
+    fprintf(stderr, "usage: %s [-v] [-sg group] [-launcher rsh|ssh|srun] " "[-gdb] -[tv] [-xterm] [-show] [-legacy] [-export-all] -n N" "[-machinefile hfile | -f hfile] a.out args | -config configfile\n", basename(path));
     fprintf(stderr, "Where:\n");
     fprintf(stderr, "\tsg         =>  execute the processes as different group ID\n");
-    fprintf(stderr, "\trsh        =>  to use rsh for connecting\n");
-    fprintf(stderr, "\tssh        =>  to use ssh for connecting\n");
+    fprintf(stderr, "\tlauncher   => " "one of rsh, ssh, or srun for connecing\n"); 
     fprintf(stderr, "\tgdb        =>  run each process under the control of gdb\n");
     fprintf(stderr, "\ttv         =>  run each process under the control of TotalView\n");
     fprintf(stderr, "\txterm      =>  run remote processes under xterm\n");

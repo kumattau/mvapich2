@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -96,9 +96,14 @@ static inline void mv2_ud_place_recvwin(vbuf *v)
     recv_win_end = (recv_win_start + rdma_default_ud_recvwin_size) % MAX_SEQ_NUM;
 
     /* check if the packet is in the window or not */
-    if (INCL_BETWEEN(v->seqnum, recv_win_start, recv_win_end)) {
+    if (INCL_BETWEEN(v->seqnum, recv_win_start, recv_win_end) ||
+        (v->transport != IB_TRANSPORT_UD)) {
         if (v->seqnum == vc->mrail.seqnum_next_torecv) {
-            PRINT_DEBUG(DEBUG_UD_verbose>2,"get one from %d with in-order seqnum:%d, next_to_ack:%d \n",vc->pg_rank, v->seqnum, vc->mrail.seqnum_next_torecv);
+            PRINT_DEBUG(DEBUG_UD_verbose>2,
+                        "Get one %s pkt from %d with in-order seqnum:%d, next_to_ack:%d, next_exp = %u \n",
+                        (v->transport == IB_TRANSPORT_UD)?"UD":"RC",
+                        vc->pg_rank, v->seqnum, vc->mrail.seqnum_next_torecv,
+                        (vc->mrail.seqnum_next_torecv+1));
             vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
             /* process in-order message */
             handle_read(vc, v);
@@ -108,9 +113,13 @@ static inline void mv2_ud_place_recvwin(vbuf *v)
             }
         } else {
             /* we are not in order */
-            PRINT_DEBUG(DEBUG_UD_verbose>1,"Got out-of-order packet from %d recv:%d expected:%d\n",vc->pg_rank, v->seqnum, vc->mrail.seqnum_next_torecv);
+            PRINT_DEBUG(DEBUG_UD_verbose>1,
+                        "Got out-of-order %s packet from %d recv:%d expected:%d\n",
+                        (v->transport == IB_TRANSPORT_UD)?"UD":"RC",
+                        vc->pg_rank, v->seqnum, vc->mrail.seqnum_next_torecv);
             ret = mv2_ud_recv_window_add(&vc->mrail.rely.recv_window, v, vc->mrail.seqnum_next_torecv);
             if (ret == MSG_IN_RECVWIN) {
+                MPIU_Assert(v->transport == IB_TRANSPORT_UD);
                 MPIDI_CH3I_MRAIL_Release_vbuf(v);
             }
 
@@ -123,19 +132,24 @@ static inline void mv2_ud_place_recvwin(vbuf *v)
         while ( vc->mrail.rely.recv_window.head != NULL && 
                 (vc->mrail.rely.recv_window.head->seqnum == 
                  vc->mrail.seqnum_next_torecv)) {
-            PRINT_DEBUG(DEBUG_UD_verbose>1,"process one from %d with in-order seqnum:%d \n",vc->pg_rank, vc->mrail.seqnum_next_torecv);
+            PRINT_DEBUG(DEBUG_UD_verbose>1,
+                        "Process one %s pkt from %d with in-order seqnum:%d, next_exp: %u \n",
+                        (v->transport == IB_TRANSPORT_UD)?"UD":"RC",
+                        vc->pg_rank, vc->mrail.seqnum_next_torecv,
+                        (vc->mrail.seqnum_next_torecv+1));
             vc->mrail.seqnum_next_toack = vc->mrail.seqnum_next_torecv;
             handle_read(vc, vc->mrail.rely.recv_window.head);
             mv2_ud_recv_window_remove(&vc->mrail.rely.recv_window);
             ++vc->mrail.seqnum_next_torecv;
         }
     } else {
-        PRINT_DEBUG(DEBUG_UD_verbose>1,"Message from %d is not in recv window seqnum:%d win start:%d win end:%d\n",
+        /* We should never drop a packet that is not sent over UD */
+        MPIU_Assert(v->transport == IB_TRANSPORT_UD);
+        PRINT_DEBUG(DEBUG_UD_verbose>1,
+                    "Message from %d is not in recv window seqnum:%d win start:%d win end:%d\n",
                     vc->pg_rank, v->seqnum, recv_win_start, recv_win_end);
         MPIDI_CH3I_MRAIL_Release_vbuf(v);
-        if (v->transport == IB_TRANSPORT_UD) {
-            MARK_ACK_REQUIRED(vc);
-        }
+        MARK_ACK_REQUIRED(vc);
     }
 }
 
@@ -231,6 +245,8 @@ static inline void mv2_ud_ext_sendq_send(MPIDI_VC_t *vc, mv2_ud_ctx_t *ud_ctx)
 
         /* can we reset ack to latest? */
         ud_ctx->send_wqes_avail--;
+        /* Keep track of the number of times we sent this out */
+        v->pending_send_polls++;
         if (ibv_post_send(ud_ctx->qp, &(v->desc.u.sr),&(v->desc.y.bad_sr))) {
             ibv_error_abort(-1, "extend sendq send  failed");
         }
@@ -253,7 +269,7 @@ void mv2_ud_update_send_credits(vbuf *v)
 void mv2_send_explicit_ack(MPIDI_VC_t *vc)
 {
     vbuf *v = NULL;
-    MV2_GET_AND_INIT_UD_VBUF(v);
+    GET_UD_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_SEND_UD_VBUF_POOL_OFFSET);
     MPIDI_CH3I_MRAILI_Pkt_comm_header *ack_pkt = v->pheader;
     MPIDI_Pkt_init(ack_pkt, MPIDI_CH3_PKT_FLOW_CNTL_UPDATE);
     ack_pkt->acknum = vc->mrail.seqnum_next_toack;
@@ -270,8 +286,8 @@ void mv2_ud_resend(vbuf *v)
     MPIDI_VC_t *vc;
     mv2_ud_ctx_t *ud_ctx;
 
-    if (v->flags & UD_VBUF_SEND_INPROGRESS && 
-            !(v->flags & UD_VBUF_RETRY_ALWAYS)) {
+    if ((v->flags & UD_VBUF_SEND_INPROGRESS) && 
+        !(v->flags & UD_VBUF_RETRY_ALWAYS)) {
         return;
     }
 
@@ -307,7 +323,14 @@ void mv2_ud_resend(vbuf *v)
     if (ud_ctx->send_wqes_avail <= 0) {
         mv2_ud_ext_sendq_queue(&ud_ctx->ext_send_queue, v);
     } else {
+        /* Mark VBUF as send in progress */
+        v->flags |= UD_VBUF_SEND_INPROGRESS;
+        /* Remove free_pending flag from VBUF */
+        v->flags &= ~(UD_VBUF_FREE_PENIDING);
+        /* Decrement number of available WQEs */
         ud_ctx->send_wqes_avail--;
+        /* Keep track of the number of times we sent this out */
+        v->pending_send_polls++;
         if (ibv_post_send(ud_ctx->qp, &(v->desc.u.sr),&(v->desc.y.bad_sr))) {
             ibv_error_abort(-1, "reliability resend failed");
         }

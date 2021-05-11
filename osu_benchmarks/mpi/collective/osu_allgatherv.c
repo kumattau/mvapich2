@@ -1,6 +1,6 @@
 #define BENCHMARK "OSU MPI%s Allgatherv Latency Test"
 /*
- * Copyright (C) 2002-2020 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2021 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University.
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
     options.subtype = LAT;
 
     set_header(HEADER);
-    set_benchmark_name("osu_allgather");
+    set_benchmark_name("osu_allgatherv");
     po_ret = process_options(argc, argv);
 
     if (PO_OKAY == po_ret && NONE != options.accel) {

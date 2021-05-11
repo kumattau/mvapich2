@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -65,15 +65,6 @@ int MPIDI_CH3_SHM_Win_shared_query(MPID_Win * win_ptr, int target_rank, MPI_Aint
 
     comm_size = win_ptr->comm_ptr->local_size;
 
-    /* fallback when a shared window was not allocated */
-    if (FALSE == win_ptr->shm_allocated || !SMP_INIT || (SMP_INIT && comm_size <= 1)) {
-        mpi_errno = MPIDI_CH3U_Win_shared_query(win_ptr, target_rank, size, disp_unit, baseptr);
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIR_ERR_POP(mpi_errno);
-        }
-        goto fn_exit;
-    }
-
     /* Scan the sizes to locate the first process that allocated a nonzero
      * amount of space */
     if (target_rank == MPI_PROC_NULL) {
@@ -87,22 +78,32 @@ int MPIDI_CH3_SHM_Win_shared_query(MPID_Win * win_ptr, int target_rank, MPI_Aint
         for (i = 0; i < comm_size; i++) {
             if (win_ptr->basic_info_table[i].size > 0) {
                 int local_i = win_ptr->comm_ptr->intranode_table[i];
-                MPIU_Assert(local_i >= 0 && local_i < win_ptr->comm_ptr->node_comm->local_size);
-                *size = win_ptr->basic_info_table[i].size;
+                if (FALSE == win_ptr->shm_allocated || !SMP_INIT || (SMP_INIT && comm_size <= 1)) {
+                    MPIU_Assert(local_i >= 0 && local_i < win_ptr->comm_ptr->local_size);
+                    *(void **) baseptr = win_ptr->basic_info_table[local_i].base_addr;
+                } else {
+                    MPIU_Assert(local_i >= 0 && local_i < win_ptr->comm_ptr->node_comm->local_size);
+                    *((void **) baseptr) = win_ptr->shm_base_addrs[local_i];
+                }
+				*size = win_ptr->basic_info_table[i].size;
                 *disp_unit = win_ptr->basic_info_table[i].disp_unit;
-                *((void **) baseptr) = win_ptr->shm_base_addrs[local_i];
                 break;
             }
         }
 
-    }
-    else {
+    } else {
         int local_target_rank = win_ptr->comm_ptr->intranode_table[target_rank];
-        MPIU_Assert(local_target_rank >= 0 &&
-                    local_target_rank < win_ptr->comm_ptr->node_comm->local_size);
+        if (FALSE == win_ptr->shm_allocated || !SMP_INIT || (SMP_INIT && comm_size <= 1)) {
+            MPIU_Assert(local_target_rank >= 0 &&
+                        local_target_rank < win_ptr->comm_ptr->local_size);
+			*(void **) baseptr = win_ptr->basic_info_table[local_target_rank].base_addr;
+        } else {
+            MPIU_Assert(local_target_rank >= 0 &&
+                        local_target_rank < win_ptr->comm_ptr->node_comm->local_size);
+            *((void **) baseptr) = win_ptr->shm_base_addrs[local_target_rank];
+        }
         *size = win_ptr->basic_info_table[target_rank].size;
         *disp_unit = win_ptr->basic_info_table[target_rank].disp_unit;
-        *((void **) baseptr) = win_ptr->shm_base_addrs[local_target_rank];
     }
 
   fn_exit:
@@ -717,6 +718,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     if (!SMP_INIT || (SMP_INIT && comm_size <= 1)) {
         mpi_errno =
             MPIDI_CH3U_Win_allocate_no_shm(size, disp_unit, info, comm_ptr, base_ptr, win_ptr);
+        (*win_ptr)->shm_allocated = FALSE;
         goto fn_exit;
     }
 

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -87,8 +87,7 @@ typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
     uint8_t             weight_rail[MAX_NUM_HCAS];
     uint8_t             reqtype;
 #ifdef _ENABLE_UD_
-    uint8_t             hca_index;
-    uint32_t            rndv_qpn;
+    uint32_t            rndv_qpn[MAX_NUM_HCAS];
 #endif
 #ifdef _ENABLE_CUDA_
     uint8_t             device_transfer_mode;
@@ -112,10 +111,10 @@ typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
 
 struct dreg_entry;
 #ifdef _ENABLE_UD_
-#define MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL \
-        void *rndv_qp_entry;            \
-        uint32_t remote_qpn;            \
-        uint8_t hca_index;              
+#define MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL            \
+        uint8_t num_hcas;		                    \
+        mv2_rndv_qp_t *rndv_qp_entry;               \
+        uint32_t remote_qpn[MAX_NUM_HCAS];
 #else
 #define MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL
 #endif
@@ -123,9 +122,9 @@ struct dreg_entry;
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
 #define MPIDI_CH3I_MRAILI_DEVICE_IPC_REQ_DECL   \
         uint8_t device_ipc_stage_index;         \
-        void *ipc_baseptr;                  \
-        uint64_t ipc_size;                  \
-        uint64_t ipc_displ;                 \
+        void *ipc_baseptr;                      \
+        uint64_t ipc_size;                      \
+        uint64_t ipc_displ;                     \
         mv2_device_event_t *ipc_device_event;   \
         deviceEvent_t  ipc_event;               \
         deviceIpcMemHandle_t ipc_memhandle;     \
@@ -136,48 +135,52 @@ struct dreg_entry;
 #endif
 
 #ifdef _ENABLE_CUDA_
-#define MPIDI_CH3I_MRAILI_DEVICE_REQ_DECL \
-        mv2_device_transfer_mode_t  device_transfer_mode;   \
-        mv2_device_event_t *device_event;                   \
-        vbuf *device_vbuf[MAX_CUDA_RNDV_BLOCKS];      \
-        void *device_remote_addr[MAX_CUDA_RNDV_BLOCKS]; \
-        uint32_t device_remote_rkey[MAX_CUDA_RNDV_BLOCKS][MAX_NUM_HCAS]; \
-        uint16_t num_device_blocks;           \
-        uint16_t device_block_offset;         \
-        uint16_t num_send_device_copy;        \
-        uint16_t pipeline_nm;               \
-        uint8_t num_remote_device_pending;    \
-        uint8_t num_remote_device_done;       \
-        uint8_t num_remote_device_inflight;   \
-        uint8_t is_device_pipeline;           \
-        uint8_t cts_received;               \
+#define MPIDI_CH3I_MRAILI_DEVICE_REQ_DECL                                   \
+        mv2_device_transfer_mode_t  device_transfer_mode;                   \
+        mv2_device_event_t *device_event;                                   \
+        vbuf *device_vbuf[MAX_CUDA_RNDV_BLOCKS];                            \
+        void *device_remote_addr[MAX_CUDA_RNDV_BLOCKS];                     \
+        uint32_t device_remote_rkey[MAX_CUDA_RNDV_BLOCKS][MAX_NUM_HCAS];    \
+        uint16_t num_device_blocks;                                         \
+        uint16_t device_block_offset;                                       \
+        uint16_t num_send_device_copy;                                      \
+        uint16_t pipeline_nm;                                               \
+        uint8_t num_remote_device_pending;                                  \
+        uint8_t num_remote_device_done;                                     \
+        uint8_t num_remote_device_inflight;                                 \
+        uint8_t is_device_pipeline;                                         \
+        uint8_t cts_received;                                               \
         MPIDI_CH3I_MRAILI_DEVICE_IPC_REQ_DECL
 #else
 #define MPIDI_CH3I_MRAILI_DEVICE_REQ_DECL
 #endif
 
-#define MPIDI_CH3I_MRAILI_REQUEST_DECL \
-    struct MPIDI_CH3I_MRAILI_Request {  \
-        MPI_Request partner_id;         \
-        uint8_t rndv_buf_alloc;         \
-        void * rndv_buf;    \
-        MPIDI_msg_sz_t rndv_buf_sz;    \
-        MPIDI_msg_sz_t rndv_buf_off;   \
-        MRAILI_Protocol_t protocol;     \
-        struct dreg_entry *d_entry;     \
-        void     *remote_addr;          \
-        uint32_t rkey[MAX_NUM_HCAS];    \
-        uint8_t  nearly_complete;       \
-        uint32_t  local_complete;        \
-        uint32_t  remote_complete;       \
-        uint32_t  num_rdma_read_completions;       \
-        double  initial_weight[MAX_NUM_SUBRAILS];   \
-        double  stripe_start_time;   \
-        double  stripe_finish_time[MAX_NUM_SUBRAILS];   \
-        struct MPID_Request *next_inflow;  \
-        uint8_t is_rma_last_stream_unit;   \
-        MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL   \
-        MPIDI_CH3I_MRAILI_DEVICE_REQ_DECL    \
+#define MPIDI_CH3I_MRAILI_REQUEST_DECL                                      \
+    struct __attribute__((__aligned__(64))) MPIDI_CH3I_MRAILI_Request {     \
+        MPI_Request partner_id;                                             \
+        uint8_t rndv_buf_alloc;                                             \
+        void * rndv_buf;                                                    \
+        MPIDI_msg_sz_t rndv_buf_sz;                                         \
+        MPIDI_msg_sz_t rndv_buf_off;                                        \
+        MRAILI_Protocol_t protocol;                                         \
+        struct dreg_entry *d_entry;                                         \
+        void     *remote_addr;                                              \
+        uint32_t rkey[MAX_NUM_HCAS];                                        \
+        uint8_t  nearly_complete;                                           \
+        uint32_t  local_complete;                                           \
+        uint32_t  remote_complete;                                          \
+        uint32_t  num_rdma_read_completions;                                \
+        uint8_t  is_eager_vbuf_queued;                                      \
+        struct vbuf *eager_vbuf_head;                                       \
+        struct vbuf *eager_vbuf_tail;                                       \
+        MPIDI_msg_sz_t eager_unexp_size;                                    \
+        double  initial_weight[MAX_NUM_SUBRAILS];                           \
+        double  stripe_start_time;                                          \
+        double  stripe_finish_time[MAX_NUM_SUBRAILS];                       \
+        struct MPID_Request *next_inflow;                                   \
+        uint8_t is_rma_last_stream_unit;                                    \
+        MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL                                    \
+        MPIDI_CH3I_MRAILI_DEVICE_REQ_DECL                                   \
     } mrail;
 
 #ifndef MV2_DISABLE_HEADER_CACHING 
@@ -454,9 +457,7 @@ typedef struct MPIDI_CH3I_MRAIL_UD_CM {
     uint16_t        cm_lid;        /* LID of peer */
     union ibv_gid   cm_gid;       /* GID of peer */
     mv2_arch_hca_type arch_hca_type;
-#ifdef _ENABLE_XRC_
     uint32_t        xrc_hostid;
-#endif
 } MPIDI_CH3I_MRAIL_UD_CM_t;
 
 typedef struct MPIDI_CH3I_MRAIL_CM_SHMEM_Region {
@@ -466,6 +467,7 @@ typedef struct MPIDI_CH3I_MRAIL_CM_SHMEM_Region {
     mv2_ud_exch_info_t          **remote_ud_info;
     struct ibv_ah               **ud_ah;
     uint16_t                    *ud_lid;
+    union ibv_gid               *ud_gid;
 #endif /*_ENABLE_UD_ */
 } MPIDI_CH3I_MRAIL_CM_SHMEM_Region_t;
 
@@ -476,6 +478,7 @@ typedef struct MPIDI_CH3I_MRAIL_CM {
     struct ibv_ah   **cm_ah;        /* Address handle of LIDs */
     struct ibv_ah   **cm_ah_peer;   /* Address handle of peer */
     uint16_t        *cm_lid;
+    union ibv_gid   *cm_gid;
     MPIDI_CH3I_MRAIL_CM_SHMEM_Region_t cm_shmem;
 } MPIDI_CH3I_MRAIL_CM_t;
 

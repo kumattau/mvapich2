@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2020, The Ohio State University. All rights
+ * Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -742,6 +742,9 @@ int UPMI_GET_LOCAL_RANK(int rank, int *size) {
     }
     *size= val->data.uint16;
     return convert_err(rc);
+    #else 
+    /* TODO: Update with proper fallback behavior */
+    return UPMI_FAIL;
     #endif
 }
 
@@ -760,6 +763,9 @@ int UPMI_GET_LOCAL_SIZE(int *size) {
     }
     *size= val->data.uint32;
     return convert_err(rc);
+    #else 
+    /* TODO: Update with proper fallback behavior */
+    return UPMI_FAIL;
     #endif
 }
 
@@ -778,5 +784,8 @@ int UPMI_GET_LOWEST_RANK(int *rank) {
     }
     *rank= val->data.uint32;
     return convert_err(rc);
+    #else 
+    /* TODO: Update with proper fallback behavior */
+    return UPMI_FAIL;
     #endif
 }

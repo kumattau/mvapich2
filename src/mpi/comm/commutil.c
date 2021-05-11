@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
- /* Copyright (c) 2001-2020, The Ohio State University. All rights
+ /* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -119,7 +119,10 @@ int MPIR_Comm_init(MPID_Comm * comm_p)
     comm_p->dev.ch.barrier_coll_count = 0; 
     comm_p->dev.ch.bcast_coll_count = 0;
     comm_p->dev.ch.scatter_coll_count = 0;
+    comm_p->dev.ch.reduce_coll_count = 0;
     comm_p->dev.ch.shmem_coll_ok = 0;
+    comm_p->dev.ch.topo_coll_ok = 0;
+    comm_p->dev.ch.shmem_comm_rank = -1;
     comm_p->dev.ch.allgather_comm_ok = 0;
     comm_p->dev.ch.is_global_block  = 0;
     /* We are yet to call create_2level_comm on this new intra-communicator
@@ -129,6 +132,8 @@ int MPIR_Comm_init(MPID_Comm * comm_p)
     comm_p->dev.ch.shmem_comm=MPI_COMM_NULL;
     comm_p->dev.ch.allgather_comm=MPI_COMM_NULL;
     comm_p->dev.ch.intra_node_done = 0;
+    comm_p->dev.ch.topo_comm = NULL;
+    comm_p->dev.ch.topo_leader_comm = NULL;
 #if defined(_MCST_SUPPORT_)
     comm_p->dev.ch.is_mcast_ok = 0;
     comm_p->dev.ch.bcast_info = NULL;
@@ -262,6 +267,8 @@ int MPIR_Setup_intercomm_localcomm(MPID_Comm * intercomm_ptr)
     intercomm_ptr->local_comm = localcomm_ptr;
 #ifdef _OSU_MVAPICH_
     localcomm_ptr->dev.ch.shmem_coll_ok = 0;
+    localcomm_ptr->dev.ch.topo_coll_ok = 0;
+    localcomm_ptr->dev.ch.shmem_comm_rank = -1;
     localcomm_ptr->dev.ch.is_global_block  = 0;
     localcomm_ptr->dev.ch.allgather_comm_ok = 0;
     localcomm_ptr->dev.ch.shmem_comm = MPI_COMM_NULL;
@@ -270,6 +277,8 @@ int MPIR_Setup_intercomm_localcomm(MPID_Comm * intercomm_ptr)
     localcomm_ptr->dev.ch.intra_sock_comm=MPI_COMM_NULL;
     localcomm_ptr->dev.ch.intra_sock_leader_comm=MPI_COMM_NULL;
     localcomm_ptr->dev.ch.global_sock_leader_comm=MPI_COMM_NULL;
+    localcomm_ptr->dev.ch.topo_comm = NULL;
+    localcomm_ptr->dev.ch.topo_leader_comm = NULL;
 #endif /* _OSU_MVAPICH_ */
 
 

@@ -474,7 +474,7 @@ char *tasklist_yytext;
 #line 1 "src/pm/mpirun/src/slurm/tasklist_scanner.l"
 #line 2 "src/pm/mpirun/src/slurm/tasklist_scanner.l"
 /*
- * Copyright (c) 2001-2020, The Ohio State University. All rights
+ * Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the

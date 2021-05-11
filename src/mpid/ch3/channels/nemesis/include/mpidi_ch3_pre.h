@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -84,6 +84,8 @@ typedef struct {
     MPI_Comm     leader_comm;
     MPI_Comm     shmem_comm;
     MPI_Comm     allgather_comm;
+    MPI_Comm     *topo_comm;
+    MPI_Comm     *topo_leader_comm;
     int*    leader_map;
     int*    leader_rank;
     int*    node_sizes;
@@ -93,6 +95,7 @@ typedef struct {
     int     is_blocked;
     int     shmem_comm_rank;
     int     shmem_coll_ok;
+    int     topo_coll_ok;
     int     allgather_comm_ok;
     int     leader_group_size;
     int     is_global_block;
@@ -104,6 +107,7 @@ typedef struct {
     int     allgather_coll_count;
     int     allreduce_coll_count;
     int     barrier_coll_count;
+    int     reduce_coll_count;
     int     bcast_coll_count;
     int     scatter_coll_count;
     void    *shmem_info; /* intra node shmem info */

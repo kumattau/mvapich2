@@ -3,6 +3,63 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2 2.3.5 (05/11/2021)
+
+* Features and Enhancements (since 2.3.5):
+    - Support collective offload using Mellanox's SHARP for Reduce and Bcast
+        - Enhanced tuning framework for Reduce and Bcast using SHARP
+    - Enhanced performance for UD-Hybrid code
+    - Add multi-rail support for UD-Hybrid code
+    - Enhanced performance for shared-memory collectives
+    - Enhanced job-startup performance for flux job launcher
+    - Add support in mpirun_rsh to use srun daemons to launch jobs
+    - Add support in mpirun_rsh to specify processes per node using
+      '-ppn' option
+    - Use PMI2 by default when SLURM is selected as process manager
+    - Add support to use aligned memory allocations for multi-threaded
+      applications
+        - Thanks to Evan J. Danish @OSC for the report
+    - Architecture detection and enhanced point-to-point tuning for
+      Oracle BM.HPC2 cloud shape
+    - Enhanced collective tuning for Frontera@TACC and Expanse@SDSC
+    - Add support for GCC compiler v11
+    - Add support for Intel IFX compiler
+    - Update hwloc v1 code to v1.11.14
+    - Update hwloc v2 code to v2.4.2
+
+* Bug Fixes (since 2.3.5):
+    - Updates to IME support in MVAPICH2
+        - Thanks to Bernd Schubert and Jean-Yves Vet @DDN
+          for the patch
+    - Improve error reporting in dlopen code path
+        - Thanks to Matthew W. Anderson @INL for the report
+    - Fix memory leak in collectives code path
+        - Thanks to Matthew W. Anderson @INL and the PETSc
+          team for the report and patch
+    - Fix issues in DPM code
+        - Thanks to Lana Deere @D2S Inc for the report
+    - Fix issues when using sys_siglist array
+        - Thanks to Jorge D'Elia @Universidad Nacional Del Litoral
+          in Santa Fe, Argentina for the report
+    - Fix issues with GCC v11
+        - Thanks to Honggang Li @RedHat for the report
+    - Fix issues in Win_shared_alloc
+        - Thanks to Adam Moody @LLNL for the report
+    - Fix issues with HDF5 in ROMIO code
+        - Thanks to Mark Dixon @Durham University for the report
+    - Fix issues with srun based launch when SLURM hostfile is specified
+      manually
+        - Thanks to Greg Lee @LLNL for the report
+    - Fix an issue with external32 datatypes being converted incorrectly 
+        - Thanks to Adam Moody @LLNL for the report
+    - Fix issues in UD-Hybrid code path
+    - Fix issues in MPI_Win_test leading to hangs in multi-rail scenarios
+    - Fix issues in job startup code leading to degraded startup performance
+    - Update code to work with any number of HCAs in a graceful fashion
+    - Fix hang in shared memory code with stencil applications
+    - Fix segmentation fault in finalize
+    - Fix compilation warnings, memory leaks, and spelling mistakes
+
 MVAPICH2 2.3.5 (11/30/2020)
 
 * Features and Enhancements (since 2.3.4):

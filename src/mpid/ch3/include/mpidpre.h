@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -395,7 +395,7 @@ MPIDI_DEV_WIN_DECL
 #endif
 
 
-typedef struct MPIDI_Request {
+typedef struct __attribute__((__aligned__(64))) MPIDI_Request {
     MPIDI_Message_match match;
     MPIDI_Message_match mask;
 

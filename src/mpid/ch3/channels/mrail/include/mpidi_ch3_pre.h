@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -35,6 +35,8 @@ typedef struct {
     MPI_Comm     leader_comm;
     MPI_Comm     shmem_comm;
     MPI_Comm     allgather_comm;
+    MPI_Comm    *topo_comm;
+    MPI_Comm    *topo_leader_comm;
     int*    leader_map;
     int*    leader_rank;
     int*    node_sizes;		 /* number of processes on each node */
@@ -47,6 +49,7 @@ typedef struct {
     int     is_blocked;
     int     shmem_comm_rank;
     int     shmem_coll_ok;
+    int     topo_coll_ok;
     int     allgather_comm_ok; 
     int     leader_group_size;
     int     is_global_block;
@@ -58,6 +61,7 @@ typedef struct {
     int     allgather_coll_count;
     int     allreduce_coll_count;
     int     barrier_coll_count;
+    int     reduce_coll_count;
     int     bcast_coll_count;
     int     scatter_coll_count;
     void    *shmem_info; /* intra node shmem info */
@@ -328,16 +332,16 @@ enum REQ_TYPE {
 /*
  * MPIDI_CH3_REQUEST_DECL (additions to MPID_Request)
  */
-#define MPIDI_CH3_REQUEST_DECL						\
-struct MPIDI_CH3I_Request						\
-{									\
-    /*  pkt is used to temporarily store a packet header associated	\
-       with this request */						\
-    MPIDI_CH3_Pkt_t pkt;                        \
-    enum REQ_TYPE   reqtype;						\
-    /* For CKPT, hard to put in ifdef because it's in macro define*/    \
-    struct MPID_Request *cr_queue_next;                                 \
-    struct MPIDI_VC *vc;                                                \
+#define MPIDI_CH3_REQUEST_DECL                                      \
+struct __attribute__((__aligned__(64))) MPIDI_CH3I_Request          \
+{                                                                   \
+    /*  pkt is used to temporarily store a packet header associated \
+       with this request */                                         \
+    MPIDI_CH3_Pkt_t pkt;                                            \
+    enum REQ_TYPE   reqtype;                                        \
+    /* For CKPT, hard to put in ifdef because it's in macro define*/\
+    struct MPID_Request *cr_queue_next;                             \
+    struct MPIDI_VC *vc;                                            \
 } ch;
 
 #ifdef _ENABLE_CUDA_
@@ -378,6 +382,10 @@ struct MPIDI_CH3I_Request						\
     (_rreq)->mrail.nearly_complete = 0;  \
     (_rreq)->mrail.local_complete  = 0;  \
     (_rreq)->mrail.remote_complete = 0;  \
+    (_rreq)->mrail.is_eager_vbuf_queued = 0; \
+    (_rreq)->mrail.eager_vbuf_head = NULL;\
+    (_rreq)->mrail.eager_vbuf_tail = NULL;\
+    (_rreq)->mrail.eager_unexp_size = 0;\
     (_rreq)->mrail.is_rma_last_stream_unit = 1;  \
     MPIDI_CH3_REQUEST_INIT_DEVICE(_rreq) \
     MPIDI_CH3_REQUEST_INIT_DEVICE_IPC(_rreq)
@@ -404,6 +412,7 @@ typedef pthread_mutex_t MPIDI_CH3I_SHM_MUTEX;
     int  use_rdma_path;                                                          \
     int  is_active;                                                              \
     int  using_lock;                                                             \
+    int  num_wait_completions;                                                   \
     long long cc_for_test;                                                       \
     struct dreg_entry* completion_counter_dreg_entry;                            \
     volatile long long * completion_counter;                                     \

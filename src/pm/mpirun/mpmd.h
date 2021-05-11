@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -56,6 +56,12 @@ process *save_plist(config_spec_t * cfg_list, int nprocs);
  *
  */
 char *add_argv(char *mpispawn_env, char *exe, char *args, int tmp_i);
+
+/**
+ * Add to the argument passed to mpispawn the name of the executable and its arguments.
+ *  compatible with srun based launch
+ */
+char *add_srun_argv(char *mpispawn_env, char *exe, char *args, int tmp_i);
 
 /**
  * Count the number of arguments of an executable. In mpirun_rsh we need this information in order to send it to mpispawn.

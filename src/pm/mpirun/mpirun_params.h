@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -65,6 +65,10 @@ extern char *change_group;
 /* By default, use linear ssh. Enable
    -fastssh for tree based ssh */
 extern int USE_LINEAR_SSH;
+
+/* By default, use ssh. Enable
+   -srun for using slurm's srun */ 
+extern int USE_SRUN;
 
 #endif                          /* MPIRUN_PARAMS_H */
 /* vi:set sw=4 sts=4 tw=76 expandtab: */

@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1412,8 +1412,7 @@ int MPID_Win_test(MPID_Win * win_ptr, int *flag)
     }
 
 #if defined(CHANNEL_MRAIL)
-    int i, j, newly_finished, num_wait_completions, index;
-    num_wait_completions = 0;
+    int i, j, newly_finished, index;
     newly_finished = 0; 
     if (win_ptr->fall_back != 1) {
         for (i = 0; i < win_ptr->comm_ptr->local_size; ++i) {
@@ -1421,10 +1420,10 @@ int MPID_Win_test(MPID_Win * win_ptr, int *flag)
                 index = i*rdma_num_rails+j;
                 if (win_ptr->completion_counter[index] == 1){
                     win_ptr->completion_counter[index] = 0;
-                    ++num_wait_completions;
-                    if (num_wait_completions == rdma_num_rails) {
+                    win_ptr->num_wait_completions++;
+                    if (win_ptr->num_wait_completions == rdma_num_rails) {
                         ++newly_finished;
-                        num_wait_completions = 0;
+                        win_ptr->num_wait_completions = 0;
                     }
                 }
             }

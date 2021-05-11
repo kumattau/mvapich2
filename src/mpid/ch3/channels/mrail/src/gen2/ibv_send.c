@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,7 +21,9 @@
 #endif 
 
 #include "ibv_send_inline.h"
-
+#ifdef CHANNEL_MRAIL_GEN2
+#include "coll_shmem.h"
+#endif
 
 #if defined(MPIDI_MRAILI_COALESCE_ENABLED)
 /* TODO: Ticket #1433 */
@@ -93,7 +95,7 @@ int mv2_post_srq_buffers(int num_bufs, int hca_num)
             mv2_srq_fill_size);
     }
 
-   for (; i < num_bufs; ++i)
+    for (; i < num_bufs; ++i)
     {
         if ((v = get_vbuf_by_offset(MV2_RECV_VBUF_POOL_OFFSET)) == NULL)
         {
@@ -105,9 +107,9 @@ int mv2_post_srq_buffers(int num_bufs, int hca_num)
             hca_num * rdma_num_ports * rdma_num_qp_per_port);
             v->transport = IB_TRANSPORT_RC;
 
-       if (ibv_post_srq_recv(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], &v->desc.u.rr, &bad_wr))
+        if (ibv_post_srq_recv(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], &v->desc.u.rr, &bad_wr))
         {
-            MRAILI_Release_vbuf(v);
+            release_vbuf(v);
             break;
         }
     }
@@ -127,21 +129,20 @@ int mv2_post_ud_recv_buffers(int num_bufs, mv2_ud_ctx_t *ud_ctx)
     int i = 0,ret = 0;
     vbuf* v = NULL;
     struct ibv_recv_wr* bad_wr = NULL;
+    int max_ud_bufs = (rdma_use_ud_srq)?mv2_ud_srq_fill_size:rdma_default_max_ud_recv_wqe;
+
     MPIDI_STATE_DECL(MPID_STATE_POST_RECV_BUFFERS);
     MPIDI_FUNC_ENTER(MPID_STATE_POST_RECV_BUFFERS);
 
-    if (num_bufs > rdma_default_max_ud_recv_wqe)
-    {
+    if (num_bufs > max_ud_bufs) {
         ibv_va_error_abort(
                 GEN_ASSERT_ERR,
                 "Try to post %d to UD recv buffers, max %d\n",
-                num_bufs, rdma_default_max_ud_recv_wqe);
+                num_bufs, max_ud_bufs);
     }
-    for (i = 0; i < num_bufs; ++i)
-    {
-        MV2_GET_AND_INIT_UD_VBUF(v);
-        if (v == NULL)
-        {
+    for (i = 0; i < num_bufs; ++i) {
+        v = get_ud_vbuf_by_offset(MV2_RECV_UD_VBUF_POOL_OFFSET);
+        if (v == NULL) {
             break;
         }
         vbuf_init_ud_recv(v, rdma_default_ud_mtu, ud_ctx->hca_num);
@@ -153,7 +154,7 @@ int mv2_post_ud_recv_buffers(int num_bufs, mv2_ud_ctx_t *ud_ctx)
         }
         if (ret)
         {
-            MRAILI_Release_vbuf(v);
+            release_vbuf(v);
             break;
         }
     }
@@ -488,6 +489,24 @@ int MRAILI_Process_send(void *vbuf_addr)
         }
 
         if(v->padding == COLL_VBUF_FLAG) { 
+#ifdef CHANNEL_MRAIL_GEN2
+            shmem_info_t *shmem = (shmem_info_t *)v->zcpy_coll_shmem_info;
+            /* Free slotted shmem regions/de-register memory here only if
+             * 1) Process has posted sends in a zcopy bcast/reduce.
+             * 2) The number of pending send_ops is zero.
+             * 3) The shmem_info struct's free is supposed to be deferred.
+             * This is to ensure that the buffers are freed only after all the
+             * send operations are complete to avoid local protection errors in
+             * the send operation */
+            if (shmem != NULL && shmem->zcpy_coll_pending_send_ops > 0) {
+                shmem->zcpy_coll_pending_send_ops--;
+                if (shmem->defer_free == 1 && shmem->zcpy_coll_pending_send_ops == 0) {
+                    mv2_shm_coll_cleanup(shmem);
+                    MPIU_Free(shmem);
+                    v->zcpy_coll_shmem_info = NULL;
+                }
+            }
+#endif
             MRAILI_Release_vbuf(v);
             goto fn_exit;
         } 
@@ -1063,7 +1082,7 @@ int mv2_shm_coll_post_send(vbuf *v, int rail, MPIDI_VC_t * vc)
     return mpi_errno; 
 }
 
-void mv2_shm_coll_prepare_post_send(uint64_t local_rdma_addr, uint64_t remote_rdma_addr, 
+void mv2_shm_coll_prepare_post_send(void *zcpy_coll_shmem_info, uint64_t local_rdma_addr, uint64_t remote_rdma_addr, 
                       uint32_t local_rdma_key, uint32_t remote_rdma_key, 
                       int len, int rail, MPIDI_VC_t * vc)
 {
@@ -1087,6 +1106,7 @@ void mv2_shm_coll_prepare_post_send(uint64_t local_rdma_addr, uint64_t remote_rd
     (v)->desc.sg_entry.addr =  (uintptr_t) (local_rdma_addr);
     (v)->padding = COLL_VBUF_FLAG;
     (v)->vc   = vc;
+    (v)->zcpy_coll_shmem_info = zcpy_coll_shmem_info;
     XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
     mv2_shm_coll_post_send(v, rail, vc);
 

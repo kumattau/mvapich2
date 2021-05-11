@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -119,7 +119,7 @@ typedef struct _ibv_ops_t {
                    uint16_t lid);
     int (*detach_mcast)(struct ibv_qp *qp, const union ibv_gid *gid,
                    uint16_t lid);
-    /* Functions related to aysnc events */
+    /* Functions related to async events */
     int (*get_async_event)(struct ibv_context *context,
                             struct ibv_async_event *event);
     
@@ -276,6 +276,7 @@ static inline int mv2_ibv_dlopen_init()
 #ifdef _ENABLE_IBV_DLOPEN_
     ibv_dl_handle = dlopen("libibverbs.so", RTLD_NOW);
     if (!ibv_dl_handle) {
+        fprintf(stderr, "Error opening libibverbs.so: %s.\n", dlerror());
         return ERROR_DLOPEN;
     }
 #endif /*_ENABLE_IBV_DLOPEN_*/
@@ -339,6 +340,7 @@ static inline int mv2_mad_dlopen_init()
 #ifdef _ENABLE_IBV_DLOPEN_
     mad_dl_handle = dlopen("libibmad.so", RTLD_NOW);
     if (!mad_dl_handle) {
+        fprintf(stderr, "Error opening libibmad.so: %s.\n", dlerror());
         return ERROR_DLOPEN;
     }
 #endif /*_ENABLE_IBV_DLOPEN_*/
@@ -361,6 +363,7 @@ static inline int mv2_umad_dlopen_init()
 #ifdef _ENABLE_IBV_DLOPEN_
     umad_dl_handle = dlopen("libibumad.so", RTLD_NOW);
     if (!umad_dl_handle) {
+        fprintf(stderr, "Error opening libibumad.so: %s.\n", dlerror());
         return ERROR_DLOPEN;
     }
     /* Since "register" is a keyword and "free" is a known function, we cannot
@@ -399,6 +402,7 @@ static inline int mv2_rdma_dlopen_init()
 #ifdef _ENABLE_IBV_DLOPEN_
     rdma_dl_handle = dlopen("librdmacm.so", RTLD_NOW);
     if (!rdma_dl_handle) {
+        fprintf(stderr, "Error opening librdmacm.so: %s.\n", dlerror());
         return ERROR_DLOPEN;
     }
 #endif /*_ENABLE_IBV_DLOPEN_*/

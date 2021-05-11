@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,6 +39,7 @@
 #include "mv2_arch_hca_detect.h"
 #include "debug_utils.h"
 #include "helper_fns.h"
+#include <hwloc/linux.h>
 
 /* CPU Mapping related definitions */
 
@@ -71,6 +72,10 @@ int *mv2_core_map_per_numa; /* list of core ids based on NUMA nodes */
 
 int mv2_my_cpu_id = -1;
 int mv2_my_sock_id = -1;
+int mv2_my_numa_id = -1;
+int mv2_my_l3_id = -1;
+int mv2_num_intra_node_comm_levels = 0;
+int mv2_intra_node_cluster_at_level[5] = {0};
 int mv2_my_async_cpu_id = -1;
 int *local_core_ids = NULL;
 int mv2_user_defined_mapping = FALSE;
@@ -200,15 +205,19 @@ int get_ib_socket(struct ibv_device * ibdev)
     char string[256];
     int retval = 0;
 
+    if (smpi_load_hwloc_topology_whole()) {
+        return MPI_ERR_INTERN;
+    }
+
     if (!(set = hwloc_bitmap_alloc())) {
         goto fn_exit;
     }
 
-    if (hwloc_ibv_get_device_cpuset(topology, ibdev, set)) {
+    if (hwloc_ibv_get_device_cpuset(topology_whole, ibdev, set)) {
         goto fn_exit;
     }
 
-    osdev = hwloc_get_obj_inside_cpuset_by_type(topology, set,
+    osdev = hwloc_get_obj_inside_cpuset_by_type(topology_whole, set,
             HWLOC_OBJ_SOCKET, 0);
 
     if (NULL == osdev) {
@@ -1993,52 +2002,6 @@ fn_fail:
     goto fn_exit;
 }
 
-#undef FUNCNAME
-#define FUNCNAME smpi_identify_my_sock_id
-#undef FCNAME
-#define FCNAME MPL_QUOTE(FUNCNAME)
-int smpi_identify_my_sock_id()
-{
-    int i = 0;
-    int mpi_errno = MPI_SUCCESS;
-    int num_sockets = -1;
-    int depth_sockets = -1;
-    hwloc_obj_t socket = NULL;
-    hwloc_cpuset_t my_cpuset = NULL, sock_cpuset = NULL;
-    char cpu_str[128];
-
-    /* Alloc cpuset */
-    my_cpuset = hwloc_bitmap_alloc();
-    sock_cpuset = hwloc_bitmap_alloc();
-    /* Clear CPU set */
-    hwloc_bitmap_zero(my_cpuset);
-    hwloc_bitmap_zero(sock_cpuset);
-    /* Set cpuset to mv2_my_cpu_id */
-    hwloc_bitmap_set(my_cpuset, mv2_my_cpu_id);
-
-    depth_sockets   = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
-    num_sockets     = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
-
-    for (i = 0; i < num_sockets; ++i) {
-        socket = hwloc_get_obj_by_depth(topology, depth_sockets, i);
-        /* Find the list of CPUs we're allowed to use in the socket */
-        hwloc_bitmap_and(sock_cpuset, socket->cpuset, hwloc_topology_get_allowed_cpuset(topology));
-        /* Find the socket the core I'm bound to resides on */
-        if (hwloc_bitmap_intersects(my_cpuset, sock_cpuset)) {
-            /* Store my sock ID */
-            mv2_my_sock_id = i;
-            break;
-        }
-    }
-    if (my_cpuset) {
-        hwloc_bitmap_free(my_cpuset);
-    }
-    if (sock_cpuset) {
-        hwloc_bitmap_free(sock_cpuset);
-    }
-fn_fail:
-    return mpi_errno;
-}
 
 #undef FUNCNAME
 #define FUNCNAME smpi_identify_free_cores
@@ -2158,6 +2121,182 @@ fn_fail:
 #endif /*defined(CHANNEL_MRAIL)*/
 
 #undef FUNCNAME
+#define FUNCNAME smpi_identify_my_sock_id
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int smpi_identify_my_sock_id()
+{
+    int i = 0;
+    int mpi_errno = MPI_SUCCESS;
+    int num_sockets = -1, depth_numa = -1;
+    int depth_sockets = -1;
+    int add_topo_comm_level = 1;
+    hwloc_obj_t socket = NULL;
+    hwloc_cpuset_t my_cpuset = NULL, sock_cpuset = NULL, numa_cpuset = NULL;
+    hwloc_obj_t numa = NULL;
+
+    /* Alloc cpuset */
+    my_cpuset = hwloc_bitmap_alloc();
+    sock_cpuset = hwloc_bitmap_alloc();
+    /* Clear CPU set */
+    hwloc_bitmap_zero(my_cpuset);
+    hwloc_bitmap_zero(sock_cpuset);
+
+    hwloc_get_proc_cpubind(topology_whole, getpid(), my_cpuset, 0);
+
+    depth_sockets   = hwloc_get_type_depth(topology_whole, HWLOC_OBJ_SOCKET);
+    num_sockets     = hwloc_get_nbobjs_by_depth(topology_whole, depth_sockets);
+    for (i = 0; i < num_sockets; ++i) {
+        socket = hwloc_get_obj_by_depth(topology_whole, depth_sockets, i);
+        /* Find the list of CPUs we're allowed to use in the socket */
+        hwloc_bitmap_and(sock_cpuset, socket->cpuset, hwloc_topology_get_allowed_cpuset(topology_whole));
+        /* Find the socket the core I'm bound to resides on */
+        if (hwloc_bitmap_intersects(my_cpuset, sock_cpuset)) {
+            /* Store my sock ID */
+            mv2_my_sock_id = i;
+            break;
+        }
+        hwloc_bitmap_zero(sock_cpuset);
+    }
+
+    int numa_id = 0;
+    if (mv2_num_intra_node_comm_levels >= 1) {
+        numa_id = mv2_intra_node_cluster_at_level[mv2_num_intra_node_comm_levels - 1];
+    }
+    
+    depth_numa = hwloc_get_type_depth(topology_whole, HWLOC_OBJ_NUMANODE);
+    numa = hwloc_get_obj_by_depth(topology_whole, depth_numa, numa_id);
+    
+    if(numa != NULL) {
+        numa_cpuset = numa->cpuset;
+    }
+    
+    if (num_sockets > 1) {
+        /* If numa_cpuset is the same as the process's socket-level cpuset,
+         * ignore the current level */
+        if (numa_cpuset != NULL && hwloc_bitmap_isincluded(numa_cpuset, sock_cpuset)) {
+            add_topo_comm_level = 0;
+        }
+        if (add_topo_comm_level) {
+            mv2_intra_node_cluster_at_level[mv2_num_intra_node_comm_levels] = mv2_my_sock_id;
+            mv2_num_intra_node_comm_levels++;
+        }
+    }
+    
+    if (my_cpuset) {
+        hwloc_bitmap_free(my_cpuset);
+    }
+    if (sock_cpuset) {
+        hwloc_bitmap_free(sock_cpuset);
+    }
+    return mpi_errno;
+}
+
+#undef FUNCNAME
+#define FUNCNAME smpi_identify_my_numa_id
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int smpi_identify_my_numa_id()
+{
+    int i = 0;
+    int mpi_errno = MPI_SUCCESS;
+    int num_numa = -1;
+    int depth_numa = -1;
+    hwloc_obj_t numa = NULL;
+    hwloc_cpuset_t my_cpuset = NULL, numa_cpuset = NULL;
+
+    /* Alloc cpuset */
+    my_cpuset = hwloc_bitmap_alloc();
+    numa_cpuset = hwloc_bitmap_alloc();
+    /* Clear CPU set */
+    hwloc_bitmap_zero(my_cpuset);
+    hwloc_bitmap_zero(numa_cpuset);
+
+    hwloc_get_proc_cpubind(topology_whole, getpid(), my_cpuset, 0);
+
+    depth_numa   = hwloc_get_type_depth(topology_whole, HWLOC_OBJ_NUMANODE);
+    num_numa     = hwloc_get_nbobjs_by_depth(topology_whole, depth_numa);
+
+    for (i = 0; i < num_numa; ++i) {
+        numa = hwloc_get_obj_by_depth(topology_whole, depth_numa, i);
+        /* Find the list of CPUs we're allowed to use in the numa */
+        hwloc_bitmap_and(numa_cpuset, numa->cpuset, hwloc_topology_get_allowed_cpuset(topology_whole));
+        /* Find the numa the core I'm bound to resides on */
+        if (hwloc_bitmap_intersects(my_cpuset, numa_cpuset)) {
+            /* Store my numa ID */
+            mv2_my_numa_id = i;
+            break;
+        }
+        hwloc_bitmap_zero(numa_cpuset);
+    }
+    if (num_numa > 1) {
+        mv2_intra_node_cluster_at_level[mv2_num_intra_node_comm_levels] = mv2_my_numa_id;
+        mv2_num_intra_node_comm_levels++;
+    }
+
+    if (my_cpuset) {
+        hwloc_bitmap_free(my_cpuset);
+    }
+    if (numa_cpuset) {
+        hwloc_bitmap_free(numa_cpuset);
+    }
+    return mpi_errno;
+}
+
+#ifdef _USE_HWLOC_V2_
+#undef FUNCNAME
+#define FUNCNAME smpi_identify_my_l3_id
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int smpi_identify_my_l3_id()
+{
+    int i = 0;
+    int mpi_errno = MPI_SUCCESS;
+    int num_l3 = -1;
+    int depth_l3 = -1;
+    hwloc_obj_t l3 = NULL;
+    hwloc_cpuset_t my_cpuset = NULL, l3_cpuset = NULL;
+    char cpu_str[128];
+
+    /* Alloc cpuset */
+    my_cpuset = hwloc_bitmap_alloc();
+    l3_cpuset = hwloc_bitmap_alloc();
+    /* Clear CPU set */
+    hwloc_bitmap_zero(my_cpuset);
+    hwloc_bitmap_zero(l3_cpuset);
+    /* Set cpuset to mv2_my_cpu_id */
+    hwloc_bitmap_set(my_cpuset, mv2_my_cpu_id);
+
+    depth_l3   = hwloc_get_type_depth(topology, HWLOC_OBJ_L3CACHE);
+    num_l3     = hwloc_get_nbobjs_by_depth(topology, depth_l3);
+
+    for (i = 0; i < num_l3; ++i) {
+        l3 = hwloc_get_obj_by_depth(topology, depth_l3, i);
+        /* Find the list of CPUs we're allowed to use in the l3 */
+        hwloc_bitmap_and(l3_cpuset, l3->cpuset, hwloc_topology_get_allowed_cpuset(topology));
+        /* Find the l3 the core I'm bound to resides on */
+        if (hwloc_bitmap_intersects(my_cpuset, l3_cpuset)) {
+            /* Store my l3 ID */
+            mv2_my_l3_id = i;
+            break;
+        }
+    }
+    if (num_l3 > 1) {
+        mv2_intra_node_cluster_at_level[mv2_num_intra_node_comm_levels] = mv2_my_l3_id;
+        mv2_num_intra_node_comm_levels++;
+    }
+    if (my_cpuset) {
+        hwloc_bitmap_free(my_cpuset);
+    }
+    if (l3_cpuset) {
+        hwloc_bitmap_free(l3_cpuset);
+    }
+fn_fail:
+    return mpi_errno;
+}
+#endif /*#ifdef _USE_HWLOC_V2_*/
+
+#undef FUNCNAME
 #define FUNCNAME SMPI_LOAD_HWLOC_TOPOLOGY_WHOLE
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
@@ -2235,15 +2374,23 @@ int smpi_load_hwloc_topology_whole(void)
     /* Local Rank 0 broadcasts topology using xml */
     if (0 == my_local_id) {
         mpi_errno = hwloc_topology_load(topology_whole);
-        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-
+        if (mpi_errno) {
+            /* MPICH error handlers do not seem to recognize error codes from
+             * HWLOC correctly. Set mpi_errno = MPI_ERR_INTERN. */
+            mpi_errno = MPI_ERR_INTERN;
+            MPIR_ERR_POP(mpi_errno);
+        }
 #ifdef _USE_HWLOC_V1_
         mpi_errno = hwloc_topology_export_xml(topology_whole, tmppath);
 #else
         mpi_errno = hwloc_topology_export_xml(topology_whole, tmppath, 0);
 #endif
-        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-
+        if (mpi_errno) {
+            /* MPICH error handlers do not seem to recognize error codes from
+             * HWLOC correctly. Set mpi_errno = MPI_ERR_INTERN. */
+            mpi_errno = MPI_ERR_INTERN;
+            MPIR_ERR_POP(mpi_errno);
+        }
         if(rename(tmppath, whole_topology_xml_path) < 0) {
             MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
                                   "rename", strerror(errno));
@@ -2253,10 +2400,19 @@ int smpi_load_hwloc_topology_whole(void)
             usleep(1000);
         }
         mpi_errno = hwloc_topology_set_xml(topology_whole, whole_topology_xml_path);
-        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-
+        if (mpi_errno) {
+            /* MPICH error handlers do not seem to recognize error codes from
+             * HWLOC correctly. Set mpi_errno = MPI_ERR_INTERN. */
+            mpi_errno = MPI_ERR_INTERN;
+            MPIR_ERR_POP(mpi_errno);
+        }
         mpi_errno = hwloc_topology_load(topology_whole);
-        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+        if (mpi_errno) {
+            /* MPICH error handlers do not seem to recognize error codes from
+             * HWLOC correctly. Set mpi_errno = MPI_ERR_INTERN. */
+            mpi_errno = MPI_ERR_INTERN;
+            MPIR_ERR_POP(mpi_errno);
+        }
     }
 
   fn_exit:
@@ -2270,6 +2426,9 @@ int smpi_load_hwloc_topology_whole(void)
     return mpi_errno;
 
   fn_fail:
+    if (bcast_topology != 0) {
+        PRINT_ERROR("Please retry after setting MV2_BCAST_HWLOC_TOPOLOGY=0\n");
+    }
     goto fn_exit;
 }
 
@@ -2342,15 +2501,23 @@ int smpi_load_hwloc_topology(void)
     /* Local Rank 0 broadcasts topology using xml */
     if (0 == my_local_id) {
         mpi_errno = hwloc_topology_load(topology);
-        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-
+        if (mpi_errno) {
+            /* MPICH error handlers do not seem to recognize error codes from
+             * HWLOC correctly. Set mpi_errno = MPI_ERR_INTERN. */
+            mpi_errno = MPI_ERR_INTERN;
+            MPIR_ERR_POP(mpi_errno);
+        }
 #ifdef _USE_HWLOC_V1_
         mpi_errno = hwloc_topology_export_xml(topology, tmppath);
 #else
         mpi_errno = hwloc_topology_export_xml(topology, tmppath, 0);
 #endif
-        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-
+        if (mpi_errno) {
+            /* MPICH error handlers do not seem to recognize error codes from
+             * HWLOC correctly. Set mpi_errno = MPI_ERR_INTERN. */
+            mpi_errno = MPI_ERR_INTERN;
+            MPIR_ERR_POP(mpi_errno);
+        }
         if(rename(tmppath, xmlpath) < 0) {
             MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
                                   "rename", strerror(errno));
@@ -2360,10 +2527,19 @@ int smpi_load_hwloc_topology(void)
             usleep(1000);
         }
         mpi_errno = hwloc_topology_set_xml(topology, xmlpath);
-        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-
+        if (mpi_errno) {
+            /* MPICH error handlers do not seem to recognize error codes from
+             * HWLOC correctly. Set mpi_errno = MPI_ERR_INTERN. */
+            mpi_errno = MPI_ERR_INTERN;
+            MPIR_ERR_POP(mpi_errno);
+        }
         mpi_errno = hwloc_topology_load(topology);
-        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+        if (mpi_errno) {
+            /* MPICH error handlers do not seem to recognize error codes from
+             * HWLOC correctly. Set mpi_errno = MPI_ERR_INTERN. */
+            mpi_errno = MPI_ERR_INTERN;
+            MPIR_ERR_POP(mpi_errno);
+        }
     }
 
   fn_exit:
@@ -2377,6 +2553,9 @@ int smpi_load_hwloc_topology(void)
     return mpi_errno;
 
   fn_fail:
+    if (bcast_topology != 0) {
+        PRINT_ERROR("Please retry after setting MV2_BCAST_HWLOC_TOPOLOGY=0\n");
+    }
     goto fn_exit;
 }
 
@@ -2492,7 +2671,8 @@ int smpi_setaffinity(int my_local_id)
                 mv2_enable_affinity = 0;
                 MPIU_Free(s_cpu_mapping);
                 s_cpu_mapping = NULL;
-                goto fn_fail;
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, 
+                    "**fail", "**fail %s", "Error parsing CPU mapping string");
             }
 
             // parsing of the string
@@ -2508,7 +2688,8 @@ int smpi_setaffinity(int my_local_id)
                         fprintf(stderr, "CPU Affinity is undefined \n");
                         mv2_enable_affinity = 0;
                         MPIU_Free(s_cpu_mapping);
-                        goto fn_fail;
+                        MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, 
+                            "**cpuaffinity");
                     }
                     hwloc_bitmap_set(cpuset, cpunum);
                     mv2_my_cpu_id = cpunum;
@@ -2524,7 +2705,8 @@ int smpi_setaffinity(int my_local_id)
                         fprintf(stderr, "CPU Affinity is undefined \n");
                         mv2_enable_affinity = 0;
                         MPIU_Free(s_cpu_mapping);
-                        goto fn_fail;
+                        MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, 
+                            "**cpuaffinity");
                     } else {
                         int cpuend = first_num_from_str(&token);
                         if (cpuend >= N_CPUs_online || cpuend < cpunum) {
@@ -2534,7 +2716,8 @@ int smpi_setaffinity(int my_local_id)
                             fprintf(stderr, "CPU Affinity is undefined \n");
                             mv2_enable_affinity = 0;
                             MPIU_Free(s_cpu_mapping);
-                            goto fn_fail;
+                            MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, 
+                                 "**cpuaffinity");
                         }
                         int cpuval;
                         for (cpuval = cpunum + 1; cpuval <= cpuend; cpuval++)
@@ -2546,7 +2729,8 @@ int smpi_setaffinity(int my_local_id)
                     fprintf(stderr, "CPU Affinity is undefined \n");
                     mv2_enable_affinity = 0;
                     MPIU_Free(s_cpu_mapping);
-                    goto fn_fail;
+                    MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, 
+                        "**cpuaffinity");
                 }
             }
             // then attachment
@@ -2580,7 +2764,8 @@ int smpi_setaffinity(int my_local_id)
                 if (mpi_errno != 0) {
                     fprintf(stderr, "Error parsing CPU mapping string\n");
                     mv2_enable_affinity = 0;
-                    goto fn_fail;
+                    MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, 
+                    "**fail", "**fail %s", "Error parsing CPU mapping string");
                 }
 
                 int cores_per_socket = 0;
@@ -2626,10 +2811,6 @@ int smpi_setaffinity(int my_local_id)
         /* Free cpuset */
         hwloc_bitmap_free(cpuset);
     }
-#if defined(CHANNEL_MRAIL)
-    /* Find the socket I am bound to */
-    mpi_errno = smpi_identify_my_sock_id();
-#endif /* #if defined(CHANNEL_MRAIL) */
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_SMPI_SETAFFINITY);
     return mpi_errno;
@@ -2745,7 +2926,7 @@ int mv2_show_hca_affinity(int verbosity)
                     comm_world, &errflag);
 
     if (mpi_errno != MPI_SUCCESS) {
-        fprintf(stderr, "MPIR_Allgather_impl returned error: %d", mpi_errno);
+        fprintf(stderr, "MPIR_Gather_impl returned error: %d", mpi_errno);
         return mpi_errno;
     }
     if(my_rank == 0 && all_hca_names != NULL) {
@@ -2816,7 +2997,9 @@ static int mv2_generate_implicit_cpu_mapping (int local_procs, int num_app_threa
     count = mv2_pivot_core_id;
     
     /* call optimized topology load */
-    smpi_load_hwloc_topology ();
+    if (smpi_load_hwloc_topology()) {
+        return MPI_ERR_INTERN;
+    }
 
     num_sockets = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_SOCKET);
     num_numanodes = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_NUMANODE);
@@ -3062,6 +3245,15 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
     
     N_CPUs_online = sysconf(_SC_NPROCESSORS_ONLN);
 
+#if defined(CHANNEL_MRAIL)
+    /* The code for detecting DPM support should come before setting process
+     * affinity since forcing process to core affinity can lead to
+     * oversubscription in a DPM scenario. */
+    if (((value = getenv("MV2_SUPPORT_DPM")) != NULL) && !!atoi(value)) {
+        setenv("MV2_ENABLE_AFFINITY", "0", 1);
+    }
+#endif /* defined(CHANNEL_MRAIL)*/
+
     if ((value = getenv("MV2_ENABLE_AFFINITY")) != NULL) {
         mv2_enable_affinity = atoi(value);
     }
@@ -3100,11 +3292,10 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
                             "and re-run the program.\n\n", 
                             num_local_procs, N_CPUs_online);
 
-            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                    "**fail", "**fail %s",
-                    "MV2_ENABLE_AFFINITY: oversubscribed cores.");
         }
-        goto fn_fail;
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                "**fail", "**fail %s",
+                "MV2_ENABLE_AFFINITY: oversubscribed cores.");
     }
 
     if (mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) != NULL) {
@@ -3238,7 +3429,7 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
         mpi_errno = mv2_generate_implicit_cpu_mapping (num_local_procs, 
                mv2_threads_per_proc);
         if (mpi_errno != MPI_SUCCESS) {
-           goto fn_fail;
+            MPIR_ERR_POP(mpi_errno);
         }
     }
 
@@ -3255,15 +3446,15 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
             } else {
                 MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                     "**fail", "**fail %s",
-                    "CPU_BINDING_PRIMITIVE: Level should be core, socket, or numanode.");
+                    "CPU_BINDING_PRIMITIVE: Level should be core, "
+                    "socket, or numanode.");
             }
             if (MV2_ARCH_INTEL_XEON_PHI_7250 == arch_type &&
                     mv2_binding_level != LEVEL_CORE) {
-                if (MPIDI_Process.my_pg_rank == 0) {
-                    fprintf(stderr, "CPU_BINDING_PRIMITIVE: Only core level binding supported for this architecture.\n");
-                }
-                mpi_errno = MPI_ERR_OTHER;
-                goto fn_fail;
+                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, 
+                    "**fail", "**fail %s", 
+                    "CPU_BINDING_PRIMITIVE: Only core level binding"
+                    " supported for this architecture.");
             }
             mv2_user_defined_mapping = TRUE;
         } else {

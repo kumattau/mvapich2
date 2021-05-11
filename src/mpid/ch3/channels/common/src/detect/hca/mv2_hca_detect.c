@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -227,7 +227,7 @@ const float get_link_speed(uint8_t speed)
 
     case 16: return 14.0; /* FDR */
     case 32: return 25.0; /* EDR */
-    case 64: return 50.0; /* EDR */
+    case 64: return 50.0; /* HDR */
     default:
         PRINT_ERROR("Invalid link speed %u\n", speed);
         return 0;    /* Invalid speed */
@@ -243,7 +243,7 @@ int mv2_check_hca_type(mv2_hca_type type, int rank)
         type == MV2_HCA_CHLSIO_START      || type == MV2_HCA_CHLSIO_END      ||
         type == MV2_HCA_INTEL_IWARP_START || type == MV2_HCA_INTEL_IWARP_END ||
         type == MV2_HCA_QLGIC_START       || type == MV2_HCA_QLGIC_END       ||
-        type == MV2_HCA_MARVEL_START       || type == MV2_HCA_MARVEL_END       ||
+        type == MV2_HCA_MARVEL_START      || type == MV2_HCA_MARVEL_END       ||
         type == MV2_HCA_INTEL_START       || type == MV2_HCA_INTEL_END) {
 
         PRINT_INFO((rank==0), "Wrong value specified for MV2_FORCE_HCA_TYPE\n");
@@ -296,6 +296,7 @@ mv2_hca_type mv2_new_get_hca_type(struct ibv_context *ctx,
 
     if ((value = getenv("MV2_FORCE_HCA_TYPE")) != NULL) {
         hca_type = atoi(value);
+        PRINT_DEBUG(DEBUG_INIT_verbose, "Attempting to force HCA %s\n", mv2_get_hca_name(hca_type));
         int retval = mv2_check_hca_type(hca_type, my_rank);
         if (retval) {
             PRINT_INFO((my_rank==0), "Falling back to Automatic HCA detection\n");
@@ -452,6 +453,7 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 
     if ((value = getenv("MV2_FORCE_HCA_TYPE")) != NULL) {
         hca_type = atoi(value);
+        PRINT_DEBUG(DEBUG_INIT_verbose, "Attempting to force HCA %s\n", mv2_get_hca_name(hca_type));
         int retval = mv2_check_hca_type(hca_type, my_rank);
         if (retval) {
             PRINT_INFO((my_rank==0), "Falling back to Automatic HCA detection\n");
@@ -684,6 +686,7 @@ mv2_hca_type mv2_get_hca_type(void *dev)
 
     if ((value = getenv("MV2_FORCE_HCA_TYPE")) != NULL) {
         hca_type = atoi(value);
+        PRINT_DEBUG(DEBUG_INIT_verbose, "Attempting to force HCA %s\n", mv2_get_hca_name(hca_type));
         int retval = mv2_check_hca_type(hca_type, my_rank);
         if (retval) {
             PRINT_INFO((my_rank==0), "Falling back to Automatic HCA detection\n");

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -69,7 +69,7 @@ int show_backtrace = 0;
 // Signal handler for errors
 void error_sighandler(int sig, siginfo_t *info, void *secret) {
     // Always print error
-    PRINT_ERROR( "Caught error: %s (signal %d)\n", sys_siglist[sig], sig );
+    PRINT_ERROR( "Caught error: %s (signal %d)\n", strsignal(sig), sig );
     // Show backtrace if required
     if (show_backtrace) print_backtrace();
     // Raise the signal again with default handler

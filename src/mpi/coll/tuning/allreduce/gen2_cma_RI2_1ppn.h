@@ -22,8 +22,8 @@
 	{65536, &MPIR_Allreduce_pt2pt_rs_MV2},		\
 	{131072, &MPIR_Allreduce_pt2pt_rd_MV2},		\
 	{262144, &MPIR_Allreduce_pt2pt_rs_MV2},		\
-	{524288, &MPIR_Allreduce_pt2pt_rs_MV2},		\
-	{1048576, &MPIR_Allreduce_pt2pt_rs_MV2}		\
+	{524288, &MPIR_Allreduce_pt2pt_ring_wrapper_MV2},		\
+	{1048576, &MPIR_Allreduce_pt2pt_ring_wrapper_MV2}		\
 	},		\
 	19,		\
 	{		\
@@ -71,8 +71,8 @@
 	{65536, &MPIR_Allreduce_pt2pt_rs_MV2},		\
 	{131072, &MPIR_Allreduce_pt2pt_rs_MV2},		\
 	{262144, &MPIR_Allreduce_pt2pt_rs_MV2},		\
-	{524288, &MPIR_Allreduce_pt2pt_rs_MV2},		\
-	{1048576, &MPIR_Allreduce_pt2pt_rs_MV2}		\
+	{524288, &MPIR_Allreduce_pt2pt_ring_wrapper_MV2},		\
+	{1048576, &MPIR_Allreduce_pt2pt_ring_wrapper_MV2}		\
 	},		\
 	19,		\
 	{		\
@@ -120,8 +120,8 @@
 	{65536, &MPIR_Allreduce_pt2pt_rs_MV2},		\
 	{131072, &MPIR_Allreduce_pt2pt_rs_MV2},		\
 	{262144, &MPIR_Allreduce_pt2pt_rs_MV2},		\
-	{524288, &MPIR_Allreduce_pt2pt_rs_MV2},		\
-	{1048576, &MPIR_Allreduce_pt2pt_rs_MV2}		\
+	{524288, &MPIR_Allreduce_pt2pt_ring_wrapper_MV2},		\
+	{1048576, &MPIR_Allreduce_pt2pt_ring_wrapper_MV2}		\
 	},		\
 	19,		\
 	{		\
@@ -218,8 +218,8 @@
 	{65536, &MPIR_Allreduce_pt2pt_rs_MV2},		\
 	{131072, &MPIR_Allreduce_pt2pt_rs_MV2},		\
 	{262144, &MPIR_Allreduce_pt2pt_rs_MV2},		\
-	{524288, &MPIR_Allreduce_pt2pt_rs_MV2},		\
-	{1048576, &MPIR_Allreduce_pt2pt_rs_MV2}		\
+	{524288, &MPIR_Allreduce_pt2pt_ring_wrapper_MV2},		\
+	{1048576, &MPIR_Allreduce_pt2pt_ring_wrapper_MV2}		\
 	},		\
 	19,		\
 	{		\

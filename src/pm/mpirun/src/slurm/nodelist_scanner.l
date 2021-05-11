@@ -1,6 +1,6 @@
 %{
 /*
- * Copyright (c) 2001-2020, The Ohio State University. All rights
+ * Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,7 +32,7 @@ IPv6address ({hexpart}(":"{IPv4address})?)
 
 labelA      ([[:alnum:]]([-[:alnum:]]*[[:alnum:]])?)
 labelB      ([[:alpha:]]([-[:alnum:]]*[[:alnum:]])?)
-hostname    ({labelA}(\.{labelB})*)
+hostname    ({labelA}([-_])?(\.{labelB})*)
 
 
 %option prefix="nodelist_yy" outfile="lex.yy.c"

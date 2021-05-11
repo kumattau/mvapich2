@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -12,7 +12,7 @@
 
 #include <regex.h>
 #include "iallreduce_tuning.h"
-
+#include "common_tuning.h"
 #include "mv2_arch_hca_detect.h"
 /* array used to tune iallreduce */
 
@@ -323,17 +323,17 @@ int MV2_internode_Iallreduce_is_define(char *mv2_user_iallreduce_inter, char *mv
         mv2_tmp_iallreduce_thresholds_table[0].intra_node[0].min = 0;
         mv2_tmp_iallreduce_thresholds_table[0].intra_node[0].max = -1;
 	switch (atoi(mv2_user_iallreduce_inter)) {
-	case 1:
+	case IALLREDUCE_NAIVE:
 	    mv2_tmp_iallreduce_thresholds_table[0].inter_leader[0].MV2_pt_Iallreduce_function =
 		&MPIR_Iallreduce_naive;
 	    mv2_tmp_iallreduce_thresholds_table[0].is_two_level_iallreduce[0] = 0;
 	    break;
-	case 2:
+	case IALLREDUCE_REDSCAT_ALLGATHER:
 	    mv2_tmp_iallreduce_thresholds_table[0].inter_leader[0].MV2_pt_Iallreduce_function =
 		&MPIR_Iallreduce_redscat_allgather;
 	    mv2_tmp_iallreduce_thresholds_table[0].is_two_level_iallreduce[0] = 0;
 	    break;
-	case 3:
+	case IALLREDUCE_REC_DBL:
 	    mv2_tmp_iallreduce_thresholds_table[0].inter_leader[0].MV2_pt_Iallreduce_function =
 		&MPIR_Iallreduce_rec_dbl;
 	    mv2_tmp_iallreduce_thresholds_table[0].is_two_level_iallreduce[0] = 0;
@@ -381,17 +381,17 @@ int MV2_internode_Iallreduce_is_define(char *mv2_user_iallreduce_inter, char *mv
 	    }
 	    /* given () start at 1 */
 	    switch (atoi(p + match[1].rm_so)) {
-	    case 1:
+	    case IALLREDUCE_NAIVE:
 	        mv2_tmp_iallreduce_thresholds_table[0].inter_leader[0].MV2_pt_Iallreduce_function =
 	        	&MPIR_Iallreduce_naive;
 	        mv2_tmp_iallreduce_thresholds_table[0].is_two_level_iallreduce[0] = 0;
 	        break;
-	    case 2:
+	    case IALLREDUCE_REDSCAT_ALLGATHER:
 	        mv2_tmp_iallreduce_thresholds_table[0].inter_leader[0].MV2_pt_Iallreduce_function =
 	        	&MPIR_Iallreduce_redscat_allgather;
 	        mv2_tmp_iallreduce_thresholds_table[0].is_two_level_iallreduce[0] = 0;
 	        break;
-	    case 3:
+	    case IALLREDUCE_REC_DBL:
 	        mv2_tmp_iallreduce_thresholds_table[0].inter_leader[0].MV2_pt_Iallreduce_function =
 	        	&MPIR_Iallreduce_rec_dbl;
 	        mv2_tmp_iallreduce_thresholds_table[0].is_two_level_iallreduce[0] = 0;

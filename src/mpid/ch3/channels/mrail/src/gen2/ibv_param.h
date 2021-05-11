@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,7 @@
 #include "debug_utils.h"
 #include "mv2_arch_hca_detect.h"
 
+extern int mv2_use_opt_eager_recv;
 extern int mv2_enable_eager_threshold_reduction;
 #if defined(_SHARP_SUPPORT_)
 extern int mv2_enable_sharp_coll;
@@ -25,6 +26,8 @@ extern int mv2_sharp_port;
 extern char * mv2_sharp_hca_name;
 extern int mv2_enable_sharp_allreduce;
 extern int mv2_enable_sharp_barrier;
+extern int mv2_enable_sharp_reduce;
+extern int mv2_enable_sharp_bcast;
 #endif
 extern int mv2_is_in_finalize;
 /* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
@@ -96,7 +99,11 @@ extern uint32_t mv2_srq_alloc_size;
 extern uint32_t mv2_srq_fill_size;
 extern uint32_t mv2_srq_limit;
 extern uint32_t mv2_max_r3_oust_send;
-
+#if defined(_ENABLE_UD_)
+extern uint32_t mv2_ud_srq_alloc_size;
+extern uint32_t mv2_ud_srq_fill_size;
+extern uint32_t mv2_ud_srq_limit;
+#endif /*defined(_ENABLE_UD_)*/
 extern int rdma_polling_set_threshold;
 extern int rdma_polling_set_limit;
 extern int rdma_fp_buffer_size;
@@ -226,10 +233,12 @@ extern int mv2_device_check_attribute;
 #define MV2_DEFAULT_UD_MTU 2048
 extern uint16_t rdma_default_ud_mtu;
 #if defined(_ENABLE_UD_)
+extern uint8_t rdma_use_ud_srq;
 extern uint8_t rdma_enable_hybrid;
 extern uint8_t rdma_enable_only_ud;
 extern uint8_t rdma_use_ud_zcopy;
 extern uint8_t rdma_ud_zcopy_enable_polling;
+extern uint8_t rdma_ud_zcopy_push_segment;
 extern uint32_t rdma_hybrid_enable_threshold;
 extern uint32_t rdma_default_max_ud_send_wqe;
 extern uint32_t rdma_default_max_ud_recv_wqe;
@@ -290,9 +299,11 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_MAX_PORTS          (2)
 #define RDMA_DEFAULT_MAX_SEND_WQE       (64)
 #define RDMA_DEFAULT_MAX_RECV_WQE       (128)
-#define RDMA_DEFAULT_MAX_UD_SEND_WQE    (2048)
+#define RDMA_DEFAULT_MIN_UD_ZCOPY_WQE   (1)
+#define RDMA_DEFAULT_MAX_UD_SEND_WQE    (256)
 #define RDMA_DEFAULT_MAX_UD_RECV_WQE    (4096)
-#define RDMA_UD_NUM_MSG_LIMIT           (4096)
+#define RDMA_UD_NUM_MSG_LIMIT           (100)
+#define RDMA_DEFAULT_UD_SENDWIN_SIZE    (400)
 #define RDMA_DEFAULT_MAX_SG_LIST        (1)
 #define RDMA_DEFAULT_PKEY_IX            (0)
 #define RDMA_DEFAULT_PKEY               (0x0)
@@ -310,6 +321,7 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_IBA_NULL_HCA               "nohca"
 #define RDMA_DEFAULT_POLLING_SET_LIMIT  (64)
 #define RDMA_FP_DEFAULT_BUF_SIZE        (4096)
+#define RDMA_UD_DEFAULT_NUM_RNDV_QPS    (64)
 /* DGX-2 boxes have 8 or 9 HCAs. Updating MAX_NUM_HCAS to 10 */
 #define MAX_NUM_HCAS                    (10)
 #ifndef MAX_NUM_PORTS
@@ -344,6 +356,7 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_VBUF_POOL_SIZE             (512)
 #define RDMA_OPT_VBUF_POOL_SIZE         (80)
 #define RDMA_UD_VBUF_POOL_SIZE          (8192)
+#define RDMA_UD_SRQ_VBUF_POOL_SIZE      (8192)
 #define RDMA_MIN_VBUF_POOL_SIZE         (512)
 #define RDMA_OPT_MIN_VBUF_POOL_SIZE     (32)
 #define RDMA_VBUF_SECONDARY_POOL_SIZE   (256)
@@ -369,6 +382,13 @@ extern int rdma_default_async_thread_stack_size;
 #define DEFAULT_VBUF_POOL_SIZE           {rdma_vbuf_pool_size, rdma_vbuf_pool_size, rdma_vbuf_pool_size, rdma_vbuf_pool_size}
 #define DEFAULT_VBUF_SECONDARY_POOL_SIZE {rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size, rdma_vbuf_secondary_pool_size}
 
+#if defined(_ENABLE_UD_)
+#define RDMA_MAX_UD_MTU                     (4096)
+#define DEFAULT_UD_VBUF_SIZES               {DEFAULT_SMALL_VBUF_SIZE, RDMA_MAX_UD_MTU, RDMA_MAX_UD_MTU}
+#define DEFAULT_UD_VBUF_POOL_SIZE           {rdma_ud_vbuf_pool_size, rdma_ud_vbuf_pool_size, rdma_ud_vbuf_pool_size}
+#define DEFAULT_UD_VBUF_SECONDARY_POOL_SIZE {rdma_ud_vbuf_pool_size, rdma_ud_vbuf_pool_size, rdma_ud_vbuf_pool_size}
+#endif /*defined(_ENABLE_UD_)*/
+
 #define RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD  (32)
 #define RDMA_DEFAULT_ASYNC_THREAD_STACK_SIZE  (1<<20)
 
@@ -380,6 +400,10 @@ extern int rdma_default_async_thread_stack_size;
 #define MV2_DEFAULT_SRQ_ALLOC_SIZE  32767
 #define MV2_DEFAULT_SRQ_FILL_SIZE   256
 #define MV2_DEFAULT_SRQ_LIMIT       30
+
+#define MV2_DEFAULT_UD_SRQ_ALLOC_SIZE  32767
+#define MV2_DEFAULT_UD_SRQ_FILL_SIZE   4096
+#define MV2_DEFAULT_UD_SRQ_LIMIT       128
 
 /* #define MIN(a,b) ((a)<(b)?(a):(b)) */
 
@@ -400,6 +424,15 @@ typedef enum _mv2_vbuf_pool_offsets {
 #endif /*_ENABLE_CUDA_*/
     MV2_MAX_NUM_VBUF_POOLS
 } mv2_vbuf_pool_offsets;
+
+#if defined(_ENABLE_UD_)
+typedef enum _mv2_ud_vbuf_pool_offsets {
+    MV2_SMALL_SEND_UD_VBUF_POOL_OFFSET = 0,
+    MV2_SEND_UD_VBUF_POOL_OFFSET,
+    MV2_RECV_UD_VBUF_POOL_OFFSET,
+    MV2_MAX_NUM_UD_VBUF_POOLS
+} mv2_ud_vbuf_pool_offsets;
+#endif /*defined(_ENABLE_UD_)*/
 
 /* Below ROUND_ROBIN refers to the rails where the rails are alternately
  * given to any process asking for it. Where as FIXED_MAPPING refers
@@ -761,6 +794,9 @@ typedef enum mv2_env_param_id {
     MV2_USE_UD_HYBRID,
     MV2_USE_ONLY_UD,
     MV2_USE_UD_SRQ,
+    MV2_UD_SRQ_SIZE,
+    MV2_UD_SRQ_LIMIT,
+    MV2_UD_SRQ_MAX_SIZE,
     MV2_HYBRID_ENABLE_THRESHOLD,
     MV2_HYBRID_MAX_RC_CONN,
     /* threads */

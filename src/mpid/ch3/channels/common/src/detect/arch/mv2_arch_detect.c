@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -52,11 +52,16 @@ cvars:
 === END_MPI_T_CVAR_INFO_BLOCK ===
 */
 
+/* A stub value to be used when forcing CPU architecture */
+#define MV2_STUB_NUM_CPUS   28
+
 #if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
 MPI_T_cvar_handle mv2_force_arch_type_handle = NULL;
 #endif
 
 #if defined(_SMP_LIMIC_)
+#include "rdma_impl.h"
+
 #define SOCKETS 32
 #define CORES 32
 #define HEX_FORMAT 16
@@ -145,6 +150,7 @@ mv2_hca_type  table_hca_tmp;
 #define INTEL_GOLD_GENERIC_MODEL_NAME  "Intel(R) Xeon(R) Gold"
 #define INTEL_GOLD_6132_MODEL_NAME "Intel(R) Xeon(R) Gold 6132 CPU @ 2.60GHz"
 #define INTEL_GOLD_6248_MODEL_NAME "Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz"
+#define INTEL_GOLD_6154_MODEL_NAME "Intel(R) Xeon(R) Gold 6154 CPU @ 3.00GHz"
 
 
 #define INTEL_XEON_PHI_GENERIC_MODEL_NAME "Intel(R) Xeon Phi(TM) CPU"
@@ -200,6 +206,7 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_PLATINUM_8170_2S_52,   "MV2_ARCH_INTEL_PLATINUM_8170_2S_52"},
     {MV2_ARCH_INTEL_GOLD_GENERIC,          "MV2_ARCH_INTEL_GOLD_GENERIC"},
     {MV2_ARCH_INTEL_GOLD_6132_2S_28,       "MV2_ARCH_INTEL_GOLD_6132_2S_28"},
+    {MV2_ARCH_INTEL_GOLD_6154_2S_36,       "MV2_ARCH_INTEL_GOLD_6154_2S_36"},
 
 
     /* KNL Architectures */
@@ -384,6 +391,10 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
                     arch_type = MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32;
                 }
             }
+        } else if (36 == num_cpus) {
+            if (NULL != strstr(model_name, INTEL_GOLD_6154_MODEL_NAME)) { /* Oracle BM.HPC2 */
+                arch_type = MV2_ARCH_INTEL_PLATINUM_8170_2S_52; /* Use generic SKL tables */
+            }
         /* Support Pitzer cluster */
         } else if (40 == num_cpus) {
             /* EPFL */
@@ -435,11 +446,28 @@ mv2_arch_type mv2_get_arch_type()
 
     if ((value = getenv("MV2_FORCE_ARCH_TYPE")) != NULL) {
         mv2_arch_type val = atoi(value);
+        PRINT_DEBUG(DEBUG_INIT_verbose, "Attempting to force ARCH %s\n", mv2_get_arch_name(val));
         int retval = mv2_check_proc_arch(val, my_rank);
         if (retval) {
             PRINT_INFO((my_rank==0), "Falling back to automatic architecture detection\n");
         } else {
             g_mv2_arch_type = val;
+            /* Set g_mv2_num_cpus to some value to ensure arch_hca_type
+             * computation is not affected. Since th value of g_mv2_num_cpus is
+             * not used anywhere, it should be fine. */
+            g_mv2_num_cpus = MV2_STUB_NUM_CPUS;
+            /* Set g_mv2_cpu_family_type appropriately when forcing arch */
+            if (g_mv2_arch_type >= MV2_ARCH_INTEL_START && g_mv2_arch_type <= MV2_ARCH_INTEL_END) {
+                g_mv2_cpu_family_type = MV2_CPU_FAMILY_INTEL;
+            } else if (g_mv2_arch_type >= MV2_ARCH_AMD_START && g_mv2_arch_type <= MV2_ARCH_AMD_END) {
+                g_mv2_cpu_family_type = MV2_CPU_FAMILY_AMD;
+            } else if (g_mv2_arch_type >= MV2_ARCH_IBM_START && g_mv2_arch_type <= MV2_ARCH_IBM_END) {
+                g_mv2_cpu_family_type = MV2_CPU_FAMILY_POWER;
+            } else if (g_mv2_arch_type >= MV2_ARCH_ARM_START && g_mv2_arch_type <= MV2_ARCH_ARM_END) {
+                g_mv2_cpu_family_type = MV2_CPU_FAMILY_ARM;
+            } else {
+                g_mv2_cpu_family_type = MV2_CPU_FAMILY_NONE;
+            }
         }
     }
 
@@ -452,7 +480,9 @@ mv2_arch_type mv2_get_arch_type()
         char model_name[MAX_NAME_LENGTH]={0};
 
         mv2_arch_type arch_type = MV2_ARCH_UNKWN;
-        smpi_load_hwloc_topology();
+        if (smpi_load_hwloc_topology()) {
+            return MPI_ERR_INTERN;
+        }
 
         /* Determine topology depth */
         topodepth = hwloc_topology_get_depth(topology);
@@ -699,7 +729,9 @@ void hwlocSocketDetection(int print_details)
     hwloc_obj_t sockets;
     
     /* Perform the topology detection. */
-    smpi_load_hwloc_topology();
+    if (smpi_load_hwloc_topology()) {
+        return;
+    }
     /*clear all the socket information and reset to -1*/
     for(i=0;i<SOCKETS;i++)
         for(j=0;j<CORES;j++)
@@ -758,7 +790,6 @@ void hwlocSocketDetection(int print_details)
         }
     }   
     MPIU_Free(str);
-
 }
 
 //Check the core, where the process is bound to
@@ -773,7 +804,9 @@ int getProcessBinding(pid_t pid)
     hwloc_bitmap_t cpubind_set;
 
     /* Perform the topology detection. */
-    smpi_load_hwloc_topology();
+    if (smpi_load_hwloc_topology()) {
+        return MPI_ERR_INTERN;
+    }
     cpubind_set = hwloc_bitmap_alloc();
     res = hwloc_get_proc_cpubind(topology, pid, cpubind_set, 0);
     if(-1 == res)
@@ -890,7 +923,89 @@ int get_socket_bound_info(int *socket_bound, int *num_sockets, int *num_cores_so
     hwloc_obj_t socket;
     int i,num_cores;
     int err = -1;
-    smpi_load_hwloc_topology_whole();
+    if (smpi_load_hwloc_topology_whole()) {
+        return err;
+    }
+    *num_sockets = hwloc_get_nbobjs_by_type(topology_whole, HWLOC_OBJ_SOCKET);
+    num_cores = hwloc_bitmap_weight(hwloc_topology_get_allowed_cpuset(topology_whole));
+    pid_t pid = getpid();
+
+    hwloc_bitmap_t cpubind_set = hwloc_bitmap_alloc();
+
+    int result = hwloc_get_proc_cpubind(topology_whole, pid, cpubind_set, 0);
+    if(result == -1)
+    {
+        PRINT_DEBUG(DEBUG_SHM_verbose > 0, "Error in getting cpubinding of process\n");
+        return -1;
+    }
+
+    int topodepth = hwloc_get_type_depth (topology_whole, HWLOC_OBJ_SOCKET);
+    *is_uniform = 1;
+    int num_valid_sockets = 0;
+    hwloc_cpuset_t allowed_cpuset = hwloc_bitmap_alloc();
+
+    for(i = 0; i < *num_sockets; i++)
+    {
+        socket = hwloc_get_obj_by_type(topology_whole, HWLOC_OBJ_SOCKET, i);
+        cpuset = socket->cpuset;
+        hwloc_bitmap_zero(allowed_cpuset);
+        hwloc_bitmap_and(allowed_cpuset, cpuset,
+                hwloc_topology_get_allowed_cpuset(topology_whole));
+        int num_cores_in_socket = hwloc_bitmap_weight(allowed_cpuset);
+        if(num_cores_in_socket != 0) {
+            num_valid_sockets++;
+        }
+    }
+
+    for(i = 0; i < *num_sockets; i++)
+    {
+        hwloc_bitmap_zero(allowed_cpuset);
+        socket = hwloc_get_obj_by_type(topology_whole, HWLOC_OBJ_SOCKET, i);
+        cpuset = socket->cpuset;
+        hwloc_bitmap_and(allowed_cpuset, cpuset,
+                hwloc_topology_get_allowed_cpuset(topology_whole));
+        int num_cores_in_socket = hwloc_bitmap_weight(allowed_cpuset);
+        if(num_cores_in_socket != 0) {
+            if(num_cores_in_socket != (num_cores / (num_valid_sockets)))
+            {
+                *is_uniform = 0;
+            }
+
+            hwloc_bitmap_t result_set = hwloc_bitmap_alloc();
+            hwloc_bitmap_and(result_set, cpuset, cpubind_set);
+            if(hwloc_bitmap_last(result_set) != -1)
+            {
+                *num_cores_socket = num_cores_in_socket;
+                *socket_bound = i;
+                PRINT_DEBUG(DEBUG_SHM_verbose > 0, "Socket : %d Num cores :%d"
+                        " Num cores in socket: %d Num sockets : %d Uniform :%d"
+                        "\n",i,num_cores, *num_cores_socket, num_valid_sockets,
+                        *is_uniform);
+                err = 0;
+            }
+            hwloc_bitmap_free(result_set);
+        }
+    }
+    *num_sockets = num_valid_sockets;
+    //Socket aware collectives don't support non-uniform architectures yet
+    if(!*is_uniform)
+    {
+        err = 1;
+    }
+    hwloc_bitmap_free(allowed_cpuset);
+    hwloc_bitmap_free(cpubind_set);
+    return err;
+}
+
+int get_numa_bound_info(int *socket_bound, int *num_sockets, int *num_cores_socket, int *is_uniform)
+{
+    hwloc_cpuset_t cpuset;
+    hwloc_obj_t socket;
+    int i,num_cores;
+    int err = -1;
+    if (smpi_load_hwloc_topology_whole()) {
+        return err;
+    }
     *num_sockets = hwloc_get_nbobjs_by_type(topology_whole, HWLOC_OBJ_NUMANODE);
     num_cores = hwloc_bitmap_weight(hwloc_topology_get_allowed_cpuset(topology_whole));
     pid_t pid = getpid();
@@ -936,17 +1051,17 @@ int get_socket_bound_info(int *socket_bound, int *num_sockets, int *num_cores_so
                 *is_uniform = 0;
             }
 
-            hwloc_bitmap_t result_set = hwloc_bitmap_alloc();                                                  
-            hwloc_bitmap_and(result_set, cpuset, cpubind_set);                                                   
-            if(hwloc_bitmap_last(result_set) != -1)                                                              
-            {                                                                                           
-                *num_cores_socket = num_cores_in_socket;                                                
-                *socket_bound = i;                                                                      
+            hwloc_bitmap_t result_set = hwloc_bitmap_alloc();
+            hwloc_bitmap_and(result_set, cpuset, cpubind_set);
+            if(hwloc_bitmap_last(result_set) != -1)
+            {
+                *num_cores_socket = num_cores_in_socket;
+                *socket_bound = i;
                 PRINT_DEBUG(DEBUG_SHM_verbose > 0, "Socket : %d Num cores :%d"
                         " Num cores in socket: %d Num sockets : %d Uniform :%d"
-                        "\n",i,num_cores, *num_cores_socket, num_valid_sockets, 
+                        "\n",i,num_cores, *num_cores_socket, num_valid_sockets,
                         *is_uniform);
-                err = 0;                                                                                
+                err = 0;
             }
             hwloc_bitmap_free(result_set);
         }
@@ -958,6 +1073,7 @@ int get_socket_bound_info(int *socket_bound, int *num_sockets, int *num_cores_so
         err = 1;
     }
     hwloc_bitmap_free(allowed_cpuset);
+    hwloc_bitmap_free(cpubind_set);
     return err;
 }
 

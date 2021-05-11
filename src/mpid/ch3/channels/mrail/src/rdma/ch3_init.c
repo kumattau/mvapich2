@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,7 @@
 #include "coll_shmem.h"
 #include "hwloc_bind.h"
 #include "cm.h"
+#include <timestamp.h>
 #if defined(_MCST_SUPPORT_)
 #include "ibv_mcast.h"
 #endif
@@ -117,7 +118,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     /* Allocate PMI Key Value Pair */
     mv2_allocate_pmi_keyval();
 
+    mv2_take_timestamp("MPIDI_CH3U_..._create_hook", NULL);
     mpi_errno = MPIDI_CH3U_Comm_register_create_hook(MPIDI_CH3I_comm_create, NULL);
+    mv2_take_timestamp("MPIDI_CH3U_..._create_hook", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     
     /* Choose default startup method and set default on-demand threshold */
@@ -159,7 +162,6 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         MPIDI_CH3I_Process.has_dpm = dpm;
     }
     if (MPIDI_CH3I_Process.has_dpm) {
-        setenv("MV2_ENABLE_AFFINITY", "0", 1);
 #if defined(RDMA_CM) && !defined(CKPT)
         /* DPM is not supported with RDMA_CM. Fall back to basic alltoall CM */
         MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
@@ -249,6 +251,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
          * hybrid is used */ 
         mv2_enable_zcpy_bcast = 0; 
         mv2_enable_zcpy_reduce = 0; 
+        rdma_use_coalesce = 0;
+        /* TODO: Automatically use SRQ for UD once it is working right */
+        rdma_use_ud_srq = 0;
         mv2_rdma_init_timers = 1;
 #if defined(RDMA_CM) && !defined(CKPT)
         /* UD/Hybrid is not supported with RDMA_CM. Fall back to basic alltoall CM */
@@ -259,8 +264,8 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         }
 #endif /*defined(RDMA_CM) && !defined(CKPT)*/
         if (MPIDI_CH3I_Process.has_dpm) {
-            MPL_error_printf("Error: DPM is not supported with Hybrid builds.\n"
-                    "Please reconfigure MVAPICH2 library without --enable-hybrid option.\n");
+            MPL_error_printf("Error: DPM is not supported with UD-Hybrid option.\n"
+                    "Please retry after setting MV2_HYBRID_ENABLE_THRESHOLD=<nprocs+1>.\n");
             MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
         }
     } 
@@ -382,15 +387,20 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     MPIDI_PG_Get_vc(pg, pg_rank, &MPIDI_CH3I_Process.vc);
 
     /* Initialize Progress Engine */
+    mv2_take_timestamp("MPIDI_CH3I_Progress_init", NULL);
     if ((mpi_errno = MPIDI_CH3I_Progress_init())) {
         MPIR_ERR_POP(mpi_errno);
     }
+    mv2_take_timestamp("MPIDI_CH3I_Progress_init", NULL);
 
     /* Get parameters from the job-launcher */
+    mv2_take_timestamp("rdma_get_pm_paramters", NULL);
     rdma_get_pm_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
-
+    mv2_take_timestamp("rdma_get_pm_paramters", NULL);
     /* Check for SMP only */
+    mv2_take_timestamp("MPIDI_CH3I_set_smp_only", NULL);
     MPIDI_CH3I_set_smp_only();
+    mv2_take_timestamp("MPIDI_CH3I_set_smp_only", NULL);
 
     if ((value = getenv("MV2_ENABLE_EAGER_THRESHOLD_REDUCTION")) != NULL) {
         mv2_enable_eager_threshold_reduction = !!atoi(value);
@@ -408,9 +418,15 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         rdma_polling_level = atoi(value);
     }
     /* Use abstractions to remove dependency on OFED */
+    mv2_take_timestamp("mv2_dlopen_init", NULL);
     mpi_errno = mv2_dlopen_init();
+    mv2_take_timestamp("mv2_dlopen_init", NULL);
     if (mpi_errno) {
-            MPIR_ERR_POP(mpi_errno);
+        PRINT_INFO((pg_rank == 0),
+                    "Failed to locate underlying libraries using dlopen."
+                    " Please reconfigure after setting --disable-ibv-dlopen\n");
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "mv2_dlopen_init");
     }
     if (!SMP_ONLY) {
         /* ibv_fork_init() initializes libibverbs's data structures to handle
@@ -418,7 +434,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
          * fork() is called explicitly or implicitly (such as in system()).
          * If the user requested support for fork safety, call ibv_fork_init */
         if (((value = getenv("MV2_SUPPORT_FORK_SAFETY")) != NULL) && !!atoi(value)) {
+            mv2_take_timestamp("fork_init", NULL);
             mpi_errno = ibv_ops.fork_init();
+            mv2_take_timestamp("fork_init", NULL);
             if (mpi_errno) {
                 MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                         "**fail %s", "ibv_fork_init");
@@ -428,30 +446,44 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
          * Identify local rank and number of local processes
          */
         if (pg->ch.local_process_id == -1) {
+            mv2_take_timestamp("MPIDI_Get_local_host", NULL);
             mpi_errno = MPIDI_Get_local_host(pg, pg_rank);
+            mv2_take_timestamp("MPIDI_Get_local_host", NULL);
             if (mpi_errno) {
                 MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                         "**fail %s", "MPIDI_Get_local_host");
             }
         }
 
+        mv2_take_timestamp("MPIDI_Get_local_process_id", NULL);
         rdma_local_id = MPIDI_Get_local_process_id(pg);
+        mv2_take_timestamp("MPIDI_Get_local_process_id", NULL);
+        mv2_take_timestamp("MPIDI_Num_local_processes", NULL);
         rdma_num_local_procs = MPIDI_Num_local_processes(pg);
+        mv2_take_timestamp("MPIDI_Num_local_processes", NULL);
 
         /* Reading the values from user first and then allocating the memory */
+        mv2_take_timestamp("rdma_get_control_paramters", NULL);
         mpi_errno = rdma_get_control_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
+        mv2_take_timestamp("rdma_get_control_paramters", NULL);
         if (mpi_errno) {
             MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                     "**fail %s", "rdma_get_control_parameters");
         }
         /* Set default values for parameters */
+        mv2_take_timestamp("rdma_set_default_paramters", NULL);
         rdma_set_default_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
+        mv2_take_timestamp("rdma_set_default_paramters", NULL);
         /* Read user defined values for parameters */
+        mv2_take_timestamp("rdma_get_user_paramters", NULL);
         rdma_get_user_parameters(pg_size, pg_rank);
+        mv2_take_timestamp("rdma_get_user_paramters", NULL);
 
         /* Allocate structures to store CM information
          * This MUST come after reading env vars */
+        mv2_take_timestamp("MPIDI_CH3I_MRAIL_CM_Alloc", NULL);
         mpi_errno = MPIDI_CH3I_MRAIL_CM_Alloc(pg);
+        mv2_take_timestamp("MPIDI_CH3I_MRAIL_CM_Alloc", NULL);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
 #if !defined(DISABLE_PTMALLOC)
@@ -469,11 +501,16 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #endif /* !defined(DISABLE_PTMALLOC) */
 
         /* Read RDMA FAST Path related params */
+        mv2_take_timestamp("rdma_set_rdma_fast_path_params", NULL);
         rdma_set_rdma_fast_path_params(pg_size);
+        mv2_take_timestamp("rdma_set_rdma_fast_path_params", NULL);
+        mv2_take_timestamp("MPIDI_CH3I Init Path", NULL);
         switch (MPIDI_CH3I_Process.cm_type) {
 #if defined(RDMA_CM)
             case MPIDI_CH3I_CM_RDMA_CM:
+                mv2_take_timestamp("MPIDI_CH3I_RDMA_CM_Init", NULL);
                 mpi_errno = MPIDI_CH3I_RDMA_CM_Init(pg, pg_rank, &conn_info);
+                mv2_take_timestamp("MPIDI_CH3I_RDMA_CM_Init", NULL);
                 if (mpi_errno != MPI_SUCCESS) {
                     if (user_selected_rdma_cm) {
                         /* Print backtrace and exit */
@@ -484,7 +521,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
                                 "Please set MV2_USE_RDMA_CM=0 to disable RDMA CM.\n");
                     }
                     /* Fall back to On-Demand CM */
+                    mv2_take_timestamp("ib_finalize_rdma_cm", NULL);
                     ib_finalize_rdma_cm(pg_rank, pg);
+                    mv2_take_timestamp("ib_finalize_rdma_cm", NULL);
                     rdma_default_port = RDMA_DEFAULT_PORT;
                     mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm = 0;
                     mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand = 0;
@@ -494,7 +533,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #endif /* defined(RDMA_CM) */
             case MPIDI_CH3I_CM_ON_DEMAND:
                 MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
+                mv2_take_timestamp("MPIDI_CH3I_CM_Init", NULL);
                 mpi_errno = MPIDI_CH3I_CM_Init(pg, pg_rank, &conn_info);
+                mv2_take_timestamp("MPIDI_CH3I_CM_Init", NULL);
                 if (mpi_errno != MPI_SUCCESS) {
                     MPIR_ERR_POP(mpi_errno);
                 }
@@ -502,10 +543,13 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             default:
                 /*call old init to setup all connections */
                 MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
+                /* old init function */
+                mv2_take_timestamp("MPDIDI_CH3I_RDMA_init", NULL);
                 if ((mpi_errno =
                      MPIDI_CH3I_RDMA_init(pg, pg_rank)) != MPI_SUCCESS) {
                     MPIR_ERR_POP(mpi_errno);
                 }
+                mv2_take_timestamp("MPDIDI_CH3I_RDMA_init", NULL);
 
                 /* All vc should be connected */
                 for (p = 0; p < pg_size; ++p) {
@@ -514,10 +558,13 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
                 }
                 break;
         }
+        mv2_take_timestamp("MPIDI_CH3I Init Path", NULL);
 #if defined(RDMA_CM)
     } else {
         /* If SMP_ONLY, we need to get the HCA type */
+        mv2_take_timestamp("rdma_cm_get_hca_type", NULL);
         rdma_cm_get_hca_type(&mv2_MPIDI_CH3I_RDMA_Process);
+        mv2_take_timestamp("rdma_cm_get_hca_type", NULL);
 #endif /*defined(RDMA_CM)*/
     }
 
@@ -554,15 +601,19 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
 #endif /* defined(DISABLE_PTMALLOC) */
 
+    mv2_take_timestamp("MPIDI_CH3I_CR_Init", NULL);
     if ((mpi_errno = MPIDI_CH3I_CR_Init(pg, pg_rank, pg_size))) {
         MPIR_ERR_POP(mpi_errno);
     }
+    mv2_take_timestamp("MPIDI_CH3I_CR_Init", NULL);
 #endif /* defined(CKPT) */
 
     if (conn_info) {
         /* set connection info for dynamic process management */
         if (dpm) {
-	        mpi_errno = MPIDI_PG_SetConnInfo(pg_rank, (const char *) conn_info);
+            mv2_take_timestamp("MPIDI_PG_SetConnInfo", NULL);
+            mpi_errno = MPIDI_PG_SetConnInfo(pg_rank, (const char *) conn_info);
+            mv2_take_timestamp("MPIDI_PG_SetConnInfo", NULL);
 	        if (mpi_errno != MPI_SUCCESS) {
 	            MPIR_ERR_POP(mpi_errno);
 	        }
@@ -573,17 +624,22 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     struct coll_info colls_arch_hca[colls_max];
 
+    mv2_take_timestamp("MV2_collectives_arch_init", NULL);
     mpi_errno = MV2_collectives_arch_init(mv2_MPIDI_CH3I_RDMA_Process.heterogeneity, colls_arch_hca);
+    mv2_take_timestamp("MV2_collectives_arch_init", NULL);
     if (mpi_errno != MPI_SUCCESS) {
         MPIR_ERR_POP(mpi_errno);
     }
 
     /* Initialize the smp channel */
+    mv2_take_timestamp("MPIDI_CH3I_SMP_init", NULL);
     if ((mpi_errno = MPIDI_CH3I_SMP_init(pg))) {
         MPIR_ERR_POP(mpi_errno);
     }
+    mv2_take_timestamp("MPIDI_CH3I_SMP_init", NULL);
 
     if (SMP_INIT) {
+        mv2_take_timestamp("MPIDI_CH3I_SMP_Init_vc (loop)", (void *)(unsigned long)pg_size);
         for (p = 0; p < pg_size; ++p) {
             MPIDI_PG_Get_vc(pg, p, &vc);
             /* Mark the SMP VC as Idle */
@@ -591,7 +647,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
                 vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                 /* Enable fast send */
                 if (mv2_use_eager_fast_send) {
-		    vc->use_eager_fast_fn = 1;
+                    vc->use_eager_fast_fn = 1;
                 }
                 if (SMP_ONLY) {
                     MPIDI_CH3I_SMP_Init_VC(vc);
@@ -601,27 +657,37 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #endif
             }
         }
+        mv2_take_timestamp("MPIDI_CH3I_SMP_Init_vc (loop)", NULL);
     } else {
         extern int mv2_enable_shmem_collectives;
         mv2_enable_shmem_collectives = SMP_INIT;
     }
 
     /* Allocate and Init Dummy request */
+    mv2_take_timestamp("mv2_create_dummy_request", NULL);
     mpi_errno = mv2_create_dummy_request();
+    mv2_take_timestamp("mv2_create_dummy_request", NULL);
 
     /* Set the eager max msg size now that we know SMP and RDMA are initialized.
      * The max message size is also set during VC initialization, but the state
      * of SMP is unknown at that time.
      */
+    mv2_take_timestamp("MPIDI_PG_Get_vc (loop) [2]", NULL);
     for (p = 0; p < pg_size; ++p) {
         MPIDI_PG_Get_vc(pg, p, &vc);
         vc->eager_max_msg_sz = MPIDI_CH3_EAGER_MAX_MSG_SIZE(vc);
         if (mv2_use_eager_fast_send) {
             vc->eager_fast_max_msg_sz = MPIDI_CH3_EAGER_FAST_MAX_MSG_SIZE(vc);
+#ifdef _ENABLE_UD_
+            if (rdma_enable_hybrid) {
+                vc->use_eager_fast_fn = 1;
+            }
+#endif /*ifdef _ENABLE_UD_*/
         } else {
             vc->eager_fast_max_msg_sz = 0;
         }
     }
+    mv2_take_timestamp("MPIDI_PG_Get_vc (loop) [2]", NULL);
 
     if ((value = getenv("MV2_SHOW_ENV_INFO")) != NULL) {
         mv2_show_env_info = atoi(value);
@@ -660,8 +726,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             PRINT_DEBUG(DEBUG_MCST_verbose>1,"RDMA CM mcast source ip"
                    " address:%s\n",ip_address_enabled_devices[mcast_ctx->ip_index].ip_address);
             
+            mv2_take_timestamp("mv2_rdma_cm_mcst_get_addr_info", NULL);
             ret = mv2_rdma_cm_mcst_get_addr_info(ip_address_enabled_devices[mcast_ctx->ip_index].ip_address,
                     (struct sockaddr *) &mcast_ctx->src_in);
+            mv2_take_timestamp("mv2_rdma_cm_mcst_get_addr_info", NULL);
             if(ret){
                 if(MPIDI_Process.my_pg_rank == 0) { 
                     PRINT_ERROR("[Warning]: get src addr failed: not using rdma cm"
@@ -671,7 +739,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             }
         }
 #endif /* #if defined(RDMA_CM) */
+        mv2_take_timestamp("mv2_mcast_prepare_ud_ctx", NULL);
         mcast_ctx->ud_ctx = mv2_mcast_prepare_ud_ctx();
+        mv2_take_timestamp("mv2_mcast_prepare_ud_ctx", NULL);
         if (mcast_ctx->ud_ctx == NULL) {
             MPIR_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto fn_fail,
                     "**fail", "**fail %s",
@@ -682,19 +752,26 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #endif
 
     if (mv2_rdma_init_timers) {
+        mv2_take_timestamp("mv2_init_timers", NULL);
         mv2_init_timers();
+        mv2_take_timestamp("mv2_init_timers", NULL);
     }
 
+    mv2_take_timestamp("MPIDI_CH3U_..._destroy_hook", NULL);
     mpi_errno = MPIDI_CH3U_Comm_register_destroy_hook(MPIDI_CH3I_comm_destroy, NULL);
+    mv2_take_timestamp("MPIDI_CH3U_..._destroy_hook", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) {
         if (g_atomics_support || ((rdma_use_blocking) && (pg_size > threshold))) {
+            mv2_take_timestamp("MPIDI_PG_Get_vc", NULL);
             MPIDI_PG_Get_vc(pg, pg_rank, &vc);
+            mv2_take_timestamp("MPIDI_PG_Get_vc", NULL);
+            mv2_take_timestamp("MPIDI_CH3I_CM_Connect_self", NULL);
             MPIDI_CH3I_CM_Connect_self(vc);
+            mv2_take_timestamp("MPIDI_CH3I_CM_Connect_self", NULL);
         }
     }
-
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_INIT);
     return mpi_errno;

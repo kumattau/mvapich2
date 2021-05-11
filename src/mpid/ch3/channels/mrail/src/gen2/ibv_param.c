@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -46,6 +46,7 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me);
  * ==============================================================
  */
 
+int mv2_use_opt_eager_recv = 0;
 int mv2_enable_eager_threshold_reduction = 1;
 #if defined(_SHARP_SUPPORT_)
 int mv2_enable_sharp_coll = 0;
@@ -54,6 +55,8 @@ int mv2_sharp_port = -1;
 char * mv2_sharp_hca_name = 0;
 int mv2_enable_sharp_allreduce = 1;
 int mv2_enable_sharp_barrier   = 1;
+int mv2_enable_sharp_reduce    = 1;
+int mv2_enable_sharp_bcast     = 1;
 #endif
 int mv2_num_extra_polls = 0;
 int mv2_is_in_finalize = 0;
@@ -210,13 +213,15 @@ uint16_t rdma_default_ud_mtu = 0;
 uint8_t rdma_enable_hybrid = 1;
 uint8_t rdma_enable_only_ud = 0;
 uint8_t rdma_use_ud_zcopy = 1;
+uint8_t rdma_use_ud_srq = 0;
 uint8_t rdma_ud_zcopy_enable_polling = 0;
+uint8_t rdma_ud_zcopy_push_segment = 32;
 uint32_t rdma_default_max_ud_send_wqe = RDMA_DEFAULT_MAX_UD_SEND_WQE;
 uint32_t rdma_default_max_ud_recv_wqe = RDMA_DEFAULT_MAX_UD_RECV_WQE;
 uint32_t rdma_ud_num_msg_limit = RDMA_UD_NUM_MSG_LIMIT;
 uint32_t rdma_ud_vbuf_pool_size = RDMA_UD_VBUF_POOL_SIZE;
 /* Maximum number of outstanding buffers (waiting for ACK)*/
-uint32_t rdma_default_ud_sendwin_size = 400;
+uint32_t rdma_default_ud_sendwin_size = RDMA_DEFAULT_UD_SENDWIN_SIZE;
 /* Maximum number of out-of-order messages that will be buffered */
 uint32_t rdma_default_ud_recvwin_size = 2501;
 /* Time (usec) until ACK status is checked (and ACKs are sent) */
@@ -227,12 +232,12 @@ long rdma_ud_max_retry_timeout = 20000000;
 long rdma_ud_last_check;
 uint32_t rdma_ud_zcopy_threshold;
 uint32_t rdma_ud_zcopy_rq_size = 4096;
-uint32_t rdma_hybrid_enable_threshold = 1024;
+uint32_t rdma_hybrid_enable_threshold = 512;
 uint32_t rdma_ud_zcopy_num_retry = 50000;
 uint16_t rdma_ud_progress_spin = 1200;
 uint16_t rdma_ud_max_retry_count = 1000;
 uint16_t rdma_ud_max_ack_pending;
-uint16_t rdma_ud_num_rndv_qps = 64;
+uint16_t rdma_ud_num_rndv_qps = RDMA_UD_DEFAULT_NUM_RNDV_QPS;
 uint16_t rdma_hybrid_max_rc_conn = 64;
 uint16_t rdma_hybrid_pending_rc_conn = 0;
 #ifdef _MV2_UD_DROP_PACKET_RATE_
@@ -274,7 +279,11 @@ uint32_t mv2_srq_alloc_size = MV2_DEFAULT_SRQ_ALLOC_SIZE;
 uint32_t mv2_srq_fill_size = MV2_DEFAULT_SRQ_FILL_SIZE;
 uint32_t mv2_srq_limit = MV2_DEFAULT_SRQ_LIMIT;
 uint32_t mv2_max_r3_oust_send = 32;
-
+#if defined(_ENABLE_UD_)
+uint32_t mv2_ud_srq_alloc_size = MV2_DEFAULT_UD_SRQ_ALLOC_SIZE;
+uint32_t mv2_ud_srq_fill_size = MV2_DEFAULT_UD_SRQ_FILL_SIZE;
+uint32_t mv2_ud_srq_limit = MV2_DEFAULT_UD_SRQ_LIMIT;
+#endif /*defined(_ENABLE_UD_)*/
 
 /* The number of "extra" vbufs that will be posted as receives
  * on a connection in anticipation of an R3 rendezvous message.
@@ -488,7 +497,7 @@ int rdma_cm_get_hca_type(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                                  "**ibv_query_device %s", dev_name);
         }
 
-        if (ERROR == rdma_find_active_port(ctx[i], ctx[i]->device, NULL)) {
+        if (ERROR == rdma_find_active_port(ctx[i], ctx[i]->device, NULL, NULL, NULL)) {
             /* Trac #376 The device has no active ports, continue to next device */
             continue;
         }
@@ -1676,13 +1685,16 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     UPMI_GET_SIZE(&pg_size);
     UPMI_GET_RANK(&my_rank);
 
+    if ((value = getenv("MV2_USE_OPT_EAGER_RECV")) != NULL) {
+        mv2_use_opt_eager_recv = !!atoi(value);
+        if (mv2_use_opt_eager_recv) {
+            rdma_use_coalesce = 0;
+        }
+    }
     if ((value = getenv("MV2_NUM_NODES_IN_JOB")) != NULL) {
         rdma_num_nodes_in_job = atoi(value);
     } else {
         MPID_Get_max_node_id(NULL, &rdma_num_nodes_in_job);
-        /* For some reason, MPID_Get_max_node_id does a '--' before
-         * returning the num_nodes, hence incrementing it by 1 */
-        rdma_num_nodes_in_job++;
     }
 
 #if defined(_MCST_SUPPORT_)
@@ -1910,7 +1922,8 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
     if ((mpi_errno = rdma_open_hca(proc)) != MPI_SUCCESS) {
-        MPIR_ERR_POP(mpi_errno);
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "rdma_open_hca");
     }
 
     /* Heterogeniety detection for HCAs */
@@ -1979,30 +1992,32 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         proc->cluster_size = LARGE_CLUSTER;
     }
 
+
 #ifdef _ENABLE_UD_
-    if (pg_size < 1024) {
+    if (pg_size < 512) {
         rdma_ud_progress_timeout = 48000;
         rdma_ud_retry_timeout = 500000;
         rdma_ud_max_retry_count = 1024;
-        rdma_ud_num_msg_limit = 512;
         rdma_hybrid_max_rc_conn = 32;
+    } else if (pg_size < 1024) {
+        rdma_ud_progress_timeout = 48000;
+        rdma_ud_retry_timeout = 500000;
+        rdma_ud_max_retry_count = 1024;
+        rdma_hybrid_max_rc_conn = 64;
     } else if (pg_size < 4096) {
         rdma_ud_progress_timeout = 96000;
         rdma_ud_retry_timeout = 1000000;
         rdma_ud_max_retry_count = 512;
-        rdma_ud_num_msg_limit = 1024;
         rdma_hybrid_max_rc_conn = 64;
     } else if (pg_size < 8192) {
         rdma_ud_progress_timeout = 96000;
         rdma_ud_retry_timeout = 1000000;
         rdma_ud_max_retry_count = 512;
-        rdma_ud_num_msg_limit = 2048;
         rdma_hybrid_max_rc_conn = 128;
     } else {
         rdma_ud_progress_timeout = 190000;
         rdma_ud_retry_timeout = 2000000;
         rdma_ud_max_retry_count = 256;
-        rdma_ud_num_msg_limit = 4096;
         rdma_hybrid_max_rc_conn = 128;
     }
 #endif
@@ -2112,6 +2127,13 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #endif
         if ((value = getenv("MV2_USE_COALESCE")) != NULL) {
             rdma_use_coalesce = !!atoi(value);
+        }
+
+        if (rdma_use_coalesce && mv2_use_opt_eager_recv) {
+            PRINT_INFO((my_rank==0), "Optimized eager recv is"
+            " not compatible with message coalescing. Disabling"
+            " optimized eager recv and continuing\n");
+            mv2_use_opt_eager_recv = 0;
         }
 #ifdef _ENABLE_XRC_
     }
@@ -6283,7 +6305,8 @@ void rdma_param_handle_heterogeneity(mv2_arch_hca_type arch_hca_type[],
             mv2_MPIDI_CH3I_RDMA_Process.heterogeneity = 1;
         }
 
-        PRINT_DEBUG(DEBUG_INIT_verbose, "rank %d, type %d\n", i, arch_hca_type[i]);
+        PRINT_DEBUG(DEBUG_INIT_verbose, "rank %d, type %lu\n", i, 
+                    arch_hca_type[i]);
     }
 
     if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity) {
@@ -6329,7 +6352,15 @@ void rdma_set_rdma_fast_path_params(int num_proc)
             mv2_rdma_fast_path_preallocate_buffers = 0;
         }
     } else {
-        mv2_MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path = 1;
+        if (!mv2_use_opt_eager_recv) {
+            mv2_MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path = 1;
+        }
+    }
+    if ((mv2_MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path == 1) && mv2_use_opt_eager_recv) {
+        PRINT_INFO((MPIDI_Process.my_pg_rank == 0), "Optimized eager recv is"
+                " not compatible with RDMA Fast Path. Disabling"
+                " optimized eager recv and continuing\n");
+        mv2_use_opt_eager_recv = 0;
     }
 #endif /* defined(CKPT) */
 
@@ -6636,10 +6667,14 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_UD_MAX_RECV_WQE")) != NULL) {
         rdma_default_max_ud_recv_wqe = atol(value);
     }
+    if ((value = getenv("MV2_USE_UD_SRQ")) != NULL) {
+        rdma_use_ud_srq = !!atoi(value);
+    }
     if ((value = getenv("MV2_UD_VBUF_POOL_SIZE")) != NULL) {
         rdma_ud_vbuf_pool_size = atol(value);
+    } else if (rdma_use_ud_srq) {
+        rdma_ud_vbuf_pool_size = RDMA_UD_SRQ_VBUF_POOL_SIZE;
     }
-
     if ((value = getenv("MV2_UD_MAX_ACK_PENDING")) != NULL) {
         rdma_ud_max_ack_pending = atoi(value);
     } else {
@@ -6654,6 +6689,8 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
     if ((value = getenv("MV2_UD_NUM_ZCOPY_RNDV_QPS")) != NULL) {
         rdma_ud_num_rndv_qps = atoi(value);
+    } else {
+        rdma_ud_num_rndv_qps = RDMA_UD_DEFAULT_NUM_RNDV_QPS * rdma_num_hcas;
     }
     if ((value = getenv("MV2_UD_ZCOPY_RQ_SIZE")) != NULL) {
         rdma_ud_zcopy_rq_size = atoi(value);
@@ -6663,6 +6700,16 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
     if ((value = getenv("MV2_UD_ZCOPY_ENABLE_POLLING")) != NULL) {
         rdma_ud_zcopy_enable_polling = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_ZCOPY_PUSH_SEGMENT")) != NULL) {
+        rdma_ud_zcopy_push_segment = atoi(value);
+        /* Push segment needs to be at least 2, or there will be error setting
+         * next of first entry to NULL */
+        if (rdma_ud_zcopy_push_segment < RDMA_DEFAULT_MIN_UD_ZCOPY_WQE+1) {
+            PRINT_INFO((MPIDI_Process.my_pg_rank == 0), "[Warning]:"
+                "MV2_UD_ZCOPY_PUSH_SEGMENT cannot be less than %d, setting it back to %d\n",
+                RDMA_DEFAULT_MIN_UD_ZCOPY_WQE+1, RDMA_DEFAULT_MIN_UD_ZCOPY_WQE+1);
+        }
     }
 #ifdef _MV2_UD_DROP_PACKET_RATE_
     if ((value = getenv("MV2_UD_DROP_PACKET_RATE")) != NULL) {
@@ -6846,6 +6893,30 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
         }
     }
  
+#if defined(_ENABLE_UD_)
+    if ((value = getenv("MV2_UD_SRQ_MAX_SIZE")) != NULL) {
+        mv2_ud_srq_alloc_size = (uint32_t) atoi(value);
+#if defined(RDMA_CM)
+    } else if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
+        /* When using RDMA_CM, we cannot support very large SRQ. So, unless user
+         * set it, reduce the max_srq_size to 4K */
+        mv2_ud_srq_alloc_size = 4096;
+#endif /*defined(RDMA_CM)*/
+    }
+
+    if ((value = getenv("MV2_UD_SRQ_SIZE")) != NULL) {
+        mv2_ud_srq_fill_size = (uint32_t) atoi(value);
+    }
+
+    if ((value = getenv("MV2_UD_SRQ_LIMIT")) != NULL) {
+        mv2_ud_srq_limit = (uint32_t) atoi(value);
+
+        if (mv2_ud_srq_limit > mv2_ud_srq_fill_size) {
+            MPL_usage_printf("UD SRQ limit shouldn't be greater than UD SRQ size\n");
+        }
+    }
+#endif /*defined(_ENABLE_UD_)*/
+
     if ((value = getenv("MV2_MAX_INLINE_SIZE")) != NULL) {
         rdma_max_inline_size = atoi(value);
     }
@@ -6934,8 +7005,6 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
     int alignment_dma = getpagesize();
 #ifdef _ENABLE_CUDA_
     if (mv2_enable_device) {
-        rdma_num_vbuf_pools = MV2_MAX_NUM_VBUF_POOLS;
-
         if ((value = getenv("MV2_CUDA_BLOCK_SIZE")) != NULL) {
             mv2_device_stage_block_size = atoi(value);
         }
@@ -6943,57 +7012,134 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
             mv2_device_num_rndv_blocks = atoi(value);
         }
 
-        int default_vbuf_sizes[] = DEFAULT_CUDA_VBUF_SIZES;
-        int default_vbuf_init_count[] = DEFAULT_CUDA_VBUF_POOL_SIZE;
-        int default_vbuf_secondary_count[] =
-            DEFAULT_CUDA_VBUF_SECONDARY_POOL_SIZE;
-
-        result = MPIU_Memalign((void**) &rdma_vbuf_pools, alignment_dma,
-                                (sizeof(vbuf_pool_t) * rdma_num_vbuf_pools));
-        if ((result != 0) || (NULL == rdma_vbuf_pools)) {
-            ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc vbuf_pool");
+#if defined(_ENABLE_UD_)
+        if (!rdma_enable_only_ud)
+#endif
+        {
+            rdma_num_vbuf_pools = MV2_MAX_NUM_VBUF_POOLS;
+    
+            int default_vbuf_sizes[] = DEFAULT_CUDA_VBUF_SIZES;
+            int default_vbuf_init_count[] = DEFAULT_CUDA_VBUF_POOL_SIZE;
+            int default_vbuf_secondary_count[] =
+                DEFAULT_CUDA_VBUF_SECONDARY_POOL_SIZE;
+    
+            result = MPIU_Memalign((void**) &rdma_vbuf_pools, alignment_dma,
+                                    (sizeof(vbuf_pool_t) * rdma_num_vbuf_pools));
+            if ((result != 0) || (NULL == rdma_vbuf_pools)) {
+                ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc vbuf_pool");
+            }
+            MPIU_Memset(rdma_vbuf_pools, 0,
+                        sizeof(vbuf_pool_t) * rdma_num_vbuf_pools);
+            MPIU_Memset(&mv2_srq_repost_pool, 0, sizeof(vbuf_pool_t));
+            mv2_srq_repost_pool.buf_size = rdma_vbuf_total_size;
+            mv2_srq_repost_pool.index = MV2_RECV_VBUF_POOL_OFFSET;
+    
+            for (i = 0; i < rdma_num_vbuf_pools; i++) {
+                RDMA_VBUF_POOL_INIT(rdma_vbuf_pools[i]);
+                rdma_vbuf_pools[i].buf_size = default_vbuf_sizes[i];
+                rdma_vbuf_pools[i].incr_count = default_vbuf_secondary_count[i];
+                rdma_vbuf_pools[i].initial_count = default_vbuf_init_count[i];
+                rdma_vbuf_pools[i].index = i;
+            }
         }
-        MPIU_Memset(rdma_vbuf_pools, 0,
-                    sizeof(vbuf_pool_t) * rdma_num_vbuf_pools);
+#if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
+        if (rdma_enable_hybrid || rdma_enable_mcast) {
+            rdma_num_ud_vbuf_pools = MV2_MAX_NUM_UD_VBUF_POOLS;
+    
+            int default_ud_vbuf_sizes[] = DEFAULT_UD_VBUF_SIZES;
+            int default_ud_vbuf_init_count[] = DEFAULT_UD_VBUF_POOL_SIZE;
+            int default_ud_vbuf_secondary_count[] = DEFAULT_UD_VBUF_SECONDARY_POOL_SIZE;
+    
+            result = MPIU_Memalign((void**) &rdma_ud_vbuf_pools, alignment_dma,
+                                    (sizeof(vbuf_pool_t) * rdma_num_ud_vbuf_pools));
+            if ((result != 0) || (NULL == rdma_ud_vbuf_pools)) {
+                ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc vbuf_pool");
+            }
+            MPIU_Memset(rdma_ud_vbuf_pools, 0,
+                        sizeof(vbuf_pool_t) * rdma_num_ud_vbuf_pools);
+            MPIU_Memset(&mv2_ud_srq_repost_pool, 0, sizeof(vbuf_pool_t));
+            mv2_ud_srq_repost_pool.buf_size = RDMA_MAX_UD_MTU;
+            mv2_ud_srq_repost_pool.index = MV2_RECV_UD_VBUF_POOL_OFFSET;
 
-        for (i = 0; i < rdma_num_vbuf_pools; i++) {
-            RDMA_VBUF_POOL_INIT(rdma_vbuf_pools[i]);
-            rdma_vbuf_pools[i].buf_size = default_vbuf_sizes[i];
-            rdma_vbuf_pools[i].incr_count = default_vbuf_secondary_count[i];
-            rdma_vbuf_pools[i].initial_count = default_vbuf_init_count[i];
-            rdma_vbuf_pools[i].index = i;
+            for (i = 0; i < rdma_num_ud_vbuf_pools; i++) {
+                RDMA_VBUF_POOL_INIT(rdma_ud_vbuf_pools[i]);
+                rdma_ud_vbuf_pools[i].buf_size = default_ud_vbuf_sizes[i];
+                rdma_ud_vbuf_pools[i].incr_count = default_ud_vbuf_secondary_count[i];
+                rdma_ud_vbuf_pools[i].initial_count = default_ud_vbuf_init_count[i];
+                rdma_ud_vbuf_pools[i].index = i;
+            }
         }
+#endif /*defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)*/
     } else
 #endif
     {
-#ifdef _ENABLE_CUDA_
-        /* If built with CUDA support, the last VBUF pool is for CUDA VBUF.
-         * This is not needed if CUDA support is not enabled at runtime */
-        rdma_num_vbuf_pools = MV2_MAX_NUM_VBUF_POOLS-1;
-#else
-        rdma_num_vbuf_pools = MV2_MAX_NUM_VBUF_POOLS;
+#if defined(_ENABLE_UD_)
+        if (!rdma_enable_only_ud)
 #endif
-
-        int default_vbuf_sizes[] = DEFAULT_VBUF_SIZES;
-        int default_vbuf_init_count[] = DEFAULT_VBUF_POOL_SIZE;
-        int default_vbuf_secondary_count[] = DEFAULT_VBUF_SECONDARY_POOL_SIZE;
-
-        result = MPIU_Memalign((void**) &rdma_vbuf_pools, alignment_dma,
-                                (sizeof(vbuf_pool_t) * rdma_num_vbuf_pools));
-        if ((result != 0) || (NULL == rdma_vbuf_pools)) {
-            ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc vbuf_pool");
+        {
+#ifdef _ENABLE_CUDA_
+            /* If built with CUDA support, the last VBUF pool is for CUDA VBUF.
+             * This is not needed if CUDA support is not enabled at runtime */
+            rdma_num_vbuf_pools = MV2_MAX_NUM_VBUF_POOLS-1;
+#else
+            rdma_num_vbuf_pools = MV2_MAX_NUM_VBUF_POOLS;
+#endif
+    
+            int default_vbuf_sizes[] = DEFAULT_VBUF_SIZES;
+            int default_vbuf_init_count[] = DEFAULT_VBUF_POOL_SIZE;
+            int default_vbuf_secondary_count[] = DEFAULT_VBUF_SECONDARY_POOL_SIZE;
+    
+            result = MPIU_Memalign((void**) &rdma_vbuf_pools, alignment_dma,
+                                    (sizeof(vbuf_pool_t) * rdma_num_vbuf_pools));
+            if ((result != 0) || (NULL == rdma_vbuf_pools)) {
+                ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc vbuf_pool");
+            }
+            MPIU_Memset(rdma_vbuf_pools, 0,
+                        sizeof(vbuf_pool_t) * rdma_num_vbuf_pools);
+            MPIU_Memset(&mv2_srq_repost_pool, 0, sizeof(vbuf_pool_t));
+            mv2_srq_repost_pool.buf_size = rdma_vbuf_total_size;
+            mv2_srq_repost_pool.index = MV2_RECV_VBUF_POOL_OFFSET;
+    
+            for (i = 0; i < rdma_num_vbuf_pools; i++) {
+                RDMA_VBUF_POOL_INIT(rdma_vbuf_pools[i]);
+                rdma_vbuf_pools[i].buf_size = default_vbuf_sizes[i];
+                rdma_vbuf_pools[i].incr_count = default_vbuf_secondary_count[i];
+                rdma_vbuf_pools[i].initial_count = default_vbuf_init_count[i];
+                rdma_vbuf_pools[i].index = i;
+            }
         }
-        MPIU_Memset(rdma_vbuf_pools, 0,
-                    sizeof(vbuf_pool_t) * rdma_num_vbuf_pools);
-        MPIU_Memset(&mv2_srq_repost_pool, 0, sizeof(vbuf_pool_t));
+#if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
+        if (rdma_enable_hybrid
+#if defined(_MCST_SUPPORT_)
+            || rdma_enable_mcast
+#endif
+            ) {
+            rdma_num_ud_vbuf_pools = MV2_MAX_NUM_UD_VBUF_POOLS;
+    
+            int default_ud_vbuf_sizes[] = DEFAULT_UD_VBUF_SIZES;
+            int default_ud_vbuf_init_count[] = DEFAULT_UD_VBUF_POOL_SIZE;
+            int default_ud_vbuf_secondary_count[] = DEFAULT_UD_VBUF_SECONDARY_POOL_SIZE;
+    
+            result = MPIU_Memalign((void**) &rdma_ud_vbuf_pools, alignment_dma,
+                                    (sizeof(vbuf_pool_t) * rdma_num_ud_vbuf_pools));
+            if ((result != 0) || (NULL == rdma_ud_vbuf_pools)) {
+                ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc vbuf_pool");
+            }
+            MPIU_Memset(rdma_ud_vbuf_pools, 0,
+                        sizeof(vbuf_pool_t) * rdma_num_ud_vbuf_pools);
+            MPIU_Memset(&mv2_ud_srq_repost_pool, 0, sizeof(vbuf_pool_t));
+            mv2_ud_srq_repost_pool.buf_size = RDMA_MAX_UD_MTU;
+            mv2_ud_srq_repost_pool.index = MV2_RECV_UD_VBUF_POOL_OFFSET;
 
-        for (i = 0; i < rdma_num_vbuf_pools; i++) {
-            RDMA_VBUF_POOL_INIT(rdma_vbuf_pools[i]);
-            rdma_vbuf_pools[i].buf_size = default_vbuf_sizes[i];
-            rdma_vbuf_pools[i].incr_count = default_vbuf_secondary_count[i];
-            rdma_vbuf_pools[i].initial_count = default_vbuf_init_count[i];
-            rdma_vbuf_pools[i].index = i;
+            for (i = 0; i < rdma_num_ud_vbuf_pools; i++) {
+                RDMA_VBUF_POOL_INIT(rdma_ud_vbuf_pools[i]);
+                rdma_ud_vbuf_pools[i].buf_size = default_ud_vbuf_sizes[i];
+                rdma_ud_vbuf_pools[i].incr_count = default_ud_vbuf_secondary_count[i];
+                rdma_ud_vbuf_pools[i].initial_count = default_ud_vbuf_init_count[i];
+                rdma_ud_vbuf_pools[i].index = i;
+            }
         }
+#endif /*defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)*/
     }
     return;
 }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1447,6 +1447,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     (*win_ptr)->put_get_list_tail = 0;
     (*win_ptr)->wait_for_complete = 0;
     (*win_ptr)->rma_issued = 0;
+    (*win_ptr)->num_wait_completions = 0;
 
     (*win_ptr)->put_get_list =
         (MPIDI_CH3I_RDMA_put_get_list *) MPIU_Malloc(

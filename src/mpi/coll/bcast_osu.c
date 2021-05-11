@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,6 +22,11 @@
 #include "common_tuning.h"
 #include "bcast_tuning.h"
 #define INTRA_NODE_ROOT 0
+#if defined (_SHARP_SUPPORT_)
+#include "api/sharp_coll.h"
+#include "ibv_sharp.h"
+extern int mv2_sharp_tuned_msg_size;
+#endif
 
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_binomial);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_scatter_doubling_allgather);
@@ -110,6 +115,160 @@ int (*MV2_Bcast_function) (void *buffer, int count, MPI_Datatype datatype,
 int (*MV2_Bcast_intra_node_function) (void *buffer, int count, MPI_Datatype datatype,
                                       int root, MPID_Comm * comm_ptr,
                                       MPIR_Errflag_t *errflag) = NULL;
+
+#if defined (_SHARP_SUPPORT_)
+#undef FCNAME
+#define FCNAME "MPIR_Sharp_Bcast_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+/* Currently implemented on top of allreduce. Ideally should use lower level Sharp
+ * calls to achieve the same once avaliable*/
+int MPIR_Sharp_Bcast_MV2(void *buffer,
+                            int count,
+                            MPI_Datatype datatype,
+                            int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    int mpi_errno = MPI_SUCCESS;
+    void *sendbuf = NULL, *recvbuf = NULL;
+    MPI_Aint type_size = 0;
+    /* Get size of data */
+    MPID_Datatype_get_size_macro(datatype, type_size);
+    MPIDI_msg_sz_t nbytes = (MPIDI_msg_sz_t) (count) * (type_size);
+    int rank = comm_ptr->rank;
+
+    if (rank == root) {
+        sendbuf = (void *) buffer;
+        recvbuf = (void *) comm_ptr->dev.ch.coll_tmp_buf;
+    } else {
+        memset(comm_ptr->dev.ch.coll_tmp_buf, 0, nbytes);
+        sendbuf = (void *) comm_ptr->dev.ch.coll_tmp_buf;
+        recvbuf = (void *) buffer;
+    }
+
+    mpi_errno = MPIR_Sharp_Allreduce_MV2(sendbuf, recvbuf, count,
+                                         datatype, MPI_SUM, comm_ptr, errflag);
+    if (mpi_errno) {
+        MPIR_ERR_POP(mpi_errno);
+    }
+
+fn_exit:
+    return (mpi_errno);
+fn_fail:
+    goto fn_exit;
+}
+#endif
+
+#undef FCNAME
+#define FCNAME "MPIR_Bcast_topo_aware_inter_node_helper_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Bcast_topo_aware_inter_node_helper_MV2(void *buffer,
+                                           int count,
+                                           MPI_Datatype datatype,
+                                           int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPI_Comm leader_comm = MPI_COMM_NULL;
+    MPID_Comm *leader_commptr = NULL;
+    leader_comm = comm_ptr->dev.ch.leader_comm;
+    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+#if defined (_SHARP_SUPPORT_)
+    MPI_Aint type_size = 0;
+    /* Get size of data */
+    MPID_Datatype_get_size_macro(datatype, type_size);
+    MPIDI_msg_sz_t nbytes = (MPIDI_msg_sz_t) (count) * (type_size);
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 && nbytes <=
+            mv2_sharp_tuned_msg_size && mv2_enable_sharp_coll == 1 &&
+            mv2_enable_sharp_bcast) {
+        mpi_errno = MPIR_Sharp_Bcast_MV2(buffer, count, datatype, root,
+                                         comm_ptr, errflag);
+        if (mpi_errno != MPI_SUCCESS) {
+            /* fall back to binomial algorithm if SHArP is not supported */
+            mpi_errno = MPIR_Bcast_binomial_MV2(buffer, count, datatype, root,
+                                                leader_commptr, errflag);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
+    } else
+#endif /* #if defined (_SHARP_SUPPORT_) */
+    {
+        mpi_errno = MPIR_Bcast_binomial_MV2(buffer, count, datatype, root,
+                                            leader_commptr, errflag);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+fn_exit:
+    return (mpi_errno);
+
+fn_fail:
+    goto fn_exit;
+}
+
+#undef FCNAME
+#define FCNAME "MPIR_Bcast_topo_aware_hierarchical_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Bcast_topo_aware_hierarchical_MV2(void *buffer,
+                                           int count,
+                                           MPI_Datatype datatype,
+                                           int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    MPIU_Assert(comm_ptr->dev.ch.topo_coll_ok == 1 && comm_ptr->dev.ch.shmem_coll_ok == 1);
+    int i = 0;
+    int mpi_errno = MPI_SUCCESS;
+    MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL, *topo_comm_ptr = NULL;
+    MPI_Status status;
+    int rank = comm_ptr->rank;
+    int local_rank;
+
+    if(rank == root && rank != 0) {
+        mpi_errno = MPIC_Send(buffer, count, datatype, 0, MPIR_BCAST_TAG, comm_ptr, errflag);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+    if(rank == 0 && rank != root) {
+        mpi_errno = MPIC_Recv(buffer, count, datatype, root, MPIR_BCAST_TAG, comm_ptr, &status, errflag);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+    local_rank = shmem_commptr->rank;
+    leader_comm = comm_ptr->dev.ch.leader_comm;
+    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+
+    /* Step 1. Inter-node Bcast */
+    if(local_rank == 0 && leader_commptr->local_size > 1) {
+        mpi_errno = MPIR_Bcast_topo_aware_inter_node_helper_MV2(buffer, count, datatype, 0,
+                                                                comm_ptr, errflag);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+    /* Step 2. Intra-node Bcast */
+    for (i = mv2_num_intra_node_comm_levels; i >= 0; --i) {
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.topo_comm[i], topo_comm_ptr);
+        if (topo_comm_ptr && topo_comm_ptr->local_size > 1) {
+            mpi_errno = MPIR_Shmem_Bcast_MV2(buffer, count, datatype, 0, topo_comm_ptr, errflag);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
+    }
+fn_exit :
+    return mpi_errno;
+fn_fail :
+    goto fn_exit;
+}
 
 int MPIR_Bcast_binomial_MV2(void *buffer,
                             int count,
@@ -2585,6 +2744,15 @@ int MPIR_Bcast_index_tuned_intra_MV2(void *buffer,
             conf_index = 0;
             goto conf_check_end;
         }
+        if (nbytes <= mv2_topo_aware_bcast_max_msg && nbytes >=
+                mv2_topo_aware_bcast_min_msg && mv2_enable_skip_tuning_table_search
+                && nbytes <= mv2_coll_skip_table_threshold && mv2_enable_topo_aware_collectives
+                && mv2_use_topo_aware_bcast && comm_ptr->dev.ch.topo_coll_ok == 1
+                && local_size >= mv2_topo_aware_bcast_ppn_threshold
+                && mv2_topo_aware_bcast_node_threshold <= comm_ptr->dev.ch.leader_group_size) {
+            MV2_Bcast_function = &MPIR_Bcast_topo_aware_hierarchical_MV2;
+            goto skip_tuning_tables;
+        }
         if (likely(mv2_enable_shmem_bcast && mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
             /* for small messages, force shmem + zcpy pipeline */
 #if defined CHANNEL_MRAIL_GEN2
@@ -2695,8 +2863,8 @@ conf_check_end:
         mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].
         intra_node[intra_node_algo_index].MV2_pt_Bcast_function;
 
-    if (mv2_user_bcast_intra == NULL && 
-            MV2_Bcast_intra_node_function == &MPIR_Knomial_Bcast_intra_node_MV2) {
+    if (mv2_user_bcast_intra == NULL && MV2_Bcast_intra_node_function == &MPIR_Knomial_Bcast_intra_node_MV2
+        && nbytes < mv2_knomial_intra_node_threshold && comm_ptr->dev.ch.shmem_coll_ok == 1) {
             MV2_Bcast_intra_node_function = &MPIR_Shmem_Bcast_MV2;
     }
 
@@ -2791,6 +2959,14 @@ skip_tuning_tables:
                 mpi_errno = MPIR_Pipelined_Bcast_Zcpy_MV2(buffer, count, datatype,
                                                  root, comm_ptr, errflag);
             } 
+        } else if (&MPIR_Bcast_topo_aware_hierarchical_MV2 == MV2_Bcast_function) {
+            if (!is_contig || !is_homogeneous) {
+                mpi_errno = MPIR_Bcast_topo_aware_hierarchical_MV2(tmp_buf, nbytes, MPI_BYTE,
+                                                 root, comm_ptr, errflag);
+            } else {
+                mpi_errno = MPIR_Bcast_topo_aware_hierarchical_MV2(buffer, count, datatype,
+                                                 root, comm_ptr, errflag);
+            }
         } else 
 #endif
 #endif /* _OSU_MVAPICH_ */

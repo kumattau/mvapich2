@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -12,7 +12,7 @@
 
 #include <regex.h>
 #include "iscatter_tuning.h"
-
+#include "common_tuning.h"
 #include "mv2_arch_hca_detect.h"
 /* array used to tune iscatter */
 
@@ -283,7 +283,7 @@ int MV2_internode_Iscatter_is_define(char *mv2_user_iscatter_inter, char *mv2_us
         mv2_tmp_iscatter_thresholds_table[0].intra_node[0].min = 0;
         mv2_tmp_iscatter_thresholds_table[0].intra_node[0].max = -1;
 	switch (atoi(mv2_user_iscatter_inter)) {
-	case 1:
+	case ISCATTER_BINOMIAL:
 	    mv2_tmp_iscatter_thresholds_table[0].inter_leader[0].MV2_pt_Iscatter_function =
 		&MPIR_Iscatter_binomial;
 	    mv2_tmp_iscatter_thresholds_table[0].is_two_level_iscatter[0] = 0;
@@ -331,7 +331,7 @@ int MV2_internode_Iscatter_is_define(char *mv2_user_iscatter_inter, char *mv2_us
 	    }
 	    /* given () start at 1 */
 	    switch (atoi(p + match[1].rm_so)) {
-	    case 1:
+	    case ISCATTER_BINOMIAL:
 	        mv2_tmp_iscatter_thresholds_table[0].inter_leader[0].MV2_pt_Iscatter_function =
 	        	&MPIR_Iscatter_binomial;
 	        mv2_tmp_iscatter_thresholds_table[0].is_two_level_iscatter[0] = 0;

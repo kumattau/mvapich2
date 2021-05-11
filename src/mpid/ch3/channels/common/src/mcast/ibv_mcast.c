@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -154,7 +154,7 @@ static void mv2_mcast_send_comm_init(mcast_init_elem_t * elem, int rail)
     PRINT_DEBUG(DEBUG_MCST_verbose > 1, "sending on rail %d\n",rail);
     minfo = &((bcast_info_t *) comm_ptr->dev.ch.bcast_info)->minfo;
 
-    MV2_GET_AND_INIT_UD_VBUF(v);
+    GET_UD_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SEND_UD_VBUF_POOL_OFFSET);
     MPIDI_CH3_Pkt_mcast_init_t *p = (MPIDI_CH3_Pkt_mcast_init_t *) v->pheader;
     p->type = MPIDI_CH3_PKT_MCST_INIT;
     p->rail = rail;
@@ -557,7 +557,7 @@ static inline int mv2_mcast_post_ud_recv_buffers(int num_bufs, mv2_ud_ctx_t * ud
     }
 
     for (i = 0; i < num_bufs; ++i) {
-        MV2_GET_AND_INIT_UD_VBUF(v);
+        v = get_ud_vbuf_by_offset(MV2_RECV_UD_VBUF_POOL_OFFSET);
         if (v == NULL) {
             break;
         }
@@ -1000,7 +1000,7 @@ static inline void mv2_mcast_send_nack(uint32_t psn, int comm_id, int root)
             /* received multicast NACK recently from other */
             return;
         }
-        MV2_GET_AND_INIT_UD_VBUF(v);
+        GET_UD_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SEND_UD_VBUF_POOL_OFFSET);
         bcast_info->nack_time = mv2_get_time_us();
         MPIU_Memcpy(v->pheader, (const void *) &pkt, sizeof(MPIDI_CH3_Pkt_mcast_nack_t));
 
@@ -1296,7 +1296,7 @@ void mv2_mcast_send(bcast_info_t * bcast_info, char *buf, int len)
     MPID_Comm *comm_ptr;
     mcast_info_t *minfo = &bcast_info->minfo;
 
-    MV2_GET_AND_INIT_UD_VBUF(v);
+    GET_UD_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SEND_UD_VBUF_POOL_OFFSET);
     MPIDI_CH3_Pkt_mcast_t *p = (MPIDI_CH3_Pkt_mcast_t *) v->pheader;
     p->type = MPIDI_CH3_PKT_MCST;
     p->rail = mcast_ctx->selected_rail;

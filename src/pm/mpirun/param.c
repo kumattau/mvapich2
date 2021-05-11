@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -49,6 +49,26 @@ extern char *append_mpirun_parameters(char *str)
     for (i = 0; i < num_parameters; i++) {
         if ((value = getenv(parameters[i]))) {
             char *key_value = mkstr(" %s=%s", parameters[i], value);
+
+            str = append_str(str, key_value);
+            free(key_value);
+        }
+    }
+
+    return str;
+}
+/*
+ * str must be dynamically allocated
+ */
+extern char *append_mpirun_srun_parameters(char *str)
+{
+    extern size_t const num_parameters;
+    char const *value;
+    size_t i;
+
+    for (i = 0; i < num_parameters; i++) {
+        if ((value = getenv(parameters[i]))) {
+            char *key_value = mkstr(",%s=%s", parameters[i], value);
 
             str = append_str(str, key_value);
             free(key_value);

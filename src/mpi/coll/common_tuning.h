@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -202,5 +202,64 @@ enum mv2_alltoallv_tuning
     ALLTOALLV_INTRA_SCATTER_MV2,
     ALLTOALLV_INTRA_MV2,
     ALLTOALLV_MV2
+};
+
+enum mv2_ibcast_tuning
+{
+    IBCAST_BINOMIAL = 1,
+    IBCAST_SCATTER_REC_DBL_ALLGATHER,
+    IBCAST_SCATTER_RING_ALLGATHER
+};
+
+enum mv2_igather_tuning
+{
+    IGATHER_BINOMIAL = 1,
+#ifdef _USE_CORE_DIRECT_
+    IGATHER_DIRECT
+#endif /* _USE_CORE_DIRECT_ */
+};
+
+enum mv2_iallreduce_tuning
+{
+    IALLREDUCE_NAIVE = 1,
+    IALLREDUCE_REDSCAT_ALLGATHER,
+    IALLREDUCE_REC_DBL,
+#if defined (_SHARP_SUPPORT_)
+    SHARP_IALLREDUCE_MV2
+#endif /*defined (_SHARP_SUPPORT_)*/
+};
+
+enum mv2_ired_scat_tuning
+{
+    IREDUCE_SCATTER_PAIRWISE = 1,
+    IREDUCE_SCATTER_REC_HLV,
+    IREDUCE_SCATTER_REC_DBL,
+    IREDUCE_SCATTER_NONCOMM
+};
+
+enum mv2_ialltoall_tuning
+{
+    IALLTOALL_BRUCK = 1,
+    IALLTOALL_PERM_SR,
+    IALLTOALL_PAIRWISE
+};
+
+enum mv2_ireduce_tuning
+{
+    IREDUCE_BINOMIAL = 1,
+    IREDUCE_REDSCAT_GATHER
+};
+
+enum mv2_iscatter_tuning
+{
+    ISCATTER_BINOMIAL = 1,
+#ifdef _USE_CORE_DIRECT_
+    ISCATTER_DIRECT
+#endif /* _USE_CORE_DIRECT_ */
+};
+
+enum mv2_ibarrier_tuning
+{
+    IBARRIER_INTRA = 1
 };
 #endif

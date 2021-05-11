@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -156,8 +156,8 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
         (!mv2_enable_device || !SMP_INIT || vc->smp.local_nodes == -1) &&
 #endif
         (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol ||
-            MV2_RNDV_PROTOCOL_RGET == req->mrail.protocol ||
-                MV2_RNDV_PROTOCOL_UD_ZCOPY == req->mrail.protocol)) {
+         MV2_RNDV_PROTOCOL_RGET == req->mrail.protocol ||
+         MV2_RNDV_PROTOCOL_UD_ZCOPY == req->mrail.protocol)) {
         if (IS_VC_SMP(vc)) {
             PRINT_DEBUG(DEBUG_RNDV_verbose>1,
                     "SMP vc, not registering. rank: %d, buf size: %ld, addr: %p, protocol: %d\n",
@@ -176,6 +176,11 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
                 MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req);
                 /*MRAILI_Prepost_R3(); */
             } else {
+#ifdef _ENABLE_UD_
+                if (MV2_RNDV_PROTOCOL_UD_ZCOPY == req->mrail.protocol) {
+                    req->mrail.num_hcas = rdma_num_hcas;
+                }
+#endif
                 req->mrail.d_entry = reg_entry;
                 PRINT_DEBUG(DEBUG_RNDV_verbose>1,
                         "registration success for buf: %p, d_entry: %p\n",
@@ -222,10 +227,13 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
         sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
     } else {
 #ifdef _ENABLE_UD_
+        int hca_num = 0;
         if(rndv->protocol == MV2_RNDV_PROTOCOL_UD_ZCOPY) {
-            PRINT_DEBUG(DEBUG_ZCY_verbose>0, "Received CTS.remote qpn:%d\n", rndv->rndv_qpn);
-            sreq->mrail.remote_qpn = rndv->rndv_qpn;
-            sreq->mrail.hca_index = rndv->hca_index;
+            for (hca_num = 0; hca_num < rdma_num_hcas; ++hca_num) {
+                PRINT_DEBUG(DEBUG_ZCY_verbose>0, "Received CTS.remote qpn: %d, hca_index: %d\n",
+                            rndv->rndv_qpn[hca_num], hca_num);
+                sreq->mrail.remote_qpn[hca_num] = rndv->rndv_qpn[hca_num];
+            }
         }
         /* TODO: Can we avoid dev.iov copy for zcopy */
 #endif
@@ -265,8 +273,9 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
 #endif
         {
             sreq->mrail.remote_addr = rndv->buf_addr;
-            for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++)
-            sreq->mrail.rkey[hca_index] = rndv->rkey[hca_index];
+            for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++) {
+                sreq->mrail.rkey[hca_index] = rndv->rkey[hca_index];
+            }
         }
 
         DEBUG_PRINT("[add rndv list] addr %p, key %p\n",

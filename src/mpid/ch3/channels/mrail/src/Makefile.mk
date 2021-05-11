@@ -1,7 +1,7 @@
 ## -*- Mode: Makefile; -*-
 ## vim: set ft=automake :
 ##
-## Copyright (c) 2001-2020, The Ohio State University. All rights
+## Copyright (c) 2001-2021, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -84,6 +84,10 @@ mpi_core_sources	+=					\
     src/mpid/ch3/channels/common/src/mcast/ibv_mcast.c			\
 	src/mpid/ch3/channels/mrail/src/gen2/mv2_mpit_cvars.c
 
+endif
+
+if STARTUP_PROFILING
+mpi_core_sources	+= src/mpi/init/timestamp.c
 endif
 
 if BUILD_MRAIL_CUDA_KERNELS

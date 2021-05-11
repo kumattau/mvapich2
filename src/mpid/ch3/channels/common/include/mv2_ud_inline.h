@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -37,6 +37,8 @@ enum {
         mv2_ud_ext_sendq_queue(&(_ud_ctx)->ext_send_queue, _v);     \
     } else {                                                        \
         (_ud_ctx)->send_wqes_avail--;                               \
+        /* Keep track of the number of times we sent this out */    \
+        (_v)->pending_send_polls++;                                 \
         __ret = ibv_post_send((_ud_ctx->qp),                        \
                 &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));         \
         if(__ret) {                                                 \

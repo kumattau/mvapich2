@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -144,11 +144,13 @@ void *cm_ud_recv_buf = NULL;
 int cm_ud_recv_buf_index = 0;
 int page_size = 0;
 int mv2_finalize_upmi_barrier_complete = 0;
+int mv2_num_ud_cm_ah_created = 0;
 
 extern int *rdma_cm_host_list;
 extern int g_atomics_support;
 extern int mv2_my_cpu_id;
 extern int mv2_in_blocking_progress;
+extern int MPIDI_Get_num_nodes();
 
 int mv2_pmi_max_keylen=0;
 int mv2_pmi_max_vallen=0;
@@ -349,6 +351,13 @@ static inline struct ibv_ah *cm_create_ah(struct ibv_pd *pd, uint32_t lid,
 
     ah_attr.src_path_bits = 0;
     ah_attr.port_num = port;
+
+    /* Sanity check to ensure that we are not creating more AH than optimally
+     * needed. For DPM, we may end up creating moer number of AH than necessary. */
+    if (!MPIDI_CH3I_Process.has_dpm) {
+        mv2_num_ud_cm_ah_created++;
+        MPIU_Assert(mv2_num_ud_cm_ah_created <= MAX_NUM_HCAS * MPIDI_Get_num_nodes());
+    }
 
     return ibv_ops.create_ah(pd, &ah_attr);
 }
@@ -602,9 +611,8 @@ static int cm_resolve_conn_info(MPIDI_PG_t * pg, int peer)
     int mpi_errno = MPI_SUCCESS;
     uint32_t rank, lid, qpn, port;
     union ibv_gid gid;
-#ifdef _ENABLE_XRC_
+    union ibv_gid null_gid;
     uint32_t hostid;
-#endif
     int offset = 0, idx = 0, found_index = 0;
     MPID_Node_id_t node_id;
     struct ibv_ah *ah = NULL;
@@ -616,63 +624,11 @@ static int cm_resolve_conn_info(MPIDI_PG_t * pg, int peer)
                                   "No connection info available");
     }
 
-    if (peer >= 0) {
-        /* Get the unique node_id for the process */
-        node_id = pg->vct[peer].node_id;
-        /* Get the offset into the ud_ah array for the peer process */
-        offset = node_id * MAX_NUM_HCAS;
-        /* Initialize found_index */
-        found_index = -1;
-        /* In multi-rail scenarios when processes use rail-binding, different
-         * processes will use differnt HCAs and thus will be listening on
-         * different LIDs. Handle this scenario */
-        for (idx = 0; idx < MAX_NUM_HCAS; ++idx) {
-            /* We initialized the array to 0. If entry is 0, it is not used. */
-            if (pg->ch.mrail->cm_lid[offset] == 0) {
-                break;
-            }
-            if (pg->ch.mrail->cm_lid[offset] ==
-                pg->ch.mrail->cm_shmem.ud_cm[peer].cm_lid) {
-                found_index = offset;
-                break;
-            }
-            /* Entry at 'offset' is used. Increment 'offset' so that it does not
-             * get overwritten in the segment below when 'found_index == -1'
-             */
-            offset++;
-        }
-
-        /* We only need one address handle per target LID */
-        if (found_index >= 0) {
-            MPIU_Assert(offset <= ((node_id+1) * MAX_NUM_HCAS));
-            ah = pg->ch.mrail->cm_ah[offset];
-            PRINT_DEBUG(DEBUG_CM_verbose > 0, "Reusing AH %p created for node_id %d lid %u for peer %d\n",
-                        ah, node_id, pg->ch.mrail->cm_lid[offset], peer);
-        } else {
-            PRINT_DEBUG(DEBUG_CM_verbose > 0, "No AH exists for node_id %d for peer %d. Creating.\n",
-                        node_id, peer);
-        }
-    }
-
+    MPIU_Memset(&null_gid, 0, sizeof(union ibv_gid));
+    MPIU_Assert(peer >= 0);
+    /* Get the peer information first */
     if (mv2_on_demand_ud_info_exchange) {
         mpi_errno = MPIDI_CH3I_PMI_Get_Init_Info(pg, peer, NULL);
-        if (ah == NULL) {
-            ah = cm_create_ah(mv2_MPIDI_CH3I_RDMA_Process.ptag[0],
-                              pg->ch.mrail->cm_shmem.ud_cm[peer].cm_lid,
-                              pg->ch.mrail->cm_shmem.ud_cm[peer].cm_gid,
-                              rdma_default_port);
-            if (!ah) {
-                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**fail", "**fail %s",
-                                          "Cannot create address handle");
-            }
-            /* Store the UD_AH */
-            pg->ch.mrail->cm_ah[offset] = ah;
-            /* Store the LID */
-            pg->ch.mrail->cm_lid[offset] = pg->ch.mrail->cm_shmem.ud_cm[peer].cm_lid;
-            PRINT_DEBUG(DEBUG_CM_verbose > 0, "Storing AH %p created for peer %d for node_id %d\n",
-                        ah, peer, node_id);
-        }
     } else {
         mpi_errno = MPIDI_PG_GetConnString(pg, peer, string, 128);
         if (mpi_errno) {
@@ -681,41 +637,98 @@ static int cm_resolve_conn_info(MPIDI_PG_t * pg, int peer)
 
         PRINT_DEBUG(DEBUG_CM_verbose > 0, "Peer %d, connString %s\n", peer,
                     string);
-#ifdef _ENABLE_XRC_
         sscanf(string, "#RANK:%08d(%08x:%016" SCNx64 ":%016" SCNx64 ":%08x:"
-               "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
-               &gid.global.interface_id, &qpn, &port, &hostid);
-#else
-        sscanf(string, "#RANK:%08d(%08x:%016" SCNx64 ":%016" SCNx64 ":"
-               "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
-               &gid.global.interface_id, &qpn, &port);
-#endif
-        if (ah == NULL) {
-            ah = cm_create_ah(mv2_MPIDI_CH3I_RDMA_Process.ptag[0], lid, gid, port);
-            if (!ah) {
-                MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**fail", "**fail %s",
-                                          "Cannot create address handle");
-            }
-            /* Store the UD_AH */
-            pg->ch.mrail->cm_ah[offset] = ah;
-            /* Store the LID */
-            pg->ch.mrail->cm_lid[offset] = lid;
-            PRINT_DEBUG(DEBUG_CM_verbose > 0, "Storing AH %p created for peer %d for node_id %d\n",
-                        ah, peer, node_id);
-        }
-
-        if (pg->ch.mrail->cm_ah_peer[peer] == NULL) {
-            PRINT_ERROR("peer = %d, offset = %d, node_id = %d\n",
-                        peer, offset, node_id);
-            MPIU_Assert(0);
-        }
+               "%08x:%08x)#", &rank, &lid, 
+               (unsigned long *) &gid.global.subnet_prefix,
+               (unsigned long *) &gid.global.interface_id, 
+               &qpn, &port, &hostid);
         pg->ch.mrail->cm_shmem.ud_cm[peer].cm_lid = lid;
         pg->ch.mrail->cm_shmem.ud_cm[peer].cm_gid = gid;
         pg->ch.mrail->cm_shmem.ud_cm[peer].cm_ud_qpn = qpn;
-#ifdef _ENABLE_XRC_
         pg->ch.mrail->cm_shmem.ud_cm[peer].xrc_hostid = hostid;
-#endif
+    }
+
+    /* Get the unique node_id for the process */
+    if ((MPIDI_CH3I_Process.has_dpm && (pg->vct[peer].node_id < 0)) ||
+        (pg->is_spawned)) {
+        /* Handle DPM scenario */
+        node_id = 0;
+    } else {
+        node_id = pg->ch.mrail->cm_shmem.ud_cm[peer].xrc_hostid;
+    }
+    /* Get the offset into the ud_ah array for the peer process */
+    offset = node_id * MAX_NUM_HCAS;
+    /* Initialize found_index */
+    found_index = -1;
+    /* In multi-rail scenarios when processes use rail-binding, different
+     * processes will use differnt HCAs and thus will be listening on
+     * different LIDs. Handle this scenario */
+    for (idx = 0; idx < MAX_NUM_HCAS; ++idx) {
+        /* We initialized the array to 0. If entry is 0, it is not used. */
+        if ((mv2_system_has_ib && pg->ch.mrail->cm_lid[offset] == 0) ||
+            (mv2_system_has_roce &&
+             !memcmp(&pg->ch.mrail->cm_gid[offset], &null_gid,
+                     sizeof(union ibv_gid)))) {
+            break;
+        }
+        if ((mv2_system_has_ib &&
+            (pg->ch.mrail->cm_lid[offset] ==
+             pg->ch.mrail->cm_shmem.ud_cm[peer].cm_lid)) ||
+            (mv2_system_has_roce &&
+             !memcmp(&pg->ch.mrail->cm_gid[offset],
+                     &pg->ch.mrail->cm_shmem.ud_cm[peer].cm_gid,
+                     sizeof(union ibv_gid)))) {
+            found_index = offset;
+            break;
+        }
+        /* Entry at 'offset' is used. Increment 'offset' so that it does not
+         * get overwritten in the segment below when 'found_index == -1'
+         */
+        offset++;
+    }
+
+    /* Sanity checks */
+    MPIU_Assert(offset < (MPIDI_Get_num_nodes() * MAX_NUM_HCAS));
+    MPIU_Assert(offset <= ((node_id+1) * MAX_NUM_HCAS));
+    /* We only need one address handle per target LID */
+    if (found_index >= 0) {
+        /* Reuse existing AH */
+        ah = pg->ch.mrail->cm_ah[offset];
+        PRINT_DEBUG(DEBUG_CM_verbose > 0, "Reusing AH %p created for node_id %d lid %u for peer %d\n",
+                    ah, node_id, pg->ch.mrail->cm_lid[offset], peer);
+    } else {
+        PRINT_DEBUG(DEBUG_CM_verbose > 0, "No AH exists for node_id %d for peer %d. Creating.\n",
+                    node_id, peer);
+        /* Checking to make sure that we are not overwriting an existing AH */
+        MPIU_Assert(pg->ch.mrail->cm_ah[offset] == NULL);
+    }
+
+    if (ah == NULL) {
+        PRINT_DEBUG(DEBUG_CM_verbose > 0, "Storing AH for peer %d for node_id %d"
+                    " at offset %d lid: %d, gid: %016" SCNx64 ":%016" SCNx64 "\n",
+                    peer, node_id, offset,
+                    pg->ch.mrail->cm_shmem.ud_cm[peer].cm_lid,
+                    (unsigned long) pg->ch.mrail->cm_shmem.ud_cm[peer].cm_gid.
+                    global.subnet_prefix,
+                    (unsigned long)pg->ch.mrail->cm_shmem.ud_cm[peer].cm_gid.
+                    global.interface_id);
+        /* Create the UD_AH */
+        ah = cm_create_ah(mv2_MPIDI_CH3I_RDMA_Process.ptag[0],
+                          pg->ch.mrail->cm_shmem.ud_cm[peer].cm_lid,
+                          pg->ch.mrail->cm_shmem.ud_cm[peer].cm_gid,
+                          rdma_default_port);
+        if (!ah) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                      "**fail", "**fail %s",
+                                      "Cannot create address handle");
+        }
+        /* Store the UD_AH */
+        pg->ch.mrail->cm_ah[offset] = ah;
+        /* Store the LID */
+        pg->ch.mrail->cm_lid[offset] = pg->ch.mrail->cm_shmem.ud_cm[peer].cm_lid;
+        /* Store the GID */
+        MPIU_Memcpy(&pg->ch.mrail->cm_gid[offset],
+                    &pg->ch.mrail->cm_shmem.ud_cm[peer].cm_gid, sizeof(union ibv_gid));
     }
     /* Store the UD_AH in array of size pg->size for easy accessibility */
     pg->ch.mrail->cm_ah_peer[peer] = pg->ch.mrail->cm_ah[offset];
@@ -1204,12 +1217,14 @@ static int cm_accept_nopg(MPIDI_VC_t * vc, cm_msg * msg)
 #ifdef _ENABLE_XRC_
     sscanf(msg->ifname,
            "#RANK:%08d(%08x:%016" SCNx64 ":%016" SCNx64 ":%08x:"
-           "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
-           &gid.global.interface_id, &qpn, &port, &hostid);
+           "%08x:%08x)#", &rank, &lid, 
+           (unsigned long *) &gid.global.subnet_prefix,
+           (unsigned long *) &gid.global.interface_id, &qpn, &port, &hostid);
 #else
     sscanf(msg->ifname, "#RANK:%08d(%08x:%016" SCNx64 ":%016" SCNx64 ":"
-           "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
-           &gid.global.interface_id, &qpn, &port);
+           "%08x:%08x)#", &rank, &lid, 
+           (unsigned long *) &gid.global.subnet_prefix,
+           (unsigned long *) &gid.global.interface_id, &qpn, &port);
 #endif
     ah = cm_create_ah(mv2_MPIDI_CH3I_RDMA_Process.ptag[0], lid, gid, port);
     if (!ah) {
@@ -1580,6 +1595,9 @@ static int cm_handle_msg(cm_msg * msg)
                     MPICM_unlock();
                     return MPI_SUCCESS;
 #endif
+                }
+                if (pg->ch.mrail->cm_ah_peer == NULL) {
+                    MPIDI_CH3I_MRAIL_CM_Alloc(pg);
                 }
                 MPIDI_PG_Get_vc(pg, msg->client_rank, &vc);
 
@@ -2066,7 +2084,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
     }
 
     if (sizeof(cm_msg) > mv2_ibv_mtu_enum_to_value(rdma_default_mtu)) {
-        PRINT_ERROR("sizeof cm_msg (%d) >= rdma_default_mtu (%d).\n",
+        PRINT_ERROR("sizeof cm_msg (%lu) >= rdma_default_mtu (%d).\n",
                     sizeof(cm_msg), mv2_ibv_mtu_enum_to_value(rdma_default_mtu));
         PRINT_ERROR("Try increasing the MV2_DEFAULT_MTU or reduce MAX_NUM_HCAS,"
                     " or MAX_NUM_QP_PER_PORT in ibv_param.h.\n");
@@ -2259,6 +2277,7 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
 int MPICM_Init_Local_UD_struct(MPIDI_PG_t * pg)
 {
     int rank        = -1;
+    int offset      = 0;
     int mpi_errno   = MPI_SUCCESS;
     MPID_Node_id_t  node_id;
 
@@ -2267,19 +2286,28 @@ int MPICM_Init_Local_UD_struct(MPIDI_PG_t * pg)
 
     UPMI_GET_RANK(&rank);
 
+    MPIU_Assert(pg->ch.mrail->cm_shmem.ud_cm[rank].xrc_hostid >= 0);
     /* Get the unique node_id for the process */
-    node_id = pg->vct[rank].node_id;
+    node_id = pg->ch.mrail->cm_shmem.ud_cm[rank].xrc_hostid;
+    /* Get the offset into the ud_ah array for the peer process */
+    offset = node_id * MAX_NUM_HCAS;
 
     /*Create address handles */
-    pg->ch.mrail->cm_ah[node_id] = cm_create_ah(mv2_MPIDI_CH3I_RDMA_Process.ptag[0],
+    pg->ch.mrail->cm_ah[offset] = cm_create_ah(mv2_MPIDI_CH3I_RDMA_Process.ptag[0],
                                             pg->ch.mrail->cm_shmem.ud_cm[rank].cm_lid,
                                             pg->ch.mrail->cm_shmem.ud_cm[rank].cm_gid,
                                             rdma_default_port);
-    if (!pg->ch.mrail->cm_ah[node_id]) {
+    if (!pg->ch.mrail->cm_ah[offset]) {
         MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                   "**fail %s", "Failed to create AH");
     }
-    pg->ch.mrail->cm_ah_peer[rank] = pg->ch.mrail->cm_ah[node_id];
+    /* Store the UD_AH in array of size pg->size for easy accessibility */
+    pg->ch.mrail->cm_ah_peer[rank] = pg->ch.mrail->cm_ah[offset];
+    /* Store the LID */
+    pg->ch.mrail->cm_lid[offset] = pg->ch.mrail->cm_shmem.ud_cm[rank].cm_lid;
+    /* Store the GID */
+    MPIU_Memcpy(&pg->ch.mrail->cm_gid[offset],
+                &pg->ch.mrail->cm_shmem.ud_cm[rank].cm_gid, sizeof(union ibv_gid));
 
     PRINT_DEBUG(DEBUG_CM_verbose, "Created AH for self (peer: %d, node_id: %d)\n",
                 rank, node_id);
@@ -2300,15 +2328,19 @@ int MPICM_Init_UD_struct(MPIDI_PG_t * pg)
     int offset      = 0;
     int found_index = 0;
     int mpi_errno   = MPI_SUCCESS;
+    union ibv_gid null_gid;
     MPID_Node_id_t  node_id;
 
     MPIDI_STATE_DECL(MPID_GEN2_MPICM_INIT_UD_STRUCT);
     MPIDI_FUNC_ENTER(MPID_GEN2_MPICM_INIT_UD_STRUCT);
 
+    MPIU_Memset(&null_gid, 0, sizeof(union ibv_gid));
+
     /*Create address handles */
     for (i = 0; i < pg->size; ++i) {
+        MPIU_Assert(pg->ch.mrail->cm_shmem.ud_cm[i].xrc_hostid >= 0);
         /* Get the unique node_id for the process */
-        node_id = pg->vct[i].node_id;
+        node_id = pg->ch.mrail->cm_shmem.ud_cm[i].xrc_hostid;
         /* Get the offset into the ud_ah array for the peer process */
         offset = node_id * MAX_NUM_HCAS;
         /* Initialize found_index */
@@ -2318,11 +2350,19 @@ int MPICM_Init_UD_struct(MPIDI_PG_t * pg)
          * different LIDs. Handle this scenario */
         for (idx = 0; idx < MAX_NUM_HCAS; ++idx) {
             /* We initialized the array to 0. If entry is 0, it is not used. */
-            if (pg->ch.mrail->cm_lid[offset] == 0) {
+            if ((mv2_system_has_ib && pg->ch.mrail->cm_lid[offset] == 0) ||
+                (mv2_system_has_roce &&
+                 !memcmp(&pg->ch.mrail->cm_gid[offset], &null_gid,
+                         sizeof(union ibv_gid)))) {
                 break;
             }
-            if (pg->ch.mrail->cm_lid[offset] ==
-                pg->ch.mrail->cm_shmem.ud_cm[i].cm_lid) {
+            if ((mv2_system_has_ib &&
+                (pg->ch.mrail->cm_lid[offset] ==
+                 pg->ch.mrail->cm_shmem.ud_cm[i].cm_lid)) ||
+                (mv2_system_has_roce &&
+                 !memcmp(&pg->ch.mrail->cm_gid[offset],
+                         &pg->ch.mrail->cm_shmem.ud_cm[i].cm_gid,
+                         sizeof(union ibv_gid)))) {
                 found_index = offset;
                 break;
             }
@@ -2334,9 +2374,14 @@ int MPICM_Init_UD_struct(MPIDI_PG_t * pg)
 
         /* We only need one address handle per target LID */
         if (found_index == -1) {
+            MPIU_Assert(offset < (MPIDI_Get_num_nodes() * MAX_NUM_HCAS));
             MPIU_Assert(offset <= ((node_id+1) * MAX_NUM_HCAS));
             /* Store the LID */
             pg->ch.mrail->cm_lid[offset] = pg->ch.mrail->cm_shmem.ud_cm[i].cm_lid;
+            /* Store the GID */
+            MPIU_Memcpy(&pg->ch.mrail->cm_gid[offset],
+                        &pg->ch.mrail->cm_shmem.ud_cm[i].cm_gid,
+                        sizeof(union ibv_gid));
             /* Store the UD_AH */
             pg->ch.mrail->cm_ah[offset] =
                 cm_create_ah(mv2_MPIDI_CH3I_RDMA_Process.ptag[0],
@@ -2537,7 +2582,10 @@ int MPICM_Finalize_UD()
     /*Clean up */
     for (i = 0; i < pg->size; ++i) {
         /* Get the unique node_id for the process */
-        node_id = pg->vct[i].node_id;
+        node_id = pg->ch.mrail->cm_shmem.ud_cm[i].xrc_hostid;
+        if (node_id < 0) {
+            continue;
+        }
         /* We only need one address handle per LID */
         for (hca_num = 0; hca_num < rdma_num_hcas; ++hca_num) {
             if (pg->ch.mrail->cm_ah[node_id+hca_num]) {
@@ -2664,6 +2712,9 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
     if (vc->pg_rank == MPIDI_Process.my_pg_rank &&
         vc->pg == MPIDI_Process.my_pg) {
         goto fn_exit;
+    }
+    if (vc->pg->ch.mrail->cm_ah_peer == NULL) {
+        MPIDI_CH3I_MRAIL_CM_Alloc(vc->pg);
     }
 #if defined(RDMA_CM)
     /* Trap into the RDMA_CM connection initiation */
@@ -2792,12 +2843,14 @@ int MPIDI_CH3I_CM_Connect_raw_vc(MPIDI_VC_t * vc, char *ifname)
     }
 #ifdef _ENABLE_XRC_
     sscanf(ifname, "#RANK:%08d(%08x:%016" SCNx64 ":%016" SCNx64 ":%08x:"
-           "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
-           &gid.global.interface_id, &qpn, &port, &hostid);
+           "%08x:%08x)#", &rank, &lid, 
+           (unsigned long *) &gid.global.subnet_prefix,
+           (unsigned long *) &gid.global.interface_id, &qpn, &port, &hostid);
 #else
     sscanf(ifname, "#RANK:%08d(%08x:%016" SCNx64 ":%016" SCNx64 ":"
-           "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
-           &gid.global.interface_id, &qpn, &port);
+           "%08x:%08x)#", &rank, &lid, 
+           (unsigned long *) &gid.global.subnet_prefix,
+           (unsigned long *) &gid.global.interface_id, &qpn, &port);
 #endif
 
     ah = cm_create_ah(mv2_MPIDI_CH3I_RDMA_Process.ptag[0], lid, gid, port);
@@ -2932,26 +2985,15 @@ int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len)
                                   "**fail %s",
                                   "Array too short to hold port info");
     }
-#ifdef _ENABLE_XRC_
     MPL_snprintf(ifname, 128,
                   "#RANK:%08d(%08x:%016" SCNx64 ":%016" SCNx64 ":%08x:"
                   "%08x:%08x)#", rank,
                   mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
-                  mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.
+                  (unsigned long) mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.
                   subnet_prefix,
-                  mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.
+                  (unsigned long) mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.
                   interface_id, qp_num, rdma_default_port,
                   MPIDI_Process.my_pg->ch.mrail->cm_shmem.ud_cm[rank].xrc_hostid);
-#else
-    MPL_snprintf(ifname, 128,
-                  "#RANK:%08d(%08x:%016" SCNx64 ":%016" SCNx64 ":"
-                  "%08x:%08x)#", rank,
-                  mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
-                  mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.
-                  subnet_prefix,
-                  mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.
-                  interface_id, qp_num, rdma_default_port);
-#endif
   fn_fail:
     PRINT_DEBUG(DEBUG_XRC_verbose > 0, "ret: %d\n", mpi_errno);
     return mpi_errno;

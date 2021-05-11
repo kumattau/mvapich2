@@ -104,7 +104,7 @@
 	{131072, &MPIR_Allgather_Ring_MV2},		\
 	{262144, &MPIR_Allgather_Ring_MV2},		\
 	{524288, &MPIR_Allgather_Ring_MV2},		\
-	{1048576, &MPIR_Allgather_Bruck_MV2}		\
+	{1048576, &MPIR_Allgather_Ring_MV2}		\
 	}		\
 	},		 \
 	{		\
@@ -131,7 +131,7 @@
 	{131072, &MPIR_Allgather_Ring_MV2},		\
 	{262144, &MPIR_Allgather_Ring_MV2},		\
 	{524288, &MPIR_Allgather_Ring_MV2},		\
-	{1048576, &MPIR_Allgather_Bruck_MV2}		\
+	{1048576, &MPIR_Allgather_Ring_MV2}		\
 	}		\
 	}		 \
 }

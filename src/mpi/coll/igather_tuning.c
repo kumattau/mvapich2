@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -12,7 +12,7 @@
 
 #include <regex.h>
 #include "igather_tuning.h"
-
+#include "common_tuning.h"
 #include "mv2_arch_hca_detect.h"
 /* array used to tune igather */
 
@@ -24,7 +24,7 @@ int MV2_set_igather_tuning_table(int heterogeneity)
 #if defined(CHANNEL_MRAIL_GEN2)
     if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
 		MV2_ARCH_AMD_OPTERON_6136_32, MV2_HCA_MLX_CX_QDR) && !heterogeneity) {
-      
+
 	/*Trestles Table*/
 	mv2_size_igather_tuning_table = 5;
 	mv2_igather_thresholds_table = MPIU_Malloc(mv2_size_igather_tuning_table *
@@ -285,7 +285,7 @@ int MV2_internode_Igather_is_define(char *mv2_user_igather_inter, char *mv2_user
         mv2_tmp_igather_thresholds_table[0].intra_node[0].min = 0;
         mv2_tmp_igather_thresholds_table[0].intra_node[0].max = -1;
 	switch (atoi(mv2_user_igather_inter)) {
-	case 1:
+	case IGATHER_BINOMIAL:
 	    mv2_tmp_igather_thresholds_table[0].inter_leader[0].MV2_pt_Igather_function =
 		&MPIR_Igather_binomial;
 	    mv2_tmp_igather_thresholds_table[0].is_two_level_igather[0] = 0;
@@ -333,7 +333,7 @@ int MV2_internode_Igather_is_define(char *mv2_user_igather_inter, char *mv2_user
 	    }
 	    /* given () start at 1 */
 	    switch (atoi(p + match[1].rm_so)) {
-	    case 1:
+	    case IGATHER_BINOMIAL:
 	        mv2_tmp_igather_thresholds_table[0].inter_leader[0].MV2_pt_Igather_function =
 	        	&MPIR_Igather_binomial;
 	        mv2_tmp_igather_thresholds_table[0].is_two_level_igather[0] = 0;

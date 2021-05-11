@@ -98,11 +98,6 @@ AC_DEFUN([HWLOC_DEFINE_ARGS],[
                   AS_HELP_STRING([--disable-rsmi],
                                  [Disable the ROCm SMI device discovery]))
 
-    # 32bits_pci_domain?
-    AC_ARG_ENABLE([32bits-pci-domain],
-                  AS_HELP_STRING([--enable-32bits-pci-domain],
-                                 [Enable 32 bits PCI domains (domains > 16bits are ignored by default). WARNING: This breaks the library ABI, don't enable unless really needed.]))
-
     # GL/Display
     AC_ARG_ENABLE([gl],
 		  AS_HELP_STRING([--disable-gl],
@@ -536,7 +531,8 @@ int foo(void) {
 	hwloc_config_prefix[tests/hwloc/ports/topology-nvml.c]:hwloc_config_prefix[hwloc/topology-nvml.c]
 	hwloc_config_prefix[tests/hwloc/ports/topology-rsmi.c]:hwloc_config_prefix[hwloc/topology-rsmi.c]
 	hwloc_config_prefix[tests/hwloc/ports/topology-gl.c]:hwloc_config_prefix[hwloc/topology-gl.c]
-	hwloc_config_prefix[tests/hwloc/ports/lstopo-windows.c]:hwloc_config_prefix[utils/lstopo/lstopo-windows.c])
+	hwloc_config_prefix[tests/hwloc/ports/lstopo-windows.c]:hwloc_config_prefix[utils/lstopo/lstopo-windows.c]
+    hwloc_config_prefix[tests/hwloc/ports/lstopo-android.c]:hwloc_config_prefix[utils/lstopo/lstopo-android.c])
     ])
 ])dnl
 

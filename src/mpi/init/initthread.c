@@ -13,7 +13,7 @@
  * particular purpose and non-infringement.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -35,6 +35,7 @@
 #ifdef HAVE_USLEEP
 #include <unistd.h>
 #endif
+#include <timestamp.h>
 
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 #include "coll_shmem.h"
@@ -485,8 +486,10 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     info_ptr->key   = NULL;
     info_ptr->value = NULL;
     
+    mv2_take_timestamp("MPID_Init", NULL);
     mpi_errno = MPID_Init(argc, argv, required, &thread_provided, 
-			  &has_args, &has_env);
+                          &has_args, &has_env);
+    mv2_take_timestamp("MPID_Init", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     /* Assert: tag_ub should be a power of 2 minus 1 */

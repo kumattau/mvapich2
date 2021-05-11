@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -54,6 +54,8 @@ static inline int update_request(MPID_Request* sreq, MPL_IOV* iov, int count, in
     sreq->dev.iov[offset].MPL_IOV_LEN -= nb;
     sreq->dev.iov_count = count;
     sreq->dev.iov_offset = offset;
+
+    MV2_INC_NUM_POSTED_SEND();
 
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_UPDATE_REQUEST);
@@ -121,6 +123,8 @@ static inline int MPIDI_CH3_SMP_iSendv(MPIDI_VC_t * vc,
                     MPIR_ERR_POP(mpi_errno);
                 }
 
+                MV2_INC_NUM_POSTED_SEND();
+                MPIU_Assert(vc->smp.send_active == NULL);
                 MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
                 vc->smp.send_active = sreq;
                 break;
@@ -137,6 +141,8 @@ static inline int MPIDI_CH3_SMP_iSendv(MPIDI_VC_t * vc,
                  * transfer may be complete, but
                  * request may still be active (see MPI_Ssend())
                  */
+                MV2_INC_NUM_POSTED_SEND();
+                MPIU_Assert(vc->smp.send_active == NULL);
                 MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
                 vc->smp.send_active = sreq;
             } else {

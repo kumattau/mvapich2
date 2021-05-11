@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -275,6 +275,7 @@ int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
                 sreq->ch.reqtype = REQUEST_RNDV_R3_HEADER;
             }
 
+            MPIU_Assert(vc->smp.send_active == NULL);
             MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
             vc->smp.send_active = sreq;
 

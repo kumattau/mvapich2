@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -12,7 +12,7 @@
 #ifndef SLURM_STARTUP_H
 #define SLURM_STARTUP_H 1
 
-int slurm_startup (int);
+int slurm_startup (int, int);
 int slurm_nprocs (void);
 int check_for_slurm();
 

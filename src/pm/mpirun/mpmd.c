@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -264,6 +264,35 @@ char *add_argv(char *mpispawn_env, char *exe, char *args, int tmp_i)
         }
     }
 
+    return tmp;
+}
+
+char *add_srun_argv(char *mpispawn_env, char *exe, char *args, int tmp_i)
+{
+
+    char *cp;
+    char *tmp = mkstr("%s,MPISPAWN_ARGV_%d=%s", mpispawn_env, tmp_i++, exe);
+    mpispawn_env = tmp;
+    /*The args are as a single string, instead in mpispawn we need to pass each word as a single argument. */
+    if (args != NULL) {
+        //Add the args of the executable
+        for (cp = args; *cp;) {
+
+            char *cq, c;
+            /* select a word */
+            for (cq = cp + 1; *cq && !isspace((int) *cq); cq++) ;
+            c = *cq;
+            *cq = 0;
+            /*Add each word as argument of the executable in mpispawn. */
+            tmp = mkstr("%s,MPISPAWN_ARGV_%d=%s", mpispawn_env, tmp_i++, cp);
+            mpispawn_env = tmp;
+            /* put back delimiter */
+            *cq = c;
+            /* advance to next word, and skip space */
+            cp = cq;
+            for (; *cp && isspace((int) *cp); cp++) ;
+        }
+    }
     return tmp;
 }
 

@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1268,6 +1268,20 @@ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
         if (mpi_errno) {
             MPIR_ERR_POP(mpi_errno);
         }
+#if defined(_SHARP_SUPPORT_)
+        if (mv2_enable_sharp_coll &&
+            mv2_enable_sharp_reduce &&
+            (comm_ptr->dev.ch.is_sharp_ok == 0) &&
+            (comm_ptr->dev.ch.shmem_coll_ok == 1) &&
+            (comm_ptr->dev.ch.reduce_coll_count >= shmem_coll_count_threshold)) {
+            disable_split_comm(pthread_self());
+            mpi_errno = create_sharp_comm(comm_ptr->handle, comm_ptr->local_size, comm_ptr->rank);
+            if (mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);
+            }
+            enable_split_comm(pthread_self());
+        }
+#endif /*(_SHARP_SUPPORT_)*/
     }
 #endif /* _OSU_MVAPICH_ */
 

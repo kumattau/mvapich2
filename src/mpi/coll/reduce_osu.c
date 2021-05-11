@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,6 +21,11 @@
 #include "coll_shmem.h"
 #include "common_tuning.h"
 #include "reduce_tuning.h"
+#if defined (_SHARP_SUPPORT_)
+#include "api/sharp_coll.h"
+#include "ibv_sharp.h"
+extern int mv2_sharp_tuned_msg_size;
+#endif
 
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_reduce_binomial);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_reduce_redscat_gather);
@@ -87,6 +92,232 @@ int (*MV2_Reduce_intra_function)(const void *sendbuf,
                                  MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)=NULL;
 
 static int (*MPIR_Rank_list_mapper)(MPID_Comm *, int)=NULL;
+
+#if defined (_SHARP_SUPPORT_)
+#undef FCNAME
+#define FCNAME "MPIR_Sharp_Reduce_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+/* Currently implemented on top of allreduce. Ideally should use lower level Sharp
+ * calls to achieve the same once avaliable*/
+int MPIR_Sharp_Reduce_MV2(const void *sendbuf,
+                                    void *recvbuf,
+                                    int count,
+                                    MPI_Datatype datatype,
+                                    MPI_Op op,
+                                    int root,
+                                    MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    int mpi_errno = MPI_SUCCESS;
+    void *new_recvbuf = NULL;
+    int rank = comm_ptr->rank;
+
+    if (rank != root) {
+        new_recvbuf = (void *) comm_ptr->dev.ch.coll_tmp_buf;
+    } else {
+        new_recvbuf = (void *) recvbuf;
+    }
+
+    mpi_errno = MPIR_Sharp_Allreduce_MV2(sendbuf, new_recvbuf, count,
+                                         datatype, op, comm_ptr, errflag);
+    if (mpi_errno) {
+        MPIR_ERR_POP(mpi_errno);
+    }
+
+fn_exit:
+    return (mpi_errno);
+fn_fail:
+    goto fn_exit;
+}
+#endif
+
+#undef FCNAME
+#define FCNAME "MPIR_Reduce_topo_aware_inter_node_helper_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Reduce_topo_aware_inter_node_helper_MV2(const void *sendbuf,
+                                          void *recvbuf,
+                                          int count,
+                                          MPI_Datatype datatype,
+                                          MPI_Op op, int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPI_Comm leader_comm = MPI_COMM_NULL;
+    MPID_Comm *leader_commptr = NULL;
+    leader_comm = comm_ptr->dev.ch.leader_comm;
+    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+#if defined (_SHARP_SUPPORT_)
+    MPI_Aint type_size = 0;
+    /* Get size of data */
+    MPID_Datatype_get_size_macro(datatype, type_size);
+    MPIDI_msg_sz_t nbytes = (MPIDI_msg_sz_t) (count) * (type_size);
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 && nbytes <=
+            mv2_sharp_tuned_msg_size && mv2_enable_sharp_coll == 1 &&
+            mv2_enable_sharp_reduce) {
+        mpi_errno = MPIR_Sharp_Reduce_MV2(sendbuf, recvbuf, count, datatype,
+                                          op, root, comm_ptr, errflag);
+        if (mpi_errno != MPI_SUCCESS) {
+            /* fall back to binomial algorithm if SHArP is not supported */
+            mpi_errno = MPIR_Reduce_binomial_MV2(sendbuf, recvbuf, count, datatype,
+                                                 op, root, leader_commptr, errflag);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
+    } else
+#endif /* #if defined (_SHARP_SUPPORT_) */
+    {
+        mpi_errno = MPIR_Reduce_binomial_MV2(sendbuf, recvbuf, count, datatype, 
+                                                 op, root, leader_commptr, errflag);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+fn_exit:
+    return (mpi_errno);
+
+fn_fail:
+    goto fn_exit;
+}
+
+#undef FCNAME
+#define FCNAME "MPIR_Reduce_topo_aware_hierarchical_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Reduce_topo_aware_hierarchical_MV2(const void *sendbuf,
+                                          void *recvbuf,
+                                          int count,
+                                          MPI_Datatype datatype,
+                                          MPI_Op op, int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    MPIU_Assert(comm_ptr->dev.ch.topo_coll_ok == 1 && comm_ptr->dev.ch.shmem_coll_ok == 1);
+    int i = 0;
+    shmem_info_t *shmem = NULL;
+    int mpi_errno = MPI_SUCCESS;
+    MPI_Aint true_lb = 0, true_extent = 0, extent = 0;
+    void *in_buf = NULL, *buf = NULL;
+    int local_rank = -1, is_cxx_uop = 0, rindex = 0, len = 0;
+    MPI_User_function *uop = NULL;
+    MPID_Op *op_ptr = NULL;
+    MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
+    MPID_Comm *topo_comm_ptr = NULL;
+    MPI_Status status;
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+    len = count * MPIR_MAX(extent, true_extent);
+    int rank = comm_ptr->rank;
+    if (count == 0) {
+        return MPI_SUCCESS;
+    }
+
+    /* Get leader and shared memory communicators/related attributes */
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+    local_rank = shmem_commptr->rank;
+    leader_comm = comm_ptr->dev.ch.leader_comm;
+    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+
+    /* Get the operator and check whether it is commutative or not */
+    if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
+        /* get the function by indexing into the op table */
+        uop = MPIR_Op_table[op % 16 - 1];
+    } else {
+        MPID_Op_get_ptr(op, op_ptr);
+#if defined(HAVE_CXX_BINDING)
+        if (op_ptr->language == MPID_LANG_CXX) {
+            uop = (MPI_User_function *) op_ptr->function.c_function;
+            is_cxx_uop = 1;
+        } else
+#endif /* defined(HAVE_CXX_BINDING) */
+        {
+            if (op_ptr->language == MPID_LANG_C) {
+                uop = (MPI_User_function *) op_ptr->function.c_function;
+            } else {
+                uop = (MPI_User_function *) op_ptr->function.f77_function;
+            }
+        }
+    }
+
+    /* Get details of the datatype */
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+
+    if (sendbuf != MPI_IN_PLACE) {
+        in_buf = (void *)sendbuf;
+    } else {
+        in_buf = recvbuf;
+    }
+
+    /* Step 1. intra-node topo-aware reduce using shared memory */
+    for (i = 0; i <= mv2_num_intra_node_comm_levels; ++i) {
+        /* Get next topo_comm pointer */
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.topo_comm[i], topo_comm_ptr);
+        if (topo_comm_ptr && topo_comm_ptr->local_size > 1) {
+            /* Get shmem region */
+            shmem = topo_comm_ptr->dev.ch.shmem_info;
+            /* Get rindex */
+            rindex = shmem->read % mv2_shm_window_size;
+            buf = shmem->queue[shmem->local_rank].shm_slots[rindex]->buf;
+            mv2_shm_tree_reduce(shmem, in_buf, len, count, 0, uop,
+                    datatype, is_cxx_uop);
+            shmem->write++;
+            shmem->read++;
+            if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
+                PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %llu \n", shmem->write);
+                mv2_shm_barrier(shmem);
+                shmem->tail = shmem->read;
+            }
+            /* in_buf contains the result of the operation */
+            in_buf = buf;
+        }
+    }
+
+    /* Step 2. Leaders across nodes do an inter-node reduce */
+    if (local_rank == 0 && leader_commptr->local_size > 1) {
+        /* in_buf == sendbuf if and only if no intra-node reduction occurs
+         * (example : local size is one). This check exists to avoid overwriting
+         * the application's sendbuf in the inter-node step*/
+        if (in_buf == sendbuf) {
+            mpi_errno = MPIR_Reduce_topo_aware_inter_node_helper_MV2(sendbuf,
+                            recvbuf, count, datatype, op, 0, comm_ptr, errflag);
+        } else {
+            mpi_errno = MPIR_Reduce_topo_aware_inter_node_helper_MV2(MPI_IN_PLACE,
+                            in_buf, count, datatype, op, 0, comm_ptr, errflag);
+        }
+
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+    /* Copy in_buf into recvbuf only if it has been modified */
+    if (in_buf != recvbuf && in_buf != sendbuf) {
+        MPIR_Localcopy(in_buf, count, datatype, recvbuf, count, datatype);
+    }
+
+    if(rank == root && rank != 0) {
+        mpi_errno = MPIC_Recv(recvbuf, count, datatype, 0, MPIR_REDUCE_TAG, comm_ptr, &status, errflag);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+    if(rank == 0 && rank != root) {
+        mpi_errno = MPIC_Send(recvbuf, count, datatype, root, MPIR_REDUCE_TAG, comm_ptr, errflag);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
+fn_exit:
+    return (mpi_errno);
+
+fn_fail:
+    goto fn_exit;
+}
+
 /* This function implements a binomial tree reduce.
 
    Cost = lgp.alpha + n.lgp.beta + n.lgp.gamma
@@ -2171,6 +2402,17 @@ int MPIR_Reduce_index_tuned_intra_MV2(const void *sendbuf,
             conf_index = 0;
             goto conf_check_end;
         }
+
+        if (nbytes <= mv2_topo_aware_reduce_max_msg && nbytes >=
+                mv2_topo_aware_reduce_min_msg && mv2_enable_skip_tuning_table_search
+                && nbytes <= mv2_coll_skip_table_threshold && mv2_enable_topo_aware_collectives
+                && mv2_use_topo_aware_reduce && comm_ptr->dev.ch.topo_coll_ok == 1
+                && is_commutative && local_size >= mv2_topo_aware_reduce_ppn_threshold
+                && mv2_topo_aware_reduce_node_threshold <= comm_ptr->dev.ch.leader_group_size) {
+            MV2_Reduce_function = MPIR_Reduce_topo_aware_hierarchical_MV2;
+            goto skip_tuning_tables;
+        }
+
         if (likely(mv2_enable_shmem_reduce && mv2_enable_skip_tuning_table_search && (nbytes <= mv2_coll_skip_table_threshold))) {
             /* for small messages, force shmem + binomial */
             MV2_Reduce_intra_function = MPIR_Reduce_shmem_MV2;

@@ -1,5 +1,5 @@
 ##
-## Copyright (c) 2001-2020, The Ohio State University. All rights
+## Copyright (c) 2001-2021, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -52,7 +52,11 @@ src_pm_mpirun_mpirun_rsh_LDADD = -lm       \
 	src/mpid/ch3/channels/common/src/util/error_handling.o \
 	src/mpid/ch3/channels/common/src/util/debug_utils.o   \
 	src/pm/mpirun/src/hostfile/libhostfile.a  \
-	src/pm/mpirun/src/db/libdb.a
+	src/pm/mpirun/src/db/libdb.a			\
+	src/pm/mpirun/src/slurm/libslurm.a 		  	\
+	src/pm/mpirun/src/slurm/libnodelist.a 		\
+	src/pm/mpirun/src/slurm/libtasklist.a 		\
+	src/pm/mpirun/src/pbs/libpbs.a
 
 src_pm_mpirun_mpiexec_mpirun_rsh_SOURCES =     \
 	src/pm/mpirun/mpirun_rsh.c    \

@@ -179,6 +179,23 @@ if test "x$with_limic2" != "xno"; then
 
 fi
 
+AC_ARG_ENABLE([startup-profiling],
+              [
+                AS_HELP_STRING([--enable-startup-profiling],
+                              [Enable profiling of job startup code.])
+              ],
+              [
+                AC_MSG_NOTICE([Enabling profiling of job startup code.])
+                enable_startup_profiling=yes
+              ],
+              [
+                enable_startup_profiling=no
+              ])
+
+if test "x$enable_startup_profiling" = "xyes"; then
+    AC_DEFINE([PROFILE_STARTUP], [1], [Define to enable profiling of job startup code])
+fi
+
 AC_ARG_ENABLE([ibv-dlopen],
               [
                 AS_HELP_STRING([--disable-ibv-dlopen],
@@ -239,7 +256,7 @@ AC_ARG_ENABLE([mcast],
                               [enable hardware multicast])
               ],
               [],
-              [enable_mcast=yes])
+              [enable_mcast=check])
 
 AC_ARG_ENABLE([multi-subnet],
               [AS_HELP_STRING([--enable-multi-subnet],
@@ -664,9 +681,19 @@ if test "$with_rdma" = "gen2"; then
         fi
     fi
 
-    if test "$enable_mcast" != "no"; then
-        AC_CHECKING([for Hardware multicast support enabled])
-        AC_CHECK_HEADER([infiniband/mad.h],,[AC_MSG_ERROR(['infiniband/mad.h not found. Please retry with --disable-mcast'])])
+    if test "$enable_mcast" == "check"; then
+        AC_CHECKING([for hardware multicast support])
+        AC_CHECK_HEADER([infiniband/mad.h],
+                        [enable_mcast=yes],
+                        [AC_MSG_NOTICE(['infiniband/mad.h not found. Hardware multicast support disabled automatically.'])])
+        if test "$enable_mcast" == "yes"; then
+            AC_DEFINE(_MCST_SUPPORT_, 1 , [Define to enable Hardware multicast support.])
+            AC_MSG_NOTICE([Hardware multicast support enabled automatically])
+        fi
+    elif test "$enable_mcast" == "yes"; then
+        AC_CHECKING([for hardware multicast support])
+        AC_CHECK_HEADER([infiniband/mad.h],,
+                        [AC_MSG_ERROR(['infiniband/mad.h not found. Please retry after removing --enable-mcast.'])])
         AC_DEFINE(_MCST_SUPPORT_, 1 , [Define to enable Hardware multicast support.])
         AC_MSG_NOTICE([Hardware multicast support enabled])
     fi
@@ -718,6 +745,8 @@ if test "$with_rdma" = "gen2"; then
                   ])
 
     found_cuda=0
+    support_sm_86=no
+    support_sm_80=no
     support_sm_75=no
     support_sm_70=no
     support_sm_62=no
@@ -759,62 +788,64 @@ if test "$with_rdma" = "gen2"; then
         __syncthreads();
         }
 EOF
-        AC_MSG_CHECKING(if nvcc supports sm_86)
-        if nvcc -c -arch=sm_86 -gencode=arch=compute_86,code=compute_86 conftest.cu &> /dev/null
-        then
-            support_sm_86=yes
-            AC_MSG_NOTICE(nvcc supports sm_86)
-        else
-            AC_MSG_NOTICE(nvcc does not support sm_86)
-        fi
-        AC_MSG_CHECKING(if nvcc supports sm_80)
-        if nvcc -c -arch=sm_80 -gencode=arch=compute_80,code=compute_80 conftest.cu &> /dev/null
-        then
-            support_sm_80=yes
-            AC_MSG_NOTICE(nvcc supports sm_80)
-        else
-            AC_MSG_NOTICE(nvcc does not support sm_80)
-        fi
-        AC_MSG_CHECKING(if nvcc supports sm_75)
-        if nvcc -c -arch=sm_75 -gencode=arch=compute_75,code=compute_75 conftest.cu &> /dev/null
-        then
-            support_sm_75=yes
-            AC_MSG_NOTICE(nvcc supports sm_75)
-        else
-            AC_MSG_NOTICE(nvcc does not support sm_75)
-        fi
-        AC_MSG_CHECKING(if nvcc supports sm_70)
-        if nvcc -c -arch=sm_70 -gencode=arch=compute_70,code=compute_70 conftest.cu &> /dev/null
-        then
-            support_sm_70=yes
-            AC_MSG_NOTICE(nvcc supports sm_70)
-        else
-            AC_MSG_NOTICE(nvcc does not support sm_70)
-        fi
-        AC_MSG_CHECKING(if nvcc supports sm_62)
-        if nvcc -c -arch=sm_62 -gencode=arch=compute_62,code=compute_62 conftest.cu &> /dev/null
-        then
-            support_sm_62=yes
-            AC_MSG_NOTICE(nvcc supports sm_62)
-        else
-            AC_MSG_NOTICE(nvcc does not support sm_62)
-        fi
-        AC_MSG_CHECKING(if nvcc supports sm_53)
-        if nvcc -c -arch=sm_53 -gencode=arch=compute_53,code=compute_53 conftest.cu &> /dev/null
-        then
-            support_sm_53=yes
-            AC_MSG_NOTICE(nvcc supports sm_53)
-        else
-            AC_MSG_NOTICE(nvcc does not support sm_53)
-        fi
-        AC_MSG_CHECKING(if nvcc supports sm_37)
-        if nvcc -c -arch=sm_37 -gencode=arch=compute_37,code=compute_37 conftest.cu &> /dev/null
-        then
-            support_sm_37=yes
-            AC_MSG_NOTICE(nvcc supports sm_37)
-        else
-            AC_MSG_NOTICE(nvcc does not support sm_37)
-        fi
+        AS_IF([test -z "$NVCCFLAGS"], [
+            AC_MSG_CHECKING(if nvcc supports sm_86)
+            if nvcc -c -arch=sm_86 -gencode=arch=compute_86,code=compute_86 conftest.cu &> /dev/null
+            then
+                support_sm_86=yes
+                AC_MSG_NOTICE(nvcc supports sm_86)
+            else
+                AC_MSG_NOTICE(nvcc does not support sm_86)
+            fi
+            AC_MSG_CHECKING(if nvcc supports sm_80)
+            if nvcc -c -arch=sm_80 -gencode=arch=compute_80,code=compute_80 conftest.cu &> /dev/null
+            then
+                support_sm_80=yes
+                AC_MSG_NOTICE(nvcc supports sm_80)
+            else
+                AC_MSG_NOTICE(nvcc does not support sm_80)
+            fi
+            AC_MSG_CHECKING(if nvcc supports sm_75)
+            if nvcc -c -arch=sm_75 -gencode=arch=compute_75,code=compute_75 conftest.cu &> /dev/null
+            then
+                support_sm_75=yes
+                AC_MSG_NOTICE(nvcc supports sm_75)
+            else
+                AC_MSG_NOTICE(nvcc does not support sm_75)
+            fi
+            AC_MSG_CHECKING(if nvcc supports sm_70)
+            if nvcc -c -arch=sm_70 -gencode=arch=compute_70,code=compute_70 conftest.cu &> /dev/null
+            then
+                support_sm_70=yes
+                AC_MSG_NOTICE(nvcc supports sm_70)
+            else
+                AC_MSG_NOTICE(nvcc does not support sm_70)
+            fi
+            AC_MSG_CHECKING(if nvcc supports sm_62)
+            if nvcc -c -arch=sm_62 -gencode=arch=compute_62,code=compute_62 conftest.cu &> /dev/null
+            then
+                support_sm_62=yes
+                AC_MSG_NOTICE(nvcc supports sm_62)
+            else
+                AC_MSG_NOTICE(nvcc does not support sm_62)
+            fi
+            AC_MSG_CHECKING(if nvcc supports sm_53)
+            if nvcc -c -arch=sm_53 -gencode=arch=compute_53,code=compute_53 conftest.cu &> /dev/null
+            then
+                support_sm_53=yes
+                AC_MSG_NOTICE(nvcc supports sm_53)
+            else
+                AC_MSG_NOTICE(nvcc does not support sm_53)
+            fi
+            AC_MSG_CHECKING(if nvcc supports sm_37)
+            if nvcc -c -arch=sm_37 -gencode=arch=compute_37,code=compute_37 conftest.cu &> /dev/null
+            then
+                support_sm_37=yes
+                AC_MSG_NOTICE(nvcc supports sm_37)
+            else
+                AC_MSG_NOTICE(nvcc does not support sm_37)
+            fi
+        ], [AC_MSG_NOTICE(Skipping flags supported by nvcc since NVCCFLAGS is set.)])
         ])
 
 dnl
@@ -915,6 +946,7 @@ AS_CASE([$with_rdma],
 
     dnl automake conditionals should not appear in conditional blocks as this
     dnl can cause confusion in the makefiles
+    AM_CONDITIONAL([STARTUP_PROFILING], [test X$enable_startup_profiling = Xyes])
     AM_CONDITIONAL([BUILD_MRAIL_GEN2], [test X$with_rdma = Xgen2])
     AM_CONDITIONAL([BUILD_MRAIL_OPENACC],
             [test X$ac_cv_header_openacc_h = Xyes -a X$build_mrail_cuda = Xyes])

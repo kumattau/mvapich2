@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -12,7 +12,7 @@
 
 #include <regex.h>
 #include "ialltoall_tuning.h"
-
+#include "common_tuning.h"
 #include "mv2_arch_hca_detect.h"
 /* array used to tune ialltoall */
 
@@ -329,17 +329,17 @@ int MV2_internode_Ialltoall_is_define(char *mv2_user_ialltoall_inter, char *mv2_
         mv2_tmp_ialltoall_thresholds_table[0].intra_node[0].min = 0;
         mv2_tmp_ialltoall_thresholds_table[0].intra_node[0].max = -1;
 	switch (atoi(mv2_user_ialltoall_inter)) {
-	case 1:
+	case IALLTOALL_BRUCK:
 	    mv2_tmp_ialltoall_thresholds_table[0].inter_leader[0].MV2_pt_Ialltoall_function =
 		&MPIR_Ialltoall_bruck;
 	    mv2_tmp_ialltoall_thresholds_table[0].is_two_level_ialltoall[0] = 0;
 	    break;
-	case 2:
+	case IALLTOALL_PERM_SR:
 	    mv2_tmp_ialltoall_thresholds_table[0].inter_leader[0].MV2_pt_Ialltoall_function =
 		&MPIR_Ialltoall_perm_sr;
 	    mv2_tmp_ialltoall_thresholds_table[0].is_two_level_ialltoall[0] = 0;
 	    break;
-	case 3:
+	case IALLTOALL_PAIRWISE:
 	    mv2_tmp_ialltoall_thresholds_table[0].inter_leader[0].MV2_pt_Ialltoall_function =
 		&MPIR_Ialltoall_pairwise;
 	    mv2_tmp_ialltoall_thresholds_table[0].is_two_level_ialltoall[0] = 0;
@@ -385,17 +385,17 @@ int MV2_internode_Ialltoall_is_define(char *mv2_user_ialltoall_inter, char *mv2_
 	    }
 	    /* given () start at 1 */
 	    switch (atoi(p + match[1].rm_so)) {
-	    case 1:
+	    case IALLTOALL_BRUCK:
 	        mv2_tmp_ialltoall_thresholds_table[0].inter_leader[0].MV2_pt_Ialltoall_function =
 	            &MPIR_Ialltoall_bruck;
 	        mv2_tmp_ialltoall_thresholds_table[0].is_two_level_ialltoall[0] = 0;
 	        break;
-	    case 2:
+	    case IALLTOALL_PERM_SR:
 	        mv2_tmp_ialltoall_thresholds_table[0].inter_leader[0].MV2_pt_Ialltoall_function =
 	            &MPIR_Ialltoall_perm_sr;
 	        mv2_tmp_ialltoall_thresholds_table[0].is_two_level_ialltoall[0] = 0;
 	        break;
-	    case 3:
+	    case IALLTOALL_PAIRWISE:
 	        mv2_tmp_ialltoall_thresholds_table[0].inter_leader[0].MV2_pt_Ialltoall_function =
 	  	    &MPIR_Ialltoall_pairwise;
 	    default:

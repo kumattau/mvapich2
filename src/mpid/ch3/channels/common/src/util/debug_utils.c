@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -129,6 +129,7 @@ int initialize_debug_variables() {
     DEBUG_1SC_verbose = env2int( "MV2_DEBUG_1SC_VERBOSE" );
     DEBUG_DREG_verbose = env2int( "MV2_DEBUG_DREG_VERBOSE" );
     DEBUG_VBUF_verbose = env2int( "MV2_DEBUG_VBUF_VERBOSE" );
+    DEBUG_SEND_verbose = env2int( "MV2_DEBUG_SEND_VERBOSE" );
     return 0;
 }
 

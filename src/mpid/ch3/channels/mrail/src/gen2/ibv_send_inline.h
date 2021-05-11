@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -331,7 +331,7 @@ static inline int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     void *data_buf;
 
     int len = *num_bytes_ptr, avail = 0; 
-    int seq_num;
+    uint16_t seq_num = 0;
     int i;
 
     header = iov[0].MPL_IOV_BUF;
@@ -544,7 +544,7 @@ static inline int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
      * initialization */
     post_len += VBUF_FAST_RDMA_EXTRA_BYTES;
 
-    PRINT_DEBUG(DEBUG_SEND_verbose>1, "[send: rdma_send] lkey %p, rkey %p, len %d, flag %d\n",
+    PRINT_DEBUG(DEBUG_SEND_verbose>1, "[send: rdma_send] lkey %x, rkey %p, len %d, flag %lu\n",
             vc->mrail.rfp.RDMA_send_buf_mr[vc->mrail.rails[rail].hca_index]->lkey,
             vc->mrail.rfp.RDMA_remote_buf_rkey, post_len, *v->head_flag);
 
@@ -648,9 +648,6 @@ static inline int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 #ifdef _ENABLE_UD_
     if(rdma_enable_hybrid) {
         p->src.rank    = MPIDI_Process.my_pg_rank;
-        while (vc->mrail.rails[rail].qp_hndl->state != IBV_QPS_RTS) {
-            MPID_Progress_test();
-        }
     } else
 #endif
     {
@@ -787,10 +784,9 @@ static inline int post_hybrid_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 
     switch (v->transport) {
         case IB_TRANSPORT_UD:
-            /* Enable RC conection if total no of msgs on UD channel reachd a
+            /* Enable RC connection if total no of msgs on UD channel reachd a
              * threshold and total rc connections less than threshold  
              */
-            vc->mrail.rely.total_messages++;
             if (!(vc->mrail.state & (MRAILI_RC_CONNECTED | MRAILI_RC_CONNECTING)) 
                     && (rdma_ud_num_msg_limit)
                     && (vc->mrail.rely.total_messages > rdma_ud_num_msg_limit)
@@ -798,7 +794,7 @@ static inline int post_hybrid_send(MPIDI_VC_t* vc, vbuf* v, int rail)
                         < rdma_hybrid_max_rc_conn)
                     && vc->mrail.rely.ext_window.head == NULL
                     && !(vc->state == MPIDI_VC_STATE_LOCAL_CLOSE || vc->state == MPIDI_VC_STATE_CLOSE_ACKED)) {
-                /* This is hack to create RC channel usig CM protocol.
+                /* This is hack to create RC channel using CM protocol.
                  ** Need to handle this by sending REQ/REP on UD channel itself
                  */
                 vc->ch.state = MPIDI_CH3I_VC_STATE_UNCONNECTED;
@@ -837,7 +833,9 @@ static inline int post_hybrid_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 static inline int post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
 {
 #ifdef _ENABLE_UD_
-    if (rdma_enable_hybrid) {
+    if (rdma_enable_only_ud) {
+        return post_ud_send(vc, v, rail, NULL);
+    } else if (rdma_enable_hybrid) {
         return post_hybrid_send(vc, v, rail);
     } else
 #endif
@@ -1148,7 +1146,7 @@ static inline int mv2_eager_fast_wrapper(MPIDI_VC_t* vc, const void *buf,
     }
 }
 
-/* Ensure defenition of FUNCNAME & FCNAME do not leak into other files */
+/* Ensure definition of FUNCNAME & FCNAME do not leak into other files */
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAIL_Parse_header
 #undef FCNAME
@@ -1610,8 +1608,24 @@ static inline int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
     DEBUG_PRINT
         ("[recv:fill request] total len %d, head len %d, n iov %d\n",
          v->content_size, header_size, n_iov);
-
-
+    
+    if (req->mrail.is_eager_vbuf_queued == 1) {
+        if (req->mrail.eager_vbuf_head == NULL) {
+            req->mrail.eager_vbuf_head = v;
+            req->mrail.eager_vbuf_tail = v;
+        } else {
+            req->mrail.eager_vbuf_tail->next = v;
+            req->mrail.eager_vbuf_tail = v;
+        }
+        v->next = NULL;
+        v->content_consumed = v->content_size;
+        v->in_eager_sgl_queue = 1;   
+        v->unexp_data_buf = data_buf;
+        req->mrail.eager_unexp_size += len_avail;
+        v->data_size = len_avail;
+        *nb = len_avail;
+        return MPI_SUCCESS;
+    }
 
 #ifdef _ENABLE_CUDA_
     if ( rdma_enable_cuda && is_device_buffer(iov[0].MPL_IOV_BUF)) {
@@ -1654,13 +1668,17 @@ static inline int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
 
 static inline void MPIDI_CH3I_MRAIL_Release_vbuf(vbuf * v)
 {
+    if (v->in_eager_sgl_queue == 1) {
+        return;
+    }
+
     v->eager = 0;
     v->coalesce = 0;
     v->content_size = 0; 
           
-    if (v->padding == NORMAL_VBUF_FLAG || v->padding == RPUT_VBUF_FLAG)
+    if (v->padding == NORMAL_VBUF_FLAG || v->padding == RPUT_VBUF_FLAG) {
         MRAILI_Release_vbuf(v);
-    else {
+    } else {
         MRAILI_Release_recv_rdma(v);
         MRAILI_Send_noop_if_needed((MPIDI_VC_t *) v->vc, v->rail);
     }        

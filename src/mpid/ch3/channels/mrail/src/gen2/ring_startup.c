@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -437,13 +437,15 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
     if (use_iboeth || mv2_port_is_ethernet) {
         gid = get_local_gid(proc->boot_context, port);
         sprintf(ring_qp_out, "%016"SCNx64":%016"SCNx64":%08x:%08x:",
-                 gid.global.subnet_prefix, gid.global.interface_id,
+                 (unsigned long) gid.global.subnet_prefix, 
+                 (unsigned long) gid.global.interface_id,
                  proc->boot_qp_hndl[0]->qp_num,
                  proc->boot_qp_hndl[1]->qp_num
                );
     
         PRINT_DEBUG(DEBUG_CM_verbose, "After setting GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
-                gid.global.subnet_prefix, gid.global.interface_id,
+                (unsigned long) gid.global.subnet_prefix, 
+                (unsigned long) gid.global.interface_id,
                 proc->boot_qp_hndl[0]->qp_num,
                 proc->boot_qp_hndl[1]->qp_num
                 );
@@ -469,23 +471,23 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
 
     if (use_iboeth || mv2_port_is_ethernet) {
         sscanf(&ring_qp_in[0], "%016"SCNx64":%016"SCNx64":%08x:%08x:", 
-               &neighbor_addr[0].gid.global.subnet_prefix,
-               &neighbor_addr[0].gid.global.interface_id,
+               (unsigned long *) &neighbor_addr[0].gid.global.subnet_prefix,
+               (unsigned long *) &neighbor_addr[0].gid.global.interface_id,
                &neighbor_addr[0].qp_num[0],
                &neighbor_addr[0].qp_num[1]);
         sscanf(&ring_qp_in[53], "%016"SCNx64":%016"SCNx64":%08x:%08x:",
-               &neighbor_addr[1].gid.global.subnet_prefix,
-               &neighbor_addr[1].gid.global.interface_id,
+               (unsigned long *) &neighbor_addr[1].gid.global.subnet_prefix,
+               (unsigned long *) &neighbor_addr[1].gid.global.interface_id,
                &neighbor_addr[1].qp_num[0],
                &neighbor_addr[1].qp_num[1]);
         PRINT_DEBUG(DEBUG_CM_verbose, "After retrieving GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
-               neighbor_addr[0].gid.global.subnet_prefix,
-               neighbor_addr[0].gid.global.interface_id,
+               (unsigned long) neighbor_addr[0].gid.global.subnet_prefix,
+               (unsigned long) neighbor_addr[0].gid.global.interface_id,
                neighbor_addr[0].qp_num[0],
                neighbor_addr[0].qp_num[1]);
         PRINT_DEBUG(DEBUG_CM_verbose, "After retrieving GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
-               neighbor_addr[1].gid.global.subnet_prefix,
-               neighbor_addr[1].gid.global.interface_id,
+               (unsigned long) neighbor_addr[1].gid.global.subnet_prefix,
+               (unsigned long) neighbor_addr[1].gid.global.interface_id,
                neighbor_addr[1].qp_num[0],
                neighbor_addr[1].qp_num[1]);
     } else {

@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,6 +29,7 @@
 #include <errno.h>
 #endif
 #include <ctype.h>
+#include <timestamp.h>
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -757,6 +758,10 @@ int MPID_Get_max_node_id(MPID_Comm *comm, MPID_Node_id_t *max_id_p)
 
 #if !(defined(USE_PMI2_API) || defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM))
 /* this function is not used in pmi2 */
+#undef FUNCNAME
+#define FUNCNAME publish_node_id
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int publish_node_id(MPIDI_PG_t *pg, int our_pg_rank)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -1126,6 +1131,10 @@ int MPIDI_Get_num_nodes()
     return g_max_node_id;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_Get_local_host_mpirun_mapping
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_Get_local_host_mpirun_mapping(MPIDI_PG_t *pg, int our_pg_rank)
 {
     int i = 0, node_id, local_peer_rank;
@@ -1166,6 +1175,10 @@ int MPIDI_Get_local_host_mpirun_mapping(MPIDI_PG_t *pg, int our_pg_rank)
     return mpi_errno;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_Get_local_host
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
 {
     int i = 0, j = 0;
@@ -1397,7 +1410,9 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         MPIR_ERR_CHKINTERNAL(!found, mpi_errno, "PMI_process_mapping attribute not found");
         /* this code currently assumes pg is comm_world */
+        mv2_take_timestamp("populate_ids_from_mapping [PMI2]", NULL);
         mpi_errno = populate_ids_from_mapping(process_mapping, &g_max_node_id, pg, &did_map);
+        mv2_take_timestamp("populate_ids_from_mapping [PMI2]", NULL);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         MPIR_ERR_CHKINTERNAL(!did_map, mpi_errno, "unable to populate node ids from PMI_process_mapping");
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
@@ -1418,87 +1433,79 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     }
 
     /* Allocate space for pmi key and value */
+    mv2_take_timestamp("UPMI_KVS_GET_KEY_LENGTH_MAX", NULL);
     pmi_errno = UPMI_KVS_GET_KEY_LENGTH_MAX(&key_max_sz);
+    mv2_take_timestamp("UPMI_KVS_GET_KEY_LENGTH_MAX", NULL);
     MPIR_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
     MPIU_CHKLMEM_MALLOC(key, char *, key_max_sz, mpi_errno, "key");
 
+    mv2_take_timestamp("UPMI_KVS_GET_VALUE_LENGTH_MAX", NULL);
     pmi_errno = UPMI_KVS_GET_VALUE_LENGTH_MAX(&val_max_sz);
+    mv2_take_timestamp("UPMI_KVS_GET_VALUE_LENGTH_MAX", NULL);
     MPIR_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
     MPIU_CHKLMEM_MALLOC(value, char *, val_max_sz, mpi_errno, "value");
 
+    mv2_take_timestamp("MPIDI_PG_GetConnKVSname", NULL);
     mpi_errno = MPIDI_PG_GetConnKVSname(&kvs_name);
+    mv2_take_timestamp("MPIDI_PG_GetConnKVSname", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     char *str = NULL;
 
+    /* See if process manager supports PMI_process_mapping keyval */
+    mv2_take_timestamp("UPMI_KVS_GET [PMI_process_mapping]", (void *)(unsigned long)sizeof(value));
+    pmi_errno = UPMI_KVS_GET(kvs_name, "PMI_process_mapping", value, val_max_sz);
+    mv2_take_timestamp("UPMI_KVS_GET [PMI_process_mapping]", NULL);
+    if (pmi_errno == 0) {
+        int did_map = 0;
+        /* this code currently assumes pg is comm_world */
+        mv2_take_timestamp("populate_ids_from_mapping [PMI1]", NULL);
+        mpi_errno = populate_ids_from_mapping(value, &g_max_node_id, pg, &did_map);
+        mv2_take_timestamp("populate_ids_from_mapping [PMI1]", NULL);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
-    /* See if we were launched by jsrun */
-    if ((str = getenv("JSM_NAMESPACE_RANK")) != NULL) {
-        mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
-        if (mpi_errno) {
-            MPIR_ERR_POP(mpi_errno);
-        }
-    /* See if we were launched by Flux */
-    } else if ((str = getenv("FLUX_JOB_ID")) != NULL) {
-        mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
-        if (mpi_errno) {
-            MPIR_ERR_POP(mpi_errno);
-        }
-    } else 
+        mv2_take_timestamp("MPIDI_Get_local_host_mapping", NULL);
+        MPIDI_Get_local_host_mapping(pg, our_pg_rank);
+        mv2_take_timestamp("MPIDI_Get_local_host_mapping", NULL);
 #endif
-    if (((str = getenv("MPIRUN_RSH_LAUNCH")) == NULL || (atoi(str) != 1)) && (using_slurm == NULL)) {
-        /* Support for mpirun_rsh: it should also work when _OSU_MVAPICH_ is not defined */
-        /* See if process manager supports PMI_process_mapping keyval */
-        /* Check if the user have used MPIRUN_RSH */
-        if (pmi_version == 1 && pmi_subversion == 1) {
-            pmi_errno = UPMI_KVS_GET(kvs_name, "PMI_process_mapping", value, val_max_sz);
-            if (pmi_errno == 0) {
-                int did_map = 0;
-                /* this code currently assumes pg is comm_world */
-                mpi_errno = populate_ids_from_mapping(value, &g_max_node_id, pg, &did_map);
-                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
-                MPIDI_Get_local_host_mapping(pg, our_pg_rank);
-#endif
-                if (did_map) {
-                    goto odd_even_cliques;
-                } else {
-                    MPIU_DBG_MSG_S(CH3_OTHER,TERSE,"did_map==0, unable to populate node ids from mapping=%s",value);
-                }
-                /* else fall through to O(N^2) UPMI_KVS_GETs version */
-            } else {
-                MPIU_DBG_MSG(CH3_OTHER,TERSE,"unable to obtain the 'PMI_process_mapping' PMI key");
-            }
+        if (did_map) {
+            goto odd_even_cliques;
+        } else {
+            MPIU_DBG_MSG_S(CH3_OTHER,TERSE,"did_map==0, unable to populate node ids from mapping=%s",value);
         }
+        /* else fall through to O(N^2) UPMI_KVS_GETs version */
     } else {
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
-#if 0
-        /* TODO: Ticket #1582 */
-        int mv2_use_mpirun_mapping = 1;
-        char *val;
-
-        val = getenv("MV2_USE_MPIRUN_MAPPING");
-        if (val) {
-            mv2_use_mpirun_mapping = atoi(val);
-        }
-
-        if ((str && (atoi(str) == 1)) && mv2_use_mpirun_mapping) {
-            mpi_errno = MPIDI_Get_local_host_mpirun_mapping(pg, our_pg_rank);
-        } else {
+        if ((str = getenv("MV2_SUPPORT_DPM")) != NULL && (atoi(str) != 0)) {
+            /* If supporting DPM, get all the node_id's ahead of time to
+             * identify peers correctly when establishing connections */
+            mv2_take_timestamp("MPIDI_Get_local_host", NULL);
             mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
+            mv2_take_timestamp("MPIDI_Get_local_host", NULL);
+        } else if (((str = getenv("MPIRUN_RSH_LAUNCH")) != NULL && (atoi(str) != 0)) &&
+            (((str = getenv("MV2_USE_MPIRUN_MAPPING")) == NULL) ||
+             ((str = getenv("MV2_USE_MPIRUN_MAPPING")) != NULL && (atoi(str) != 0)))) {
+            /* If launched with MPIRUN_RSH and if either MV2_USE_MPIRUN_MAPPING is
+             * not set or if MV2_USE_MPIRUN_MAPPING is set to a non-zero value, use
+             * MPIDI_Get_local_host_mpirun_mapping. Else use MPIDI_Get_local_host */
+            mv2_take_timestamp("MPIDI_Get_local_host_mpirun_mapping", NULL);
+            mpi_errno = MPIDI_Get_local_host_mpirun_mapping(pg, our_pg_rank);
+            mv2_take_timestamp("MPIDI_Get_local_host_mpirun_mapping", NULL);
+        } else {
+            mv2_take_timestamp("MPIDI_Get_local_host", NULL);
+            mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
+            mv2_take_timestamp("MPIDI_Get_local_host", NULL);
         }
-#else
-        mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
-#endif /*ifdef _ENABLE_UD_*/
         if (mpi_errno) {
             MPIR_ERR_POP(mpi_errno);
         }
-#endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
+#endif /* CHANNEL_MRAIL || CHANNEL_PSM */
     }
 
-
 #if !defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM)
+    mv2_take_timestamp("publish_node_id", NULL);
     mpi_errno = publish_node_id(pg, our_pg_rank);
+    mv2_take_timestamp("publish_node_id", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     /* Allocate temporary structures.  These would need to be persistent if
@@ -1515,6 +1522,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 
     g_max_node_id = 0; /* defensive */
 
+    mv2_take_timestamp("UPMI_KVS_GET [hostnames O(N^2)]", (unsigned long)pg->size);
     for (i = 0; i < pg->size; ++i)
     {
         MPIU_Assert(g_max_node_id < pg->size);
@@ -1545,6 +1553,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
             node_names[g_max_node_id+1][0] = '\0';
         pg->vct[i].node_id = j;
     }
+    mv2_take_timestamp("UPMI_KVS_GET [hostnames O(N^2)]", NULL);
 #endif /* !defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM) */
 
 odd_even_cliques:

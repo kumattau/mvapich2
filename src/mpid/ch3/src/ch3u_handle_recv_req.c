@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -751,7 +751,8 @@ int MPIDI_CH3_ReqHandler_PutDerivedDTRecvComplete(MPIDI_VC_t * vc ATTRIBUTE((unu
     if (MV2_RNDV_PROTOCOL_EAGER == rreq->mrail.protocol) {
         *complete = FALSE;
     } else if (MV2_RNDV_PROTOCOL_RPUT == rreq->mrail.protocol ||
-               MV2_RNDV_PROTOCOL_R3 == rreq->mrail.protocol) {
+               MV2_RNDV_PROTOCOL_R3 == rreq->mrail.protocol ||
+               MV2_RNDV_PROTOCOL_UD_ZCOPY == rreq->mrail.protocol) {
         MPID_Request *cts_req;
         MPIDI_CH3_Pkt_t upkt;
         MPIDI_CH3_Pkt_rndv_clr_to_send_t *cts_pkt =
@@ -1316,8 +1317,22 @@ int MPIDI_CH3_ReqHandler_UnpackUEBufComplete(MPIDI_VC_t * vc ATTRIBUTE((unused))
     MPIDI_Request_check_pending(rreq, &recv_pending);
     if (!recv_pending) {
         if (rreq->dev.recv_data_sz > 0) {
+#if defined(CHANNEL_MRAIL)
+            if (rreq->mrail.is_eager_vbuf_queued == 1) {
+                rreq->mrail.eager_vbuf_tail->in_eager_sgl_queue = 2;
+            }
+#endif
             MPIDI_CH3U_Request_unpack_uebuf(rreq);
-            MPIU_Free(rreq->dev.tmpbuf);
+
+#if defined(CHANNEL_MRAIL)
+            if (rreq->mrail.is_eager_vbuf_queued == 0) {
+#endif      
+                MPIU_Free(rreq->dev.tmpbuf);
+#if defined(CHANNEL_MRAIL)
+            } else {
+                rreq->mrail.is_eager_vbuf_queued = 0;
+            }
+#endif      
         }
     }
     else {

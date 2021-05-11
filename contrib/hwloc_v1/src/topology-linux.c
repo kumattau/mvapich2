@@ -1,7 +1,7 @@
 /*
  * Copyright © 2009 CNRS
  * Copyright © 2009-2019 Inria.  All rights reserved.
- * Copyright © 2009-2013, 2015 Université Bordeaux
+ * Copyright © 2009-2013, 2015, 2020 Université Bordeaux
  * Copyright © 2009-2014 Cisco Systems, Inc.  All rights reserved.
  * Copyright © 2015 Intel, Inc.  All rights reserved.
  * Copyright © 2010 IBM
@@ -49,7 +49,7 @@ struct hwloc_linux_backend_data_s {
 #ifdef HWLOC_HAVE_LIBUDEV
   struct udev *udev; /* Global udev context */
 #endif
-  char *dumped_hwdata_dirname;
+  const char *dumped_hwdata_dirname;
   enum {
     HWLOC_LINUX_ARCH_X86, /* x86 32 or 64bits, including k1om (KNC) */
     HWLOC_LINUX_ARCH_IA64,
@@ -4909,6 +4909,7 @@ hwloc_linux_net_class_fillinfos(struct hwloc_backend *backend,
   struct stat st;
   char path[256];
   char address[128];
+  int err;
   snprintf(path, sizeof(path), "%s/address", osdevpath);
   if (!hwloc_read_path_by_length(path, address, sizeof(address), root_fd)) {
     char *eol = strchr(address, '\n');
@@ -4919,8 +4920,14 @@ hwloc_linux_net_class_fillinfos(struct hwloc_backend *backend,
   snprintf(path, sizeof(path), "%s/device/infiniband", osdevpath);
   if (!hwloc_stat(path, &st, root_fd)) {
     char hexid[16];
-    snprintf(path, sizeof(path), "%s/dev_id", osdevpath);
-    if (!hwloc_read_path_by_length(path, hexid, sizeof(hexid), root_fd)) {
+    snprintf(path, sizeof(path), "%s/dev_port", osdevpath);
+    err = hwloc_read_path_by_length(path, hexid, sizeof(hexid), root_fd);
+    if (err < 0) {
+      /* fallback t dev_id for old kernels/drivers */
+      snprintf(path, sizeof(path), "%s/dev_id", osdevpath);
+      err = hwloc_read_path_by_length(path, hexid, sizeof(hexid), root_fd);
+    }
+    if (!err) {
       char *eoid;
       unsigned long port;
       port = strtoul(hexid, &eoid, 0);
@@ -5691,9 +5698,9 @@ hwloc_linux_component_instantiate(struct hwloc_disc_component *component,
   data->dumped_hwdata_dirname = getenv("HWLOC_DUMPED_HWDATA_DIR");
   if (!data->dumped_hwdata_dirname) {
     if (_data1)
-      data->dumped_hwdata_dirname = (char *) "/var/run/hwloc";
+      data->dumped_hwdata_dirname = "/var/run/hwloc";
     else
-      data->dumped_hwdata_dirname = (char *) RUNSTATEDIR "/hwloc";
+      data->dumped_hwdata_dirname = RUNSTATEDIR "/hwloc";
   }
 
   data->deprecated_classlinks_model = -2; /* never tried */

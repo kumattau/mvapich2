@@ -220,3 +220,9 @@ test-suite.log
 /contrib/systemd/hwloc-dump-hwdata.service
 /contrib/misc/hwloc-tweak-osindex
 /contrib/windows/test-windows-version.sh
+
+/contrib/android/AndroidApp/.gradle
+/contrib/android/AndroidApp/.idea
+/contrib/android/AndroidApp/lstopo/.externalNativeBuild
+/contrib/android/AndroidApp/lstopo/build
+/contrib/android/AndroidApp/lstopo/release

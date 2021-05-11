@@ -1,6 +1,6 @@
 /* Malloc implementation for multiple threads without lock contention. */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -218,6 +218,8 @@
 /* <CHANNEL_MRAIL> */
 #ifndef NEMESIS_BUILD
 #include "mpichconf.h"
+#include "mpl.h"
+extern int mv2_use_aligned_alloc;
 #endif
 #include "dreg.h"
 #if !defined(DISABLE_PTMALLOC)
@@ -279,7 +281,7 @@ mvapich2_malloc_info_t mvapich2_minfo;
 
 #define HAVE_MREMAP 0
 #define MORECORE_CANNOT_TRIM 1
-#define DEFAULT_MMAP_THRESHOLD (1<<21)
+#define DEFAULT_MMAP_THRESHOLD (1<<30)
 
 #if !defined(__GNUC__)
 #define __const const
@@ -1413,7 +1415,7 @@ void *  __aligned_alloc(size_t, size_t);
 #define M_TRIM_THRESHOLD       -1
 
 #ifndef DEFAULT_TRIM_THRESHOLD
-#define DEFAULT_TRIM_THRESHOLD (128 * 1024)
+#define DEFAULT_TRIM_THRESHOLD (1024 * 1024)
 #endif
 
 /*
@@ -2046,6 +2048,7 @@ typedef struct malloc_chunk* mbinptr;
 #define NSMALLBINS         64
 #define SMALLBIN_WIDTH      8
 #define MIN_LARGE_SIZE    512
+#define MV2_GENERIC_CACHE_LINE_SIZE    128
 
 #define in_smallbin_range(sz)  \
   ((unsigned long)(sz) < (unsigned long)MIN_LARGE_SIZE)
@@ -2184,7 +2187,7 @@ typedef struct malloc_chunk* mfastbinptr;
   if trimming is not used.
 */
 
-#define FASTBIN_CONSOLIDATION_THRESHOLD  (65536UL)
+#define FASTBIN_CONSOLIDATION_THRESHOLD  (262144UL)
 
 /*
   Since the lowest 2 bits in max_fast don't matter in size comparisons,
@@ -3413,13 +3416,21 @@ public_mALLOc(size_t bytes)
   arena_get(ar_ptr, bytes);
   if(!ar_ptr)
     return 0;
-  victim = _int_malloc(ar_ptr, bytes);
+  if (likely(!mv2_use_aligned_alloc)) {
+    victim = _int_malloc(ar_ptr, bytes);
+  } else {
+    victim = _int_memalign(ar_ptr, MV2_GENERIC_CACHE_LINE_SIZE, bytes);
+  }
   if(!victim) {
     /* Maybe the failure is due to running out of mmapped areas. */
     if(ar_ptr != &main_arena) {
       (void)mutex_unlock(&ar_ptr->mutex);
       (void)mutex_lock(&main_arena.mutex);
-      victim = _int_malloc(&main_arena, bytes);
+      if (likely(!mv2_use_aligned_alloc)) {
+        victim = _int_malloc(&main_arena, bytes);
+      } else {
+        victim = _int_memalign(&main_arena, MV2_GENERIC_CACHE_LINE_SIZE, bytes);
+      }
       (void)mutex_unlock(&main_arena.mutex);
     } else {
 #if USE_ARENAS
@@ -3427,7 +3438,11 @@ public_mALLOc(size_t bytes)
       ar_ptr = arena_get2(ar_ptr->next ? ar_ptr : 0, bytes);
       (void)mutex_unlock(&main_arena.mutex);
       if(ar_ptr) {
-        victim = _int_malloc(ar_ptr, bytes);
+        if (likely(!mv2_use_aligned_alloc)) {
+          victim = _int_malloc(ar_ptr, bytes);
+        } else {
+          victim = _int_memalign(ar_ptr, MV2_GENERIC_CACHE_LINE_SIZE, bytes);
+        }
         (void)mutex_unlock(&ar_ptr->mutex);
       }
 #endif
@@ -3764,7 +3779,11 @@ public_cALLOc(size_t n, size_t elem_size)
     oldtopsize = (mp_.sbrk_base + av->max_system_mem - (char *)oldtop);
 #endif
 #endif
-  mem = _int_malloc(av, sz);
+  if (likely(!mv2_use_aligned_alloc)) {
+    mem = _int_malloc(av, sz);
+  } else {
+    mem = _int_memalign(av, MV2_GENERIC_CACHE_LINE_SIZE, sz);
+  }
 
   /* Only clearing follows, so we can unlock early. */
   (void)mutex_unlock(&av->mutex);
@@ -3776,7 +3795,11 @@ public_cALLOc(size_t n, size_t elem_size)
     /* Maybe the failure is due to running out of mmapped areas. */
     if(av != &main_arena) {
       (void)mutex_lock(&main_arena.mutex);
-      mem = _int_malloc(&main_arena, sz);
+      if (likely(!mv2_use_aligned_alloc)) {
+        mem = _int_malloc(&main_arena, sz);
+      } else {
+        mem = _int_memalign(&main_arena, MV2_GENERIC_CACHE_LINE_SIZE, sz);
+      }
       (void)mutex_unlock(&main_arena.mutex);
     } else {
 #if USE_ARENAS
@@ -3785,7 +3808,11 @@ public_cALLOc(size_t n, size_t elem_size)
       av = arena_get2(av->next ? av : 0, sz);
       (void)mutex_unlock(&main_arena.mutex);
       if(av) {
-        mem = _int_malloc(av, sz);
+        if (likely(!mv2_use_aligned_alloc)) {
+          mem = _int_malloc(av, sz);
+        } else {
+          mem = _int_memalign(av, MV2_GENERIC_CACHE_LINE_SIZE, sz);
+        }
         (void)mutex_unlock(&av->mutex);
       }
 #endif
@@ -4647,7 +4674,11 @@ _int_realloc(mstate av, Void_t* oldmem, size_t bytes)
 #endif
 
   /* realloc of null is supposed to be same as malloc */
-  if (oldmem == 0) return _int_malloc(av, bytes);
+  if (likely(!mv2_use_aligned_alloc)) {
+    if (oldmem == 0) return _int_malloc(av, bytes);
+  } else {
+    if (oldmem == 0) return _int_memalign(av, MV2_GENERIC_CACHE_LINE_SIZE, bytes);
+  }
 
   checked_request2size(bytes, nb);
 
@@ -4689,7 +4720,11 @@ _int_realloc(mstate av, Void_t* oldmem, size_t bytes)
 
       /* allocate, copy, free */
       else {
-        newmem = _int_malloc(av, nb - MALLOC_ALIGN_MASK);
+        if (likely(!mv2_use_aligned_alloc)) {
+          newmem = _int_malloc(av, nb - MALLOC_ALIGN_MASK);
+        } else {
+          newmem = _int_memalign(av, MV2_GENERIC_CACHE_LINE_SIZE, nb - MALLOC_ALIGN_MASK);
+        }
         if (newmem == 0)
           return 0; /* propagate failure */
 
@@ -4819,7 +4854,11 @@ _int_realloc(mstate av, Void_t* oldmem, size_t bytes)
       newmem = oldmem; /* do nothing */
     else {
       /* Must alloc, copy, free. */
-      newmem = _int_malloc(av, nb - MALLOC_ALIGN_MASK);
+      if (likely(!mv2_use_aligned_alloc)) {
+        newmem = _int_malloc(av, nb - MALLOC_ALIGN_MASK);
+      } else {
+        newmem = _int_memalign(av, MV2_GENERIC_CACHE_LINE_SIZE, nb - MALLOC_ALIGN_MASK);
+      }
       if (newmem != 0) {
         MALLOC_COPY(newmem, oldmem, oldsize - 2*SIZE_SZ);
         _int_free(av, oldmem);
@@ -5080,8 +5119,13 @@ mstate av; size_t n_elements; size_t* sizes; int opts; Void_t* chunks[];
   }
   else {
     /* if empty req, must still return chunk representing empty array */
-    if (n_elements == 0)
-      return (Void_t**) _int_malloc(av, 0);
+    if (n_elements == 0) {
+      if (likely(!mv2_use_aligned_alloc)) {
+        return (Void_t**) _int_malloc(av, 0);
+      } else {
+        return (Void_t**) _int_memalign(av, MV2_GENERIC_CACHE_LINE_SIZE, 0);
+      }
+    }
     marray = 0;
     array_size = request2size(n_elements * (sizeof(Void_t*)));
   }
@@ -5109,7 +5153,11 @@ mstate av; size_t n_elements; size_t* sizes; int opts; Void_t* chunks[];
   */
   mmx = mp_.n_mmaps_max;   /* disable mmap */
   mp_.n_mmaps_max = 0;
-  mem = _int_malloc(av, size);
+  if (likely(!mv2_use_aligned_alloc)) {
+    mem = _int_malloc(av, size);
+  } else {
+    mem = _int_memalign(av, MV2_GENERIC_CACHE_LINE_SIZE, size);
+  }
   mp_.n_mmaps_max = mmx;   /* reset mmap */
   if (mem == 0)
     return 0;

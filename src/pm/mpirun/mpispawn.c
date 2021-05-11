@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -43,6 +43,8 @@
 
 // Static variables
 static int USE_LINEAR_SSH;
+static int USE_SRUN;
+
 static int checkin_sock;
 static int **ranks;
 static pid_t *mpispawn_pids;
@@ -379,18 +381,23 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
     int port = initialize_checkin_sock();
     int nargc = env2int("MPISPAWN_NARGC");
     int i, j, k, *np;
+    int arg_offset;
     char *mpmd_on = env2str("MPISPAWN_MPMD");
     char *host_list = env2str("MPISPAWN_HOSTLIST");
     char *command = mkstr("cd %s; %s", env2str("MPISPAWN_WD"), ENV_CMD);
     char *mpispawn_env = NULL;
     char hostname[MAX_HOST_LEN + 1];
     char hostnameip[MAX_HOST_LEN + 1];
-    char *nargv[7], buf[20], *args = NULL, **host;
+    char buf[20], *args = NULL, **host;
+    char *nargv[16];
     int target[mt_degree];
 
-    for (i = 0; i < nargc; i++) {
-        sprintf(buf, "MPISPAWN_NARGV_%d", i);
-        nargv[i] = env2str(buf);
+    /* set delimiter based on srun/ssh launch */
+    const char delim = USE_SRUN ? ',' : ' ';
+
+    for (arg_offset = 0; arg_offset < nargc; arg_offset++) {
+        sprintf(buf, "MPISPAWN_NARGV_%d", arg_offset);
+        nargv[arg_offset] = env2str(buf);
     }
 
     /*
@@ -405,10 +412,14 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
     gethostip(hostnameip, sizeof(hostnameip));
 
     mpispawn_env = mkstr("MPISPAWN_MPIRUN_HOST=%s"
-            " MPISPAWN_MPIRUN_HOSTIP=%s"
-            " MPISPAWN_CHECKIN_PORT=%d"
-            " MPISPAWN_MPIRUN_PORT=%d",
-            hostname, hostnameip, port, port);
+            "%cMPISPAWN_MPIRUN_HOSTIP=%s"
+            "%cMPISPAWN_CHECKIN_PORT=%d"
+            "%cMPISPAWN_MPIRUN_PORT=%d",
+            hostname, delim, hostnameip, delim, port, delim, port);
+
+    if (USE_SRUN) {
+        mpispawn_env = mkstr("%s,%s", "--export=USE_SRUN=1", mpispawn_env); 
+    }
 
     for (i = 0; environ[i] != NULL; i++) {
         char *var, *val;
@@ -426,19 +437,17 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
                 /* Ignore variables with ( or ), see Trac #841 */
             } else if (strchr(val, ' ') != NULL) {
                 /* Add Quotes to variables with space */
-                mpispawn_env = mkstr("%s %s='%s'", mpispawn_env, var, val);
-
+                mpispawn_env = mkstr("%s%c%s='%s'", mpispawn_env, delim, var, val);
             } else {
                 /*If mpmd is selected the name and args of the executable are written in the HOST_LIST, not in the
                  * MPISPAWN_ARGV and MPISPAWN_ARGC. So the value of these variables is not exact and we don't
                  * read this value.*/
                 if (mpmd_on) {
                     if (strstr(var, "MPISPAWN_ARGV_") == NULL && strstr(var, "MPISPAWN_ARGC") == NULL) {
-
-                        mpispawn_env = mkstr("%s %s=%s", mpispawn_env, var, val);
+                        mpispawn_env = mkstr("%s%c%s=%s", mpispawn_env, delim, var, val);
                     }
                 } else
-                    mpispawn_env = mkstr("%s %s=%s", mpispawn_env, var, val);
+                    mpispawn_env = mkstr("%s%c%s=%s", mpispawn_env, delim, var, val);
             }
         }
 
@@ -517,22 +526,22 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
     for (i = 0; i < mt_degree && target[i] != -1; i++) {
         /*
          * If mpmd is selected we need to add the MPISPAWN_ARGC and
-         * MPISPAWN_ARGV to the mpispwan environment using the information
+         * MPISPAWN_ARGV to the mpispawn environment using the information
          * we have read in the host_list.
          */
         if (mpmd_on) {
             /*
              * We need to add MPISPAWN_ARGV
              */
-            mpispawn_env = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env,
+            mpispawn_env = mkstr("%s%cMPISPAWN_ARGC=%d", mpispawn_env, delim,
                     num_args[target[i]]);
-            mpispawn_env = mkstr("%s MPISPAWN_ARGV_0=%s", mpispawn_env,
+            mpispawn_env = mkstr("%s%cMPISPAWN_ARGV_0=%s", mpispawn_env, delim,
                     exe[target[i]]);
             if(num_args[target[i]] && args_exe[target[i]]) {
                 char **tmp_arg = tokenize(args_exe[target[i]], ":");
                 for (j = 0; j < num_args[target[i]] - 1; j++) {
-                    mpispawn_env = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env,
-                            j + 1, tmp_arg[j]);
+                    mpispawn_env = mkstr("%s%cMPISPAWN_ARGV_%d=%s", mpispawn_env,
+                            delim, j + 1, tmp_arg[j]);
                 }
             }
         }
@@ -541,12 +550,30 @@ void spawn_mpispawn_tree (int argc, char * argv[], int mt_nnodes, int
         MPISPAWN_NCHILD++;
 
         if (0 == fork()) {
-            mpispawn_env = mkstr("%s MPISPAWN_ID=%d MPISPAWN_LOCAL_NPROCS=%d",
-                    mpispawn_env, target[i], np[target[i]]);
-            command = mkstr("%s %s %s %d", command, mpispawn_env, args,
-                    mt_nnodes);
+            mpispawn_env = mkstr("%s%cMPISPAWN_ID=%d%cMPISPAWN_LOCAL_NPROCS=%d",
+                    mpispawn_env, delim, target[i], delim, np[target[i]]);
 
-            nargv[nargc + 1] = command;
+            if (USE_SRUN) {
+                arg_offset = nargc + 1;
+                nargv[arg_offset++] = mpispawn_env; 
+                /* these args are wrapped into command for ssh launch
+                 * because ssh treats them as one arg.
+                 * For srun since it is one command we need each as its own
+                 * element of nargv. We skip the last since we will spawn 
+                 * a variable number of mpispawns depending on the tree level
+                 */
+                for (j = 0; j < argc - 1; j++) {
+                    nargv[arg_offset++] = argv[j];
+                }
+                /* number of child mpispawns for this process */
+                nargv[arg_offset++] = mkstr("%d", mt_nnodes);
+                nargv[arg_offset] = NULL;
+            } else {
+                command = mkstr("%s %s %s %d", command, mpispawn_env, args,
+                        mt_nnodes);
+                nargv[nargc + 1] = command;
+                j = 0;
+            }
             PRINT_DEBUG(DEBUG_Fork_verbose, "FORK mpispawn (pid=%d)\n",
                     getpid());
             PRINT_DEBUG(DEBUG_Fork_verbose > 1,
@@ -800,7 +827,7 @@ void child_handler(int signal)
     gethostname(my_host_name, MAX_HOST_LEN);
 
     rank = mt_id;
-    PRINT_DEBUG(DEBUG_Fork_verbose, "mpispawn child_handler: got signal %d: %s\n", signal, sys_siglist[signal]);
+    PRINT_DEBUG(DEBUG_Fork_verbose, "mpispawn child_handler: got signal %d: %s\n", signal, strsignal(signal));
     while (1) {
         do {
             pid = waitpid(-1, &status, WNOHANG);
@@ -1205,6 +1232,8 @@ int main(int argc, char *argv[])
 
     // Static variable
     USE_LINEAR_SSH = env2int("USE_LINEAR_SSH");
+
+    USE_SRUN = env2int("USE_SRUN");
 
     // Global variable, used in pmi_tree.c
     NCHILD = env2int("MPISPAWN_LOCAL_NPROCS");

@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,6 +39,7 @@
 #include "mpiutil.h"
 #include "mv2_arch_hca_detect.h"
 #include "coll_shmem.h"
+#include <timestamp.h>
 
 #if defined(_ENABLE_MPIT_TOOL_) || defined (_SMP_LIMIC_)
 #include "rdma_impl.h"
@@ -168,6 +169,7 @@ static SEND_BUF_T** s_buffer_head = NULL;
 static SEND_BUF_T* s_my_buffer_head = NULL;
 int SMP_INIT = 0;
 int SMP_ONLY = 0;
+long int mv2_num_queued_smp_ops = 0;
 static void** s_current_ptr = NULL;
 static MPIDI_msg_sz_t* s_current_bytes = NULL;
 static MPIDI_msg_sz_t* s_total_bytes = NULL;
@@ -765,9 +767,6 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
             continue;
 #endif /* defined(CKPT) */
 
-/*
-        if (vc->smp.send_active)
-*/
         while (vc->smp.send_active != NULL) {
                 MPID_Request *req = vc->smp.send_active;
                 PRINT_DEBUG(DEBUG_SHM_verbose>1,
@@ -879,7 +878,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
 
                            if (complete) {
                               req->ch.reqtype = REQUEST_NORMAL;
-							  if( !MPIDI_CH3I_SMP_SendQ_empty(vc) ){
+							  if (!MPIDI_CH3I_SMP_SendQ_empty(vc) ){
                             	  MPIDI_CH3I_SMP_SendQ_dequeue(vc);
 							  }
                               PRINT_DEBUG(DEBUG_RNDV_verbose>1,
@@ -888,20 +887,16 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
 #ifdef CKPT
 						      MPIDI_CH3I_MRAILI_Pkt_comm_header* p = 
 								 (MPIDI_CH3I_MRAILI_Pkt_comm_header*)(&(req->dev.pending_pkt));
-						      if( p->type >= MPIDI_CH3_PKT_CM_SUSPEND && 
+						      if (p->type >= MPIDI_CH3_PKT_CM_SUSPEND &&
 							     p->type <= MPIDI_CH3_PKT_CR_REMOTE_UPDATE ){
 							     PRINT_DEBUG(DEBUG_SHM_verbose>1, "%s [%d vc_%d]: imm-write msg %s(%d)\n", __func__,
 							     MPIDI_Process.my_pg_rank, vc->pg_rank, 
 							     MPIDI_CH3_Pkt_type_to_string[p->type],p->type );
 						      }
-						      if( p->type == MPIDI_CH3_PKT_CM_SUSPEND ){
+						      if (p->type == MPIDI_CH3_PKT_CM_SUSPEND ) {
 							     vc->mrail.suspended_rails_send++;
-						         //	printf("%s: [%d vc_%d]: imm-write SUSP_MSG, send=%d, recv=%d\n", 
-						         //	__func__, MPIDI_Process.my_pg_rank, vc->pg_rank, 
-						         //	vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv);
-							     if( vc->mrail.suspended_rails_send > 0 &&
-								    vc->mrail.suspended_rails_recv > 0 )
-							     {
+							     if (vc->mrail.suspended_rails_send > 0 &&
+								    vc->mrail.suspended_rails_recv > 0) {
 								    vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDED;
 								    vc->mrail.suspended_rails_send = 0;
 								    vc->mrail.suspended_rails_recv =0;
@@ -942,6 +937,10 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
             }
             MPIR_T_PVAR_COUNTER_INC(MV2, mv2_smp_write_progress_poll_success, 1);
         } /* while (vc->smp.send_active != NULL) */
+        if ((vc->smp.send_active != NULL) &&
+            (!MPIDI_CH3I_SMP_SendQ_empty(vc))) {
+            vc->smp.send_active = MPIDI_CH3I_SMP_SendQ_head(vc);
+        }
     } /* for (i=0; i < g_smpi.num_local_nodes; ++i) */
 
 fn_exit:
@@ -1568,9 +1567,6 @@ void MPIDI_CH3I_set_smp_only()
 
     g_smpi.only_one_device = 0;
     SMP_ONLY = 0;
-    if (MPIDI_CH3I_Process.has_dpm) {
-        return;
-    }
 
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
         rdma_use_smp = !!atoi(value);
@@ -1591,7 +1587,9 @@ void MPIDI_CH3I_set_smp_only()
 #endif
 
     if (MPIDI_Get_num_nodes() == 1) {
-        if(!rdma_use_smp || rdma_use_blocking) {
+        /* If SMP is disabled, or if blocking is forced or if DPM is enabled,
+         * make sure we do not set SMP_ONLY=1 */
+        if(!rdma_use_smp || rdma_use_blocking || MPIDI_CH3I_Process.has_dpm) {
             return;
         }
         g_smpi.only_one_device = 1;
@@ -1635,7 +1633,7 @@ ssize_t check_cma_usability (pid_t remote_pid, char * rbuffer)
 int MPIDI_CH3I_CM_SHMEM_Sync(volatile int * volatile bar_array, int my_local_id, int num_local_procs)
 {
     int mpi_errno = MPI_SUCCESS;
-    int i = 0, wait = 0, pid = 0;
+    volatile int i = 0, wait = 0, pid = 0;
 
     /* Sanity check */
     while (bar_array == NULL);
@@ -1876,7 +1874,9 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #endif /* defined(__x86_64__) */
 
     /* Set SMP params based on architecture */
+    mv2_take_timestamp("rdma_set_smp_paramters", NULL);
     rdma_set_smp_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
+    mv2_take_timestamp("rdma_set_smp_paramters", NULL);
     
     if(rdma_use_blocking) {
         /* blocking is enabled, so
@@ -1893,9 +1893,11 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
      * Do the initializations here. These will be needed on restart
      * after a checkpoint has been taken.
      */
+    mv2_take_timestamp("smpi_exchange_info", NULL);
     if ((mpi_errno = smpi_exchange_info(pg)) != MPI_SUCCESS) {
         MPIR_ERR_POP(mpi_errno);
     }
+    mv2_take_timestamp("smpi_exchange_info", NULL);
 
     PRINT_DEBUG(DEBUG_SHM_verbose>1, "finished exchange info\n");
 
@@ -1972,21 +1974,26 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
                 g_size_shmem, g_size_pool);
 
     /* Call helper function to create shmem region */
+    mv2_take_timestamp("MPIDI_CH3I_SHMEM_Helper_fn [ib_smem]", NULL);
     mpi_errno = MPIDI_CH3I_SHMEM_Helper_fn(pg, g_smpi.my_local_id, &shmem_file,
                                         "ib_shmem", &g_smpi.fd, g_size_shmem);
+    mv2_take_timestamp("MPIDI_CH3I_SHMEM_Helper_fn [ib_smem]", NULL);
     if (mpi_errno != MPI_SUCCESS) {
        goto cleanup_files;
     }
 
     /* Call helper function to create shmem region */
+    mv2_take_timestamp("MPIDI_CH3I_SHMEM_Helper_fn [ib_pool]", NULL);
     mpi_errno = MPIDI_CH3I_SHMEM_Helper_fn(pg, g_smpi.my_local_id, &pool_file,
                                         "ib_pool", &g_smpi.fd_pool, g_size_pool);
+    mv2_take_timestamp("MPIDI_CH3I_SHMEM_Helper_fn [ib_pool]", NULL);
     if (mpi_errno != MPI_SUCCESS) {
        goto cleanup_files;
     }
 
     if (mv2_enable_shmem_collectives) {
         /* Shared memory for collectives */
+	    mv2_take_timestamp("MPIDI_CH3I_SHMEM_COLL_init", NULL);
         if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(pg, g_smpi.my_local_id)) != MPI_SUCCESS)
         {
             mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
@@ -1994,6 +2001,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
                    "%s", "SHMEM_COLL_init failed");
             goto cleanup_files;
         }
+        mv2_take_timestamp("MPIDI_CH3I_SHMEM_COLL_init", NULL);
     }
 
     g_smpi_shmem = (struct shared_mem *) MPIU_Malloc(sizeof(struct shared_mem));
@@ -2026,7 +2034,9 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
 
     if(!g_smp_delay_shmem_pool_init) {
+        mv2_take_timestamp("MPIDI_CH3I_SMP_attach_shm_pool_inline", NULL);
         mpi_errno = MPIDI_CH3I_SMP_attach_shm_pool_inline();
+        mv2_take_timestamp("MPIDI_CH3I_SMP_attach_shm_pool_inline", NULL);
         if (mpi_errno != MPI_SUCCESS) {
             /* to clean up tmp shared file */
             mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
@@ -2131,8 +2141,10 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
 
     /* Another synchronization barrier */
+    mv2_take_timestamp("MPIDI_CH3I_CM_SHMEM_Sync", NULL);
     mpi_errno = MPIDI_CH3I_CM_SHMEM_Sync(g_smpi_shmem->pid, g_smpi.my_local_id,
                                             g_smpi.num_local_nodes);
+    mv2_take_timestamp("MPIDI_CH3I_CM_SHMEM_Sync", NULL);
     if (mpi_errno != MPI_SUCCESS) {
         goto cleanup_files;
     }
@@ -2193,6 +2205,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
      * to the receiver on a numa machine (instead of all being located
      * near the first process).
      */
+    mv2_take_timestamp("Walk Shared Pages", NULL);
     {
        int receiver, sender;
  
@@ -2211,6 +2224,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
            }
        }
     }
+    mv2_take_timestamp("Walk Shared Pages", NULL);
 #endif /* defined(__x86_64__) */
 
     s_current_ptr = (void **) MPIU_Malloc(sizeof(void *) * g_smpi.num_local_nodes);
@@ -3690,6 +3704,7 @@ int mv2_smp_fast_write_contig(MPIDI_VC_t* vc, const void *buf,
         if (sreq == NULL) {
             MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");
         }
+        MPIU_Assert(vc->smp.send_active == NULL);
         MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
         vc->smp.send_active = sreq;
         *sreq_p = sreq;

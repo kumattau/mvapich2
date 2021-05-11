@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -173,6 +173,7 @@ extern int mv2_shmem_coll_spin_count;
 extern int mv2_enable_shmem_collectives;
 int is_shmem_collectives_enabled();
 extern int mv2_two_level_comm_early_init_threshold;
+extern int mv2_num_intra_node_comm_levels;
 
 extern struct coll_runtime mv2_coll_param;
 void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
@@ -275,6 +276,11 @@ extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
 extern int mv2_enable_socket_aware_collectives;
 extern int mv2_use_socket_aware_barrier;
 extern int mv2_use_socket_aware_allreduce;
+extern int mv2_enable_topo_aware_collectives;
+extern int mv2_use_topo_aware_barrier;
+extern int mv2_use_topo_aware_allreduce;
+extern int mv2_use_topo_aware_reduce;
+extern int mv2_use_topo_aware_bcast;
 extern int mv2_use_optimized_release_allreduce;
 extern int mv2_use_shmem_tree_enable;
 extern int mv2_use_shmem_tree_min_message_size;
@@ -285,6 +291,18 @@ extern int mv2_use_socket_aware_sharp_allreduce;
 extern int mv2_socket_aware_allreduce_max_msg;
 extern int mv2_socket_aware_allreduce_min_msg;
 extern int mv2_socket_aware_allreduce_ppn_threshold;
+extern int mv2_topo_aware_allreduce_max_msg;
+extern int mv2_topo_aware_allreduce_min_msg;
+extern int mv2_topo_aware_allreduce_ppn_threshold;
+extern int mv2_topo_aware_reduce_max_msg;
+extern int mv2_topo_aware_reduce_min_msg;
+extern int mv2_topo_aware_bcast_max_msg;
+extern int mv2_topo_aware_bcast_min_msg;
+extern int mv2_topo_aware_reduce_ppn_threshold;
+extern int mv2_topo_aware_bcast_ppn_threshold;
+extern int mv2_topo_aware_bcast_node_threshold;
+extern int mv2_topo_aware_reduce_node_threshold;
+
 /* Use inside bcast_osu.c */
 typedef struct bcast_ring_allgather_shm_packet
 {
@@ -524,6 +542,14 @@ typedef struct shm_info_t {
     struct shm_info_t *next;
     struct shm_info_t *prev;
 #endif /* CKPT */
+    /* Number of sends in zcopy broadcast/reduce for which no completion event
+     * has been raised */
+    int zcpy_coll_pending_send_ops;
+    /* Flag to check if deferred freeing of shmem_info is needed. An example
+     * where this is useful is when the communicator and associated shared
+     * memory regions are freed before zcopy bcast/reduce related sends are
+     * complete.*/
+    int defer_free;
 #endif /* defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB) */
 } shmem_info_t;
 
@@ -544,7 +570,7 @@ void mv2_shm_tree_reduce(shmem_info_t * shmem, char *in_buf, int len,
 int mv2_shm_coll_reg_buffer(void *buffer, int size, struct ibv_mr *mem_handle[], 
                            int *buffer_registered); 
 int mv2_shm_coll_dereg_buffer(struct ibv_mr *mem_handle[]);
-void mv2_shm_coll_prepare_post_send(uint64_t local_rdma_addr, uint64_t remote_rdma_addr,
+void mv2_shm_coll_prepare_post_send(void *zcpy_coll_shmem_info, uint64_t local_rdma_addr, uint64_t remote_rdma_addr,
                       uint32_t local_rdma_key, uint32_t remote_rdma_key,
                       int len, int rail, MPIDI_VC_t * vc); 
 int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,

@@ -2,7 +2,7 @@
 
 %{
 /*
- * Copyright (c) 2001-2020, The Ohio State University. All rights
+ * Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,8 @@
 #include <debug_utils.h>
 #include <mpirun_util.h>
 #include <db/text.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,6 +42,7 @@ static size_t n_alloc = 0;
 static struct rank_s * rank = NULL;
 static char const * hostfile = NULL;
 static int lineno = 1;
+
 
 %}
 
@@ -83,6 +86,7 @@ hca:    TEXT                            { current.hca = $1; }
 extern FILE * hostfile_yyin;
 extern process * plist;
 extern int nprocs;
+extern int nprocs_per_node;
 extern int dpm;
 
 static void
@@ -155,16 +159,52 @@ commit(void)
 }
 
 extern int
-read_hostfile(char const * pathname)
+read_hostfile(char const * pathname, int using_pbs)
 {
     int rv;
     int i, offset = dpm ? env2int("TOTALPROCS") : 0;
     int n = offset + nprocs;
+    int host_index = 0;
+    int host_num = 0;
+    pid_t cpid, pid = 0;
+    int status = 0;
 
     multiplier = 1;
     lineno = 1;
 
     hostfile = pathname;
+    /* create uniq'ed version of hostfile */
+    if (using_pbs && env2int("PBS_NUM_PPN") != nprocs_per_node) {
+        char const * src_hostfile = hostfile;
+        char * homedir = env2str("HOME");
+        int jobid = env2int("PBS_JOBID");
+        pid_t pid = getpid();
+        sigset_t tmp_mask, old_mask;
+
+        hostfile = mkstr("%s/.mpirun_hosts_%d_%d.tmp", homedir, jobid, pid);
+
+        sigemptyset(&tmp_mask);
+        sigprocmask(SIG_SETMASK, &tmp_mask, &old_mask);
+
+        if (!(cpid = fork())) {
+            /* child process to call uniq */
+            const char *const args[4] = {"uniq", src_hostfile, hostfile, NULL};
+            execvp(args[0], (char *const *)args); 
+
+            perror("execvp");
+            PRINT_ERROR("Failed to create unique hostfile, "
+                        "startup failed\n");
+            exit(EXIT_FAILURE);
+        }
+        /* wait for child process to complete */
+        waitpid(cpid, &status, 0);
+        sigprocmask(SIG_SETMASK, &old_mask, NULL);
+#ifdef DEBUG_HOSTFILE_READER
+        PRINT_DEBUG(DEBUG_HOSTFILE_READER, "Temporary hostfile created: %s\n",
+                    hostfile);
+#endif
+    }
+
     hostfile_yyin = fopen(hostfile, "r");
 
     if (hostfile_yyin == NULL) {
@@ -189,22 +229,38 @@ read_hostfile(char const * pathname)
         fclose(hostfile_yyin);
         exit(EXIT_FAILURE);
     }
-
+    
     for (i = offset; i < n; i++) {
-        plist[i - offset].hostname = rank[i % n_ranks].hostname;
+        /* 
+         * if the user set the ppn value we only assign the next host every
+         * ppn interations. Otherwise we change it for each iteration for 
+         * cyclic distribution 
+         */
+        if (!nprocs_per_node || !(i % nprocs_per_node)) {
+            host_index = host_num % n_ranks;
+            host_num++;
+        }
+        plist[i - offset].hostname = rank[host_index].hostname;
 
         if (rank[i % n_ranks].hca) {
-            plist[i - offset].device = rank[i % n_ranks].hca;
+            plist[i - offset].device = rank[host_index].hca;
         }
 
         if (rank[i % n_ranks].port >= 0) {
-            plist[i - offset].port = rank[i % n_ranks].port;
+            plist[i - offset].port = rank[host_index].port;
         }
     }
 
     print_memory();
     free_memory();
     fclose(hostfile_yyin);
+
+    /* remove temporary hostfile */
+    if (hostfile != pathname) {
+        if (unlink(hostfile)) {
+            PRINT_ERROR("Failed to remove temporary hostfile %s\n", hostfile);
+        }
+    }
 
     return rv;
 }

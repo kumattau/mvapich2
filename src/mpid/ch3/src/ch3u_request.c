@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,6 +16,10 @@
  */
 
 #include "mpidimpl.h"
+
+#if defined(CHANNEL_MRAIL)
+#include "ibv_send_inline.h"
+#endif
 
 /* This file contains two types of routines associated with requests: 
  * Routines to allocate and free requests
@@ -37,7 +41,7 @@ extern int mv2_iov_density_min;
 #define REQUEST_CB_DEPTH 2
 #define MPIDI_LOAD_RECV_IOV_ORIG_SEGMENT_FIRST_UNSET (-1)
 
-MPID_Request MPID_Request_direct[MPID_REQUEST_PREALLOC] = {{0}};
+MPID_Request MPID_Request_direct[MPID_REQUEST_PREALLOC] __attribute__((__aligned__(64))) = {{0}};
 MPIU_Object_alloc_t MPID_Request_mem = {
     0, 0, 0, 0, MPID_REQUEST, sizeof(MPID_Request), MPID_Request_direct,
     MPID_REQUEST_PREALLOC };
@@ -797,51 +801,92 @@ int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq)
 
     if (unpack_sz > 0)
     {
-	if (dt_contig)
-	{
-	    /* TODO - check that amount of data is consistent with datatype.  
-	       In other words, if we were to use Segment_unpack()
-	       would last = unpack?  If not we should return an error 
-	       (unless configured with --enable-fast) */
-	    MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
+        if (dt_contig)
+        {
+            /* TODO - check that amount of data is consistent with datatype.  
+               In other words, if we were to use Segment_unpack()
+               would last = unpack?  If not we should return an error 
+               (unless configured with --enable-fast) */
+            MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
+#if defined(CHANNEL_MRAIL)
+            if (rreq->mrail.is_eager_vbuf_queued == 1) {
+                MPIU_Assert(rreq->mrail.eager_unexp_size == unpack_sz);
+                vbuf *v = rreq->mrail.eager_vbuf_head;
+                char *ubuf = (char *)rreq->dev.user_buf + dt_true_lb;
+                while ((unpack_sz > 0) && (v != NULL)) { 
+                    MPIU_Memcpy(ubuf, v->unexp_data_buf,
+                            v->data_size);
+                    unpack_sz -= v->data_size;
+                    ubuf = (char *)ubuf + v->data_size; 
+                    if ((v->next != NULL) || (v->in_eager_sgl_queue != 2)) {
+                        v->in_eager_sgl_queue = 0;
+                        MPIDI_CH3I_MRAIL_Release_vbuf(v);
+                    }
+                    v = v->next;
+                }          
+                MPIU_Assert(unpack_sz == 0);
+            } else 
+#endif             
+            {
 #ifdef _ENABLE_CUDA_
-        if (mv2_enable_device && (rreq->mrail.device_transfer_mode != NONE
-	    || is_device_buffer((void *)rreq->dev.tmpbuf))) {
-            MPIU_Memcpy_Device((char *)rreq->dev.user_buf + dt_true_lb,
-                    rreq->dev.tmpbuf, unpack_sz, deviceMemcpyDefault);
-        } else
+                if (mv2_enable_device && (rreq->mrail.device_transfer_mode != NONE
+                            || is_device_buffer((void *)rreq->dev.tmpbuf))) {
+                    MPIU_Memcpy_Device((char *)rreq->dev.user_buf + dt_true_lb,
+                            rreq->dev.tmpbuf, unpack_sz, deviceMemcpyDefault);
+                } else
 #endif
-	    MPIU_Memcpy((char *)rreq->dev.user_buf + dt_true_lb, rreq->dev.tmpbuf,
-		   unpack_sz);
-	    MPIDI_FUNC_EXIT(MPID_STATE_MEMCPY);
-	}
-	else
-	{
-	    MPID_Segment seg;
-	    MPI_Aint last;
+                    MPIU_Memcpy((char *)rreq->dev.user_buf + dt_true_lb, rreq->dev.tmpbuf,
+                            unpack_sz);
+            }
+            MPIDI_FUNC_EXIT(MPID_STATE_MEMCPY);
+        } else {
+            MPID_Segment seg;
+            MPI_Aint last;
 
-	    MPID_Segment_init(rreq->dev.user_buf, rreq->dev.user_count, 
-			      rreq->dev.datatype, &seg, 0);
-	    last = unpack_sz;
+            MPID_Segment_init(rreq->dev.user_buf, rreq->dev.user_count, 
+                    rreq->dev.datatype, &seg, 0);
+
+#if defined(CHANNEL_MRAIL)
+            if (rreq->mrail.is_eager_vbuf_queued == 1) {
+                MPI_Aint first = 0;
+                vbuf *v = rreq->mrail.eager_vbuf_head;
+                MPIU_Assert(rreq->mrail.eager_unexp_size == unpack_sz);
+                while ((unpack_sz > 0) && (v != NULL)) { 
+                    last = v->data_size;
+                    MPID_Segment_unpack(&seg, first, &last, v->unexp_data_buf);
+                    unpack_sz -= v->data_size;
+                    last += v->data_size;
+                    if ((v->next != NULL) || (v->in_eager_sgl_queue != 2)) {
+                        v->in_eager_sgl_queue = 0;
+                        MPIDI_CH3I_MRAIL_Release_vbuf(v);
+                    }
+                    first = last;
+                    v = v->next;
+                }          
+                MPIU_Assert(unpack_sz == 0);
+            } else 
+#endif      
+            {
+                last = unpack_sz;
 #if defined(_ENABLE_CUDA_)
-        if (mv2_enable_device && rreq->mrail.device_transfer_mode != NONE) {
-            MPID_Segment_unpack_device(&seg, 0, &last, dt_ptr, rreq->dev.tmpbuf);
-        } else
+                if (mv2_enable_device && rreq->mrail.device_transfer_mode != NONE) {
+                    MPID_Segment_unpack_device(&seg, 0, &last, dt_ptr, rreq->dev.tmpbuf);
+                } else
 #endif
-	    MPID_Segment_unpack(&seg, 0, &last, rreq->dev.tmpbuf);
-	    if (last != unpack_sz)
-	    {
-		/* --BEGIN ERROR HANDLING-- */
-		/* received data was not entirely consumed by unpack() 
-		   because too few bytes remained to fill the next basic
-		   datatype */
-		MPIR_STATUS_SET_COUNT(rreq->status, last);
-		rreq->status.MPI_ERROR = MPIR_Err_create_code(MPI_SUCCESS, 
-                         MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_TYPE,
-			 "**dtypemismatch", 0);
-		/* --END ERROR HANDLING-- */
-	    }
-	}
+                    MPID_Segment_unpack(&seg, 0, &last, rreq->dev.tmpbuf);
+                if (last != unpack_sz) {
+                    /* --BEGIN ERROR HANDLING-- */
+                    /* received data was not entirely consumed by unpack() 
+                       because too few bytes remained to fill the next basic
+                       datatype */
+                    MPIR_STATUS_SET_COUNT(rreq->status, last);
+                    rreq->status.MPI_ERROR = MPIR_Err_create_code(MPI_SUCCESS, 
+                            MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_TYPE,
+                            "**dtypemismatch", 0);
+                    /* --END ERROR HANDLING-- */
+                }
+            }
+        }
     }
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_REQUEST_UNPACK_UEBUF);

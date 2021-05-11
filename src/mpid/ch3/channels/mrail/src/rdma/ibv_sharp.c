@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -289,7 +289,7 @@ int sharp_get_hca_name_and_port ()
             MPIR_ERR_POP(mpi_errno);
         }
     
-        sharp_port = rdma_find_active_port(ctx, ctx->device, NULL);
+        sharp_port = rdma_find_active_port(ctx, ctx->device, NULL, NULL, NULL);
         if (sharp_port != -1) {
             /* found a open port to be used for SHArP */
             goto finished_query;

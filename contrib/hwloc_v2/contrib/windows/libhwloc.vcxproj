@@ -111,6 +111,9 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <Manifest>
+      <AdditionalManifestFiles>app.manifest</AdditionalManifestFiles>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='DebugStatic|x64'">
     <PreBuildEvent>
@@ -128,6 +131,9 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <Manifest>
+      <AdditionalManifestFiles>app.manifest</AdditionalManifestFiles>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <PreBuildEvent>
@@ -161,6 +167,9 @@
       <TargetMachine>MachineX64</TargetMachine>
       <LinkErrorReporting>NoErrorReport</LinkErrorReporting>
     </Link>
+    <Manifest>
+      <AdditionalManifestFiles>app.manifest</AdditionalManifestFiles>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseStatic|x64'">
     <PreBuildEvent>
@@ -194,6 +203,9 @@
       <TargetMachine>MachineX64</TargetMachine>
       <LinkErrorReporting>NoErrorReport</LinkErrorReporting>
     </Link>
+    <Manifest>
+      <AdditionalManifestFiles>app.manifest</AdditionalManifestFiles>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\hwloc\base64.c" />
@@ -203,6 +215,7 @@
     <ClCompile Include="..\..\hwloc\diff.c" />
     <ClCompile Include="..\..\hwloc\distances.c" />
     <ClCompile Include="..\..\hwloc\memattrs.c" />
+    <ClCompile Include="..\..\hwloc\cpukinds.c" />
     <ClCompile Include="..\..\hwloc\misc.c" />
     <ClCompile Include="..\..\hwloc\pci-common.c" />
     <ClCompile Include="..\..\hwloc\shmem.c" />
@@ -228,6 +241,7 @@
     <ClInclude Include="..\..\include\hwloc\helper.h" />
     <ClInclude Include="..\..\include\hwloc\inlines.h" />
     <ClInclude Include="..\..\include\hwloc\memattrs.h" />
+    <ClInclude Include="..\..\include\hwloc\cpukinds.h" />
     <ClInclude Include="..\..\include\hwloc\plugins.h" />
     <ClInclude Include="..\..\include\hwloc\shmem.h" />
     <ClInclude Include="..\..\include\hwloc\rename.h" />

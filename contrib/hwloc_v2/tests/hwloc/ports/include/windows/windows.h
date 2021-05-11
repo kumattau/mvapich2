@@ -27,6 +27,7 @@ typedef long LONG, LONG_PTR;
 typedef const char *LPCSTR;
 typedef int (*FARPROC)(void);
 typedef void *PVOID,*LPVOID;
+typedef LONG NTSTATUS;
 typedef char CHAR;
 typedef CHAR *LPSTR;
 typedef LPSTR LPTSTR;
@@ -96,6 +97,7 @@ typedef int HANDLE;
 #define _ANONYMOUS_STRUCT
 #endif /* __GNUC__ */
 #define DUMMYUNIONNAME
+#define DUMMYSTRUCTNAME
 #define WINAPI
 
 #define ANYSIZE_ARRAY 1
@@ -109,6 +111,7 @@ typedef int HANDLE;
 #define PAGE_EXECUTE_READWRITE	0x0040
 
 WINAPI HINSTANCE LoadLibrary(LPCSTR);
+WINAPI HMODULE GetModuleHandle(LPCSTR);
 WINAPI FARPROC GetProcAddress(HINSTANCE, LPCSTR);
 WINAPI DWORD GetLastError(void);
 
@@ -124,9 +127,24 @@ PVOID WINAPI VirtualAlloc(PVOID,DWORD,DWORD,DWORD);
 BOOL GetNumaAvailableMemoryNode(UCHAR Node, PULONGLONG AvailableBytes);
 
 typedef struct _SYSTEM_INFO {
-  DWORD dwPageSize;
+  _ANONYMOUS_UNION
+  union {
+    DWORD dwOemId;
+    _ANONYMOUS_STRUCT
+    struct {
+      WORD wProcessorArchitecture;
+      WORD wReserved;
+    } DUMMYSTRUCTNAME;
+  } DUMMYUNIONNAME;
+  DWORD     dwPageSize;
+  LPVOID    lpMinimumApplicationAddress;
+  LPVOID    lpMaximumApplicationAddress;
   DWORD_PTR dwActiveProcessorMask;
-  DWORD dwNumberOfProcessors;
+  DWORD     dwNumberOfProcessors;
+  DWORD     dwProcessorType;
+  DWORD     dwAllocationGranularity;
+  WORD      wProcessorLevel;
+  WORD      wProcessorRevision;
 } SYSTEM_INFO, *LPSYSTEM_INFO;
 
 void WINAPI GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
@@ -161,7 +179,13 @@ BOOL Rectangle(HDC hdc, int nLeftRect, int nTopRect, int nRightRect, int nBottom
 BOOL MoveToEx(HDC hdc, int X, int Y, LPPOINT lpPoint);
 BOOL LineTo(HDC hdc, int nXEnd, int nYEnd);
 HFONT CreateFont(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD fdwItalic, DWORD fdwUnderline, DWORD fdwStrikeOut, DWORD fdwCharSet, DWORD fdwOutputPrecision, DWORD fdwClipPrecision, DWORD fdwQuality, DWORD fdwPitchAndFamily, LPCTSTR lpszFace);
+#define FW_NORMAL 400
+#define FW_BOLD 700
 #define PS_SOLID 0
+#define PS_DASH 1
+#define PS_DOT 2
+#define PS_DASHDOT 3
+#define PS_DASHDOTDOT 4
 HPEN CreatePen(int iStyle, int cWidth, COLORREF color);
 BOOL TextOut(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString);
 BOOL GetTextExtentPoint32(HDC hdc, LPCTSTR lpString, int c, LPSIZE lpSize);
@@ -172,6 +196,25 @@ LRESULT DispatchMessage(const MSG *lpmsg);
 BOOL TranslateMessage(const MSG *lpMsg);
 BOOL GetMessage(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
 VOID WINAPI PostQuitMessage(int nExitCode);
+
+typedef struct _OSVERSIONINFOEX {
+  DWORD dwOSVersionInfoSize;
+  DWORD dwMajorVersion;
+  DWORD dwMinorVersion;
+  DWORD dwBuildNumber;
+  DWORD dwPlatformId;
+  CHAR  szCSDVersion[128];
+  WORD  wServicePackMajor;
+  WORD  wServicePackMinor;
+  WORD  wSuiteMask;
+  BYTE  wProductType;
+  BYTE  wReserved;
+} OSVERSIONINFOEX;
+typedef OSVERSIONINFOEX* LPOSVERSIONINFO;
+BOOL GetVersionEx(LPOSVERSIONINFO lpVersionInformation);
+void ZeroMemory(PVOID  Destination, SIZE_T Length);
+
+BOOL GetComputerName(LPSTR lpBuffer, LPDWORD nSize);
 
 #define WM_DESTROY 2
 #define WM_SIZE 5

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -187,6 +187,7 @@ typedef enum {
         MV2_ARCH_INTEL_PLATINUM_8170_2S_52,
         MV2_ARCH_INTEL_PLATINUM_GENERIC,
         MV2_ARCH_INTEL_GOLD_6132_2S_28,
+        MV2_ARCH_INTEL_GOLD_6154_2S_36,
         MV2_ARCH_INTEL_GOLD_GENERIC,
         MV2_ARCH_INTEL_KNL_GENERIC,
         MV2_ARCH_INTEL_XEON_PHI_7210,

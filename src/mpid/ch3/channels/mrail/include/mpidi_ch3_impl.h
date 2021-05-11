@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -441,6 +441,8 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
 
 #endif
 
+extern long int mv2_num_queued_smp_ops;
+
 #define MPIDI_CH3I_SMP_SendQ_enqueue(vc, req)                            \
 {                                                                        \
     /* MT - not thread safe! */                                          \
@@ -461,6 +463,8 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
     if (vc->smp.send_active == NULL) {                                   \
           vc->smp.send_active =  vc->smp.sendq_head;                     \
     }                                                                    \
+    /* Increment number of queued ops */                                 \
+    mv2_num_queued_smp_ops++;                                            \
     /* Disable direct send */                                            \
     vc->use_eager_fast_fn = 0;                                           \
 }                                                                        
@@ -478,8 +482,10 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
         vc->smp.sendq_tail = req;                                             \
     }                                                                         \
     vc->smp.sendq_head = req;                                                 \
+    /* Increment number of queued ops */                                      \
+    mv2_num_queued_smp_ops++;                                                 \
     /* Disable direct send */                                                 \
-     vc->use_eager_fast_fn = 0;                                                \
+    vc->use_eager_fast_fn = 0;                                                \
 }
 
 #define MPIDI_CH3I_SMP_SendQ_dequeue(vc)                                      \
@@ -495,9 +501,11 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
         vc->smp.sendq_tail = NULL;                                            \
         /* Enable direct send */                                              \
         if (mv2_use_eager_fast_send) {                                        \
-	    vc->use_eager_fast_fn = 1;                                        \
+            vc->use_eager_fast_fn = 1;                                        \
         }                                                                     \
     }                                                                         \
+    /* Decrement number of queued ops */                                      \
+    mv2_num_queued_smp_ops--;                                                 \
     MPID_Request_release(req);                                                \
 }
 

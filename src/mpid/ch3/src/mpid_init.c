@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,6 +16,7 @@
  */
 
 #include "mpidimpl.h"
+#include <timestamp.h>
 
 #define MAX_JOBID_LEN 1024
 
@@ -58,7 +59,6 @@ int MVAPICH2_Sync_Checkpoint();
 #endif /* CKPT */
 extern unsigned int mv2_enable_affinity;
 #endif /* CHANNEL_MRAIL || CHANNEL_PSM */
-
 
 static int init_pg( int *argc_p, char ***argv_p,
 		   int *has_args, int *has_env, int *has_parent, 
@@ -285,7 +285,10 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_INIT);
 
     /* initialization routine for ch3u_comm.c */
+    /* TIMING STARTUP */
+    mv2_take_timestamp("MPIDI_CH3I_Comm_init", NULL);
     mpi_errno = MPIDI_CH3I_Comm_init();
+    mv2_take_timestamp("MPIDI_CH3I_Comm_init", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     
     /* init group of failed processes, and set finalize callback */
@@ -295,10 +298,12 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     /* FIXME: This is a good place to check for environment variables
        and command line options that may control the device */
 #ifdef CHANNEL_MRAIL
+    mv2_take_timestamp("read_configuration_files", NULL);
     if(read_configuration_files(&MPIDI_Process.mv2_config_crc)) {
         fprintf(stderr, "Error processing configuration file\n");
         exit(EXIT_FAILURE);
     }
+    mv2_take_timestamp("read_configuration_files", NULL);
 #endif /* CHANNEL_MRAIL */
 
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
@@ -326,8 +331,10 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     /*
      * Perform channel-independent PMI initialization
      */
+    mv2_take_timestamp("init_pg", NULL);
     mpi_errno = init_pg( argc, argv,
-			has_args, has_env, &has_parent, &pg_rank, &pg );
+		    has_args, has_env, &has_parent, &pg_rank, &pg );
+    mv2_take_timestamp("init_pg", NULL);
     if (mpi_errno) {
 	MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
@@ -362,25 +369,37 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
        can use the node_id info. */
     /* Ideally this wouldn't be needed.  Once we have PMIv2 support for node
        information we should probably eliminate this function. */
+    mv2_take_timestamp("MPIDI_Populate_vc_node_ids", NULL);
     mpi_errno = MPIDI_Populate_vc_node_ids(pg, pg_rank);
+    mv2_take_timestamp("MPIDI_Populate_vc_node_ids", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     /* Initialize FTB after PMI init */
+    mv2_take_timestamp("MPIDU_Ftb_init", NULL);
     mpi_errno = MPIDU_Ftb_init();
+    mv2_take_timestamp("MPIDU_Ftb_init", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     /* Initialize Window functions table with defaults, then call the channel's
        init function. */
+    mv2_take_timestamp("MPIDI_Win_fns_init", NULL);
     MPIDI_Win_fns_init(&MPIDI_CH3U_Win_fns);
+    mv2_take_timestamp("MPIDI_Win_fns_init", NULL);
+    mv2_take_timestamp("MPIDI_CH3_Win_fns_init", NULL);
     MPIDI_CH3_Win_fns_init(&MPIDI_CH3U_Win_fns);
+    mv2_take_timestamp("MPIDI_CH3_Win_fns_init", NULL);
+    mv2_take_timestamp("MPIDI_CH3_Win_hooks_init", NULL);
     MPIDI_CH3_Win_hooks_init(&MPIDI_CH3U_Win_hooks);
+    mv2_take_timestamp("MPIDI_CH3_Win_hooks_init", NULL);
 
 #if defined(CHANNEL_PSM) || defined(CHANNEL_MRAIL)
     /* Setting CPU affinity before opening PSM contexts and opening IB HCAs. For
      * IB HCAs, the change is to ensure HCA aware process mapping */
-    if (MPIDI_CH3I_set_affinity(pg, pg_rank) != MPI_SUCCESS) {
+    mv2_take_timestamp("MPIDI_CH3I_set_affinity", NULL);
+    if ((mpi_errno = MPIDI_CH3I_set_affinity(pg, pg_rank)) != MPI_SUCCESS) {
         MPIR_ERR_POP(mpi_errno);
     }
+    mv2_take_timestamp("MPIDI_CH3I_set_affinity", NULL);
 #endif /* defined(CHANNEL_PSM)*/
 
     /*
@@ -392,9 +411,12 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 #if ENABLE_PVAR_MV2 && CHANNEL_MRAIL
     mv2_update_cvars();
 #endif
+
+    mv2_take_timestamp("MPIDI_CH3_Init", NULL);
     mpi_errno = MPIDI_CH3_Init(has_parent, pg, pg_rank);
+    mv2_take_timestamp("MPIDI_CH3_Init", NULL);
     if (mpi_errno != MPI_SUCCESS) {
-	MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
+        MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
 
 #if !defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM)
@@ -402,7 +424,9 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 #endif
 
     /* setup receive queue statistics */
+    mv2_take_timestamp("MPIDI_CH3U_Recvq_init", NULL);
     mpi_errno = MPIDI_CH3U_Recvq_init();
+    mv2_take_timestamp("MPIDI_CH3U_Recvq_init", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     /*
@@ -414,7 +438,9 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->remote_size = pg_size;
     comm->local_size  = pg_size;
     
+    mv2_take_timestamp("MPIDI_VCRT_Create [1]", NULL);
     mpi_errno = MPIDI_VCRT_Create(comm->remote_size, &comm->dev.vcrt);
+    mv2_take_timestamp("MPIDI_VCRT_Create [1]", NULL);
     if (mpi_errno != MPI_SUCCESS)
     {
 	MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_create", 
@@ -423,12 +449,17 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
     /* Initialize the connection table on COMM_WORLD from the process group's
        connection table */
+    /* timing this whole loop as one step */
+    mv2_take_timestamp("MPIDI_VCR_Dup (loop)", NULL);
     for (p = 0; p < pg_size; p++)
     {
-	MPIDI_VCR_Dup(&pg->vct[p], &comm->dev.vcrt->vcr_table[p]);
+        MPIDI_VCR_Dup(&pg->vct[p], &comm->dev.vcrt->vcr_table[p]);
     }
+    mv2_take_timestamp("MPIDI_VCR_Dup (loop)", NULL);
 
+    mv2_take_timestamp("MPIR_Comm_commit [1]", NULL);
     mpi_errno = MPIR_Comm_commit(comm);
+    mv2_take_timestamp("MPIR_Comm_commit [1]", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     /*
@@ -439,16 +470,22 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->remote_size = 1;
     comm->local_size  = 1;
     
+    mv2_take_timestamp("MPIDI_VCRT_Create [2]", NULL);
     mpi_errno = MPIDI_VCRT_Create(comm->remote_size, &comm->dev.vcrt);
+    mv2_take_timestamp("MPIDI_VCRT_Create [2]", NULL);
     if (mpi_errno != MPI_SUCCESS)
     {
 	MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**dev|vcrt_create", 
 			     "**dev|vcrt_create %s", "MPI_COMM_SELF");
     }
     
+    mv2_take_timestamp("MPIDI_VCR_Dup", NULL);
     MPIDI_VCR_Dup(&pg->vct[pg_rank], &comm->dev.vcrt->vcr_table[0]);
+    mv2_take_timestamp("MPIDI_VCR_Dup", NULL);
 
+    mv2_take_timestamp("MPIR_Comm_commit [2]", NULL);
     mpi_errno = MPIR_Comm_commit(comm);
+    mv2_take_timestamp("MPIR_Comm_commit [2]", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     /* Currently, mpidpre.h always defines MPID_NEEDS_ICOMM_WORLD. */
@@ -465,7 +502,9 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     MPIDI_VCRT_Add_ref( MPIR_Process.comm_world->dev.vcrt );
     comm->dev.vcrt = MPIR_Process.comm_world->dev.vcrt;
     
+    mv2_take_timestamp("MPIR_Comm_commit [3]", NULL);
     mpi_errno = MPIR_Comm_commit(comm);
+    mv2_take_timestamp("MPIR_Comm_commit [3]", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 #endif
     
@@ -497,15 +536,19 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	   we could allow a few routines to operate with 
 	   predefined parameter choices (e.g., bcast, allreduce)
 	   for the purposes of initialization. */
+	mv2_take_timestamp("MPIDI_CH3_GetParentPort", NULL);
 	mpi_errno = MPIDI_CH3_GetParentPort(&parent_port);
+	mv2_take_timestamp("MPIDI_CH3_GetParentPort", NULL);
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIR_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, 
 				"**ch3|get_parent_port");
 	}
 	MPIU_DBG_MSG_S(CH3_CONNECT,VERBOSE,"Parent port is %s", parent_port);
 	    
+	mv2_take_timestamp("MPID_Comm_connect", NULL);
 	mpi_errno = MPID_Comm_connect(parent_port, NULL, 0, 
 				      MPIR_Process.comm_world, &comm);
+	mv2_take_timestamp("MPID_Comm_connect", NULL);
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,
 				 "**ch3|conn_parent", 
@@ -538,12 +581,20 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
         if ((value = getenv("MV2_USE_THREAD_WARNING")) != NULL) {
             thread_warning = !!atoi(value);
         }
+        if (thread_warning && (0 == pg_rank) && (requested > MPI_THREAD_SINGLE)) {
+            PRINT_ERROR("[Performance Suggestion]: Application has requested"
+                        " for multi-thread capability. If allocating memory"
+                        " from different pthreads/OpenMP threads, please"
+                        " consider setting MV2_USE_ALIGNED_ALLOC=1 for improved"
+                        " performance.\n"
+                        "Use MV2_USE_THREAD_WARNING=0 to suppress this error message.\n");
+        }
         if (rdma_use_blocking) {
             if (0 == pg_rank && MPI_THREAD_MULTIPLE == requested
                     && thread_warning) {
                 fprintf(stderr, "WARNING: Requested MPI_THREAD_MULTIPLE, \n"
                         "  but MV2_USE_BLOCKING=1 only supports MPI_THREAD_SERIALIZED.\n"
-                        "  Use MV2_USE_THREAD_WARNING=0 to suppress this error message\n");
+                        "  Use MV2_USE_THREAD_WARNING=0 to suppress this error message.\n");
             }
             *provided = (MPICH_THREAD_LEVEL < requested) ?
                 MPICH_THREAD_LEVEL : MPI_THREAD_SERIALIZED;
@@ -594,9 +645,13 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 #if defined(CHANNEL_MRAIL) && defined(_ENABLE_CUDA_)
     if (mv2_enable_device) {
         if (mv2_device_dynamic_init) {
+            mv2_take_timestamp("device_preinit", NULL);
             device_preinit(pg);
+            mv2_take_timestamp("device_preinit", NULL);
         } else {
+            mv2_take_timestamp("device_init", NULL);
             device_init(pg);
+            mv2_take_timestamp("device_init", NULL);
         }
 	if (pg_rank == 0 && mv2_show_env_info >= 2) {
 		mv2_show_cuda_params();
@@ -607,17 +662,23 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
 #if defined(CHANNEL_MRAIL) && defined(CKPT) && defined(ENABLE_SCR)
     /* Initialize the Scalable Checkpoint/Restart library */
+    mv2_take_timestamp("SCR_Init", NULL);
     SCR_Init();
+    mv2_take_timestamp("SCR_Init", NULL);
 #endif
     
+    mv2_take_timestamp("MPIR_Comm_register_hint", NULL);
     mpi_errno = MPIR_Comm_register_hint("eager_rendezvous_threshold",
                                         set_eager_threshold,
                                         NULL);
+    mv2_take_timestamp("MPIR_Comm_register_hint", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
+    mv2_take_timestamp("MPIDI_RMA_init", NULL);
     mpi_errno = MPIDI_RMA_init();
+    mv2_take_timestamp("MPIDI_RMA_init", NULL);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-    
+
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_INIT);
     return mpi_errno;

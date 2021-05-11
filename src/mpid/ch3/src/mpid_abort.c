@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  *
- * Copyright (c) 2001-2020, The Ohio State University. All rights
+ * Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -53,11 +53,9 @@ int MPID_Abort(MPID_Comm * comm, int mpi_errno, int exit_code,
 
     char *value = NULL;
     char hostname[HOST_NAME_MAX] = "";
-    char timestr[20] = "";
     int mypid = -1;
     struct timeval tv;
     int sleep_seconds = 0;
-    time_t now = 0;
     
     MPIDI_STATE_DECL(MPID_STATE_MPID_ABORT);
 
@@ -106,24 +104,21 @@ int MPID_Abort(MPID_Comm * comm, int mpi_errno, int exit_code,
     MPIR_DebuggerSetAborting( error_msg );
 #endif
 
-    now = time(NULL);
-    strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", localtime(&now));
-    gethostname(hostname, HOST_NAME_MAX);
     mypid = getpid();
     if ((value = getenv("MV2_ABORT_SLEEP_SECONDS")) != NULL) {
         sleep_seconds = atoi(value);
     }
 
     if (sleep_seconds > 0) {
-        fprintf(stderr, "[MPI_Abort at %s] Rank=%d, PID=%d, Hostname=%s. Sleep for %d second(s) before aborting ...\n", 
-            timestr, MPIDI_Process.my_pg_rank, mypid, hostname, sleep_seconds);
+        fprintf(stderr, "[MPI_Abort] Rank=%d, PID=%d, Hostname=%s. Sleep for %d second(s) before aborting ...\n",
+                MPIDI_Process.my_pg_rank, mypid, hostname, sleep_seconds);
         fflush(stderr);
         tv.tv_sec = sleep_seconds;
         tv.tv_usec = 0;
         select(0, NULL, NULL, NULL, &tv);
     } else if (sleep_seconds < 0) {
-        fprintf(stderr, "[MPI_Abort at %s] Rank=%d, PID=%d, Hostname=%s. Sleep forever ...\n", 
-            timestr, MPIDI_Process.my_pg_rank, mypid, hostname);
+        fprintf(stderr, "[MPI_Abort] Rank=%d, PID=%d, Hostname=%s. Sleep forever ...\n",
+                MPIDI_Process.my_pg_rank, mypid, hostname);
         fflush(stderr);
         while (1) {
             pause();

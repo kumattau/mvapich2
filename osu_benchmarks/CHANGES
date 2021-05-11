@@ -1,4 +1,20 @@
-OSU Micro Benchmarks v5.6.4 (11/30/2020)
+OSU Micro Benchmarks v5.7.1 (05/11/2021)
+
+* New Features & Enhancements
+    - Add support to send and receive data from different buffers for
+      osu_latency, osu_bw, osu_bibw, and osu_mbw_mr
+    - Enhance support for CUDA managed memory benchmarks
+        - Thanks to Ian Karlin and Nathan Hanford @LLNL for the feedback
+    - Add support to print minimum and maximum communication times for
+      non-blocking benchmarks
+
+* Bug Fixes (since v5.7)
+    - Update README file with updated description for osu_latency_mp
+        - Thanks to Honggang Li @RedHat for the suggestion
+    - Fix error in setting benchmark name in osu_allgatherv.c and osu_allgatherv.c
+        - Thanks to Brandon Cook @LBL for the report
+
+OSU Micro Benchmarks v5.7 (12/11/2020)
 
 * New Features & Enhancements
     - Add support to OMB to evaluate the performance of various primitives with

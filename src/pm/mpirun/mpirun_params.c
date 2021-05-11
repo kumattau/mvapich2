@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -30,11 +30,14 @@
 #include <signal.h>
 #include <stdint.h>
 #include <math.h>
+#include <debug_utils.h>
 #include "mpispawn_tree.h"
 #include "mpirun_util.h"
 #include "mpmd.h"
 #include "mpirun_dbg.h"
 #include "mpirun_params.h"
+#include "src/slurm/slurm_startup.h"
+#include "src/pbs/pbs_startup.h"
 #include <mpirun_environ.h>
 #include "mpirun_ckpt.h"
 
@@ -42,10 +45,11 @@
 #define NSIG _NSIG
 #endif                          /* defined(_NSIG) */
 
-extern int read_hostfile(char *hostfile_name);
+extern int read_hostfile(char const *hostfile_name, int using_pbs);
 
 process *plist = NULL;
 int nprocs = 0;
+int nprocs_per_node = 0;
 int aout_index = 0;
 
 /* xxx need to add checking for string overflow, do this more carefully ... */
@@ -69,9 +73,15 @@ int dpm = 0;
 extern spawn_info_t spinf;
 int USE_LINEAR_SSH = 1;         /* By default, use linear ssh. Enable
                                    -fastssh for tree based ssh */
+int USE_SRUN = 0;               /* Enable -srun for using srun instead of
+                                   ssh or rsh */
+#define LAUNCHER_LEN 4          /* set for srun as the longest name */
 
 char hostfile[HOSTFILE_LEN + 1];
+char launcher[LAUNCHER_LEN + 1];
 
+static int using_slurm = 0;
+static int using_pbs = 0;
 /*
   The group active for mpispawn. NULL if no group change is required.
  */
@@ -79,20 +89,20 @@ char *change_group = NULL;
 
 static struct option option_table[] = {
     {"np", required_argument, 0, 0},    // 0
+    {"ppn", required_argument, 0, 0}, 
     {"debug", no_argument, 0, 0},
     {"xterm", no_argument, 0, 0},
     {"hostfile", required_argument, 0, 0},
-    {"show", no_argument, 0, 0},    // 5
-    {"rsh", no_argument, 0, 0},
-    {"ssh", no_argument, 0, 0},
+    {"show", no_argument, 0, 0},  
+    {"launcher", required_argument, 0, 0},
     {"help", no_argument, 0, 0},
     {"v", no_argument, 0, 0},
-    {"tv", no_argument, 0, 0},  // 10
+    {"tv", no_argument, 0, 0},
     {"legacy", no_argument, 0, 0},
     {"startedByTv", no_argument, 0, 0},
     {"spawnfile", required_argument, 0, 0},
     {"dpm", no_argument, 0, 0},
-    {"fastssh", no_argument, 0, 0}, // 15
+    {"fastssh", no_argument, 0, 0}, 
     //This option is to activate the mpmd, it requires the configuration file as argument
     {"config", required_argument, 0, 0},
     {"dpmspawn", required_argument, 0, 0},
@@ -101,10 +111,77 @@ static struct option option_table[] = {
     {"export", no_argument, 0, 0},
     {"export-all", no_argument, 0, 0},
 #if defined(CKPT) && defined(CR_FTB)
-    {"sparehosts", required_argument, 0, 0},    // 20
+    {"sparehosts", required_argument, 0, 0},
 #endif
     {0, 0, 0, 0}
 };
+
+/*
+ * option enum for the switch case selection.
+ *
+ * option names should be added to the same position
+ * in the enum list as they are in the option list above 
+ */
+enum mpirun_option_name {
+    mpirun_option_np = 0,
+    mpirun_option_ppn, 
+    mpirun_option_debug,
+    mpirun_option_xterm,
+    mpirun_option_hostfile,
+    mpirun_option_show,
+    mpirun_option_launcher,
+    mpirun_option_help,
+    mpirun_option_v,
+    mpirun_option_tv,
+    mpirun_option_legacy,
+    mpirun_option_startedByTv,
+    mpirun_option_spawnfile,
+    mpirun_option_dpm,
+    mpirun_option_fastssh,
+    mpirun_option_config,
+    mpirun_option_dpmspawn,
+    mpirun_option_sg,
+    mpirun_option_export,
+    mpirun_option_export_all,
+    mpirun_option_sparehosts
+};
+
+static inline int mpirun_get_launcher(char *launcher_arg) 
+{ 
+    const char* const mpirun_launcher_options[] = { "ssh", "rsh", "srun" };
+    int launchers = 3;
+    int i, ret = 0;
+    for (i = 0; i < launchers; i++) {
+        if (!strcmp(launcher_arg, mpirun_launcher_options[i])) {
+            break;
+        }
+    }
+    switch (i) {
+        case 0:
+            use_rsh = 0;
+            USE_SRUN = 0;
+            DBG(fprintf(stderr, "ssh => use_rsh: %d, USE_SRUN: %d\n", use_rsh, USE_SRUN));
+            break;
+        case 1:
+            use_rsh = 1;
+            USE_SRUN = 0;
+            DBG(fprintf(stderr, "rsh => use_rsh: %d, USE_SRUN: %d\n", use_rsh, USE_SRUN));
+            break;
+        case 2:
+            use_rsh = 0;
+            USE_SRUN = 1;
+            DBG(fprintf(stderr, "srun => use_rsh: %d, USE_SRUN: %d\n", use_rsh, USE_SRUN));
+            break;
+        defaut:
+            fprintf(stderr, "Invalid launcher selected. Launcher must be one of:\n");
+            for (i = 0; i < launchers; i++) {
+                fprintf(stderr, "\t%s\n", mpirun_launcher_options[i]);
+            }
+            ret = -1;
+            break;
+    }
+    return ret;
+}
 
 #if !defined(HAVE_GET_CURRENT_DIR_NAME)
 char *get_current_dir_name()
@@ -174,7 +251,13 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 {
     int i;
     int c, option_index;
+    int cmd_line_hosts = 0;
     char *env_name = NULL;
+
+    /* RM check */
+    /* TODO: have one function return a constant or mask */
+    using_slurm = check_for_slurm();
+    using_pbs = check_for_pbs();
 
     do {
         c = getopt_long_only(argc, argv, "+", option_table, &option_index);
@@ -187,45 +270,53 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
         case EOF:
             break;
         case 0:
-            switch (option_index) {
-            case 0:            /* -np */
+            switch ((enum mpirun_option_name)option_index) {
+            case mpirun_option_np:            /* -np */
                 nprocs = atoi(optarg);
                 if (nprocs < 1) {
                     usage(argv[0]);
                     exit(EXIT_FAILURE);
                 }
                 break;
-            case 1:            /* -debug */
+            case mpirun_option_ppn:
+                nprocs_per_node = atoi(optarg);
+                if (nprocs_per_node < 1) {
+                    usage(argv[0]);
+                    exit(EXIT_FAILURE);
+                }
+                break;
+            case mpirun_option_debug:            /* -debug */
                 debug_on = 1;
                 xterm_on = 1;
                 break;
-            case 2:            /* -xterm */
+            case mpirun_option_xterm:            /* -xterm */
                 xterm_on = 1;
                 break;
-            case 3:            /* -hostfile */
+            case mpirun_option_hostfile:            /* -hostfile */
                 hostfile_on = 1;
                 strncpy(hostfile, optarg, HOSTFILE_LEN);
                 if (strlen(optarg) >= HOSTFILE_LEN - 1)
                     hostfile[HOSTFILE_LEN] = '\0';
                 break;
-            case 4:
+            case mpirun_option_show:
                 show_on = 1;
                 break;
-            case 5:
-                use_rsh = 1;
+            case mpirun_option_launcher:
+                strncpy(launcher, optarg, LAUNCHER_LEN);
+                if (mpirun_get_launcher(launcher)) {
+                    usage(argv[0]);
+                    exit(EXIT_FAILURE);
+                }
                 break;
-            case 6:
-                use_rsh = 0;
-                break;
-            case 7:
+            case mpirun_option_help:
                 usage(argv[0]);
                 exit(EXIT_SUCCESS);
                 break;
-            case 8:
+            case mpirun_option_v:
                 PRINT_MVAPICH2_VERSION();
                 exit(EXIT_SUCCESS);
                 break;
-            case 9:
+            case mpirun_option_tv:
                 {
                     /* -tv */
                     char *tv_env;
@@ -256,50 +347,50 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 
                 }
                 break;
-            case 10:
+            case mpirun_option_legacy:
                 legacy_startup = 1;
                 break;
-            case 11:
+            case mpirun_option_startedByTv:
                 /* -startedByTv */
                 use_totalview = 1;
                 debug_on = 1;
                 break;
-            case 12:           /* spawnspec given */
+            case mpirun_option_spawnfile:           /* spawnspec given */
                 spawnfile = strdup(optarg);
                 DBG(fprintf(stderr, "spawn spec file = %s\n", spawnfile));
                 break;
-            case 13:
+            case mpirun_option_dpm:
                 dpm = 1;
                 break;
-            case 14:           /* -fastssh */
+            case mpirun_option_fastssh:           /* -fastssh */
 #if !defined(CR_FTB)
                 /* disable hierarchical SSH if migration is enabled */
                 USE_LINEAR_SSH = 0;
 #endif 
                 break;
                 //With this option the user want to activate the mpmd
-            case 15:
+            case mpirun_option_config:
                 configfile_on = 1;
                 strncpy(configfile, optarg, CONFILE_LEN);
                 if (strlen(optarg) >= CONFILE_LEN - 1)
                     configfile[CONFILE_LEN] = '\0';
                 break;
-            case 16:
+            case mpirun_option_dpmspawn:
                 spinf.totspawns = atoi(optarg);
                 break;
-            case 17:
+            case mpirun_option_sg:
                 /* sg: change the active group */
                 change_group = optarg;
                 DBG(printf("Group change requested: '%s'\n", change_group));
                 break;
-            case 18:
+            case mpirun_option_export:
                 enable_send_environ(0);
                 break;
-            case 19:
+            case mpirun_option_export_all:
                 enable_send_environ(1);
                 break;
 #if defined(CKPT) && defined(CR_FTB)
-            case 20:
+            case mpirun_option_sparehosts:
                 sparehosts_on = 1;
                 strncpy(sparehostfile, optarg, HOSTFILE_LEN);
                 if (strlen(optarg) >= HOSTFILE_LEN - 1) {
@@ -345,6 +436,11 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     if (!hostfile_on) {
         /* get hostnames from argument list */
         if (strchr(argv[optind], '=') || argc - optind < nprocs + 1) {
+            /* only fall back to default host file if no RM detected */
+            if (using_slurm || using_pbs) {
+                aout_index = optind;
+                goto cont;
+            }
             env_name = env2str("HOME");
             sprintf(hostfile, "%s/.mpirun_hosts", env_name);
             if (env_name) {
@@ -356,11 +452,14 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
                 aout_index = optind;
                 goto cont;
             } else {
+                PRINT_ERROR("No hostfile specified and no supported RM detected.\n");
                 fprintf(stderr, "Without hostfile option, hostnames must be " "specified on command line.\n");
                 usage(argv[0]);
                 exit(EXIT_FAILURE);
             }
-        }
+        } 
+        /* hosts on command line */
+        cmd_line_hosts = 1;
         aout_index = nprocs + optind;
     } else {                    /* if (!hostfile_on) */
 
@@ -387,17 +486,32 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 
     /* grab hosts from command line or file */
     if (hostfile_on) {
-        read_hostfile(hostfile);
-    } else {
+        read_hostfile(hostfile, 0);
+    } else if (cmd_line_hosts)  {
         for (i = 0; i < nprocs; i++) {
             plist[i].hostname = argv[optind + i];
+        }
+    }
+    /* check if we are under an RM with a supported node list */
+    else if (using_pbs) {
+        /* job allocated via pbs - node file created by RM */
+        if (read_hostfile(pbs_nodefile(), 1)) {
+            PRINT_ERROR("Unable to parse PBS_NODEFILE [%s]", pbs_nodefile());
+            exit(EXIT_FAILURE);
+        }
+    }
+    else if (using_slurm) {
+        /* job allocated via slurm - a node list exists */
+        if (slurm_startup(nprocs, nprocs_per_node)) {
+            PRINT_ERROR("Slurm startup failed");
+            exit(EXIT_FAILURE);
         }
     }
 }
 
 void usage(const char * arg0)
 {
-    fprintf(stderr, "usage: mpirun_rsh [-v] [-sg group] [-rsh|-ssh] "
+    fprintf(stderr, "usage: mpirun_rsh [-v] [-sg group] [-launcher rsh|ssh|srun] "
             "[-debug] -[tv] [-xterm] [-show] [-legacy] [-export|-export-all] "
             "-np N "
 #if defined(CKPT) && defined(CR_FTB)
@@ -406,8 +520,7 @@ void usage(const char * arg0)
             "(-hostfile hfile | h1 h2 ... hN) a.out args | -config configfile (-hostfile hfile | h1 h2 ... hN)]\n");
     fprintf(stderr, "Where:\n");
     fprintf(stderr, "\tsg         => " "execute the processes as different group ID\n");
-    fprintf(stderr, "\trsh        => " "to use rsh for connecting\n");
-    fprintf(stderr, "\tssh        => " "to use ssh for connecting\n");
+    fprintf(stderr, "\tlauncher   => " "one of rsh, ssh, or srun for connecing (ssh is default)\n"); 
     fprintf(stderr, "\tdebug      => " "run each process under the control of gdb\n");
     fprintf(stderr, "\ttv         => " "run each process under the control of totalview\n");
     fprintf(stderr, "\txterm      => " "run remote processes under xterm\n");
@@ -416,6 +529,7 @@ void usage(const char * arg0)
     fprintf(stderr, "\texport     => " "automatically export environment to remote processes\n");
     fprintf(stderr, "\texport-all => " "automatically export environment to remote processes even if already set remotely\n");
     fprintf(stderr, "\tnp         => " "specify the number of processes\n");
+    fprintf(stderr, "\tppn        => " "specify the number of processes to allocate to eachnode\n");
     fprintf(stderr, "\th1 h2...   => " "names of hosts where processes should run\n");
     fprintf(stderr, "or\thostfile   => " "name of file containing hosts, one per line\n");
     fprintf(stderr, "\ta.out      => " "name of MPI binary\n");

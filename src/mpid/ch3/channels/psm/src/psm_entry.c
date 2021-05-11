@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -227,8 +227,9 @@ void mv2_print_env_info(struct coll_info *colls_arch_hca)
 #define FCNAME MPL_QUOTE(FUNCNAME)
 mv2_arch_hca_type MV2_get_arch_hca_type(void)
 {
-    if(g_mv2_arch_hca_type)
+    if (g_mv2_arch_hca_type) {
         return g_mv2_arch_hca_type;
+    }
 
 #if defined(HAVE_LIBIBVERBS)
     int num_devices = 0, i;
@@ -243,8 +244,9 @@ mv2_arch_hca_type MV2_get_arch_hca_type(void)
             break;
     }
 
-    if(i == num_devices)
+    if ((i == num_devices) && (!getenv("MV2_FORCE_HCA_TYPE"))) {
         hca_type = MV2_HCA_ANY;
+    }
 
     arch_type = mv2_get_arch_type();
     g_mv2_arch_hca_type = arch_type;
@@ -310,6 +312,13 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
 
     /* Detect heterogeneity if not overridden by user */
     psm_detect_heterogeneity(g_mv2_arch_hca_type, pg_size, pg_rank);
+
+    if (1 == MPIDI_Get_num_nodes()) {
+        snprintf(scratch, sizeof(scratch), "%s", "self,shm");
+    } else {
+        snprintf(scratch, sizeof(scratch), "%s", "self,hfi,shm");
+    }
+    setenv("PSM2_DEVICES", scratch, 1);
 
     /* initialize tuning-table for collectives. 
      * Its ok to pass heterogeneity as 0. We anyway fall-back to the 

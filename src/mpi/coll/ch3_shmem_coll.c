@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -330,8 +330,12 @@ int zcpy_knomial_factor = 2;
 int mv2_intra_node_knomial_factor = 4;
 int mv2_shmem_coll_spin_count = 5;
 
-int mv2_enable_socket_aware_collectives = 1;
-int mv2_use_socket_aware_allreduce = 1;
+int mv2_enable_socket_aware_collectives = 0;
+int mv2_use_socket_aware_allreduce = 0;
+int mv2_enable_topo_aware_collectives = 1;
+int mv2_use_topo_aware_allreduce = 1;
+int mv2_use_topo_aware_reduce = 0;
+int mv2_use_topo_aware_bcast = 0;
 int mv2_use_optimized_release_allreduce=1;
 int mv2_use_shmem_tree_enable=0;
 int mv2_use_shmem_tree_min_message_size=1;
@@ -339,10 +343,23 @@ int mv2_use_shmem_tree_max_message_size=16384;
 int mv2_use_shmem_num_trees=8;
 int mv2_coll_tmp_buf_size=2048;
 int mv2_use_socket_aware_sharp_allreduce = 0;
-int mv2_use_socket_aware_barrier = 1;
+int mv2_use_socket_aware_barrier = 0;
 int mv2_socket_aware_allreduce_max_msg = 2048;
 int mv2_socket_aware_allreduce_min_msg = 1;
 int mv2_socket_aware_allreduce_ppn_threshold = 1;
+int mv2_use_topo_aware_barrier = 1;
+int mv2_topo_aware_allreduce_max_msg = 2048;
+int mv2_topo_aware_allreduce_min_msg = 1;
+int mv2_topo_aware_reduce_max_msg = 2048;
+int mv2_topo_aware_reduce_min_msg = 1;
+int mv2_topo_aware_bcast_max_msg = 2048;
+int mv2_topo_aware_bcast_min_msg = 1;
+int mv2_topo_aware_allreduce_ppn_threshold = 1;
+int mv2_topo_aware_reduce_ppn_threshold = 1;
+int mv2_topo_aware_bcast_ppn_threshold = 1;
+int mv2_topo_aware_bcast_node_threshold = 1;
+int mv2_topo_aware_reduce_node_threshold = 1;
+
 int mv2_tune_parameter = 0;
 /* Runtime threshold for scatter */
 int mv2_user_scatter_small_msg = 0;
@@ -3232,6 +3249,12 @@ void MV2_Read_env_vars(void)
     if ((value = getenv("MV2_ENABLE_SHARP_BARRIER")) != NULL) {
         mv2_enable_sharp_barrier = atoi(value);
     }
+    if ((value = getenv("MV2_ENABLE_SHARP_BCAST")) != NULL) {
+        mv2_enable_sharp_bcast = atoi(value);
+    }
+    if ((value = getenv("MV2_ENABLE_SHARP_REDUCE")) != NULL) {
+        mv2_enable_sharp_reduce = atoi(value);
+    }
 #endif
 
     if ((value = getenv("MV2_ENABLE_SOCKET_AWARE_COLLECTIVES")) !=NULL) {
@@ -3240,6 +3263,25 @@ void MV2_Read_env_vars(void)
 
     if ((value = getenv("MV2_USE_SOCKET_AWARE_ALLREDUCE")) !=NULL) {
         mv2_use_socket_aware_allreduce = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_ENABLE_TOPO_AWARE_COLLECTIVES")) !=NULL) {
+        mv2_enable_topo_aware_collectives = !!atoi(value);
+        if(mv2_enable_topo_aware_collectives) {
+            mv2_enable_socket_aware_collectives = 0;
+        }
+    }
+
+    if ((value = getenv("MV2_USE_TOPO_AWARE_ALLREDUCE")) !=NULL) {
+        mv2_use_topo_aware_allreduce = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_TOPO_AWARE_REDUCE")) !=NULL) {
+        mv2_use_topo_aware_reduce = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_TOPO_AWARE_BCAST")) !=NULL) {
+        mv2_use_topo_aware_bcast = !!atoi(value);
     }
 
     if ((value = getenv("MV2_USE_OPTIMIZED_RELEASE_ALLREDUCE")) !=NULL) {
@@ -3280,6 +3322,50 @@ void MV2_Read_env_vars(void)
 
     if ((value = getenv("MV2_SOCKET_AWARE_ALLREDUCE_MIN_MSG")) !=NULL) {
         mv2_socket_aware_allreduce_min_msg = atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_TOPO_AWARE_BARRIER")) !=NULL) {
+        mv2_use_topo_aware_barrier = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_TOPO_AWARE_ALLREDUCE_MAX_MSG")) !=NULL) {
+        mv2_topo_aware_allreduce_max_msg = atoi(value);
+    }
+
+    if ((value = getenv("MV2_TOPO_AWARE_ALLREDUCE_MIN_MSG")) !=NULL) {
+        mv2_topo_aware_allreduce_min_msg = atoi(value);
+    }
+
+    if ((value = getenv("MV2_TOPO_AWARE_REDUCE_MAX_MSG")) != NULL) {
+        mv2_topo_aware_reduce_max_msg = atoi(value);
+    }
+
+    if ((value = getenv("MV2_TOPO_AWARE_REDUCE_MIN_MSG")) != NULL) {
+        mv2_topo_aware_reduce_min_msg = atoi(value);
+    }
+
+    if ((value = getenv("MV2_TOPO_AWARE_BCAST_MAX_MSG")) != NULL) {
+        mv2_topo_aware_bcast_max_msg = atoi(value);
+    }
+
+    if ((value = getenv("MV2_TOPO_AWARE_BCAST_MIN_MSG")) != NULL) {
+        mv2_topo_aware_bcast_min_msg = atoi(value);
+    }
+
+    if ((value = getenv("MV2_TOPO_AWARE_REDUCE_PPN_THRESHOLD")) != NULL) {
+        mv2_topo_aware_reduce_ppn_threshold = atoi(value);
+    }
+
+    if ((value = getenv("MV2_TOPO_AWARE_BCAST_PPN_THRESHOLD")) != NULL) {
+        mv2_topo_aware_bcast_ppn_threshold = atoi(value);
+    }
+
+    if ((value = getenv("MV2_TOPO_AWARE_BCAST_NODE_THRESHOLD")) != NULL) {
+        mv2_topo_aware_bcast_node_threshold = atoi(value);
+    }
+
+    if ((value = getenv("MV2_TOPO_AWARE_REDUCE_NODE_THRESHOLD")) != NULL) {
+        mv2_topo_aware_reduce_node_threshold = atoi(value);
     }
 
     /* Override MPICH2 default env values for Gatherv */
@@ -4485,6 +4571,8 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                                   shmem->write;
             }
 
+            /* Increment number of pending send ops by expected send count */
+            shmem->zcpy_coll_pending_send_ops += shmem->bcast_expected_send_count;
             /* Post the rdma-writes to all the children in the tree */
             for(i=0; i< shmem->bcast_expected_send_count; i++) {
                 uint32_t local_rdma_key, remote_rdma_key;
@@ -4506,7 +4594,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
                 remote_rdma_addr =  (uint64_t) remote_handle_info_children[i].addr[hca_num] + offset;
                 remote_rdma_key  = remote_handle_info_children[i].key[hca_num];
 
-                mv2_shm_coll_prepare_post_send(local_rdma_addr, remote_rdma_addr, 
+                mv2_shm_coll_prepare_post_send((void *) shmem, local_rdma_addr, remote_rdma_addr,
                                   local_rdma_key, remote_rdma_key,
                                   len + sizeof(volatile uint32_t), rail,  vc);
             }
@@ -4942,6 +5030,8 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
            nspin++; 
        } 
 
+       /* Increment number of pending send ops by expected send count */
+       shmem->zcpy_coll_pending_send_ops += shmem->reduce_expected_send_count;
        /* Post the rdma-write to the parent in the tree */
        if(shmem->reduce_expected_send_count > 0) {
             uint32_t local_rdma_key, remote_rdma_key;
@@ -4966,7 +5056,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
             remote_rdma_addr =  (uint64_t) remote_handle_info_parent->addr[hca_num] + offset;
             remote_rdma_key  = remote_handle_info_parent->key[hca_num];
 
-            mv2_shm_coll_prepare_post_send(local_rdma_addr, remote_rdma_addr,
+            mv2_shm_coll_prepare_post_send((void *)shmem, local_rdma_addr, remote_rdma_addr,
                               local_rdma_key, remote_rdma_key,
                               len + sizeof(volatile uint32_t), rail,  vc);
        }
@@ -5072,7 +5162,10 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
     shmem->local_size = local_size; 
     shmem->comm   = comm_ptr->handle; 
     shmem->max_local_size = 0;
-
+#if defined(CHANNEL_MRAIL_GEN2)
+    shmem->zcpy_coll_pending_send_ops = 0;
+    shmem->defer_free = 0;
+#endif
     slot_len = mv2_shm_slot_len + sizeof (shm_slot_t) + sizeof(volatile uint32_t);
                                 
     MV2_SHM_ALIGN_LEN(slot_len, MV2_SHM_ALIGN)
@@ -5215,6 +5308,20 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size,
 
 }
 
+#if defined(CHANNEL_MRAIL_GEN2)
+void mv2_flush_all_zcpy_barrier_requests(shmem_info_t * shmem) {
+    int mpi_errno = MPI_SUCCESS;
+    if (shmem->end_request_active) {
+        mpi_errno = mv2_flush_zcpy_end_request(shmem);
+        if (mpi_errno) PRINT_ERROR("MPIR_Wait_impl failure \n");
+    }
+    if (shmem->mid_request_active) {
+        mpi_errno = mv2_flush_zcpy_mid_request(shmem);
+        if (mpi_errno) PRINT_ERROR("MPIR_Wait_impl failure \n");
+    }
+}
+#endif
+
 void mv2_shm_coll_cleanup(shmem_info_t * shmem)
 {
     int k;
@@ -5226,15 +5333,9 @@ void mv2_shm_coll_cleanup(shmem_info_t * shmem)
     
     MPIU_Free(shmem->queue);
 #if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
-    int mpi_errno = MPI_SUCCESS;
-
-    if (shmem->end_request_active) {
-        mpi_errno = mv2_flush_zcpy_end_request(shmem);
-        if (mpi_errno) PRINT_ERROR("MPIR_Wait_impl failure \n");
-    }
-    if (shmem->mid_request_active) {
-        mpi_errno = mv2_flush_zcpy_mid_request(shmem);
-        if (mpi_errno) PRINT_ERROR("MPIR_Wait_impl failure \n");
+    /* Flush requests here only if not a deferred free */
+    if (shmem->defer_free != 1) {
+        mv2_flush_all_zcpy_barrier_requests(shmem);
     }
 
     if(shmem->local_rank == 0) { 

@@ -206,8 +206,7 @@ hwloc_rsmi_discover(struct hwloc_backend *backend, struct hwloc_disc_status *dst
       rsmi_status_string(ret, &status_string);
       fprintf(stderr, "RSMI: Failed to get number of devices with rsmi_num_monitor_devices(): %s\n", status_string);
     }
-    rsmi_shut_down();
-    return 0;
+    goto out;
   }
 
   for (i=0; i<nb; i++) {
@@ -220,6 +219,7 @@ hwloc_rsmi_discover(struct hwloc_backend *backend, struct hwloc_disc_status *dst
     osdev = hwloc_alloc_setup_object(topology, HWLOC_OBJ_OS_DEVICE, HWLOC_UNKNOWN_INDEX);
     snprintf(buffer, sizeof(buffer), "rsmi%u", i);
     osdev->name = strdup(buffer);
+    osdev->subtype = strdup("RSMI");
     osdev->depth = HWLOC_TYPE_DEPTH_UNKNOWN;
     osdev->attr->osdev.type = HWLOC_OBJ_OSDEV_GPU;
 
@@ -277,6 +277,7 @@ hwloc_rsmi_discover(struct hwloc_backend *backend, struct hwloc_disc_status *dst
     hwloc_insert_object_by_parent(topology, parent, osdev);
   }
 
+ out:
   may_shutdown = 0;
   if (version.major > 3 || (version.major == 3 && version.minor > 3)) {
     may_shutdown = 1;

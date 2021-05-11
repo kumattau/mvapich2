@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -318,7 +318,7 @@ int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p,
     {
         MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
 	
-	mpi_errno = mv2_eager_fast_wrapper(vc, buf, data_sz, rank, tag, comm, context_offset, sreq_p);
+        mpi_errno = mv2_eager_fast_wrapper(vc, buf, data_sz, rank, tag, comm, context_offset, sreq_p);
         if (sreq) {
             MPIU_Object_set_ref(sreq, 1);
             MPID_cc_set(&sreq->cc, 0);
@@ -991,7 +991,13 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, void *
             mpi_errno = MPIDI_CH3U_Receive_data_found( rreq, data_buf,
                     &data_len, &complete );
         } else {
-            mpi_errno = MPIDI_CH3U_Receive_data_unexpected( rreq, data_buf,
+#if defined(CHANNEL_MRAIL)
+            if (!IS_VC_SMP(vc) && mv2_use_opt_eager_recv == 1) {
+                 rreq->mrail.is_eager_vbuf_queued = 1; 
+            }
+#endif            
+
+            mpi_errno = MPIDI_CH3U_Receive_data_unexpected(rreq, data_buf,
                     &data_len, &complete );
         }
         if (mpi_errno != MPI_SUCCESS) {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -88,13 +88,15 @@ static int slurm_fill_plist (
     return 0;
 }
 
-int slurm_startup (int nprocs)
+int slurm_startup (int nprocs, int nprocs_per_node)
 {
     char const * const nodelist = slurm_get_nodelist();
     int const nnodes = slurm_get_num_nodes();
-    char const * const tasks_per_node = slurm_get_tasks_per_node();
+    char const * const tasks_per_node = 
+        nprocs_per_node ? mkstr("%d(x%d)", nprocs_per_node, nnodes) :
+        slurm_get_tasks_per_node();
 
-    if (!(nodelist && nnodes && tasks_per_node)) {
+    if (!(nodelist && nnodes && tasks_per_node )) {
         /*
          * SLURM JOB ID found but missing supporting variable(s)
          */

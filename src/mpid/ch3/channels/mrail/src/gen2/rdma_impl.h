@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -99,6 +99,9 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
 
     uint32_t                    pending_r3_sends[MAX_NUM_SUBRAILS];
     struct ibv_srq              *srq_hndl[MAX_NUM_HCAS];
+#ifdef _ENABLE_UD_
+    struct ibv_srq              *ud_srq_hndl[MAX_NUM_HCAS];
+#endif /*_ENABLE_UD_ */
     pthread_spinlock_t          srq_post_spin_lock;
     pthread_mutex_t             srq_post_mutex_lock[MAX_NUM_HCAS];
     pthread_mutex_t             async_mutex_lock[MAX_NUM_HCAS];
@@ -476,7 +479,7 @@ struct ibv_mr * register_memory(void *, size_t len, int hca_num);
 int deregister_memory(struct ibv_mr * mr);
 int MRAILI_Backlog_send(MPIDI_VC_t * vc, int subrail);
 int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
-int rdma_find_active_port(struct ibv_context *context, struct ibv_device *ib_dev, int *hca_rate);
+int rdma_find_active_port(struct ibv_context *context, struct ibv_device *ib_dev, int *hca_rate, uint8_t *link_type, uint16_t *sm_lid);
 int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type);
 int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
                            struct ibv_device **usable_dev_list,

@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -965,7 +965,7 @@ dreg_entry *dreg_register(void* buf, size_t len)
         for (i = 0; i < buf_reg_count; ++i) {
             if (buf >= delayed_buf_region[i].iov_base &&
                 buf < (delayed_buf_region[i].iov_base+delayed_buf_region[i].iov_len)) {
-                PRINT_DEBUG(DEBUG_DREG_verbose,"%p already in delayed_buf_region at loc %d (len = %d/%d)\n",
+                PRINT_DEBUG(DEBUG_DREG_verbose,"%p already in delayed_buf_region at loc %d (len = %lu/%lu)\n",
                             buf, i, delayed_buf_region[i].iov_len, len);
                 flush_delayed_dregs(delayed_buf_region[i].iov_base, delayed_buf_region[i].iov_len);
             }

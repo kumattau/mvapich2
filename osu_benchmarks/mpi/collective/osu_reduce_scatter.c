@@ -1,6 +1,6 @@
 #define BENCHMARK "OSU MPI%s Reduce_scatter Latency Test"
 /*
- * Copyright (C) 2002-2020 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2021 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University.
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -22,7 +22,7 @@ int main(int argc, char *argv[])
     size_t bufsize;
 
     set_header(HEADER);
-    set_benchmark_name("osu_scatter");
+    set_benchmark_name("osu_reduce_scatter");
 
     options.bench = COLLECTIVE;
     options.subtype = LAT;

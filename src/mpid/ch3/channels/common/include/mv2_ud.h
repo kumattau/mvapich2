@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -120,15 +120,15 @@ typedef struct _mv2_ud_exch_info_t
 {
     uint16_t lid;
     uint32_t qpn;
+    union ibv_gid gid;
 }mv2_ud_exch_info_t;
 
 typedef struct _mv2_rndv_qp_t {
     uint32_t seqnum;
     uint16_t index;
-    uint16_t hca_num;
     
-    struct ibv_qp *ud_qp;
-    struct ibv_cq *ud_cq;
+    struct ibv_qp *ud_qp[MAX_NUM_HCAS];
+    struct ibv_cq *ud_cq[MAX_NUM_HCAS];
 
     void *next;
     void *prev;

@@ -12,7 +12,7 @@
  * excludes the implied warranties of merchantability, fitness for a
  * particular purpose and non-infringement.
  */
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1563,7 +1563,7 @@ struct MPID_Grequest_fns {
   (e.g., 'MPID_Request_send_t') that extends the 'MPID_Request'.
   
   S*/
-typedef struct MPID_Request {
+typedef struct __attribute__((__aligned__(64))) MPID_Request {
     MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
     MPID_Request_kind_t kind;
     /* pointer to the completion counter */
@@ -1625,7 +1625,7 @@ typedef struct MPID_Request {
 #if defined (_SHARP_SUPPORT_)
     MPID_DEV_SHARP_REQUEST_DECL
 #endif 
-} MPID_Request ATTRIBUTE((__aligned__(32)));
+} MPID_Request;
 
 extern MPIU_Object_alloc_t MPID_Request_mem;
 /* Preallocated request objects */

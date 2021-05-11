@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,6 +23,10 @@
 
 #if (defined(CHANNEL_MRAIL)||defined(CHANNEL_PSM))
 #include "coll_shmem.h"
+#endif
+
+#ifdef PROFILE_STARTUP
+#include <timestamp.h>
 #endif
 
 /*
@@ -262,6 +266,10 @@ int MPI_Finalize( void )
     /* FIXME: Should this also be a finalize callback? */
 #ifdef HAVE_DEBUGGER_SUPPORT
     MPIR_DebuggerSetAborting( (char *)0 );
+#endif
+
+#ifdef PROFILE_STARTUP
+    mv2_print_timestamps(stderr);
 #endif
 
 #ifdef _OSU_MVAPICH_

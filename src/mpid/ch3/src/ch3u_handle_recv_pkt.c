@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -473,7 +473,19 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, void *buf, MPIDI_msg
     /* FIXME: to avoid memory exhaustion, integrate buffer pool management
        with flow control */
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"unexpected request allocated");
-    
+
+#if defined(CHANNEL_MRAIL)
+    if (rreq->mrail.is_eager_vbuf_queued == 1) {
+        MPIU_Assert(rreq->mrail.eager_vbuf_tail == NULL);
+        MPIU_Assert(rreq->mrail.eager_vbuf_head == NULL);
+        rreq->dev.recv_pending_count = 2;
+        *buflen = 0;
+        *complete = FALSE;
+        rreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_UnpackUEBufComplete;
+        return mpi_errno;
+    } 
+#endif
+
     rreq->dev.tmpbuf = MPIU_Malloc(rreq->dev.recv_data_sz);
     if (!rreq->dev.tmpbuf) {
 	MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",

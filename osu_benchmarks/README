@@ -118,7 +118,21 @@ osu_latency_mp - Multi-process Latency Test
     * carry out the ping-pong test where many iterations are performed and the 
     * average one-way latency numbers are reported. This test is available here.
     * "-t" option can be used to set the number of sender and receiver processes
-    * including the parent processes to be used in a benchmark. Examples:
+    * including the parent processes to be used in a benchmark.
+    * 
+    * The purpose of this test is to check if the underlying MPI communication
+    * runtime has taken care of fork safety even if the application has not.
+    *
+    * A new environment variable "MV2_SUPPORT_FORK_SAFETY" was introduced with
+    * MVAPICH2 2.3.4 to make MVAPICH2 takes care of fork safety for
+    * applications that require it.
+    *
+    * The support for fork safety is disabled by default in MVAPICH2 due to
+    * performance reasons. When running osu_latency_mp with MVAPICH2, set
+    * the environment variable MV2_SUPPORT_FORK_SAFETY to 1. When running
+    * osu_latency_mp with other MPI libraries that do not support fork safety,
+    * set the environment variables RDMAV_FORK_SAFE or IBV_FORK_SAFE to 1.
+    * Examples:
             -t 4        // receiver processes = 4 and sender processes = 1 
             -t 4:6      // sender processes = 4 and receiver processes = 6
             -t 2:       // not defined 

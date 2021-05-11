@@ -4,7 +4,7 @@ AC_PREREQ(2.63)
 #     See COPYRIGHT in top-level directory.
 #
 
-# Copyright (c) 2001-2020, The Ohio State University. All rights
+# Copyright (c) 2001-2021, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -1945,6 +1945,8 @@ elif test "$with_pmi" != "no" ; then
     if test "$with_pmi" = "default" -o "$with_pmi" = "yes" ; then
         if test -n "$PM_REQUIRES_PMI" ; then
 	    with_pmi=$PM_REQUIRES_PMI
+        elif test "$pm_name" = "slurm" ; then
+            with_pmi=pmi2
         else
             with_pmi=simple
         fi

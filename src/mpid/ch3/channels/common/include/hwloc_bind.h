@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -86,6 +86,8 @@ int smpi_load_hwloc_topology(void);
 int smpi_load_hwloc_topology_whole(void);
 int smpi_destroy_hwloc_topology(void);
 int smpi_unlink_hwloc_topology_file(void);
+int smpi_identify_my_numa_id(void);
+int smpi_identify_my_sock_id(void);
 #else
 static hwloc_topology_t topology = NULL;
 static hwloc_topology_t topology_whole = NULL;

@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -138,6 +138,10 @@ void make_command_strings(int argc, char *argv[], char *totalview_cmd, char *com
 void launch_newmpirun(int total);
 static void get_line(void *buf, char *fill, int buf_or_file);
 void dpm_add_env(char *, char *);
+void spawn_srun_fast(int, char *[], char *, char *);
+void spawn_srun_one(int, char *[], char *, char *, int);
+
+#define MV2_SLURM_STARTUP_ARGS 17
 
 /*
 #define SH_NAME_LEN    (128)
@@ -494,13 +498,17 @@ int main(int argc, char *argv[])
     if (M_LAUNCH != state) {
         goto exit_main;
     }
-
+    
     if (USE_LINEAR_SSH) {
         NSPAWNS = pglist->npgs;
         DBG(fprintf(stderr, "USE_LINEAR = %d \n", USE_LINEAR_SSH));
-
-        spawn_fast(argc, argv, totalview_cmd, env);
-
+        /* srun launch or ssh/rsh */
+        if (USE_SRUN) {
+            DBG(fprintf(stderr, "USE_SRUN = %d \n", USE_SRUN));
+            spawn_srun_fast(argc, argv, totalview_cmd, env);
+        } else {
+            spawn_fast(argc, argv, totalview_cmd, env);
+        }
     } else {
         NSPAWNS = 1;
         //Search if the number of processes is set up as a environment
@@ -508,7 +516,13 @@ int main(int argc, char *argv[])
         if (!fastssh_nprocs_thres)
             fastssh_nprocs_thres = 1 << 13;
 
-        spawn_one(argc, argv, totalview_cmd, env, fastssh_nprocs_thres);
+        /* srun launch or ssh/rsh */
+        if (USE_SRUN) {
+            DBG(fprintf(stderr, "USE_SRUN = %d \n", USE_SRUN));
+            spawn_srun_one(argc, argv, totalview_cmd, env, fastssh_nprocs_thres);
+        } else {
+            spawn_one(argc, argv, totalview_cmd, env, fastssh_nprocs_thres);
+        }
     }
 
     if (show_on)
@@ -1763,6 +1777,7 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
                 fprintf(stderr, "Couldn't allocate string for remote command!\n");
                 exit(EXIT_FAILURE);
             }
+            
             if (local_hostname == 0)
                 nargv[arg_offset++] = pglist->data[i].hostname;
 
@@ -1814,6 +1829,576 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
 
   allocation_error:
     perror("spawn_fast");
+    if (mpispawn_env) {
+        fprintf(stderr, "%s\n", mpispawn_env);
+        free(mpispawn_env);
+    }
+
+    exit(EXIT_FAILURE);
+}
+
+/* 
+ * Spawn the processes using the slurmd daemon and srun one at a time
+ * 
+ * this will bypass firewall contraints on clusters that do not allow
+ * direct ssh access to nodes, while maintaining out mpispawn 
+ * enhancements 
+ */
+void spawn_srun_fast(int argc, char *argv[], char *totalview_cmd, char *env)
+{
+    char *mpispawn_env, *tmp, *ld_library_path;
+    char *name, *value;
+    int i, tmp_i, getpath_status;
+    char pathbuf[PATH_MAX];
+
+    if ((ld_library_path = getenv("LD_LIBRARY_PATH"))) {
+        mpispawn_env = mkstr("--export=ALL,LD_LIBRARY_PATH=%s", ld_library_path);
+    } else {
+        mpispawn_env = mkstr("--export=ALL");
+    }
+
+    if (!mpispawn_env)
+        goto allocation_error;
+
+    /*
+     * Forward mpirun parameters to mpispawn
+     */
+    mpispawn_env = append_mpirun_srun_parameters(mpispawn_env);
+
+    if (!mpispawn_env) {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_MPIRUN_MPD=0", mpispawn_env);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    /* force USE_LINEAR_SSH */
+    tmp = mkstr("%s,USE_LINEAR_SSH=1", mpispawn_env);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_MPIRUN_HOST=%s", mpispawn_env, mpirun_host);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_MPIRUN_HOSTIP=%s", mpispawn_env, mpirun_hostip);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPIRUN_RSH_LAUNCH=1", mpispawn_env);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_CHECKIN_PORT=%d", mpispawn_env, port);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_MPIRUN_PORT=%d", mpispawn_env, port);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_NNODES=%d", mpispawn_env, pglist->npgs);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_GLOBAL_NPROCS=%d", mpispawn_env, nprocs);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_MPIRUN_ID=%d", mpispawn_env, getpid());
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    if (use_totalview) {
+        tmp = mkstr("%s,MPISPAWN_USE_TOTALVIEW=1", mpispawn_env);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
+    }
+#ifdef CKPT
+    mpispawn_env = create_mpispawn_vars(mpispawn_env);
+
+#endif                          /* CKPT */
+
+    /*
+     * mpirun_rsh allows env variables to be set on the commandline
+     */
+    if (!mpispawn_param_env) {
+        mpispawn_param_env = mkstr("");
+        if (!mpispawn_param_env)
+            goto allocation_error;
+    }
+
+    while (aout_index != argc && strchr(argv[aout_index], '=')) {
+        name = strdup(argv[aout_index++]);
+        value = strchr(name, '=');
+        value[0] = '\0';
+        value++;
+        dpm_add_env(name, value);
+
+#ifdef CKPT
+        save_ckpt_vars(name, value);
+#ifdef CR_AGGRE
+        if (strcmp(name, "MV2_CKPT_FILE") == 0) {
+            mpispawn_env = append2env(mpispawn_env, name, value);
+            if (!mpispawn_env)
+                goto allocation_error;
+        } else if (strcmp(name, "MV2_CKPT_USE_AGGREGATION") == 0) {
+            use_aggre = atoi(value);
+        } else if (strcmp(name, "MV2_CKPT_USE_AGGREGATION_MIGRATION") == 0) {
+            use_aggre_mig = atoi(value);
+        } else if (strcmp(name, "MV2_CKPT_AGGREGATION_BUFPOOL_SIZE") == 0) {
+            mpispawn_env = append2env(mpispawn_env, name, value);
+            if (!mpispawn_env)
+                goto allocation_error;
+        } else if (strcmp(name, "MV2_CKPT_AGGREGATION_CHUNK_SIZE") == 0) {
+            mpispawn_env = append2env(mpispawn_env, name, value);
+            if (!mpispawn_env)
+                goto allocation_error;
+        }
+#endif
+#endif                          /* CKPT */
+
+        tmp = mkstr("%s,MPISPAWN_GENERIC_NAME_%d=%s" ",MPISPAWN_GENERIC_VALUE_%d=%s", 
+                    mpispawn_param_env, param_count, name, param_count, value);
+
+        free(name);
+        free(mpispawn_param_env);
+
+        if (tmp) {
+            mpispawn_param_env = tmp;
+            param_count++;
+        }
+
+        else {
+            goto allocation_error;
+        }
+    }
+#if defined(CKPT) && defined(CR_AGGRE)
+    if (use_aggre > 0)
+        mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_USE_AGGREGATION", "1");
+    else
+        mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_USE_AGGREGATION", "0");
+    if (!mpispawn_env)
+        goto allocation_error;
+#endif
+    if (!configfile_on) {
+        if (!dpm && aout_index == argc) {
+            fprintf(stderr, "Incorrect number of arguments.\n");
+            usage(argv[0]);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    i = argc - aout_index;
+    if (debug_on && !use_totalview)
+        i++;
+
+    if (dpm == 0 && !configfile_on) {
+        tmp = mkstr("%s,MPISPAWN_ARGC=%d", mpispawn_env, argc - aout_index);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
+
+    }
+
+    i = 0;
+
+    if (debug_on && !use_totalview) {
+        tmp = mkstr("%s,MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, DBG_CMD);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
+    }
+
+    /* 
+     * support for LLNL's totalview debugger on spawned processes
+     * the proctable is used to track each spawned parallel process
+     * and here we assign the correct name to them
+     */
+    if (use_totalview) {
+        int j;
+        if (!configfile_on) {
+            for (j = 0; j < MPIR_proctable_size; j++) {
+                MPIR_proctable[j].executable_name = argv[aout_index];
+            }
+        } else {
+            for (j = 0; j < MPIR_proctable_size; j++) {
+                MPIR_proctable[j].executable_name = plist[j].executable_name;
+            }
+
+        }
+    }
+
+    tmp_i = i;
+
+    /* to make sure all tasks generate same pg-id we send a kvs_template */
+    srand(getpid());
+    i = rand() % MAXLINE;
+    tmp = mkstr("%s,MPDMAN_KVS_TEMPLATE=kvs_%d_%s_%d", mpispawn_env, i, mpirun_host, getpid());
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    getpath_status = (getpath(pathbuf, PATH_MAX) && file_exists(pathbuf));
+
+    dbg("%d forks to be done, with env:=  %s\n", pglist->npgs, mpispawn_env);
+
+    for (i = 0; i < pglist->npgs; i++) {
+        if (!(pglist->data[i].pid = fork())) {
+            /*
+             * We're no longer the mpirun_rsh process but a child process
+             * used to launch a specific instance of mpispawn.  No exit codes
+             * or state transitions should be called here.
+             */
+            size_t arg_offset = 0;
+            const char *nargv[MV2_SLURM_STARTUP_ARGS];
+            char const * command = NULL, * custpath = NULL, * custwd = NULL;
+            int n = 0;
+            arg_list * arg = dpm ? &pglist->data[i].si->command : NULL;
+
+            tmp = mkstr("%s,MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env,
+                    pglist->data[i].npids);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+#if defined(CKPT) && defined(CR_FTB) && defined(CR_AGGRE)
+            /* use Aggre-based migration */
+            if (use_aggre > 0 && use_aggre_mig > 0) { 
+                if (pglist->data[i].npids > 0) { 
+                    /* will be src of mig */
+                    mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_AGGRE_MIG_ROLE", "1");
+                } else { 
+                    /* will be target of mig */
+                    mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_AGGRE_MIG_ROLE", "2");
+                }
+                if (!mpispawn_env) {
+                    goto allocation_error;
+                }
+            /* not use Aggre-based migration */
+            } else {
+                mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_AGGRE_MIG_ROLE", "0");
+            }
+#endif
+            if (dpm) {
+                tmp = mkstr("%s,PMI_SPAWNED=1", mpispawn_env);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+
+                tmp = mkstr("%s,MPIRUN_COMM_MULTIPLE=%d", mpispawn_env,
+                        spinf.totspawns != 1);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+
+                if (pglist->data[i].si->wdir) {
+                    custwd = pglist->data[i].si->wdir;
+                }
+
+                if (pglist->data[i].si->path) {
+                    custpath = pglist->data[i].si->path;
+                }
+
+                if (pglist->data[i].si->port) {
+                    tmp = mkstr("%s,%s", mpispawn_env,
+                            pglist->data[i].si->port);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
+                    }
+                }
+
+                while (arg) {
+                    tmp = mkstr("%s,MPISPAWN_ARGV_%d=%s", mpispawn_env, n,
+                            arg->arg);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
+                    }
+
+                    n++;
+                    arg = arg->next;
+                }
+
+                tmp = mkstr("%s,MPISPAWN_ARGC=%d", mpispawn_env, n);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+            }
+
+            /* If the config option is activated, the executable information are taken from the pglist. */
+            else if (configfile_on) {
+                int index_plist = pglist->data[i].plist_indices[0];
+                /* When the config option is activated we need to put in the mpispawn the number of argument of the exe. */
+                tmp = mkstr("%s,MPISPAWN_ARGC=%d", mpispawn_env, plist[index_plist].argc);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+                /*Add the executable name and args in the list of arguments from the pglist. */
+                tmp = add_srun_argv(mpispawn_env, plist[index_plist].executable_name, plist[index_plist].executable_args, tmp_i);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+
+            }
+
+            else {
+                while (aout_index < argc) {
+                    tmp = mkstr("%s,MPISPAWN_ARGV_%d=%s", mpispawn_env,
+                            tmp_i++, argv[aout_index++]);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
+                    }
+                }
+
+                tmp = mkstr("%s,MPISPAWN_ARGC=%d", mpispawn_env, tmp_i);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+            }
+
+            if (mpispawn_param_env) {
+                tmp = mkstr("%s,MPISPAWN_GENERIC_ENV_COUNT=%d%s", mpispawn_env, param_count, mpispawn_param_env);
+
+                free(mpispawn_param_env);
+                free(mpispawn_env);
+
+                if (tmp) {
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+            }
+
+            tmp = mkstr("%s,MPISPAWN_ID=%d", mpispawn_env, i);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+            /* user may specify custom binary path via MPI_Info */
+            if (custpath) {
+                tmp = mkstr("%s,MPISPAWN_BINARY_PATH=%s", mpispawn_env, custpath);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+            }
+
+            /* user may specify custom working dir via MPI_Info */
+            if (custwd) {
+                tmp = mkstr("%s,MPISPAWN_WORKING_DIR=%s", mpispawn_env, custwd);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+            } else {
+                tmp = mkstr("%s,MPISPAWN_WORKING_DIR=%s", mpispawn_env, wd);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+
+            }
+
+            for (n = 0; n < pglist->data[i].npids; n++) {
+                tmp = mkstr("%s,MPISPAWN_MPIRUN_RANK_%d=%d", mpispawn_env, n, pglist->data[i].plist_indices[n]);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+
+                if (plist[pglist->data[i].plist_indices[n]].device != NULL) {
+                    tmp = mkstr("%s,MPISPAWN_MV2_IBA_HCA_%d=%s", mpispawn_env, n, plist[pglist->data[i].plist_indices[n]].device);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
+                    }
+                }
+            }
+    
+            int local_hostname = 0;
+            int num_gpus = 0;
+            nargv[arg_offset++] = SRUN_CMD;
+            nargv[arg_offset++] = "--nodelist";
+            nargv[arg_offset++] = pglist->data[i].hostname;
+            /* set process counts */
+            nargv[arg_offset++] = "-N";
+            nargv[arg_offset++] = "1";
+            nargv[arg_offset++] = "-n"; 
+            nargv[arg_offset++] = "1";
+            /* set number of gpus */
+            if ((num_gpus = env2int("SLURM_GPUS"))) { 
+                char *gpus_arg;
+                gpus_arg = mkstr("--gpus=%d", num_gpus / pglist->npgs);
+                nargv[arg_offset++] = gpus_arg;
+            } 
+            /* set srun to ignore stdin */
+            nargv[arg_offset++] = "--input";
+            nargv[arg_offset++] = "none";
+            nargv[arg_offset++] = mpispawn_env;
+            
+            if (getpath_status) {
+                command = mkstr("%s/mpispawn", pathbuf);
+            } else if (use_dirname) { 
+                command = mkstr("%s/mpispawn", binary_dirname);
+            } else {
+                command = mkstr("mpispawn");
+            }
+            PRINT_DEBUG(DEBUG_Fork_verbose, "mpispawn command set to %s\n", command);
+
+            /* If the user request an execution with an alternate group
+               use the 'sg' command to run mpispawn */
+            if (change_group != NULL) {
+                nargv[arg_offset++] = "--gid";
+                nargv[arg_offset++] = change_group;
+            }
+
+            nargv[arg_offset++] = command;
+            /* a zero for mpispawn */
+            nargv[arg_offset++] = "0";
+            nargv[arg_offset++] = NULL;
+            
+            if (show_on) {
+                size_t arg = 0;
+                fprintf(stdout, "\n");
+                while (nargv[arg] != NULL)
+                    fprintf(stdout, "%s ", nargv[arg++]);
+                fprintf(stdout, "\n");
+
+                exit(EXIT_SUCCESS);
+            }
+
+            if (strcmp(pglist->data[i].hostname, plist[0].hostname)) {
+                int fd = open("/dev/null", O_RDWR, 0);
+                dup2(fd, STDIN_FILENO);
+            }
+            /*
+               int myti = 0;
+               for(myti=0; myti<arg_offset; myti++)
+               printf("%s: before exec-%d:  argv[%d] = %s\n", __func__, i, myti, nargv[myti] );
+             */
+            PRINT_DEBUG(DEBUG_Fork_verbose, "FORK srun/mpispawn (pid=%d)\n", getpid());
+            PRINT_DEBUG(DEBUG_Fork_verbose > 1, "mpispawn command line: %s\n", mpispawn_env);
+            execv(nargv[0], (char *const *) nargv);
+            perror("execv");
+
+            for (i = 0; i < argc; i++) {
+                fprintf(stderr, "%s ", nargv[i]);
+            }
+
+            fprintf(stderr, "\n");
+
+            exit(EXIT_FAILURE);
+        }
+        pglist->data[i].local_pid = pglist->data[i].pid;
+    }
+
+    if (tmp) {
+        free(tmp);
+    }
+    if (spawnfile) {
+        unlink(spawnfile);
+    }
+    return;
+
+  allocation_error:
+    perror("spawn_srun_fast");
     if (mpispawn_env) {
         fprintf(stderr, "%s\n", mpispawn_env);
         free(mpispawn_env);
@@ -2288,6 +2873,489 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
     exit(EXIT_FAILURE);
 }
 
+/*
+ * Spawn the processes using the hierarchical way.
+ */
+void spawn_srun_one(int argc, char *argv[], char *totalview_cmd, char *env, int fastssh_nprocs_thres)
+{
+    char *mpispawn_env, *tmp, *ld_library_path;
+    char *name, *value;
+    int i, j, k, n, tmp_i;
+    int numBytes = 0, getpath_status;
+    FILE *host_list_file_fp;
+    char pathbuf[PATH_MAX];
+    char *host_list = NULL;
+    char *ptr;
+    size_t max_npids = 0, record_sz;
+
+    if ((ld_library_path = getenv("LD_LIBRARY_PATH"))) {
+        mpispawn_env = mkstr("--export=LD_LIBRARY_PATH=%s,USE_SRUN=1", 
+                             ld_library_path);
+    } else {
+        mpispawn_env = mkstr("--export=USE_SRUN=1");
+    }
+
+    if (!mpispawn_env) {
+        goto allocation_error;
+    }
+
+    /*
+     * Forward mpirun parameters to mpispawn
+     */
+    mpispawn_env = append_mpirun_srun_parameters(mpispawn_env);
+
+    if (!mpispawn_env) {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_MPIRUN_MPD=0", mpispawn_env);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,USE_LINEAR_SSH=%d", mpispawn_env, USE_LINEAR_SSH);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_MPIRUN_HOST=%s", mpispawn_env, mpirun_host);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_MPIRUN_HOSTIP=%s", mpispawn_env, mpirun_hostip);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPIRUN_RSH_LAUNCH=1", mpispawn_env);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_CHECKIN_PORT=%d", mpispawn_env, port);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_MPIRUN_PORT=%d", mpispawn_env, port);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_GLOBAL_NPROCS=%d", mpispawn_env, nprocs);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s,MPISPAWN_MPIRUN_ID=%d", mpispawn_env, getpid());
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    if (!configfile_on) {
+        for (k = 0; k < pglist->npgs; k++) {
+            if (pglist->data[k].npids > max_npids)
+                max_npids = pglist->data[k].npids;
+        }
+        record_sz = (MAX_HOST_LEN+2) + (max_npids * pglist->npgs)*MAX_PID_LEN;
+        host_list = (char*)malloc(record_sz * sizeof(char));
+        if (!host_list)
+            goto allocation_error;
+        ptr = host_list;
+        for (k = 0; k < pglist->npgs; k++) {
+            /* Make a list of hosts and the number of processes on each host */
+            /* NOTE: RFCs do not allow : or ; in hostnames */
+            ptr += sprintf(ptr, "%s:%zu:", pglist->data[k].hostname, pglist->data[k].npids);
+            for (n = 0; n < pglist->data[k].npids; n++) {
+                ptr += sprintf(ptr, "%d:", pglist->data[k].plist_indices[n]);
+            }
+        }
+        *ptr = '\0';
+    } else {
+        /*In case of mpmd activated we need to pass to mpispawn the different names and arguments of executables */
+        host_list = create_host_list_mpmd(pglist, plist);
+        tmp = mkstr("%s,MPISPAWN_MPMD=%d", mpispawn_env, 1);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
+
+    }
+
+    //If we have a number of processes >= PROCS_THRES we use the file approach
+    //Write the hostlist in a file and send the filename and the number of
+    //bytes to the other procs
+    if (nprocs >= fastssh_nprocs_thres) {
+
+        int pathlen = strlen(wd);
+        host_list_file = (char *) malloc(sizeof(char) * (pathlen + strlen("host_list_file.tmp") + MAX_PID_LEN + 1));
+        sprintf(host_list_file, "%s/host_list_file%d.tmp", wd, getpid());
+
+        /* open the host list file and write the host_list in it */
+        DBG(fprintf(stderr, "OPEN FILE %s\n", host_list_file));
+        host_list_file_fp = fopen(host_list_file, "w");
+
+        if (host_list_file_fp == NULL) {
+            fprintf(stderr, "host list temp file could not be created\n");
+            goto allocation_error;
+        }
+
+        fprintf(host_list_file_fp, "%s", host_list);
+        fclose(host_list_file_fp);
+
+        tmp = mkstr("%s,HOST_LIST_FILE=%s", mpispawn_env, host_list_file);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
+
+        numBytes = (strlen(host_list) + 1) * sizeof(char);
+        DBG(fprintf(stderr, "WRITTEN %d bytes\n", numBytes));
+
+        tmp = mkstr("%s,HOST_LIST_NBYTES=%d", mpispawn_env, numBytes);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
+
+    } else {
+
+        /*This is the standard approach used when the number of processes < PROCS_THRES */
+        tmp = mkstr("%s,MPISPAWN_HOSTLIST=%s", mpispawn_env, host_list);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
+    }
+
+    tmp = mkstr("%s,MPISPAWN_NNODES=%d", mpispawn_env, pglist->npgs);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    if (use_totalview) {
+        tmp = mkstr("%s,MPISPAWN_USE_TOTALVIEW=1", mpispawn_env);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
+    }
+
+    /*
+     * mpirun_rsh allows env variables to be set on the commandline
+     */
+    if (!mpispawn_param_env) {
+        mpispawn_param_env = mkstr("");
+        if (!mpispawn_param_env)
+            goto allocation_error;
+    }
+
+    while (aout_index != argc && strchr(argv[aout_index], '=')) {
+        name = strdup(argv[aout_index++]);
+        value = strchr(name, '=');
+        value[0] = '\0';
+        value++;
+
+        tmp = mkstr("%s,MPISPAWN_GENERIC_NAME_%d=%s" ",MPISPAWN_GENERIC_VALUE_%d=%s", 
+                    mpispawn_param_env, param_count, name, param_count, value);
+
+        free(name);
+        free(mpispawn_param_env);
+
+        if (tmp) {
+            mpispawn_param_env = tmp;
+            param_count++;
+        }
+
+        else {
+            goto allocation_error;
+        }
+    }
+
+    if (!(configfile_on || dpm)) {
+        if (aout_index == argc) {
+            fprintf(stderr, "Incorrect number of arguments.\n");
+            usage(argv[0]);
+            exit(EXIT_FAILURE);
+        }
+
+        i = argc - aout_index;
+        if (debug_on && !use_totalview)
+            i++;
+
+        tmp = mkstr("%s,MPISPAWN_ARGC=%d", mpispawn_env, argc - aout_index);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
+
+    }
+    i = 0;
+
+    if (debug_on && !use_totalview) {
+        tmp = mkstr("%s,MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, DBG_CMD);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
+    }
+
+    if (use_totalview) {
+        int j;
+        if (!configfile_on) {
+            for (j = 0; j < MPIR_proctable_size; j++) {
+                MPIR_proctable[j].executable_name = argv[aout_index];
+            }
+        } else {
+            for (j = 0; j < MPIR_proctable_size; j++) {
+                MPIR_proctable[j].executable_name = plist[j].executable_name;
+            }
+        }
+    }
+
+    tmp_i = i;
+    
+    /* Spawn root mpispawn */
+    i = 0;
+    {
+        getpath_status = (getpath(pathbuf, PATH_MAX) && file_exists(pathbuf));
+
+        if (!(pglist->data[i].pid = fork())) {
+            /*
+             * We're no longer the mpirun_rsh process but a child process
+             * used to launch a specific instance of mpispawn.  No exit codes
+             * or state transitions should be called here.
+             */
+            size_t arg_offset = 0;
+            const char *nargv[MV2_SLURM_STARTUP_ARGS];
+            char * command = NULL;
+            int num_gpus = 0;
+            //If the config option is activated, the executable information are taken from the pglist.
+            if (configfile_on) {
+                int index_plist = pglist->data[i].plist_indices[0];
+
+                /* When the config option is activated we need to put in the mpispawn the number of argument of the exe. */
+                tmp = mkstr("%s,MPISPAWN_ARGC=%d", mpispawn_env, plist[index_plist].argc);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+                /*Add the executable name and args in the list of arguments from the pglist. */
+                tmp = add_srun_argv(mpispawn_env, plist[index_plist].executable_name, plist[index_plist].executable_args, tmp_i);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+            } else {
+                while (aout_index < argc) {
+                    tmp = mkstr("%s,MPISPAWN_ARGV_%d=%s", mpispawn_env, tmp_i++, argv[aout_index++]);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
+                    }
+
+                }
+            }
+
+            if (mpispawn_param_env) {
+                tmp = mkstr("%s,MPISPAWN_GENERIC_ENV_COUNT=%d%s", mpispawn_env, param_count, mpispawn_param_env);
+
+                free(mpispawn_param_env);
+                free(mpispawn_env);
+
+                if (tmp) {
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+            }
+
+            tmp = mkstr("%s,MPISPAWN_ID=%d", mpispawn_env, i);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+            tmp = mkstr("%s,MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env, pglist->data[i].npids);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+            tmp = mkstr("%s,MPISPAWN_WORKING_DIR=%s", mpispawn_env, wd);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+            tmp = mkstr("%s,MPISPAWN_WD=%s", mpispawn_env, wd);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+            /* setup general command args */
+            nargv[arg_offset++] = SRUN_CMD;
+            /* set process/node count */
+            nargv[arg_offset++] = "-N";
+            nargv[arg_offset++] = "1";
+            nargv[arg_offset++] = "-n";
+            nargv[arg_offset++] = "1";
+            /* set number of gpus */
+            if ((num_gpus = env2int("SLURM_GPUS"))) { 
+                char *gpus_arg;
+                int slurm_nodes = env2int("SLURM_NNODES");
+                gpus_arg = mkstr("--gpus=%d", num_gpus / slurm_nodes);
+                nargv[arg_offset++] = gpus_arg;
+            } 
+            /* ignore stdin to prevent errors */
+            nargv[arg_offset++] = "--input";
+            nargv[arg_offset++] = "none";
+            nargv[arg_offset++] = "--nodelist";
+
+            for (j = 0; j < arg_offset; j++) {
+                tmp = mkstr("%s,MPISPAWN_NARGV_%d=%s", mpispawn_env, j, nargv[j]);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+            }
+            tmp = mkstr("%s,MPISPAWN_NARGC=%d", mpispawn_env, arg_offset);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+            /* set hosts */
+            nargv[arg_offset++] = pglist->data[i].hostname;
+
+
+            if (getpath_status) {
+                command = mkstr("%s/mpispawn", pathbuf);
+            } else if (use_dirname) {
+                command = mkstr("%s/mpispawn", binary_dirname);
+            } else {
+                command = mkstr("mpispawn");
+            }
+
+            if (!command) {
+                fprintf(stderr, "Couldn't allocate string for remote command!\n");
+                exit(EXIT_FAILURE);
+            }
+            PRINT_DEBUG(DEBUG_Fork_verbose, "mpispawn command set to %s\n", command);
+
+            nargv[arg_offset++] = mpispawn_env;
+            nargv[arg_offset++] = command;
+            /* number of sub mpispawn procs */
+            nargv[arg_offset++] = mkstr("%d", pglist->npgs);
+            nargv[arg_offset++] = NULL;
+
+            if (show_on) {
+                size_t arg = 0;
+                fprintf(stdout, "\n");
+                while (nargv[arg] != NULL)
+                    fprintf(stdout, "%s ", nargv[arg++]);
+                fprintf(stdout, "\n");
+
+                exit(EXIT_SUCCESS);
+            }
+
+            if (strcmp(pglist->data[i].hostname, plist[0].hostname)) {
+                int fd = open("/dev/null", O_RDWR, 0);
+                dup2(fd, STDIN_FILENO);
+            }
+            PRINT_DEBUG(DEBUG_Fork_verbose, "FORK mpispawn (pid=%d)\n", getpid());
+            PRINT_DEBUG(DEBUG_Fork_verbose > 1, "mpispawn command line: %s\n", mpispawn_env);
+            execv(nargv[0], (char *const *) nargv);
+            perror("execv");
+
+            for (i = 0; i < argc; i++) {
+                fprintf(stderr, "%s ", nargv[i]);
+            }
+
+            fprintf(stderr, "\n");
+
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    if (spawnfile) {
+        unlink(spawnfile);
+    }
+    return;
+
+  allocation_error:
+    perror("spawn_srun_one");
+    if (mpispawn_env) {
+        fprintf(stderr, "%s\n", mpispawn_env);
+        free(mpispawn_env);
+    }
+
+    exit(EXIT_FAILURE);
+}
 /* #undef CHECK_ALLOC */
 
 void make_command_strings(int argc, char *argv[], char *totalview_cmd, char *command_name, char *command_name_tv)

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH software package developed by the
@@ -13,5 +13,6 @@
 #define PARAM_H
 
 extern char *append_mpirun_parameters(char *);
+extern char *append_mpirun_srun_parameters(char *);
 
 #endif

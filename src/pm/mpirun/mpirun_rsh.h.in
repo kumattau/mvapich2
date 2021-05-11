@@ -14,7 +14,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -36,6 +36,7 @@
 #define XTERM_CMD       "@XTERM_CMD@"
 #define SHELL_CMD       "@SHELL_CMD@"
 #define TOTALVIEW_CMD   "@TOTALVIEW_CMD@"
+#define SRUN_CMD        "@SRUN_CMD@"
 
 #define SSH_ARG         "-q"
 #define SHELL_ARG       "-c"

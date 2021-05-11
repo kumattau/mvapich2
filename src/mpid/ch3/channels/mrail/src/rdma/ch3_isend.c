@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,6 +39,8 @@ static void isend_update_request(MPID_Request* sreq, void* pkt, int pkt_sz, int 
     sreq->dev.iov[0].MPL_IOV_LEN = pkt_sz - nb;
     sreq->dev.iov_count = 1;
     sreq->dev.iov_offset = 0;
+    MV2_INC_NUM_POSTED_SEND();
+
     MPIDI_FUNC_EXIT(MPID_STATE_ISEND_UPDATE_REQUEST);
 }
 
@@ -203,6 +205,8 @@ static int MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
                  * the transfer may be complete, but the
                  * request may still be active (see MPI_Ssend())
                  */
+                MV2_INC_NUM_POSTED_SEND();
+                MPIU_Assert(vc->smp.send_active == NULL);
                 MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
                 vc->smp.send_active = sreq;
             }
@@ -215,6 +219,7 @@ static int MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
         {
             MPIDI_DBG_PRINTF((55, FCNAME, "partial write, enqueuing at head"));
             isend_update_request(sreq, pkt, pkt_sz, nb);
+            MPIU_Assert(vc->smp.send_active == NULL);
             MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
             vc->smp.send_active = sreq;
         }

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -135,13 +135,17 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
 #ifdef _ENABLE_UD_
     case MV2_RNDV_PROTOCOL_UD_ZCOPY:
         {
+            int hca_num = 0;
             MPIDI_CH3I_MRAIL_Prepare_rndv_zcopy(vc, rreq);
             MPIDI_CH3I_MRAIL_SET_PKT_RNDV(cts_pkt, rreq);
             if (rreq->mrail.protocol == MV2_RNDV_PROTOCOL_UD_ZCOPY) {
-                cts_pkt->rndv.rndv_qpn = ((mv2_rndv_qp_t *) 
-                        rreq->mrail.rndv_qp_entry)->ud_qp->qp_num;
-                cts_pkt->rndv.hca_index = ((mv2_rndv_qp_t *)
-                        rreq->mrail.rndv_qp_entry)->hca_num;
+                for (hca_num = 0; hca_num < rdma_num_hcas; ++hca_num) {
+                    cts_pkt->rndv.rndv_qpn[hca_num] =
+                            rreq->mrail.rndv_qp_entry->ud_qp[hca_num]->qp_num;
+                    PRINT_DEBUG(DEBUG_ZCY_verbose>0, "My qpn: %d, hca_index: %d\n",
+                                cts_pkt->rndv.rndv_qpn[hca_num], hca_num);
+
+                }
             }
             break;
         }
@@ -323,6 +327,7 @@ int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
             sreq->mrail.partner_id = cts_pkt->receiver_req_id;
             sreq->mrail.rndv_buf_off = 0;
             sreq->mrail.nearly_complete = 0;
+            PRINT_DEBUG(DEBUG_UD_verbose, "Rcvd CTS for UD_ZCOPY from %d\n", vc->pg_rank);
             MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(sreq, rndv);
         break;
 #endif
@@ -698,6 +703,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                     }
                 } else {
                     sreq->ch.reqtype = REQUEST_RNDV_R3_DATA;
+                    MPIU_Assert(vc->smp.send_active == NULL);
                     MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
                     vc->smp.send_active = sreq;
                     sreq->mrail.nearly_complete = 1;
@@ -710,6 +716,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                 }
             } else {
                 sreq->ch.reqtype = REQUEST_RNDV_R3_DATA;
+                MPIU_Assert(vc->smp.send_active == NULL);
                 MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
                 vc->smp.send_active = sreq;
                 sreq->mrail.nearly_complete = 1;
@@ -721,6 +728,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
         }
     } else {
         sreq->ch.reqtype = REQUEST_RNDV_R3_DATA;
+        MV2_INC_NUM_POSTED_SEND();
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
         sreq->mrail.nearly_complete = 1;
         PRINT_DEBUG(DEBUG_RNDV_verbose>1,

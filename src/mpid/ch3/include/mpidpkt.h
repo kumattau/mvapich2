@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -378,7 +378,7 @@ typedef struct MPIDI_CH3_Pkt_zcopy_finish_t
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-    int hca_index;
+    uint8_t hca_index;
     MPI_Request receiver_req_id;
 } MPIDI_CH3_Pkt_zcopy_finish_t;
 

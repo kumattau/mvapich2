@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -2094,11 +2094,35 @@ mv2_env_param_list_t  param_list[] = {
     NULL    },
 {
     MV2_USE_UD_SRQ,
-    MV2_PARAM_TYPE_INVALID,
+    MV2_PARAM_TYPE_INT8,
     MV2_PARAM_GROUP_hybrid,
     "MV2_USE_UD_SRQ",
-    NULL,
-    0,
+    &rdma_use_ud_srq,
+    1,
+    NULL    },
+{
+    MV2_UD_SRQ_SIZE,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_hybrid,
+    "MV2_UD_SRQ_SIZE",
+    &mv2_ud_srq_fill_size,
+    1,
+    NULL    },
+{
+    MV2_UD_SRQ_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_hybrid,
+    "MV2_UD_SRQ_LIMIT",
+    &mv2_ud_srq_limit,
+    1,
+    NULL    },
+{
+    MV2_UD_SRQ_MAX_SIZE,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_hybrid,
+    "MV2_UD_SRQ_MAX_SIZE",
+    &mv2_ud_srq_alloc_size,
+    1,
     NULL    },
 {
     MV2_HYBRID_ENABLE_THRESHOLD,

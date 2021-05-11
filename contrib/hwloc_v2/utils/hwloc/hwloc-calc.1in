@@ -1,6 +1,6 @@
 .\" -*- nroff -*-
 .\" Copyright © 2010-2020 Inria.  All rights reserved.
-.\" Copyright © 2009 Cisco Systems, Inc.  All rights reserved.
+.\" Copyright © 2009-2020 Cisco Systems, Inc.  All rights reserved.
 .\" See COPYING in top-level directory.
 .TH HWLOC-CALC "1" "%HWLOC_DATE%" "%PACKAGE_VERSION%" "%PACKAGE_NAME%"
 .SH NAME
@@ -31,6 +31,12 @@ All topology options must be given before all other options.
 Only keep the first PU per core in the input locations.
 If \fI<N>\fR is specified, keep the <N>-th instead, if any.
 PUs are ordered by physical index during this filtering.
+.TP
+\fB\-\-cpukind\fR <n>
+\fB\-\-cpukind\fR <infoname>=<infovalue>
+Only keep PUs whose CPU kind match.
+Either a single CPU kind is specified as an index,
+or the info name/value keypair will select matching kinds.
 .TP
 \fB\-\-restrict\fR <cpuset>
 Restrict the topology to the given cpuset.
@@ -173,8 +179,16 @@ This option enables \fB\-\-local\-memory\fR.
 Enable the listing of local memory nodes with \fB\-\-local\-memory\fR,
 but only display the local node that has the best value for the memory
 attribute given by \fI<name>\fR (or as an index).
+
 If the memory attribute values depend on the initiator, the hwloc-calc
 input objects are used as the initiator.
+
+Standard attribute names are \fICapacity\fR, \fILocality\fR,
+\fIBandwidth\fR, and \fILatency\fR.
+All existing attributes in the current topology may be listed with
+
+    $ lstopo --memattrs
+
 .TP
 \fB\-\-sep <sep>\fR
 Change the field separator in the output.
@@ -258,6 +272,18 @@ its even numbered logical processors:
 
     $ hwloc-calc package:2 ~PU:even
     0x00000c00
+
+To convert a cpu mask to human-readable output, the -H option can be
+used to emit a space-delimited list of locations:
+
+    $ echo 0x000000f0 | hwloc-calc -H package.core
+    Package:1.Core1 Package:1.Core:1 Package:1.Core:2 Package:1.Core:3
+
+To use some other character (e.g., a comma) instead of spaces in
+output, use the --sep option:
+
+    $ echo 0x000000f0 | hwloc-calc -H package.core --sep ,
+    Package:1.Core1,Package:1.Core:1,Package:1.Core:2,Package:1.Core:3
 
 To combine two (physical) CPU masks:
 

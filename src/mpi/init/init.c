@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,7 +22,19 @@
 
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 #include "coll_shmem.h"
+extern int smpi_identify_my_numa_id(void);
+extern int smpi_identify_my_sock_id(void);
+extern int mv2_my_cpu_id;
+extern int mv2_my_sock_id;
+extern int mv2_my_numa_id;
+extern int mv2_my_l3_id;
 #endif
+#if defined(CHANNEL_MRAIL)
+int mv2_use_aligned_alloc = 0;
+#endif
+
+extern int smpi_load_hwloc_topology_whole(void);
+#include <timestamp.h>
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -140,6 +152,26 @@ int MPI_Init( int *argc, char ***argv )
     int threadLevel, provided;
     MPID_MPI_INIT_STATE_DECL(MPID_STATE_MPI_INIT);
 
+	/* enable profiling - disabled by default */
+#ifdef PROFILE_STARTUP
+    {
+        char* value;
+        if ((value = getenv("MV2_ENABLE_STARTUP_PROFILING")) != NULL) {
+            /* extern'd in timestamp.h */
+            mv2_enable_startup_profiling = atoi(value);
+        }
+    }
+#endif
+#if defined(CHANNEL_MRAIL)
+    {
+        char* value = NULL;
+        if ((value = getenv("MV2_USE_ALIGNED_ALLOC")) != NULL) {
+            mv2_use_aligned_alloc = !!atoi(value);
+        }
+    }
+#endif
+    mv2_take_timestamp("MPI_Init", NULL);
+
     /* Handle mpich_state in case of Re-init */
     if (OPA_load_int(&MPIR_Process.mpich_state) == MPICH_POST_FINALIZED) {
         OPA_store_int(&MPIR_Process.mpich_state, MPICH_PRE_INIT);
@@ -198,7 +230,9 @@ int MPI_Init( int *argc, char ***argv )
     if (MPIR_CVAR_ASYNC_PROGRESS)
         threadLevel = MPI_THREAD_MULTIPLE;
 
+    mv2_take_timestamp("MPIR_Init_thread", NULL);
     mpi_errno = MPIR_Init_thread( argc, argv, threadLevel, &provided );
+    mv2_take_timestamp("MPIR_Init_thread", NULL);
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
     if (MPIR_CVAR_ASYNC_PROGRESS) {
@@ -212,6 +246,33 @@ int MPI_Init( int *argc, char ***argv )
             printf("WARNING: No MPI_THREAD_MULTIPLE support (needed for async progress)\n");
         }
     }
+
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+    if(mv2_use_osu_collectives && mv2_enable_shmem_collectives &&
+           (mv2_enable_socket_aware_collectives || mv2_enable_topo_aware_collectives)) {
+        mpi_errno = smpi_load_hwloc_topology_whole();
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+
+        if(mv2_enable_topo_aware_collectives) {
+#if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
+            /* Find the NUMA domain I am bound to */
+            mpi_errno = smpi_identify_my_numa_id();
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+            /* Find the socket I am bound to */
+            mpi_errno = smpi_identify_my_sock_id();
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+            PRINT_DEBUG(DEBUG_INIT_verbose, "cpu_id = %d, sock_id = %d, numa_id = %d, l3_id = %d\n",
+                    mv2_my_cpu_id, mv2_my_sock_id, mv2_my_numa_id, mv2_my_l3_id);
+        }
+#endif /* #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
+    }
+#endif
 
 #if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_PSM)
     /* initialize the two level communicator for MPI_COMM_WORLD  */
@@ -240,6 +301,7 @@ int MPI_Init( int *argc, char ***argv )
     }
 #endif /*defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_PSM)*/
 
+    mv2_take_timestamp("MPI_Init", NULL);
     /* ... end of body of routine ... */
     MPID_MPI_INIT_FUNC_EXIT(MPID_STATE_MPI_INIT);
     return mpi_errno;
@@ -253,6 +315,7 @@ int MPI_Init( int *argc, char ***argv )
 	    "**mpi_init", "**mpi_init %p %p", argc, argv);
     }
 #   endif
+
     mpi_errno = MPIR_Err_return_comm( 0, FCNAME, mpi_errno );
     return mpi_errno;
     /* --END ERROR HANDLING-- */

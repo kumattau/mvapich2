@@ -45,6 +45,9 @@ AC_PATH_PROG([SHELL_CMD], [bash], [/bin/bash])
 AC_ARG_VAR([TOTALVIEW_CMD], [path to totalview command])
 AC_PATH_PROG([TOTALVIEW_CMD], [totalview], [/usr/totalview/bin/totalview])
 
+AC_ARG_VAR([SRUN_CMD], [path to srun command])
+AC_PATH_PROG([SRUN_CMD], [srun], [/usr/bin/srun])
+
 AC_PROG_YACC
 AC_PROG_LEX
 
@@ -61,15 +64,16 @@ fi
 
 if test "$enable_rsh" = "yes"; then
     AC_DEFINE(USE_RSH, 1, [Define to enable use of rsh for command execution by default.])
-    AC_DEFINE(HAVE_PMI_IBARRIER, 1, [Define if pmi client supports PMI_Ibarrier])
-    AC_DEFINE(HAVE_PMI_WAIT, 1, [Define if pmi client supports PMI_Wait])
-    AC_DEFINE(HAVE_PMI2_KVS_IFENCE, 1, [Define if pmi client supports PMI2_KVS_Ifence])
-    AC_DEFINE(HAVE_PMI2_KVS_WAIT, 1, [Define if pmi client supports PMI2_KVS_Wait])
-    AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER, 1, [Define if pmi client supports PMI2_Iallgather])
-    AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER_WAIT, 1, [Define if pmi client supports PMI2_Iallgather_wait])
-    AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER, 1, [Define if pmi client supports PMI2_SHMEM_Iallgather])
-    AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER_WAIT, 1, [Define if pmi client supports PMI2_SHMEM_Iallgather_wait])
 fi
+
+AC_DEFINE(HAVE_PMI_IBARRIER, 1, [Define if pmi client supports PMI_Ibarrier])
+AC_DEFINE(HAVE_PMI_WAIT, 1, [Define if pmi client supports PMI_Wait])
+AC_DEFINE(HAVE_PMI2_KVS_IFENCE, 1, [Define if pmi client supports PMI2_KVS_Ifence])
+AC_DEFINE(HAVE_PMI2_KVS_WAIT, 1, [Define if pmi client supports PMI2_KVS_Wait])
+AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER, 1, [Define if pmi client supports PMI2_Iallgather])
+AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER_WAIT, 1, [Define if pmi client supports PMI2_Iallgather_wait])
+AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER, 1, [Define if pmi client supports PMI2_SHMEM_Iallgather])
+AC_DEFINE(HAVE_PMI2_SHMEM_IALLGATHER_WAIT, 1, [Define if pmi client supports PMI2_SHMEM_Iallgather_wait])
 
 # MVAPICH2_VERSION is exported from the top level configure
 AC_DEFINE_UNQUOTED([MVAPICH2_VERSION], ["$MVAPICH2_VERSION"], [Set to current version of mvapich2 package])

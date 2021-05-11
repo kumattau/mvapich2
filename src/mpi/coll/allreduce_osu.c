@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -97,6 +97,20 @@ static int (*MPIR_Rank_list_mapper)(MPID_Comm *, int)=NULL;
 
 #define ALLREDUCE_SKIP_SMALL_MESSAGE_TUNING_TABLES                                              \
 do {                                                                                            \
+    /* skip the tables for small messages using topo aware collectives  */                      \
+    if(nbytes <= mv2_topo_aware_allreduce_max_msg && nbytes >=                                  \
+            mv2_topo_aware_allreduce_min_msg &&                                                 \
+            mv2_enable_topo_aware_collectives &&                                                \
+            mv2_use_topo_aware_allreduce &&                                                     \
+            comm_ptr->dev.ch.topo_coll_ok == 1 && is_commutative)                               \
+    {                                                                                           \
+        if (local_size < mv2_topo_aware_allreduce_ppn_threshold) {                              \
+            goto use_tables;                                                                    \
+        }                                                                                       \
+        mpi_errno = MPIR_Allreduce_topo_aware_hierarchical_MV2(sendbuf,                         \
+                recvbuf, count, datatype, op, comm_ptr, errflag);                               \
+        return mpi_errno;                                                                       \
+    }                                                                                           \
     /* skip the tables for small messages using sock aware collectives  */                      \
     if(nbytes <= mv2_socket_aware_allreduce_max_msg && nbytes >=                                \
             mv2_socket_aware_allreduce_min_msg &&                                               \
@@ -2179,6 +2193,197 @@ int MPIR_Allreduce_socket_aware_two_level_MV2(const void *sendbuf,
         goto fn_exit;
 }
 
+/* Given comm_ptr, MPIR_Allreduce_topo_aware_inter_node_helper_MV2 performs an
+ * inter-node Allreduce operation using SHARP/rd over leader_comm (in comm_ptr) */
+int MPIR_Allreduce_topo_aware_inter_node_helper_MV2(const void *sendbuf,
+                                          void *recvbuf,
+                                          int count,
+                                          MPI_Datatype datatype,
+                                          MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    int mpi_errno = MPI_SUCCESS, mpi_errno_ret = MPI_SUCCESS;
+    MPI_Comm leader_comm = MPI_COMM_NULL;
+    MPID_Comm *leader_commptr = NULL;   
+    leader_comm = comm_ptr->dev.ch.leader_comm;
+    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+#if defined (_SHARP_SUPPORT_)
+    MPI_Aint type_size = 0;
+    /* Get size of data */
+    MPID_Datatype_get_size_macro(datatype, type_size);
+    MPIDI_msg_sz_t nbytes = (MPIDI_msg_sz_t) (count) * (type_size);
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 && nbytes <=
+            mv2_sharp_tuned_msg_size && mv2_enable_sharp_coll == 1 &&
+            mv2_enable_sharp_allreduce) {
+        mpi_errno = MPIR_Sharp_Allreduce_MV2(sendbuf, recvbuf, count,
+                datatype, op, comm_ptr , errflag);
+        if (mpi_errno != MPI_SUCCESS) {
+            /* fall back to RD algorithm if SHArP is not supported */
+            mpi_errno = MPIR_Allreduce_pt2pt_rd_MV2(sendbuf, recvbuf, count,
+                    datatype, op, leader_commptr,
+                    errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+    } else
+#endif /* #if defined (_SHARP_SUPPORT_) */  
+    {
+        mpi_errno = MPIR_Allreduce_pt2pt_rd_MV2(sendbuf, recvbuf, count,
+                datatype, op, leader_commptr,
+                errflag);
+        if (mpi_errno) {
+            /* for communication errors, just record the error but continue */
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+        }
+    }
+
+fn_exit:
+    return (mpi_errno);
+
+fn_fail:
+    goto fn_exit;
+
+}
+
+int MPIR_Allreduce_topo_aware_hierarchical_MV2(const void *sendbuf,
+                                          void *recvbuf,
+                                          int count,
+                                          MPI_Datatype datatype,
+                                          MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    MPIU_Assert(comm_ptr->dev.ch.topo_coll_ok == 1 && comm_ptr->dev.ch.shmem_coll_ok == 1);
+    int i = 0;
+    shmem_info_t *shmem = NULL;
+    int mpi_errno = MPI_SUCCESS, mpi_errno_ret = MPI_SUCCESS;
+    MPI_Aint true_lb = 0, true_extent = 0, extent = 0;
+    void *in_buf = NULL, *buf = NULL;
+    int local_rank = -1, is_cxx_uop = 0, rindex = 0, len = 0;
+    MPI_User_function *uop = NULL;
+    MPID_Op *op_ptr = NULL;
+    MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
+    MPID_Comm *topo_comm_ptr = NULL;
+
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+    len = count * MPIR_MAX(extent, true_extent);
+
+    if (count == 0) {
+        return MPI_SUCCESS;
+    }
+    
+    /* Get leader and shared memory communicators/related attributes */
+    shmem_comm = comm_ptr->dev.ch.shmem_comm;
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+    local_rank = shmem_commptr->rank;
+    leader_comm = comm_ptr->dev.ch.leader_comm;
+    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+    
+    /* Get the operator and check whether it is commutative or not */
+    if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
+        /* get the function by indexing into the op table */
+        uop = MPIR_Op_table[op % 16 - 1];
+    } else {
+        MPID_Op_get_ptr(op, op_ptr);
+#if defined(HAVE_CXX_BINDING)
+        if (op_ptr->language == MPID_LANG_CXX) {
+            uop = (MPI_User_function *) op_ptr->function.c_function;
+            is_cxx_uop = 1;
+        } else
+#endif /* defined(HAVE_CXX_BINDING) */
+        {
+            if (op_ptr->language == MPID_LANG_C) {
+                uop = (MPI_User_function *) op_ptr->function.c_function;
+            } else {
+                uop = (MPI_User_function *) op_ptr->function.f77_function;
+            }
+        }
+    }
+
+    /* Get details of the datatype */
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+    MPID_Datatype_get_extent_macro(datatype, extent);
+
+    if (sendbuf != MPI_IN_PLACE) {
+        in_buf = (void *)sendbuf;
+    } else {
+        in_buf = recvbuf;
+    }
+
+    /* Step 1. intra-node topo-aware reduce using shared memory */
+    for (i = 0; i <= mv2_num_intra_node_comm_levels; ++i) {
+        /* Get next topo_comm pointer */
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.topo_comm[i], topo_comm_ptr);
+        if (topo_comm_ptr && topo_comm_ptr->local_size > 1) {
+            /* Get shmem region */
+            shmem = topo_comm_ptr->dev.ch.shmem_info;
+            /* Get rindex */
+            rindex = shmem->read % mv2_shm_window_size;
+            buf = shmem->queue[shmem->local_rank].shm_slots[rindex]->buf;
+            mv2_shm_tree_reduce(shmem, in_buf, len, count, 0, uop,
+                    datatype, is_cxx_uop);
+            shmem->write++;
+            shmem->read++;
+            if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
+                PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %llu \n", shmem->write);
+                mv2_shm_barrier(shmem);
+                shmem->tail = shmem->read;
+            }
+            /* in_buf contains the result of the operation */
+            in_buf = buf;
+        }
+    }
+
+    /* Step 2. Leaders across nodes do an inter-node allreduce */
+    if (local_rank == 0 && leader_commptr->local_size > 1) {
+        /* in_buf == sendbuf if and only if no intra-node reduction occurs
+         * (example : local size is one). This check exists to avoid overwriting
+         * the application's sendbuf in the inter-node step*/
+        if (in_buf == sendbuf) {
+            mpi_errno = MPIR_Allreduce_topo_aware_inter_node_helper_MV2(sendbuf, 
+                            recvbuf, count, datatype, op, comm_ptr, errflag);
+        } else {
+            mpi_errno = MPIR_Allreduce_topo_aware_inter_node_helper_MV2(MPI_IN_PLACE,
+                            in_buf, count, datatype, op, comm_ptr, errflag);
+        }
+
+        if (mpi_errno) {
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+        }
+    }
+
+    /* Step 3. Intra-node Bcast */
+    for (i = mv2_num_intra_node_comm_levels; i >= 0; --i) {
+        MPID_Comm_get_ptr(shmem_commptr->dev.ch.topo_comm[i], topo_comm_ptr);
+        if (topo_comm_ptr && topo_comm_ptr->local_size > 1) {
+            mpi_errno = MPIR_Shmem_Bcast_MV2(in_buf, count, datatype, 0, topo_comm_ptr, errflag);
+            if (mpi_errno) {
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+    }
+    
+    /* Copy in_buf into recvbuf only if it has been modified */
+    if (in_buf != recvbuf && in_buf != sendbuf) {
+        MPIR_Localcopy(in_buf, count, datatype, recvbuf, count, datatype);
+    }
+
+fn_exit:
+    return (mpi_errno);
+
+fn_fail:
+    goto fn_exit;
+}
+
 int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
                              void *recvbuf,
                              int count,
@@ -3061,7 +3266,23 @@ conf_check_end:
 		intra_node[intra_node_algo_index].MV2_pt_Allreduce_function;
 
 skip_tuning_tables:
+        if (MV2_Allreduce_function == &MPIR_Allreduce_topo_aware_hierarchical_MV2) {
+            if(nbytes <= mv2_topo_aware_allreduce_max_msg && nbytes >=            
+                    mv2_topo_aware_allreduce_min_msg &&                           
+                    mv2_enable_topo_aware_collectives &&                          
+                    mv2_use_topo_aware_allreduce &&                               
+                    comm_ptr->dev.ch.topo_coll_ok == 1 && is_commutative
+                    && local_size >= mv2_topo_aware_allreduce_ppn_threshold) {
 
+                return MPIR_Allreduce_topo_aware_hierarchical_MV2(sendbuf,   
+                        recvbuf, count, datatype, op, comm_ptr, errflag);         
+            }
+            else {
+                //Fall back to recursive doubling in case the above isn't satisfied.
+                return MPIR_Allreduce_pt2pt_rd_MV2(sendbuf, recvbuf, count,
+                        datatype, op, comm_ptr, errflag);
+            }
+        }
         if (MV2_Allreduce_function == &MPIR_Allreduce_socket_aware_two_level_MV2) {
             if(nbytes <= mv2_socket_aware_allreduce_max_msg && nbytes >= mv2_socket_aware_allreduce_min_msg
                && mv2_enable_socket_aware_collectives

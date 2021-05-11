@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -57,8 +57,6 @@ do {                                                          \
 #define MAX_PROGRESS_HOOKS 4
 long int mv2_num_posted_send = 0;
 long int mv2_unexp_msg_recv  = 0;
-long int mv2_num_posted_send;
-long int mv2_unexp_msg_recv;
 
 typedef int (*progress_func_ptr_t) (int* made_progress);
 
@@ -232,6 +230,8 @@ start_polling:
                 if ((mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS) {
                     MPIR_ERR_POP(mpi_errno);
                 }
+            } else {
+                MPIU_Assert(mv2_num_queued_smp_ops == 0);
             }
             if (smp_completions != MPIDI_CH3I_progress_completion_count) {
                 break;
@@ -468,7 +468,7 @@ handle_recv_pkt:
            && is_blocking);
 
 #ifdef _ENABLE_UD_
-    if ( !SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
+    if (!SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
         mv2_check_resend();
         MPIR_T_PVAR_COUNTER_INC(MV2, rdma_ud_retransmissions, 1);
         MV2_UD_SEND_ACKS();
@@ -632,6 +632,8 @@ int MPIDI_CH3I_Progress_test()
             if ((mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS) {
                 MPIR_ERR_POP(mpi_errno);
             }
+        } else {
+            MPIU_Assert(mv2_num_queued_smp_ops == 0);
         }
 	    /* check if we made any progress */
         if (smp_completions != MPIDI_CH3I_progress_completion_count) {
@@ -786,7 +788,7 @@ test_handle_recv_pkt:
     }
 
 #ifdef _ENABLE_UD_
-    if ( !SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
+    if (!SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
         mv2_check_resend();
         MPIR_T_PVAR_COUNTER_INC(MV2, rdma_ud_retransmissions, 1);
         MV2_UD_SEND_ACKS();
@@ -885,6 +887,13 @@ int MPIDI_CH3I_Request_adjust_iov(MPID_Request * req, MPIDI_msg_sz_t nb)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_REQUEST_ADJUST_IOV);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_REQUEST_ADJUST_IOV);
+    if (req->mrail.is_eager_vbuf_queued == 1) {
+        if (req->dev.recv_data_sz == req->mrail.eager_unexp_size) {
+            return TRUE;
+        } else {
+            return FALSE;
+        }
+    }
 
     while (offset < count) {
         if (req->dev.iov[offset].MPL_IOV_LEN <= (MPIDI_msg_sz_t) nb) {
@@ -1565,7 +1574,6 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
         }
 
         int nb;
-
         if ((mpi_errno = MPIDI_CH3I_MRAIL_Fill_Request(
                 vc->ch.recv_active,
                 buffer,

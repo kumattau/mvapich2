@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2020, The Ohio State University. All rights
+/* Copyright (c) 2001-2021, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -12,7 +12,7 @@
 
 #include <regex.h>
 #include "ireduce_tuning.h"
-
+#include "common_tuning.h"
 #include "mv2_arch_hca_detect.h"
 /* array used to tune ireduce */
 
@@ -325,12 +325,12 @@ int MV2_internode_Ireduce_is_define(char *mv2_user_ireduce_inter, char *mv2_user
         mv2_tmp_ireduce_thresholds_table[0].intra_node[0].min = 0;
         mv2_tmp_ireduce_thresholds_table[0].intra_node[0].max = -1;
 	switch (atoi(mv2_user_ireduce_inter)) {
-	case 1:
+	case IREDUCE_BINOMIAL:
 	    mv2_tmp_ireduce_thresholds_table[0].inter_leader[0].MV2_pt_Ireduce_function =
 		&MPIR_Ireduce_binomial;
 	    mv2_tmp_ireduce_thresholds_table[0].is_two_level_ireduce[0] = 0;
 	    break;
-	case 2:
+	case IREDUCE_REDSCAT_GATHER:
 	    mv2_tmp_ireduce_thresholds_table[0].inter_leader[0].MV2_pt_Ireduce_function =
 		&MPIR_Ireduce_redscat_gather;
 	    mv2_tmp_ireduce_thresholds_table[0].is_two_level_ireduce[0] = 0;
@@ -378,12 +378,12 @@ int MV2_internode_Ireduce_is_define(char *mv2_user_ireduce_inter, char *mv2_user
 	    }
 	    /* given () start at 1 */
 	    switch (atoi(p + match[1].rm_so)) {
-	    case 1:
+	    case IREDUCE_BINOMIAL:
 	        mv2_tmp_ireduce_thresholds_table[0].inter_leader[0].MV2_pt_Ireduce_function =
 	        	&MPIR_Ireduce_binomial;
 	        mv2_tmp_ireduce_thresholds_table[0].is_two_level_ireduce[0] = 0;
 	        break;
-	    case 2:
+	    case IREDUCE_REDSCAT_GATHER:
 	        mv2_tmp_ireduce_thresholds_table[0].inter_leader[0].MV2_pt_Ireduce_function =
 	        	&MPIR_Ireduce_redscat_gather;
 	        mv2_tmp_ireduce_thresholds_table[0].is_two_level_ireduce[0] = 0;
