@@ -3,7 +3,7 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
-MVAPICH2 2.3.5 (05/11/2021)
+MVAPICH2 2.3.6 (05/11/2021)
 
 * Features and Enhancements (since 2.3.5):
     - Support collective offload using Mellanox's SHARP for Reduce and Bcast
