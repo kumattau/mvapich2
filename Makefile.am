@@ -210,7 +210,10 @@ endif
 # build the current directory and then the examples directory after everything else
 SUBDIRS += . examples
 if BUILD_OSU_MVAPICH
-SUBDIRS += src/env/mpiname src/util/mv2_ckpt_rebuild osu_benchmarks
+SUBDIRS += src/env/mpiname src/util/mv2_ckpt_rebuild
+if BUILD_OMB
+SUBDIRS += osu_benchmarks
+endif
 endif
 DIST_SUBDIRS += . examples test
 
@@ -289,7 +292,17 @@ install-exec-hook:
 		if test "@MPICXXLIBNAME@" != "mpichcxx" ; then \
 			cd ${DESTDIR}${libdir} && ln -f -s lib@MPICXXLIBNAME@@SHLIB_EXT@ libmpichcxx@SHLIB_EXT@ ; \
 		fi ; \
-	fi
+	fi ; \
+	if test "${pm_name}" = "jsm" ; then \
+		if test -x @JSRUN_CMD@ ; then \
+			cd ${DESTDIR}${bindir} && ln -f -s @JSRUN_CMD@ @MPIEXEC_NAME@ ; \
+		fi ; \
+	fi ; \
+	if test "${pm_name}" = "slurm" ; then \
+		if test -x @SRUN_MPIEXEC_CMD@ ; then \
+			cd ${DESTDIR}${bindir} && ln -f -s @SRUN_MPIEXEC_CMD@ @MPIEXEC_NAME@ ; \
+		fi ; \
+	fi ;
 
 # the configure step checks for the 'lib' dir to decide whether a source
 # directory has been previously used for an in-path build before allowing a

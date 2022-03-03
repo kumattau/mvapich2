@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -263,11 +263,6 @@ handle_recv_pkt:
 #ifdef _ENABLE_XRC_
                     || (USE_XRC && (VC_XST_ISSET (vc_ptr, XF_SEND_IDLE) || VC_XST_ISSET (vc_ptr, XF_RECV_IDLE)))
 #endif
-#ifdef _ENABLE_UD_
-                    || (rdma_enable_hybrid &&
-                        (vc_ptr->ch.state < MPIDI_CH3I_VC_STATE_CONNECTING_SRV) &&
-                        (vc_ptr->mrail.state & MRAILI_RC_CONNECTING))
-#endif
 #ifdef CKPT
                     || ((vc_ptr->ch.state >= MPIDI_CH3I_VC_STATE_SUSPENDING) &&
                         (vc_ptr->ch.state < MPIDI_CH3I_VC_STATE_REACTIVATING_SRV))
@@ -285,6 +280,21 @@ handle_recv_pkt:
                             MPIR_ERR_POP(mpi_errno);
                         }
                     }
+#ifdef _ENABLE_UD_
+                } else if (rdma_enable_hybrid &&
+                           (vc_ptr->ch.state < MPIDI_CH3I_VC_STATE_CONNECTING_SRV) &&
+                           (vc_ptr->mrail.state & MRAILI_RC_CONNECTING)) {
+                    if (unlikely(!(vc_ptr->mrail.state & MRAILI_RC_CONNECTED) &&
+                                  (((vbuf *)buffer)->transport == IB_TRANSPORT_RC))) {
+                        MPIU_Assert(vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_CLI);
+                        while (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_CLI) {
+                            MPIU_PW_Sched_yield();
+                        }
+                        MPIU_Assert(vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_IDLE);
+                        cm_handle_pending_send();
+                    }
+                    MRAILI_Process_recv(buffer);
+#endif
                 } else
 #ifdef _ENABLE_XRC_
                 if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV ||
@@ -669,11 +679,6 @@ test_handle_recv_pkt:
 #ifdef _ENABLE_XRC_
                 || (USE_XRC && (VC_XST_ISSET (vc_ptr, XF_SEND_IDLE) || VC_XST_ISSET (vc_ptr, XF_RECV_IDLE)))
 #endif
-#ifdef _ENABLE_UD_
-                || (rdma_enable_hybrid &&
-                    (vc_ptr->ch.state < MPIDI_CH3I_VC_STATE_CONNECTING_SRV) &&
-                    (vc_ptr->mrail.state & MRAILI_RC_CONNECTING))
-#endif
 #ifdef CKPT
                 || ((vc_ptr->ch.state >= MPIDI_CH3I_VC_STATE_SUSPENDING) &&
                     (vc_ptr->ch.state < MPIDI_CH3I_VC_STATE_REACTIVATING_SRV))
@@ -691,6 +696,21 @@ test_handle_recv_pkt:
                         MPIR_ERR_POP(mpi_errno);
                     }
                 }
+#ifdef _ENABLE_UD_
+            } else if (rdma_enable_hybrid &&
+                       (vc_ptr->ch.state < MPIDI_CH3I_VC_STATE_CONNECTING_SRV) &&
+                       (vc_ptr->mrail.state & MRAILI_RC_CONNECTING)) {
+                if (unlikely(!(vc_ptr->mrail.state & MRAILI_RC_CONNECTED) &&
+                              (((vbuf *)buffer)->transport == IB_TRANSPORT_RC))) {
+                    MPIU_Assert(vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_CLI);
+                    while (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_CLI) {
+                        MPIU_PW_Sched_yield();
+                    }
+                    MPIU_Assert(vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_IDLE);
+                    cm_handle_pending_send();
+                }
+                MRAILI_Process_recv(buffer);
+#endif
             } else
             /*CM code*/
 #ifdef _ENABLE_XRC_

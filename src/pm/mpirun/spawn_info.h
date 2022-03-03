@@ -1,6 +1,6 @@
 #ifndef SPAWN_INFO_H
 #define SPAWN_INFO_H 1
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the

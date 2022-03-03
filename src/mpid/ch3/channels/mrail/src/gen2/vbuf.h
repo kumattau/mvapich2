@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -87,6 +87,8 @@
  * don't want to store at beginning or between desc and buffer (see above) so
  * store at end.
  */
+
+extern int mv2_waiting_for_vbuf;
 
 struct ibv_wr_descriptor
 {
@@ -203,6 +205,7 @@ typedef struct vbuf
     double timestamp;
 #if defined(_ENABLE_UD_)
     uint8_t in_sendwin;
+    uint8_t in_ud_ext_sendq;
     LINK sendwin_msg;
     LINK recvwin_msg;
     LINK extwin_msg;
@@ -261,7 +264,8 @@ typedef struct vbuf_region
     int count;                  /* number of vbufs in region  */
     struct vbuf* vbuf_head;     /* first vbuf in region       */
     struct vbuf_region* next;   /* thread vbuf regions        */
-    int shmid;
+    int vbuf_shmid;
+    int vbuf_struct_shmid;
     void *pool_index;   /* region allocated for a pool */
 } vbuf_region;
 
@@ -450,10 +454,22 @@ do {                                                                            
                                                                                     \
     if (likely(__pool->free_head)) {                                                \
         MV2_GET_AND_INIT_RC_VBUF((_v), __pool);                                     \
-    } else {                                                                        \
+    } else if ((__pool->num_allocated < __pool->max_num_buf) ||                     \
+                mv2_waiting_for_vbuf) {                                             \
+        if (__pool->num_allocated >= __pool->max_num_buf) {                         \
+            __pool->max_num_buf += __pool->incr_count;                              \
+        }                                                                           \
         if (allocate_vbuf_pool(__pool, __pool->incr_count) != 0) {                  \
             ibv_va_error_abort(GEN_EXIT_ERR,"vbuf pool allocation failed");         \
         }                                                                           \
+        MV2_GET_AND_INIT_RC_VBUF((_v), __pool);                                     \
+    } else {                                                                        \
+        MPIU_Assert(mv2_waiting_for_vbuf == 0);                                     \
+        mv2_waiting_for_vbuf = 1;                                                   \
+        while (!(__pool->free_head)) {                                              \
+            MPID_Progress_test();                                                   \
+        }                                                                           \
+        mv2_waiting_for_vbuf = 0;                                                   \
         MV2_GET_AND_INIT_RC_VBUF((_v), __pool);                                     \
     }                                                                               \
 } while (0)
@@ -584,6 +600,7 @@ do {                                                    \
     (_v)->unack_msg.prev = NULL;                        \
     /* Decide which transport need to assign here */    \
     (_v)->transport = IB_TRANSPORT_UD;                  \
+    (_v)->in_ud_ext_sendq = 0;                          \
 } while (0)
 
 #define MV2_GET_AND_INIT_UD_VBUF(_v, _pool)             \
@@ -605,10 +622,22 @@ do {                                                                            
                                                                                     \
     if (likely(__pool->free_head)) {                                                \
         MV2_GET_AND_INIT_UD_VBUF((_v), __pool);                                     \
-    } else {                                                                        \
+    } else if ((__pool->num_allocated < __pool->max_num_buf) ||                     \
+                mv2_waiting_for_vbuf) {                                             \
+        if (__pool->num_allocated >= __pool->max_num_buf) {                         \
+            __pool->max_num_buf += __pool->incr_count;                              \
+        }                                                                           \
         if (allocate_vbuf_pool(__pool, __pool->incr_count) != 0) {                  \
             ibv_va_error_abort(GEN_EXIT_ERR,"ud_vbuf pool allocation failed");      \
         }                                                                           \
+        MV2_GET_AND_INIT_UD_VBUF((_v), __pool);                                     \
+    } else {                                                                        \
+        MPIU_Assert(mv2_waiting_for_vbuf == 0);                                     \
+        mv2_waiting_for_vbuf = 1;                                                   \
+        while (!(__pool->free_head)) {                                              \
+            MPID_Progress_test();                                                   \
+        }                                                                           \
+        mv2_waiting_for_vbuf = 0;                                                   \
         MV2_GET_AND_INIT_UD_VBUF((_v), __pool);                                     \
     }                                                                               \
 } while (0)

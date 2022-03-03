@@ -24,7 +24,7 @@
 	{131072, &MPIR_Reduce_binomial_MV2},		\
 	{262144, &MPIR_Reduce_binomial_MV2},		\
 	{524288, &MPIR_Reduce_binomial_MV2},		\
-	{1048576, &MPIR_Reduce_binomial_MV2},		\
+	{1048576, &MPIR_Reduce_allreduce_MV2},		\
 	},		\
 	19,		\
 	{		\

@@ -5,6 +5,7 @@
  */
 
 #include "mpiimpl.h"
+#include "coll_shmem.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_Ibarrier */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -23,6 +24,49 @@ int MPI_Ibarrier(MPI_Comm comm, MPI_Request *request) __attribute__((weak,alias(
 #ifndef MPICH_MPI_FROM_PMPI
 #undef MPI_Ibarrier
 #define MPI_Ibarrier PMPI_Ibarrier
+
+#if (defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)) && ENABLE_PVAR_MV2
+#include "coll_shmem.h"
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ibarrier_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ibarrier_inter);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_count_recv);
+
+#define PVAR_TIME_START(optype, op, algo) \
+        MPIR_TIMER_START(optype, op, algo); 
+
+#define PVAR_TIME_STOP(optype, op, algo) \
+        MPIR_TIMER_END(optype, op, algo);
+    
+
+#define PVAR_INC_1(M, alg, num) \
+    MPIR_T_PVAR_COUNTER_INC(M, alg, num);
+
+#define PVAR_INC_MSG(op, algo, sr, count, datatype) \
+    MPIR_PVAR_INC(op, algo, sr, count, datatype);
+
+#else
+/* Idea of redefining macros to wrap around calls for portability reasons */
+#define PVAR_TIME_START(optype, op, algo) 
+#define PVAR_TIME_STOP(optype, op, algo) 
+#define PVAR_INC_1(M, alg, num)   
+#define PVAR_INC_MSG(op, algo, sr, count, datatype)
+
+#endif
+
 
 /* any non-MPI functions go here, especially non-static ones */
 
@@ -55,10 +99,12 @@ int MPI_Ibarrier(MPI_Comm comm, MPI_Request *request) __attribute__((weak,alias(
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ibarrier_intra(MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ibarrier, intra);
     int mpi_errno = MPI_SUCCESS;
     int size, rank, src, dst, mask;
 
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
+    PVAR_INC_1(MV2, mv2_coll_ibarrier_intra, 1);
 
     size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -76,6 +122,8 @@ int MPIR_Ibarrier_intra(MPID_Comm *comm_ptr, MPID_Sched_t s)
 
         mpi_errno = MPID_Sched_recv(NULL, 0, MPI_BYTE, src, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+        PVAR_INC_MSG(ibarrier, intra, send, 0, MPI_BYTE);
+        PVAR_INC_MSG(ibarrier, intra, recv, 0, MPI_BYTE);
 
         mpi_errno = MPID_Sched_barrier(s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -84,6 +132,7 @@ int MPIR_Ibarrier_intra(MPID_Comm *comm_ptr, MPID_Sched_t s)
     }
 
 fn_exit:
+    PVAR_TIME_STOP(coll, ibarrier, intra);
     return mpi_errno;
 fn_fail:
     goto fn_exit;
@@ -98,12 +147,14 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ibarrier_inter(MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ibarrier, inter);
     int mpi_errno = MPI_SUCCESS;
     int rank, root;
     MPIR_SCHED_CHKPMEM_DECL(1);
     char *buf = NULL;
 
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTERCOMM);
+    PVAR_INC_1(MV2, mv2_coll_ibarrier_inter, 1);
 
     rank = comm_ptr->rank;
 
@@ -134,6 +185,8 @@ int MPIR_Ibarrier_inter(MPID_Comm *comm_ptr, MPID_Sched_t s)
     if (comm_ptr->is_low_group) {
         root = (rank == 0) ? MPI_ROOT : MPI_PROC_NULL;
         mpi_errno = comm_ptr->coll_fns->Ibcast_sched(buf, 1, MPI_BYTE, root, comm_ptr, s);
+        PVAR_INC_MSG(ibarrier, inter, send, 1, MPI_BYTE);
+        PVAR_INC_MSG(ibarrier, inter, recv, 1, MPI_BYTE);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
         MPID_SCHED_BARRIER(s);
@@ -141,12 +194,16 @@ int MPIR_Ibarrier_inter(MPID_Comm *comm_ptr, MPID_Sched_t s)
         /* receive bcast from right */
         root = 0;
         mpi_errno = comm_ptr->coll_fns->Ibcast_sched(buf, 1, MPI_BYTE, root, comm_ptr, s);
+        PVAR_INC_MSG(ibarrier, inter, send, 1, MPI_BYTE);
+        PVAR_INC_MSG(ibarrier, inter, recv, 1, MPI_BYTE);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
     else {
         /* receive bcast from left */
         root = 0;
         mpi_errno = comm_ptr->coll_fns->Ibcast_sched(buf, 1, MPI_BYTE, root, comm_ptr, s);
+        PVAR_INC_MSG(ibarrier, inter, send, 1, MPI_BYTE);
+        PVAR_INC_MSG(ibarrier, inter, recv, 1, MPI_BYTE);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
         MPID_SCHED_BARRIER(s);
@@ -154,11 +211,14 @@ int MPIR_Ibarrier_inter(MPID_Comm *comm_ptr, MPID_Sched_t s)
         /* bcast to left */
         root = (rank == 0) ? MPI_ROOT : MPI_PROC_NULL;
         mpi_errno = comm_ptr->coll_fns->Ibcast_sched(buf, 1, MPI_BYTE, root, comm_ptr, s);
+        PVAR_INC_MSG(ibarrier, inter, send, 1, MPI_BYTE);
+        PVAR_INC_MSG(ibarrier, inter, recv, 1, MPI_BYTE);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, ibarrier, inter);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -177,6 +237,20 @@ int MPIR_Ibarrier_impl(MPID_Comm *comm_ptr, MPI_Request *request)
     MPID_Sched_t s = MPID_SCHED_NULL;
 
     *request = MPI_REQUEST_NULL;
+
+#if defined (_SHARP_SUPPORT_)
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 && mv2_enable_sharp_coll == 2) {
+            mpi_errno = MPIR_Sharp_Ibarrier_MV2(comm_ptr, NULL, &reqp);
+            if (mpi_errno == MPI_SUCCESS) {
+                if (reqp) {
+                    *request = reqp->handle;
+                }
+                goto fn_exit;
+            }
+        /* SHArP collective is not supported,
+        * continue without using SHArP */
+    }
+#endif /* end of defined (_SHARP_SUPPORT_) */
 
     MPIU_Assert(comm_ptr->coll_fns != NULL);
     if (comm_ptr->coll_fns->Ibarrier_req != NULL) {
@@ -287,6 +361,34 @@ int MPI_Ibarrier(MPI_Comm comm, MPI_Request *request)
 
     mpi_errno = MPIR_Ibarrier_impl(comm_ptr, request);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+
+#ifdef _OSU_MVAPICH_
+    if (mv2_use_osu_collectives) {
+        if (comm_ptr->dev.ch.shmem_coll_ok == 0) {
+            mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
+#if defined(_SHARP_SUPPORT_)
+        comm_ptr->dev.ch.ibarrier_coll_count++;
+        if (mv2_enable_sharp_coll &&
+            mv2_enable_sharp_ibarrier &&
+            (comm_ptr->dev.ch.is_sharp_ok == 0) &&
+            (comm_ptr->dev.ch.shmem_coll_ok == 1) &&
+            (comm_ptr->dev.ch.ibarrier_coll_count >= 
+                            shmem_coll_count_threshold)) {
+            disable_split_comm(pthread_self());
+            mpi_errno = create_sharp_comm(comm_ptr->handle,
+                                          comm_ptr->local_size, comm_ptr->rank);
+            if (mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);
+            }
+            enable_split_comm(pthread_self());
+        }
+#endif /*(_SHARP_SUPPORT_)*/
+    }
+#endif /* _OSU_MVAPICH_ */
 
     /* ... end of body of routine ... */
 

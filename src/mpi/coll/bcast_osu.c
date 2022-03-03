@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,6 +38,8 @@ MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_knomial_intranode
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_mcast_internode);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_pipelined);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_shmem_zcpy);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_sharp);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_topo_aware_hierarchical);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_bcast_pipelined_zcpy);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_binomial);
@@ -51,6 +53,8 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_mcast_internode);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_pipelined);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_pipelined_zcpy);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_shmem_zcpy);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_sharp);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_topo_aware_hierarchical);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_subcomm);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_binomial_bytes_send);
@@ -128,6 +132,8 @@ int MPIR_Sharp_Bcast_MV2(void *buffer,
                             MPI_Datatype datatype,
                             int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,bcast,sharp);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_bcast_sharp, 1);
     int mpi_errno = MPI_SUCCESS;
     void *sendbuf = NULL, *recvbuf = NULL;
     MPI_Aint type_size = 0;
@@ -152,6 +158,7 @@ int MPIR_Sharp_Bcast_MV2(void *buffer,
     }
 
 fn_exit:
+    MPIR_TIMER_END(coll,bcast,sharp);
     return (mpi_errno);
 fn_fail:
     goto fn_exit;
@@ -217,6 +224,8 @@ int MPIR_Bcast_topo_aware_hierarchical_MV2(void *buffer,
                                            int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     MPIU_Assert(comm_ptr->dev.ch.topo_coll_ok == 1 && comm_ptr->dev.ch.shmem_coll_ok == 1);
+    MPIR_TIMER_START(coll,bcast,topo_aware_hierarchical);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_bcast_topo_aware_hierarchical, 1);
     int i = 0;
     int mpi_errno = MPI_SUCCESS;
     MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
@@ -265,6 +274,7 @@ int MPIR_Bcast_topo_aware_hierarchical_MV2(void *buffer,
         }
     }
 fn_exit :
+    MPIR_TIMER_END(coll,bcast,topo_aware_hierarchical);
     return mpi_errno;
 fn_fail :
     goto fn_exit;
@@ -275,7 +285,6 @@ int MPIR_Bcast_binomial_MV2(void *buffer,
                             MPI_Datatype datatype,
                             int root, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
-
     MPIR_TIMER_START(coll,bcast,binomial);
 
     int rank, comm_size, src, dst;
@@ -2869,10 +2878,12 @@ conf_check_end:
     }
 
     if (mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].inter_leader[inter_node_algo_index].
-        zcpy_pipelined_knomial_factor != -1) {
+        zcpy_pipelined_knomial_factor > 0) {
         zcpy_knomial_factor = 
             mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].inter_leader[inter_node_algo_index].
             zcpy_pipelined_knomial_factor;
+    } else {
+	zcpy_knomial_factor = MV2_DEFAULT_ZCPY_KNOMIAL_FACTOR;
     }
 
     if (mv2_pipelined_zcpy_knomial_factor != -1) {
@@ -2897,10 +2908,18 @@ conf_check_end:
     bcast_segment_size = mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].bcast_segment_size;
     
     /* Set value of inter node knomial factor */
-    mv2_inter_node_knomial_factor = mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].inter_node_knomial_factor;
+    if(mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].inter_node_knomial_factor > 0) {
+        mv2_inter_node_knomial_factor = mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].inter_node_knomial_factor;
+    } else {
+	mv2_inter_node_knomial_factor = MV2_DEFAULT_INTER_NODE_KNOMIAL_FACTOR;
+    }
 
     /* Set value of intra node knomial factor */
-    mv2_intra_node_knomial_factor = mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].intra_node_knomial_factor;
+    if(mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].intra_node_knomial_factor > 0) {
+        mv2_intra_node_knomial_factor = mv2_bcast_indexed_thresholds_table[conf_index][comm_size_index].intra_node_knomial_factor;
+    } else {
+	mv2_intra_node_knomial_factor = MV2_DEFAULT_INTRA_NODE_KNOMIAL_FACTOR;
+    }
 
     /* Check if we will use a two level algorithm or not */
     two_level_bcast =

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
- /* Copyright (c) 2001-2021, The Ohio State University. All rights
+ /* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -119,7 +119,6 @@ int MPIR_Comm_init(MPID_Comm * comm_p)
     comm_p->dev.ch.barrier_coll_count = 0; 
     comm_p->dev.ch.bcast_coll_count = 0;
     comm_p->dev.ch.scatter_coll_count = 0;
-    comm_p->dev.ch.reduce_coll_count = 0;
     comm_p->dev.ch.shmem_coll_ok = 0;
     comm_p->dev.ch.topo_coll_ok = 0;
     comm_p->dev.ch.shmem_comm_rank = -1;
@@ -141,6 +140,12 @@ int MPIR_Comm_init(MPID_Comm * comm_p)
 #if defined(_SHARP_SUPPORT_)
     comm_p->dev.ch.is_sharp_ok = 0;
     comm_p->dev.ch.sharp_coll_info = NULL;
+    comm_p->dev.ch.scatterv_coll_count = 0;
+    comm_p->dev.ch.reduce_coll_count = 0;
+    comm_p->dev.ch.iallreduce_coll_count = 0;
+    comm_p->dev.ch.ireduce_coll_count = 0;
+    comm_p->dev.ch.ibcast_coll_count = 0;
+    comm_p->dev.ch.ibarrier_coll_count = 0;
 #endif
     comm_p->dev.ch.shmem_info = NULL;
     comm_p->dev.ch.leader_map  = NULL;

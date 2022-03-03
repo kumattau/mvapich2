@@ -25,7 +25,7 @@
 #include <stdarg.h>
 #include <errno.h>
 
-/* gethostbyname */
+/* getaddrinfo */
 #include <netdb.h>
 
 /* basename/dirname */

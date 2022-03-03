@@ -20,6 +20,12 @@ AM_COND_IF([BUILD_PM_JSM],[
 # with_pmi is set by the top level configure
     AC_DEFINE([JSM_PMI_CLIENT], [1], [Define if using jsm pmi client])
 
+# find the jsrun binary and create an mpiexec exe
+    AC_ARG_VAR([JSRUN_CMD], [path to jsrun command])
+    AC_PATH_PROG([JSRUN_CMD], [jsrun], [/usr/bin/jsrun])
+    AC_SUBST(MPIEXEC_NAME)
+    PAC_GET_EXENAME("mpiexec", MPIEXEC_NAME)
+
 if test "x$with_pmi" = "xpmi4pmix"; then
     AC_ARG_WITH([pmi4pmix],
         [AS_HELP_STRING([--with-pmi4pmix=@<:@Path to pmi4pmix library@:>@],

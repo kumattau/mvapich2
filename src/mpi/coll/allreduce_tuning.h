@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -119,6 +119,14 @@ extern int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
                              int count,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
+
+#if defined (_SHARP_SUPPORT_)
+extern int MPIR_Sharp_Allreduce_MV2(const void *sendbuf,
+                             void *recvbuf,
+                             int count,
+                             MPI_Datatype datatype,
+                             MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
+#endif /*defined (_SHARP_SUPPORT_)*/
 
 extern int MPIR_Allreduce_socket_aware_two_level_MV2(const void *sendbuf,
 			     void *recvbuf,

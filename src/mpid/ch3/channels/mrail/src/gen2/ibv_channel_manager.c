@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -53,7 +53,7 @@ int cq_poll_completion = 0;
 static pthread_spinlock_t g_apm_lock;
 static int num_cqes[MAX_NUM_HCAS] = { 0 };
 static int curr_cqe[MAX_NUM_HCAS] = { 0 };
-static struct ibv_wc wc[MAX_NUM_HCAS][RDMA_MAX_CQE_ENTRIES_PER_POLL] = {0};
+static struct ibv_wc wc[MAX_NUM_HCAS][RDMA_MAX_CQE_ENTRIES_PER_POLL] = { 0 };
 static unsigned long nspin = 0;
 
 MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_vbuf_allocated);
@@ -503,6 +503,12 @@ static inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
                           wc.opcode == IBV_WC_RDMA_WRITE ||
                           wc.opcode == IBV_WC_RDMA_READ ||
                           wc.opcode == IBV_WC_FETCH_ADD ||
+#ifdef _ENABLE_WC_DRV1_
+                          wc.opcode == IBV_WC_DRIVER1 ||
+#endif /* _ENABLE_WC_DRV1_ */
+#ifdef _ENABLE_WC_DRV2_
+                          wc.opcode == IBV_WC_DRIVER2 ||
+#endif /* _ENABLE_WC_DRV2_ */
                           wc.opcode == IBV_WC_COMP_SWAP);
 
     /* iWARP has the need for multiple CQ's, IB does not */
@@ -530,7 +536,6 @@ static inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
             if(v->transport == IB_TRANSPORT_UD &&
                v->flags & UD_VBUF_SEND_INPROGRESS) {
                 v->flags &= ~(UD_VBUF_SEND_INPROGRESS);
-                v->pending_send_polls--;
                 if (v->flags & UD_VBUF_FREE_PENIDING) {
                     v->flags &= ~(UD_VBUF_FREE_PENIDING);
                     MRAILI_Release_vbuf(v);
@@ -1266,7 +1271,8 @@ get_blocking_message:
                     goto get_blocking_message;
     	        }
 
-                if (unlikely(mv2_srq_repost_pool.num_free >= rdma_credit_preserve &&
+                if (unlikely(mv2_srq_repost_pool.num_free &&
+                             mv2_srq_repost_pool.num_free >= rdma_credit_preserve &&
                                  nspin >= rdma_blocking_spin_count_threshold)) {
                     MV2_REPOST_VBUF_FROM_POOL_TO_SRQ(&mv2_srq_repost_pool);
                     nspin = 0;

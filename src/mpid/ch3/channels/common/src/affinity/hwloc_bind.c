@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -56,6 +56,11 @@
 #define HYBRID_BUNCH   3
 #define HYBRID_SCATTER 4
 #define HYBRID_NUMA    5
+
+extern int mv2_ib_hca_socket_info[];
+extern int mv2_ib_hca_numa_info[];
+extern int mv2_selected_ib_hca_socket_info[];
+extern int mv2_selected_ib_hca_numa_info[];
 
 const char *mv2_cpu_policy_names[] = {"Bunch", "Scatter", "Hybrid"};
 const char *mv2_hybrid_policy_names[] = {"Linear", "Compact", "Spread", "Bunch", "Scatter", "NUMA"};
@@ -200,10 +205,9 @@ hwloc_ibv_get_device_cpuset(hwloc_topology_t topology __hwloc_attribute_unused,
 #if defined(CHANNEL_MRAIL)
 int get_ib_socket(struct ibv_device * ibdev)
 {
-    hwloc_cpuset_t set = NULL;
-    hwloc_obj_t osdev = NULL;
-    char string[256];
-    int retval = 0;
+    hwloc_obj_t socket;
+    int i = 0, retval = 0, num_sockets = 0;
+    hwloc_cpuset_t set = NULL, set2 = NULL, set3 = NULL;
 
     if (smpi_load_hwloc_topology_whole()) {
         return MPI_ERR_INTERN;
@@ -213,27 +217,80 @@ int get_ib_socket(struct ibv_device * ibdev)
         goto fn_exit;
     }
 
+    if (!(set2 = hwloc_bitmap_alloc())) {
+        goto fn_exit;
+    }
+
     if (hwloc_ibv_get_device_cpuset(topology_whole, ibdev, set)) {
         goto fn_exit;
     }
 
-    osdev = hwloc_get_obj_inside_cpuset_by_type(topology_whole, set,
-            HWLOC_OBJ_SOCKET, 0);
-
-    if (NULL == osdev) {
-        goto fn_exit;
+    num_sockets = hwloc_get_nbobjs_by_type(topology_whole, HWLOC_OBJ_SOCKET);
+    for (i = 0; i < num_sockets; i++) {
+        socket = hwloc_get_obj_by_type(topology_whole, HWLOC_OBJ_SOCKET, i);
+        set3 = socket->cpuset;
+        hwloc_bitmap_zero(set2);
+        hwloc_bitmap_and(set2, set, set3);
+        if (hwloc_bitmap_weight(set2)) {
+            PRINT_DEBUG(DEBUG_INIT_verbose, "Socket %d (%d) matches for IB %s\n",
+                        socket->logical_index, i, ibdev->name);
+            retval = socket->logical_index;
+            break;
+        }
     }
-
-    /*
-     * The hwloc object "string" will have the form "Socket#n" so we are
-     * looking at the 8th char to detect which socket is.
-     */
-    hwloc_obj_type_snprintf(string, sizeof(string), osdev, 1);
-    retval = osdev->logical_index;
 
 fn_exit:
     if (set) {
         hwloc_bitmap_free(set);
+    }
+    if (set2) {
+        hwloc_bitmap_free(set2);
+    }
+    return retval;
+}
+
+int get_ib_numa(struct ibv_device * ibdev)
+{
+    hwloc_obj_t numa;
+    int i = 0, retval = 0, num_numas = 0;
+    hwloc_cpuset_t set = NULL, set2 = NULL, set3 = NULL;
+
+    if (smpi_load_hwloc_topology_whole()) {
+        return MPI_ERR_INTERN;
+    }
+
+    if (!(set = hwloc_bitmap_alloc())) {
+        goto fn_exit;
+    }
+
+    if (!(set2 = hwloc_bitmap_alloc())) {
+        goto fn_exit;
+    }
+
+    if (hwloc_ibv_get_device_cpuset(topology_whole, ibdev, set)) {
+        goto fn_exit;
+    }
+
+    num_numas = hwloc_get_nbobjs_by_type(topology_whole, HWLOC_OBJ_NUMANODE);
+    for (i = 0; i < num_numas; i++) {
+        numa = hwloc_get_obj_by_type(topology_whole, HWLOC_OBJ_NUMANODE, i);
+        set3 = numa->cpuset;
+        hwloc_bitmap_zero(set2);
+        hwloc_bitmap_and(set2, set, set3);
+        if (hwloc_bitmap_weight(set2)) {
+            PRINT_DEBUG(DEBUG_INIT_verbose, "NUMA %d (%d) matches for IB %s\n",
+                        numa->logical_index, i, ibdev->name);
+            retval = numa->logical_index;
+            break;
+        }
+    }
+
+fn_exit:
+    if (set) {
+        hwloc_bitmap_free(set);
+    }
+    if (set2) {
+        hwloc_bitmap_free(set2);
     }
     return retval;
 }
@@ -2135,6 +2192,9 @@ int smpi_identify_my_sock_id()
     hwloc_cpuset_t my_cpuset = NULL, sock_cpuset = NULL, numa_cpuset = NULL;
     hwloc_obj_t numa = NULL;
 
+    if (mv2_my_sock_id != -1) {
+        goto fn_exit;
+    }
     /* Alloc cpuset */
     my_cpuset = hwloc_bitmap_alloc();
     sock_cpuset = hwloc_bitmap_alloc();
@@ -2189,6 +2249,8 @@ int smpi_identify_my_sock_id()
     if (sock_cpuset) {
         hwloc_bitmap_free(sock_cpuset);
     }
+
+fn_exit:
     return mpi_errno;
 }
 
@@ -2205,6 +2267,9 @@ int smpi_identify_my_numa_id()
     hwloc_obj_t numa = NULL;
     hwloc_cpuset_t my_cpuset = NULL, numa_cpuset = NULL;
 
+    if (mv2_my_numa_id != -1) {
+        goto fn_exit;
+    }
     /* Alloc cpuset */
     my_cpuset = hwloc_bitmap_alloc();
     numa_cpuset = hwloc_bitmap_alloc();
@@ -2240,6 +2305,8 @@ int smpi_identify_my_numa_id()
     if (numa_cpuset) {
         hwloc_bitmap_free(numa_cpuset);
     }
+
+fn_exit:
     return mpi_errno;
 }
 
@@ -2820,7 +2887,7 @@ int smpi_setaffinity(int my_local_id)
 }
 
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
-void mv2_show_cpu_affinity(int verbosity)
+int mv2_show_cpu_affinity(int verbosity)
 {
     int i = 0, j = 0, num_cpus = 0, my_rank = 0, pg_size = 0;
     int mpi_errno = MPI_SUCCESS;
@@ -2829,11 +2896,15 @@ void mv2_show_cpu_affinity(int verbosity)
     cpu_set_t *allproc_cpu_set = NULL;
     MPID_Comm *comm_world = NULL;
     MPIDI_VC_t *vc = NULL;
+    int *mv2_all_numa_id = NULL;
+    int *mv2_all_sock_id = NULL;
 
     comm_world = MPIR_Process.comm_world;
     pg_size = comm_world->local_size;
     my_rank = comm_world->rank;
 
+    mv2_all_numa_id = (int *) MPIU_Malloc(sizeof(int) * pg_size);
+    mv2_all_sock_id = (int *) MPIU_Malloc(sizeof(int) * pg_size);
     allproc_cpu_set = (cpu_set_t *) MPIU_Malloc(sizeof(cpu_set_t) * pg_size);
     CPU_ZERO(&allproc_cpu_set[my_rank]);
     sched_getaffinity(0, sizeof(cpu_set_t), &allproc_cpu_set[my_rank]);
@@ -2842,7 +2913,21 @@ void mv2_show_cpu_affinity(int verbosity)
                                     sizeof(cpu_set_t), MPI_BYTE, comm_world, &errflag);
     if (mpi_errno != MPI_SUCCESS) {
         fprintf(stderr, "MPIR_Allgather_impl returned error");
-        return;
+        return mpi_errno;
+    }
+    /* Gather Numa ID */
+    mpi_errno = MPIR_Allgather_impl(&mv2_my_numa_id, 1, MPI_INT, mv2_all_numa_id,
+                                    1, MPI_INT, comm_world, &errflag);
+    if (mpi_errno != MPI_SUCCESS) {
+        fprintf(stderr, "MPIR_Allgather_impl returned error");
+        return mpi_errno;
+    }
+    /* Gather Sock ID */
+    mpi_errno = MPIR_Allgather_impl(&mv2_my_sock_id, 1, MPI_INT, mv2_all_sock_id,
+                                    1, MPI_INT, comm_world, &errflag);
+    if (mpi_errno != MPI_SUCCESS) {
+        fprintf(stderr, "MPIR_Allgather_impl returned error");
+        return mpi_errno;
     }
     if (my_rank == 0) {
         char *value;
@@ -2869,13 +2954,17 @@ void mv2_show_cpu_affinity(int verbosity)
                         sprintf((char *) (buf + strlen(buf)), "%4d", j);
                     }
                 }
-                fprintf(stderr, "RANK:%2d  CPU_SET: %s\n", i, buf);
+                fprintf(stderr, "RANK:%2d  CPU_SET: %s; NUMA: %d  Socket: %d\n",
+                        i, buf, mv2_all_numa_id[i], mv2_all_sock_id[i]);
             }
         }
         fprintf(stderr, "-------------------------------------\n");
         MPIU_Free(buf);
     }
     MPIU_Free(allproc_cpu_set);
+    MPIU_Free(mv2_all_numa_id);
+    MPIU_Free(mv2_all_sock_id);
+    return mpi_errno;
 }
 #endif /* defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM) */
 
@@ -2884,8 +2973,10 @@ int mv2_show_hca_affinity(int verbosity)
 {
     int pg_size = 0;
     int my_rank = 0;
-    int i = 0, j = 0, k = 0;
+    int i = 0, j = 0, k = 0, l = 0;
     int mpi_errno = MPI_SUCCESS;
+    int *mv2_all_numa_id = NULL;
+    int *mv2_all_sock_id = NULL;
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
     struct ibv_device **hcas = NULL;
@@ -2904,6 +2995,9 @@ int mv2_show_hca_affinity(int verbosity)
     
     hca_names = (char *) MPIU_Malloc(MAX_NUM_HCAS * (IBV_SYSFS_NAME_MAX+1) 
                                     * sizeof(char));
+    mv2_all_numa_id = (int *) MPIU_Malloc(sizeof(int) * pg_size * MAX_NUM_HCAS);
+    mv2_all_sock_id = (int *) MPIU_Malloc(sizeof(int) * pg_size * MAX_NUM_HCAS);
+
     k = 0; 
     for(i=0; i < rdma_num_hcas; i++) {
         if (i > 0) {
@@ -2916,7 +3010,7 @@ int mv2_show_hca_affinity(int verbosity)
     }
     strcat(hca_names, ";");
 
-    if(my_rank == 0) {
+    if (my_rank == 0) {
         all_hca_names = (char *) MPIU_Malloc(strlen(hca_names) * pg_size);
     }
 
@@ -2924,30 +3018,53 @@ int mv2_show_hca_affinity(int verbosity)
     mpi_errno = MPIR_Gather_impl(hca_names, strlen(hca_names), MPI_CHAR, 
                     all_hca_names, strlen(hca_names), MPI_CHAR, 0, 
                     comm_world, &errflag);
-
     if (mpi_errno != MPI_SUCCESS) {
         fprintf(stderr, "MPIR_Gather_impl returned error: %d", mpi_errno);
         return mpi_errno;
     }
-    if(my_rank == 0 && all_hca_names != NULL) {
+    /* Gather Numa ID */
+    mpi_errno = MPIR_Allgather_impl(mv2_selected_ib_hca_numa_info, MAX_NUM_HCAS, MPI_INT, mv2_all_numa_id,
+                                    MAX_NUM_HCAS, MPI_INT, comm_world, &errflag);
+    if (mpi_errno != MPI_SUCCESS) {
+        fprintf(stderr, "MPIR_Allgather_impl returned error");
+        return mpi_errno;
+    }
+    /* Gather Sock ID */
+    mpi_errno = MPIR_Allgather_impl(mv2_selected_ib_hca_socket_info, MAX_NUM_HCAS, MPI_INT, mv2_all_sock_id,
+                                    MAX_NUM_HCAS, MPI_INT, comm_world, &errflag);
+    if (mpi_errno != MPI_SUCCESS) {
+        fprintf(stderr, "MPIR_Allgather_impl returned error");
+        return mpi_errno;
+    }
+    if (my_rank == 0 && all_hca_names != NULL) {
         fprintf(stderr, "-------------HCA AFFINITY-------------\n");
         j = 0;
-    
-        char *buffer = MPIU_Malloc(MAX_NUM_HCAS * (IBV_SYSFS_NAME_MAX+1) * sizeof(char));
+
+        char *buffer = MPIU_Malloc((IBV_SYSFS_NAME_MAX+1) * sizeof(char));
         for(i = 0; i < pg_size; i++) {
+            l = 0;
             MPIDI_Comm_get_vc(comm_world, i, &vc);
             if (vc->smp.local_rank != -1 || verbosity > 1) {
-                k = 0;
                 MPIU_Memset(buffer, 0, sizeof(buffer)); 
-                fprintf(stderr, "Process: %d HCAs: ", i);
-                while(all_hca_names[j] != ';') {
-                    buffer[k] = all_hca_names[j];
-                    j++;
-                    k++;
+                fprintf(stderr, "RANK: %d :- ", i);
+                while (all_hca_names[j] != ';') {
+                    k = 0;
+                    while ((all_hca_names[j] != ' ') && (all_hca_names[j] != ';')) {
+                        buffer[k] = all_hca_names[j];
+                        j++;
+                        k++;
+                    }
+                    buffer[k] = '\0';
+                    fprintf(stderr, "HCA-%d: %s, NUMA: %d, Socket: %d; ", l,
+                            buffer, mv2_all_numa_id[(i*MAX_NUM_HCAS)+l],
+                            mv2_all_sock_id[(i*MAX_NUM_HCAS)+l]);
+                    if (all_hca_names[j] == ' ') {
+                        j++;
+                    }
+                    l++;
                 }
-                buffer[k] = '\0';
+                fprintf(stderr, "\n");
                 j++;
-                fprintf(stderr, "%s\n", buffer);
             }
         }
         MPIU_Free(buffer);
@@ -2956,6 +3073,8 @@ int mv2_show_hca_affinity(int verbosity)
         MPIU_Free(all_hca_names);
     }
     MPIU_Free(hca_names);
+    MPIU_Free(mv2_all_numa_id);
+    MPIU_Free(mv2_all_sock_id);
     return mpi_errno;
 }
 #endif /* defined(CHANNEL_MRAIL) */
@@ -3265,6 +3384,7 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
         arch_type == MV2_ARCH_INTEL_XEON_PHI_7250 ||
         arch_type == MV2_ARCH_INTEL_PLATINUM_8170_2S_52 ||
         arch_type == MV2_ARCH_INTEL_PLATINUM_8160_2S_48 ||
+        arch_type == MV2_ARCH_INTEL_PLATINUM_8268_2S_48 ||
         arch_type == MV2_ARCH_INTEL_PLATINUM_8280_2S_56 || /* frontera */
         arch_type == MV2_ARCH_AMD_EPYC_7401_48 /* EPYC */ ||
         arch_type == MV2_ARCH_AMD_EPYC_7551_64 /* EPYC */ ||
@@ -3473,6 +3593,22 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
         if (mpi_errno != MPI_SUCCESS) {
             MPIR_ERR_POP(mpi_errno);
         }
+        mpi_errno = smpi_load_hwloc_topology_whole();
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+        /* Find the NUMA domain I am bound to */
+        mpi_errno = smpi_identify_my_numa_id();
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+        /* Find the socket I am bound to */
+        mpi_errno = smpi_identify_my_sock_id();
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+        PRINT_DEBUG(DEBUG_INIT_verbose, "cpu_id = %d, sock_id = %d, numa_id = %d\n",
+                    mv2_my_cpu_id, mv2_my_sock_id, mv2_my_numa_id);
     }
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SET_AFFINITY);

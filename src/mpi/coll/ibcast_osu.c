@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -15,6 +15,9 @@
 
 #include "ibcast_tuning.h"
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_sharp);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ibcast_sharp);
+
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 
 
@@ -24,6 +27,64 @@ int (*MV2_Ibcast_function) (void *buffer, int count, MPI_Datatype datatype, int 
 int (*MV2_Ibcast_intra_node_function) (void *buffer, int count, MPI_Datatype datatype,
                                        int root, MPID_Comm *comm_ptr, MPID_Sched_t s) = NULL;
 
+#if defined (_SHARP_SUPPORT_)
+#undef FUNCNAME
+#define FUNCNAME "MPIR_Sharp_Ibcast_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+/* Currently implemented on top of allreduce. Ideally should use lower level Sharp
+ * calls to achieve the same once avaliable*/
+int MPIR_Sharp_Ibcast_MV2(void *buffer,
+                            int count,
+                            MPI_Datatype datatype,
+                            int root, MPID_Comm * comm_ptr,
+                            MPIR_Errflag_t *errflag, MPID_Request **req)
+{
+    MPIR_TIMER_START(coll,ibcast,sharp);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_ibcast_sharp, 1);
+    int mpi_errno = MPI_SUCCESS;
+    void *sendbuf = NULL, *recvbuf = NULL;
+    MPI_Aint type_size = 0;
+    /* Get size of data */
+    MPID_Datatype_get_size_macro(datatype, type_size);
+    MPIDI_msg_sz_t nbytes = (MPIDI_msg_sz_t) (count) * (type_size);
+    int rank = comm_ptr->rank;
+
+    MPID_Datatype_get_size_macro(MPI_INT, type_size);
+    if (nbytes % type_size != 0 ) {
+        PRINT_DEBUG(DEBUG_Sharp_verbose, "Continue without SHARP: Only supports "
+                                         "broadcast of an array with number of "
+                                         "bytes divisible by %ld\n", type_size);
+        MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**sharpcoll", 
+                            "Invalid size of bcast array: must be divisible "
+                            "by %d", type_size);
+    }
+
+    if (rank == root) {
+        sendbuf = (void *)buffer;
+        recvbuf = (void *)comm_ptr->dev.ch.coll_tmp_buf;
+    } else {
+        memset(comm_ptr->dev.ch.coll_tmp_buf, 0, nbytes);
+        sendbuf = (void *)comm_ptr->dev.ch.coll_tmp_buf;
+        recvbuf = (void *)buffer;
+    }
+
+    int new_count = nbytes / type_size;
+
+    mpi_errno = MPIR_Sharp_Iallreduce_MV2(sendbuf, recvbuf, new_count,
+                                          MPI_INT, MPI_SUM, comm_ptr,
+                                          (int *)errflag, req);
+    if (mpi_errno) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**sharpcoll");
+    }
+
+  fn_exit:
+    MPIR_TIMER_END(coll,ibcast,sharp);
+    return (mpi_errno);
+  fn_fail:
+    goto fn_exit;
+}
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ibcast_tune_helper_MV2

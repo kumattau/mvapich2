@@ -173,6 +173,7 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
                     mpi_errno = MPI_ERR_INTERN;
                     MPIR_ERR_POP(mpi_errno);
                 }
+                MPID_Request_release(request_ptrs[i]);
                 continue; 
             }
 #endif
@@ -232,6 +233,7 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
                 mpi_errno = MPI_ERR_INTERN;
                 MPIR_ERR_POP(mpi_errno);
             }
+            MPID_Request_release(request_ptrs[i]);
             continue; 
         }
 #endif       

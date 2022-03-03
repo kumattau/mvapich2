@@ -58,8 +58,8 @@ dnl check for library functions
 dnl
 dnl Check for special compile characteristics
 dnl
-dnl Is there libnsl needed for gethostbyname?
-dnl AC_SEARCH_LIBS(gethostbyname,nsl)
+dnl Is there libnsl needed for getaddrinfo?
+dnl AC_SEARCH_LIBS(getaddrinfo,nsl)
 AC_SEARCH_LIBS([socketpair],[socket])
 dnl
 dnl Check for a specific header

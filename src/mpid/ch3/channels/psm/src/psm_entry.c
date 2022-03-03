@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -43,6 +43,8 @@ int mv2_use_pmi_ibarrier = 0;
 int mv2_use_on_demand_cm = 0;
 int mv2_homogeneous_cluster = 0;
 int mv2_on_demand_threshold = MPIDI_PSM_DEFAULT_ON_DEMAND_THRESHOLD;
+int mv2_psm_retry_max = MV2_PSM_DEFAULT_RETRY_MAX;
+int mv2_psm_retry_delay = MV2_PSM_DEFAULT_RETRY_DELAY;
 mv2_arch_hca_type g_mv2_arch_hca_type = 0;
 
 /* Number of retry attempts if psm_ep_open fails */
@@ -287,6 +289,16 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     PSM_ERROR_T err;
     struct PSM_EP_OPEN_OPTS psm_opts;
 
+    /* disable profiling interupts */
+    sigset_t mask, orig_mask;
+
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGPROF);
+    if (sigprocmask(SIG_BLOCK, &mask, &orig_mask)) {
+        perror("sigprocmask");
+        goto fn_fail;
+    }
+
     /* Override split_type */
     MPID_Comm_fns = &comm_fns;
 
@@ -479,11 +491,21 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
         progress_hooks[i].active = FALSE;
     }
 
+    if (sigprocmask(SIG_SETMASK, &orig_mask, NULL)) {
+        perror("sigprocmask");
+        goto fn_fail;
+    }
+
+
     return MPI_SUCCESS;
 
 cleanup_files:
     MPIDI_CH3I_SHMEM_COLL_Cleanup();
 fn_fail:
+    if (sigprocmask(SIG_SETMASK, &orig_mask, NULL)) {
+        perror("sigprocmask");
+    }
+
     return MPI_ERR_INTERN;
 }
 
@@ -884,6 +906,12 @@ static void psm_read_user_params(void)
         mv2_use_pmi_ibarrier = !!atoi(flag);
     }
 #endif
+    if((flag = getenv("MV2_PSM_RETRY_MAX")) != NULL) {
+        mv2_psm_retry_max = !!atoi(flag);
+    }
+    if((flag = getenv("MV2_PSM_RETRY_DELAY")) != NULL) {
+        mv2_psm_retry_delay = !!atoi(flag);
+    }
 }
 
 /* Ch3 expects channel to initialize VC fields.

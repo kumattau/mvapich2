@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -671,6 +671,11 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
         break;
     case 7:                    /* initack */
         if (0 == strcmp(command, "initack")) {
+            char *val;
+            int pmi_debug = 1;
+            if ((val = getenv("PMI_DEBUG")) != NULL) {
+                pmi_debug = !!atoi(val);
+            }
             CR_DBG("> parse_str()command = initack\n");
             dbg("*** initack: NCHILD=%d\n", NCHILD);
             for (i = 0; i < NCHILD; i++) {
@@ -686,7 +691,9 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
                 goto exit_err;
             }
           initack:
-            sprintf(resp, "cmd=initack rc=0\ncmd=set size=%d\n" "cmd=set rank=%d\ncmd=set debug=0\n", N, children[i].rank);
+            sprintf(resp, "cmd=initack rc=0\ncmd=set size=%d\n" 
+                          "cmd=set rank=%d\ncmd=set debug=%d\n", 
+                          N, children[i].rank, pmi_debug);
             dbg(" reply initack: to fd=%d, with: %s\n", fd, resp);
             writeline(fd, resp, strlen(resp));
         }
@@ -1253,23 +1260,31 @@ char *handle_spawn_request(int fd, char *buf, int buflen)
         exit(EXIT_FAILURE);
     }
 
-    struct sockaddr_in sockaddr;
-    struct hostent *mpirun_hostent;
-    int spcnt, j, size;
+    int spcnt, j, size, err;
     uint32_t totsp, retval;
     char *fname;
-    mpirun_hostent = gethostbyname(env2str("MPISPAWN_MPIRUN_HOST"));
-    if (NULL == mpirun_hostent) {
+    struct addrinfo *res;
+    struct addrinfo addr_hint = {
+        .ai_flags = AI_CANONNAME,
+        .ai_family = AF_INET,
+        .ai_socktype = 0,
+        .ai_protocol = 0,
+        .ai_addrlen = 0,
+        .ai_addr = NULL,
+        .ai_canonname = NULL,
+        .ai_next = NULL
+    };
+
+    err = getaddrinfo(env2str("MPISPAWN_MPIRUN_HOST"), 
+                      getenv("MPISPAWN_CHECKIN_PORT"), 
+                      &addr_hint, &res);
+    if (err) {
         /* Oops! */
-        herror("gethostbyname");
+        strerror(err);
         exit(EXIT_FAILURE);
     }
 
-    sockaddr.sin_family = AF_INET;
-    sockaddr.sin_addr = *(struct in_addr *) (*mpirun_hostent->h_addr_list);
-    sockaddr.sin_port = htons(env2int("MPISPAWN_CHECKIN_PORT"));
-
-    while (connect(sock, (struct sockaddr *) &sockaddr, sizeof(sockaddr)) < 0) ;
+    while (connect(sock, res->ai_addr, sizeof(struct sockaddr_in)) < 0) ;
     if (!sock) {
         perror("connect");
         exit(EXIT_FAILURE);

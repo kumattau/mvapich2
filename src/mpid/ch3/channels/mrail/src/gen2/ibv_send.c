@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -419,8 +419,10 @@ int MRAILI_Process_send(void *vbuf_addr)
     MPIDI_VC_t      *vc;
     MPIDI_VC_t      *orig_vc;
     MPID_Request    *req;
-    double          time_taken;
     int             complete;
+#ifdef _ENABLE_HSAM_
+    double time_taken;
+#endif
 
     MPIDI_STATE_DECL(MPID_STATE_MRAILI_PROCESS_SEND);
     MPIDI_FUNC_ENTER(MPID_STATE_MRAILI_PROCESS_SEND);
@@ -519,6 +521,7 @@ int MRAILI_Process_send(void *vbuf_addr)
                     "req: %p, protocol: %d, local: %d, remote: %d\n",
                     req, req->mrail.protocol, req->mrail.local_complete, req->mrail.remote_complete);
 
+#ifdef _ENABLE_HSAM_
             /* HSAM is Activated */
             if (mv2_MPIDI_CH3I_RDMA_Process.has_hsam) {
                 req = (MPID_Request *)v->sreq;
@@ -527,7 +530,7 @@ int MRAILI_Process_send(void *vbuf_addr)
                 req->mrail.stripe_finish_time[v->rail] = 
                     time_taken;
             }
-
+#endif /*_ENABLE_HSAM_*/
 #ifdef _ENABLE_CUDA_
             if (mv2_enable_device
                 && v->orig_vbuf != NULL) {
@@ -545,6 +548,7 @@ int MRAILI_Process_send(void *vbuf_addr)
 
             req = (MPID_Request *)v->sreq;
 
+#ifdef _ENABLE_HSAM_
             /* HSAM is Activated */
             if (mv2_MPIDI_CH3I_RDMA_Process.has_hsam) {
                 MPIU_Assert(req != NULL);
@@ -561,7 +565,7 @@ int MRAILI_Process_send(void *vbuf_addr)
                         time_taken;
                 }
             }
-
+#endif /*_ENABLE_HSAM_*/
             ++req->mrail.local_complete;
             PRINT_DEBUG(DEBUG_RNDV_verbose, "Processing RGET completion "
                     "req: %p, protocol: %d, local: %d, remote: %d\n",
@@ -580,6 +584,7 @@ int MRAILI_Process_send(void *vbuf_addr)
              */
 
             if(req->mrail.rndv_buf_sz > rdma_large_msg_rail_sharing_threshold) {
+#ifdef _ENABLE_HSAM_
                 if(mv2_MPIDI_CH3I_RDMA_Process.has_hsam && 
                         (req->mrail.local_complete == 
                          req->mrail.num_rdma_read_completions )) { 
@@ -591,7 +596,9 @@ int MRAILI_Process_send(void *vbuf_addr)
                             req->mrail.stripe_finish_time, 
                             req->mrail.initial_weight);                       
 
-                } else if (!mv2_MPIDI_CH3I_RDMA_Process.has_hsam && 
+                } else
+#endif /*_ENABLE_HSAM_*/
+                if (!mv2_MPIDI_CH3I_RDMA_Process.has_hsam && 
                         (req->mrail.local_complete == 
                          req->mrail.num_rdma_read_completions)) {
 
@@ -645,6 +652,10 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_PUT_IMMED:
     case MPIDI_CH3_PKT_ACCUMULATE:
     case MPIDI_CH3_PKT_ACCUMULATE_IMMED:
+    case MPIDI_CH3_PKT_PUT_RNDV:
+    case MPIDI_CH3_PKT_GET_RNDV:
+    case MPIDI_CH3_PKT_GET_ACCUM:
+    case MPIDI_CH3_PKT_GET_ACCUM_RESP_IMMED:
         req = v->sreq;
         v->sreq = NULL;
         DEBUG_PRINT("[process send] complete for eager msg, req %p\n",
@@ -701,6 +712,7 @@ int MRAILI_Process_send(void *vbuf_addr)
                 req->mrail.d_entry = NULL;
             }
 
+#ifdef _ENABLE_HSAM_
             if(mv2_MPIDI_CH3I_RDMA_Process.has_hsam && 
                ((req->mrail.rndv_buf_sz > rdma_large_msg_rail_sharing_threshold))) {
 
@@ -711,6 +723,7 @@ int MRAILI_Process_send(void *vbuf_addr)
                         req->mrail.stripe_finish_time, 
                         req->mrail.initial_weight);
             }
+#endif /*_ENABLE_HSAM_*/
             
             MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req);        
             req->mrail.d_entry = NULL;
@@ -802,13 +815,10 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_EAGER_SYNC_ACK:
     case MPIDI_CH3_PKT_CANCEL_SEND_REQ:
     case MPIDI_CH3_PKT_CANCEL_SEND_RESP:
-    case MPIDI_CH3_PKT_PUT_RNDV:
     case MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND:
     case MPIDI_CH3_PKT_CUDA_CTS_CONTI:
     case MPIDI_CH3_PKT_GET:
-    case MPIDI_CH3_PKT_GET_RNDV:
     case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
-    case MPIDI_CH3_PKT_GET_ACCUM:
     case MPIDI_CH3_PKT_LOCK:
     case MPIDI_CH3_PKT_LOCK_ACK:
     case MPIDI_CH3_PKT_LOCK_OP_ACK:
@@ -824,16 +834,27 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_CAS_RESP_IMMED:
     case MPIDI_CH3_PKT_GET_ACCUM_RNDV:
     case MPIDI_CH3_PKT_GET_ACCUM_IMMED:
-    case MPIDI_CH3_PKT_GET_ACCUM_RESP_IMMED:
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
     case MPIDI_CH3_PKT_RNDV_R3_ACK:
     case MPIDI_CH3_PKT_ZCOPY_FINISH:
     case MPIDI_CH3_PKT_ZCOPY_ACK:
-        DEBUG_PRINT("[process send] get %d\n", p->type);
+        PRINT_DEBUG(DEBUG_SEND_verbose>1, "[process send] get %d\n", p->type);
+        /* In MPIDI_CH3I_MRAILI_Eager_send, we save the request object in the
+         * vbuf in case send operation could not be completed due to lack of
+         * WQEs. In this scenario, we should call MPIDI_CH3U_Handle_send_req
+         * upon sucessful completion of the send operation. This assert is to
+         * make sure that we do not release a vbuf which needs additional
+         * handling without doing it. */
+        if (v->sreq != NULL) {
+            PRINT_ERROR("Releasing vbuf for packet %s without handling sreq\n",
+                        MPIDI_CH3_Pkt_type_to_string[p->type]);
+        }
+        MPIU_Assert(v->sreq == NULL);
         if (v->padding == NORMAL_VBUF_FLAG) {
             MRAILI_Release_vbuf(v);
+        } else {
+            v->padding = FREE_FLAG;
         }
-        else v->padding = FREE_FLAG;
         break;
    case MPIDI_CH3_PKT_GET_ACCUM_RESP:
         req = v->sreq;
@@ -1030,7 +1051,7 @@ void vbuf_address_send(MPIDI_VC_t *vc)
     GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
     MPIDI_CH3_Pkt_address_t* p = (MPIDI_CH3_Pkt_address_t *) v->pheader;
 
-    rail = MRAILI_Send_select_rail(vc);
+    rail = MRAILI_Send_select_rail(vc, rdma_iba_eager_threshold-1);
     p->type = MPIDI_CH3_PKT_ADDRESS;
     p->rdma_address = (unsigned long)vc->mrail.rfp.RDMA_recv_buf_DMA;
 
@@ -1050,7 +1071,7 @@ void vbuf_address_reply_send(MPIDI_VC_t *vc, uint8_t data)
     GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
     MPIDI_CH3_Pkt_address_reply_t *p = (MPIDI_CH3_Pkt_address_reply_t *) v->pheader;
 
-    rail = MRAILI_Send_select_rail(vc);
+    rail = MRAILI_Send_select_rail(vc, rdma_iba_eager_threshold-1);
     p->type = MPIDI_CH3_PKT_ADDRESS_REPLY;
     p->reply_data = data;
     

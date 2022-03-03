@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -577,12 +577,17 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
         /* If user has enabled blocking mode progress,
          * then we cannot support MPI_THREAD_MULTIPLE */
         int thread_warning = 1;
+        int aligned_alloc = 0;
 
         if ((value = getenv("MV2_USE_THREAD_WARNING")) != NULL) {
             thread_warning = !!atoi(value);
         }
-        if (thread_warning && (0 == pg_rank) && (requested > MPI_THREAD_SINGLE)) {
-            PRINT_ERROR("[Performance Suggestion]: Application has requested"
+        if ((value = getenv("MV2_USE_ALIGNED_ALLOC")) != NULL) { 
+            aligned_alloc = !!atoi(value);
+        } 
+        if (!aligned_alloc && (0 == pg_rank) && (requested > MPI_THREAD_SINGLE)) {
+            PRINT_INFO(thread_warning, 
+                        "[Performance Suggestion]: Application has requested"
                         " for multi-thread capability. If allocating memory"
                         " from different pthreads/OpenMP threads, please"
                         " consider setting MV2_USE_ALIGNED_ALLOC=1 for improved"
@@ -590,9 +595,8 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
                         "Use MV2_USE_THREAD_WARNING=0 to suppress this error message.\n");
         }
         if (rdma_use_blocking) {
-            if (0 == pg_rank && MPI_THREAD_MULTIPLE == requested
-                    && thread_warning) {
-                fprintf(stderr, "WARNING: Requested MPI_THREAD_MULTIPLE, \n"
+            if (0 == pg_rank && MPI_THREAD_MULTIPLE == requested) {
+                PRINT_INFO(thread_warning, "WARNING: Requested MPI_THREAD_MULTIPLE, \n"
                         "  but MV2_USE_BLOCKING=1 only supports MPI_THREAD_SERIALIZED.\n"
                         "  Use MV2_USE_THREAD_WARNING=0 to suppress this error message.\n");
             }
@@ -623,8 +627,8 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
         if ((value = getenv("OMP_NUM_THREADS")) != NULL) {
             int _temp = atoi(value);
             if ((_temp > 1) && mv2_enable_affinity && (0 == pg_rank)
-                && thread_warning && (mv2_binding_level == LEVEL_CORE)) {
-                fprintf(stderr, "Warning: Process to core binding is enabled and"
+                && (mv2_binding_level == LEVEL_CORE)) {
+                PRINT_INFO(thread_warning, "Warning: Process to core binding is enabled and"
                         " OMP_NUM_THREADS is greater than one (%d).\nIf"
                         " your program has OpenMP sections, this can cause"
                         " over-subscription of cores and consequently poor"

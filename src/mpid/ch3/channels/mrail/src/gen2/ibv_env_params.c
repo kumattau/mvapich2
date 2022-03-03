@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1672,6 +1672,14 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_intranode,
     "MV2_USE_SHARED_MEM",
+    &mv2_use_smp,
+    1,
+    NULL    },
+{
+    MV2_USE_PT2PT_SHMEM,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_intranode,
+    "MV2_USE_PT2PT_SHMEM",
     &rdma_use_smp,
     1,
     NULL    },

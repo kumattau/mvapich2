@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -773,6 +773,25 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
 
     do {
         do {
+            /* We have introduced a mechanism to throttle VBUF use. This can cause an
+             * infinite recursion in the R3 code path. Add this check to handle that.
+             */
+            if ((vc->mrail.state & MRAILI_RC_CONNECTED) &&
+                (rdma_vbuf_pools[MV2_LARGE_DATA_VBUF_POOL_OFFSET].free_head == NULL) &&
+                (rdma_vbuf_pools[MV2_LARGE_DATA_VBUF_POOL_OFFSET].num_allocated >=
+                 rdma_vbuf_pools[MV2_LARGE_DATA_VBUF_POOL_OFFSET].max_num_buf)) {
+                wait_for_rndv_r3_ack = 1;
+                break;
+            }
+#ifdef _ENABLE_UD_
+            else if ((vc->mrail.state & MRAILI_UD_CONNECTED) &&
+                (rdma_ud_vbuf_pools[MV2_SEND_UD_VBUF_POOL_OFFSET].free_head == NULL) &&
+                (rdma_ud_vbuf_pools[MV2_SEND_UD_VBUF_POOL_OFFSET].num_allocated >=
+                 rdma_ud_vbuf_pools[MV2_SEND_UD_VBUF_POOL_OFFSET].max_num_buf)) {
+                wait_for_rndv_r3_ack = 1;
+                break;
+            }
+#endif /*ifdef _ENABLE_UD_*/
 	    /* stop sending more R3 data to avoid SRQ flooding at receiver */
             if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
                 if (vc->ch.pending_r3_data >= rdma_max_r3_pending_data) {
@@ -859,8 +878,8 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
         DEBUG_PRINT("Send Max R3 Pending Data. waiting for ACK\n");
     }
 
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RNDV_R3_PUSH);
 fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RNDV_R3_PUSH);
 #if defined(MPIDI_MRAILI_COALESCE_ENABLED)
     /* TODO: Ticket #1433 */
     FLUSH_SQUEUE_NOINLINE(vc);
@@ -991,8 +1010,8 @@ int MPIDI_CH3_Rendezvouz_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
         int rank;
         UPMI_GET_RANK(&rank);
 
-        DEBUG_PRINT( "[rank %d]get wrong req protocol, req %08x, protocol %d\n", rank,
-            rreq, rreq->mrail.protocol);
+        PRINT_ERROR("Got wrong req protocol from rank %d: req %08x, protocol %d\n",
+                    vc->pg_rank, rreq, rreq->mrail.protocol);
         MPIU_Assert(MV2_RNDV_PROTOCOL_R3 == rreq->mrail.protocol ||
                MV2_RNDV_PROTOCOL_RPUT == rreq->mrail.protocol);
     }
@@ -1134,6 +1153,7 @@ int MPIDI_CH3_Rendezvous_rget_send_finish(MPIDI_VC_t * vc,
     MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(sreq);
 
 #if 0
+#ifdef _ENABLE_HSAM_
     if(mv2_MPIDI_CH3I_RDMA_Process.has_hsam && 
             ((req->mrail.rndv_buf_sz > rdma_large_msg_rail_sharing_threshold))) {
 
@@ -1143,6 +1163,7 @@ int MPIDI_CH3_Rendezvous_rget_send_finish(MPIDI_VC_t * vc,
         adjust_weights(v->vc, req->mrail.stripe_start_time,
                 req->mrail.stripe_finish_time, req->mrail.initial_weight);
     }
+#endif /*_ENABLE_HSAM_*/
 #endif
 
     MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);

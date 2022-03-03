@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2021, The Ohio State University. All rights
+ * Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -200,3 +200,11 @@
 #include "reduce/gen2_cma_AMD_EPYC_7401_24_16ppn.h"
 #include "reduce/gen2_cma_AMD_EPYC_7401_24_32ppn.h"
 #include "reduce/gen2_cma_AMD_EPYC_7401_24_48ppn.h"
+#include "reduce/gen2_cma_AMD_EPYC_7763_128_1ppn.h"
+#include "reduce/gen2_cma_AMD_EPYC_7763_128_2ppn.h"
+#include "reduce/gen2_cma_AMD_EPYC_7763_128_4ppn.h"
+#include "reduce/gen2_cma_AMD_EPYC_7763_128_8ppn.h"
+#include "reduce/gen2_cma_AMD_EPYC_7763_128_16ppn.h"
+#include "reduce/gen2_cma_AMD_EPYC_7763_128_32ppn.h"
+#include "reduce/gen2_cma_AMD_EPYC_7763_128_64ppn.h"
+#include "reduce/gen2_cma_AMD_EPYC_7763_128_128ppn.h"

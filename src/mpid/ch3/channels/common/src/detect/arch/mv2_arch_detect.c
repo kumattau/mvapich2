@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -139,16 +139,19 @@ mv2_hca_type  table_hca_tmp;
 #define INTEL_E5_2695_V3_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2695 v3 @ 2.30GHz"
 #define INTEL_E5_2695_V4_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2695 v4 @ 2.10GHz"
 #define INTEL_E5_2620_V4_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2620 v4 @ 2.10GHz"
+#define INTEL_E5_2697A_V4_MODEL_NAME "Intel(R) Xeon(R) CPU E5-2697A v4 @ 2.60GHz"
 
 /* For both Skylake and Cascade Lake, generic models are the same */
 #define INTEL_PLATINUM_GENERIC_MODEL_NAME  "Intel(R) Xeon(R) Platinum"
 #define INTEL_PLATINUM_8160_MODEL_NAME "Intel(R) Xeon(R) Platinum 8160 CPU @ 2.10GHz"
 #define INTEL_PLATINUM_8170_MODEL_NAME "Intel(R) Xeon(R) Platinum 8170 CPU @ 2.10GHz"
 #define INTEL_PLATINUM_8260_MODEL_NAME "Intel(R) Xeon(R) Platinum 8260Y CPU @ 2.40GHz"
+#define INTEL_PLATINUM_8268_MODEL_NAME "Intel(R) Xeon(R) Platinum 8268 CPU @ 2.90GHz"
 #define INTEL_PLATINUM_8280_MODEL_NAME "Intel(R) Xeon(R) Platinum 8280 CPU @ 2.70GHz"
 
 #define INTEL_GOLD_GENERIC_MODEL_NAME  "Intel(R) Xeon(R) Gold"
 #define INTEL_GOLD_6132_MODEL_NAME "Intel(R) Xeon(R) Gold 6132 CPU @ 2.60GHz"
+#define INTEL_GOLD_6148_MODEL_NAME "Intel(R) Xeon(R) Gold 6148 CPU @ 2.40GHz"
 #define INTEL_GOLD_6248_MODEL_NAME "Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz"
 #define INTEL_GOLD_6154_MODEL_NAME "Intel(R) Xeon(R) Gold 6154 CPU @ 3.00GHz"
 
@@ -163,6 +166,9 @@ mv2_hca_type  table_hca_tmp;
 #define AMD_EPYC_7601_MODEL_NAME "AMD EPYC 7601 32-Core Processor"
 #define AMD_EPYC_7401_MODEL_NAME "AMD EPYC 7401 24-Core Processor"
 #define AMD_EPYC_7V12_MODEL_NAME "AMD EPYC 7V12 64-Core Processor"
+#define AMD_EPYC_7763_MODEL_NAME "AMD EPYC 7763 64-Core Processor" /* Lonestar-6 */
+#define AMD_EPYC_7713_MODEL_NAME "AMD EPYC 7713 64-Core Processor" /* Lonestar-6 */
+#define AMD_EPYC_7662_MODEL_NAME "AMD EPYC 7662 64-Core Processor" /* Spock */
 
 typedef struct _mv2_arch_types_log_t{
     uint64_t arch_type;
@@ -197,15 +203,18 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36,"MV2_ARCH_INTEL_XEON_E5_2695_V4_2S_36"},
     {MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28,"MV2_ARCH_INTEL_XEON_E5_2680_V4_2S_28"},
     {MV2_ARCH_INTEL_XEON_E5_2620_V4_2S_16,"MV2_ARCH_INTEL_XEON_E5_2620_V4_2S_16"},
+    {MV2_ARCH_INTEL_XEON_E5_2697A_V4_2S_32,"MV2_ARCH_INTEL_XEON_E5_2697A_V4_2S_32"},
 
     /* Skylake and Cascade Lake Architectures */
     {MV2_ARCH_INTEL_PLATINUM_GENERIC,      "MV2_ARCH_INTEL_PLATINUM_GENERIC"},
     {MV2_ARCH_INTEL_PLATINUM_8160_2S_48,   "MV2_ARCH_INTEL_PLATINUM_8160_2S_48"},
     {MV2_ARCH_INTEL_PLATINUM_8260_2S_48,   "MV2_ARCH_INTEL_PLATINUM_8260_2S_48"},
+    {MV2_ARCH_INTEL_PLATINUM_8268_2S_48,   "MV2_ARCH_INTEL_PLATINUM_8268_2S_48"},
     {MV2_ARCH_INTEL_PLATINUM_8280_2S_56,   "MV2_ARCH_INTEL_PLATINUM_8280_2S_56"},
     {MV2_ARCH_INTEL_PLATINUM_8170_2S_52,   "MV2_ARCH_INTEL_PLATINUM_8170_2S_52"},
     {MV2_ARCH_INTEL_GOLD_GENERIC,          "MV2_ARCH_INTEL_GOLD_GENERIC"},
     {MV2_ARCH_INTEL_GOLD_6132_2S_28,       "MV2_ARCH_INTEL_GOLD_6132_2S_28"},
+    {MV2_ARCH_INTEL_GOLD_6148_2S_40,       "MV2_ARCH_INTEL_GOLD_6148_2S_40"},
     {MV2_ARCH_INTEL_GOLD_6154_2S_36,       "MV2_ARCH_INTEL_GOLD_6154_2S_36"},
 
 
@@ -227,8 +236,11 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_AMD_EPYC_7401_48, "MV2_ARCH_AMD_EPYC_7401_48"},
     {MV2_ARCH_AMD_EPYC_7551_64, "MV2_ARCH_AMD_EPYC_7551_64"},
     {MV2_ARCH_AMD_EPYC_7V12_64, "MV2_ARCH_AMD_EPYC_7V12_64"},
+    {MV2_ARCH_AMD_EPYC_7763_64, "MV2_ARCH_AMD_EPYC_7763_64"},
+    {MV2_ARCH_AMD_EPYC_7763_128, "MV2_ARCH_AMD_EPYC_7763_128"},
     {MV2_ARCH_AMD_EPYC_7601_64, "MV2_ARCH_AMD_EPYC_7601_64"},
     {MV2_ARCH_AMD_EPYC_7742_128, "MV2_ARCH_AMD_EPYC_7742_128"},
+    {MV2_ARCH_AMD_EPYC_7662_64, "MV2_ARCH_AMD_EPYC_7662_64"},
 
     /* IBM Architectures */
     {MV2_ARCH_IBM_PPC,              "MV2_ARCH_IBM_PPC"},
@@ -391,6 +403,10 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
                     arch_type = MV2_ARCH_INTEL_XEON_E5_2698_V3_2S_32;
                 }
             }
+            /* HPCAC Thor */
+            if (NULL != strstr(model_name, INTEL_E5_2697A_V4_MODEL_NAME)) {
+                arch_type = MV2_ARCH_INTEL_XEON_E5_2697A_V4_2S_32;
+            }
         } else if (36 == num_cpus) {
             if (NULL != strstr(model_name, INTEL_GOLD_6154_MODEL_NAME)) { /* Oracle BM.HPC2 */
                 arch_type = MV2_ARCH_INTEL_PLATINUM_8170_2S_52; /* Use generic SKL tables */
@@ -402,6 +418,10 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
                 arch_type = MV2_ARCH_INTEL_PLATINUM_8280_2S_56;       /* Force frontera */
             } else if (NULL != strstr(model_name, INTEL_GOLD_GENERIC_MODEL_NAME)) { /* SkL Gold */
                 arch_type = MV2_ARCH_INTEL_PLATINUM_8170_2S_52; /* Use generic SKL tables */
+            }
+            /* Pitzer */
+            if (NULL != strstr(model_name, INTEL_GOLD_6148_MODEL_NAME)) {
+                arch_type = MV2_ARCH_INTEL_GOLD_6148_2S_40;
             }
 	    /* Detect skylake or cascade lake CPUs */
         } else if (48 == num_cpus || 52 == num_cpus || 56 == num_cpus || 44 == num_cpus /* azure skx */) {
@@ -415,6 +435,10 @@ mv2_arch_type mv2_get_intel_arch_type(char *model_name, int num_sockets, int num
             /* Frontera */
             if (NULL != strstr(model_name, INTEL_PLATINUM_8280_MODEL_NAME)) {
                 arch_type = MV2_ARCH_INTEL_PLATINUM_8280_2S_56;
+            }
+            /* Pitzer */
+            if (NULL != strstr(model_name, INTEL_PLATINUM_8268_MODEL_NAME)) {
+                arch_type = MV2_ARCH_INTEL_PLATINUM_8268_2S_48;
             }
         } else if (36 == num_cpus || 72 == num_cpus) {
             if (NULL != strstr(model_name, INTEL_E5_2695_V4_MODEL_NAME)) {
@@ -605,6 +629,13 @@ mv2_arch_type mv2_get_arch_type()
                 } else {
                     arch_type = MV2_ARCH_AMD_GENERIC;
                 }
+                if (1 == num_sockets) {
+                    if (64 == num_cpus) { /* Spock */
+                        if (NULL != strstr(model_name, AMD_EPYC_7662_MODEL_NAME)) {
+                            arch_type = MV2_ARCH_AMD_EPYC_7662_64;
+                        }
+                    }
+                }
                 if(2 == num_sockets) {
                     if(4 == num_cpus) {
                         arch_type = MV2_ARCH_AMD_OPTERON_DUAL_4;
@@ -622,8 +653,15 @@ mv2_arch_type mv2_get_arch_type()
                         } else {
                             arch_type =  MV2_ARCH_AMD_EPYC_7551_64;
                         }
-                    } else if(128 == num_cpus) { /* rome */
-                        arch_type = MV2_ARCH_AMD_EPYC_7742_128;
+                    } else if(128 == num_cpus) { /* expanse and ls6 */
+                        if (NULL != strstr(model_name, AMD_EPYC_7763_MODEL_NAME) ||
+                            NULL != strstr(model_name, AMD_EPYC_7713_MODEL_NAME)) {
+                            /* lonestar6 */
+                            arch_type = MV2_ARCH_AMD_EPYC_7763_128;
+                        } else {
+                            /* expanse */
+                            arch_type = MV2_ARCH_AMD_EPYC_7742_128;
+                        }
                     }
                     /* If we could not exactly find out what exact architecture
                      * was, fall back toMV2_ARCH_AMD_EPYC_7401_48 */
@@ -939,7 +977,6 @@ int get_socket_bound_info(int *socket_bound, int *num_sockets, int *num_cores_so
         return -1;
     }
 
-    int topodepth = hwloc_get_type_depth (topology_whole, HWLOC_OBJ_SOCKET);
     *is_uniform = 1;
     int num_valid_sockets = 0;
     hwloc_cpuset_t allowed_cpuset = hwloc_bitmap_alloc();
@@ -997,16 +1034,16 @@ int get_socket_bound_info(int *socket_bound, int *num_sockets, int *num_cores_so
     return err;
 }
 
-int get_numa_bound_info(int *socket_bound, int *num_sockets, int *num_cores_socket, int *is_uniform)
+int get_numa_bound_info(int *numa_bound, int *num_numas, int *num_cores_numa, int *is_uniform)
 {
     hwloc_cpuset_t cpuset;
-    hwloc_obj_t socket;
+    hwloc_obj_t numa;
     int i,num_cores;
     int err = -1;
     if (smpi_load_hwloc_topology_whole()) {
         return err;
     }
-    *num_sockets = hwloc_get_nbobjs_by_type(topology_whole, HWLOC_OBJ_NUMANODE);
+    *num_numas = hwloc_get_nbobjs_by_type(topology_whole, HWLOC_OBJ_NUMANODE);
     num_cores = hwloc_bitmap_weight(hwloc_topology_get_allowed_cpuset(topology_whole));
     pid_t pid = getpid();
 
@@ -1019,34 +1056,33 @@ int get_numa_bound_info(int *socket_bound, int *num_sockets, int *num_cores_sock
         return -1;
     }
 
-    int topodepth = hwloc_get_type_depth (topology_whole, HWLOC_OBJ_NUMANODE);
     *is_uniform = 1;
-    int num_valid_sockets = 0;
+    int num_valid_numas = 0;
     hwloc_cpuset_t allowed_cpuset = hwloc_bitmap_alloc();
 
-    for(i = 0; i < *num_sockets; i++)
+    for(i = 0; i < *num_numas; i++)
     {
-        socket = hwloc_get_obj_by_type(topology_whole, HWLOC_OBJ_NUMANODE, i);
-        cpuset = socket->cpuset;
+        numa = hwloc_get_obj_by_type(topology_whole, HWLOC_OBJ_NUMANODE, i);
+        cpuset = numa->cpuset;
         hwloc_bitmap_zero(allowed_cpuset);
         hwloc_bitmap_and(allowed_cpuset, cpuset,
                 hwloc_topology_get_allowed_cpuset(topology_whole));
-        int num_cores_in_socket = hwloc_bitmap_weight(allowed_cpuset);
-        if(num_cores_in_socket != 0) {
-            num_valid_sockets++;
+        int num_cores_in_numa = hwloc_bitmap_weight(allowed_cpuset);
+        if(num_cores_in_numa != 0) {
+            num_valid_numas++;
         }
     }
     
-    for(i = 0; i < *num_sockets; i++)
+    for(i = 0; i < *num_numas; i++)
     {
         hwloc_bitmap_zero(allowed_cpuset);
-        socket = hwloc_get_obj_by_type(topology_whole, HWLOC_OBJ_NUMANODE, i);
-        cpuset = socket->cpuset;
+        numa = hwloc_get_obj_by_type(topology_whole, HWLOC_OBJ_NUMANODE, i);
+        cpuset = numa->cpuset;
         hwloc_bitmap_and(allowed_cpuset, cpuset,
                 hwloc_topology_get_allowed_cpuset(topology_whole));
-        int num_cores_in_socket = hwloc_bitmap_weight(allowed_cpuset);
-        if(num_cores_in_socket != 0) {
-            if(num_cores_in_socket != (num_cores / (num_valid_sockets)))
+        int num_cores_in_numa = hwloc_bitmap_weight(allowed_cpuset);
+        if(num_cores_in_numa != 0) {
+            if(num_cores_in_numa != (num_cores / (num_valid_numas)))
             {
                 *is_uniform = 0;
             }
@@ -1055,18 +1091,18 @@ int get_numa_bound_info(int *socket_bound, int *num_sockets, int *num_cores_sock
             hwloc_bitmap_and(result_set, cpuset, cpubind_set);
             if(hwloc_bitmap_last(result_set) != -1)
             {
-                *num_cores_socket = num_cores_in_socket;
-                *socket_bound = i;
+                *num_cores_numa = num_cores_in_numa;
+                *numa_bound = i;
                 PRINT_DEBUG(DEBUG_SHM_verbose > 0, "Socket : %d Num cores :%d"
-                        " Num cores in socket: %d Num sockets : %d Uniform :%d"
-                        "\n",i,num_cores, *num_cores_socket, num_valid_sockets,
+                        " Num cores in numa: %d Num numas : %d Uniform :%d"
+                        "\n",i,num_cores, *num_cores_numa, num_valid_numas,
                         *is_uniform);
                 err = 0;
             }
             hwloc_bitmap_free(result_set);
         }
     }
-    *num_sockets = num_valid_sockets;
+    *num_numas = num_valid_numas;
     //Socket aware collectives don't support non-uniform architectures yet
     if(!*is_uniform)
     {

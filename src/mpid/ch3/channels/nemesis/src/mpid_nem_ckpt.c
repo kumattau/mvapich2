@@ -3,7 +3,7 @@
  *  (C) 2006 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  *
- * Copyright (c) 2001-2021, The Ohio State University. All rights
+ * Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -345,8 +345,8 @@ static int open_io_socket(socktype_t socktype, int rank, int dupfd)
     memset(&addr, 0, sizeof(addr));
 
     MPL_env2int(STDINOUTERR_PORT_NAME, &port);
-    addr = inet_addr("127.0.0.1");
-    CHECK_ERR_ERRNO(addr == INADDR_NONE, "inet_addr");
+    int success = inet_pton(AF_INET, "127.0.0.1", addr);
+    CHECK_ERR_ERRNO(success != 1, "inet_pton");
 
     sock_addr.sin_family = AF_INET;
     sock_addr.sin_port = htons((in_port_t)port);

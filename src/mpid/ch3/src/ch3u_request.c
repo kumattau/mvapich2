@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -371,7 +371,8 @@ int MPIDI_CH3U_Request_load_send_iov(MPID_Request * const sreq,
     else
     {
 	MPIDI_msg_sz_t data_sz;
-	int i, iov_data_copied;
+	intptr_t iov_data_copied;
+	int i;
 	
 	MPIU_DBG_MSG(CH3_CHANNEL,VERBOSE,"low density.  using SRBuf.");
 	    
@@ -689,16 +690,16 @@ int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq)
 int MPIDI_CH3U_Request_unpack_srbuf(MPID_Request * rreq)
 {
     MPI_Aint last;
-    int tmpbuf_last;
+    MPI_Aint tmpbuf_last;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_REQUEST_UNPACK_SRBUF);
     
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_REQUEST_UNPACK_SRBUF);
 
-    tmpbuf_last = (int)(rreq->dev.segment_first + rreq->dev.tmpbuf_sz);
+    tmpbuf_last = rreq->dev.segment_first + rreq->dev.tmpbuf_sz;
     if (rreq->dev.segment_size < tmpbuf_last)
     {
-	tmpbuf_last = (int)rreq->dev.segment_size;
+	tmpbuf_last = rreq->dev.segment_size;
     }
     last = tmpbuf_last;
     MPID_Segment_unpack(rreq->dev.segment_ptr, rreq->dev.segment_first, 
@@ -738,7 +739,7 @@ int MPIDI_CH3U_Request_unpack_srbuf(MPID_Request * rreq)
     }
     else
     {
-	rreq->dev.tmpbuf_off = (int)(tmpbuf_last - last);
+	rreq->dev.tmpbuf_off = tmpbuf_last - last;
 	if (rreq->dev.tmpbuf_off > 0)
 	{
 	    /* move any remaining data to the beginning of the buffer.  

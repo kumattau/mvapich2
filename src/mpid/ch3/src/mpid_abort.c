@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  *
- * Copyright (c) 2001-2021, The Ohio State University. All rights
+ * Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -129,21 +129,24 @@ int MPID_Abort(MPID_Comm * comm, int mpi_errno, int exit_code,
        by name or set a function pointer */
     if(!MPIDI_Process.my_pg->is_spawned)
     {
+        /* dump error here reqardless of other abort functionality 
+         * better to have too much messaging than too little. The PM is a better
+         * place to dump the message but some PMs and SLURM don't
+         * respect the error message correctly. */
+        if (error_msg[0]) MPL_error_printf("%s\n", error_msg);
+        fflush(stderr);
 #ifdef MPIDI_CH3_IMPLEMENTS_ABORT
-    MPIDI_CH3_Abort(exit_code, error_msg);
+        MPIDI_CH3_Abort(exit_code, error_msg);
 #elif defined(MPIDI_DEV_IMPLEMENTS_ABORT)
-    MPIDI_CH3I_UPMI_ABORT(exit_code, error_msg);
-#else
-    if (error_msg[0]) MPL_error_printf("%s\n", error_msg);
-    fflush(stderr);
+        MPIDI_CH3I_UPMI_ABORT(exit_code, error_msg);
 #endif
 
-    /* ch3_abort should not return but if it does, exit here.  If it does,
-       add the function exit code before calling the final exit.  */
-    MPIDI_FUNC_EXIT(MPID_STATE_MPID_ABORT);
-    MPL_exit(exit_code);
-    
-    return MPI_ERR_INTERN;
+        /* ch3_abort should not return but if it does, exit here.  If it does,
+           add the function exit code before calling the final exit.  */
+        MPIDI_FUNC_EXIT(MPID_STATE_MPID_ABORT);
+        MPL_exit(exit_code);
+        
+        return MPI_ERR_INTERN;
     }
     else
     {

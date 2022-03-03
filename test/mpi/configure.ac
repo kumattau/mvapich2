@@ -704,7 +704,7 @@ if test "$spawndir" = "spawn" ; then
     AC_SEARCH_LIBS(socket,socket,socklib=$LIBS)
     PAC_POP_FLAG(LIBS)
     PAC_PUSH_FLAG(LIBS)
-    AC_SEARCH_LIBS(gethostbyname,nsl,nslib=$LIBS)
+    AC_SEARCH_LIBS(getaddrinfo,nsl,nslib=$LIBS)
     PAC_POP_FLAG(LIBS)
     AC_SUBST(socklib)
     AC_SUBST(nslib)

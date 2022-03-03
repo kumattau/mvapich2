@@ -4,7 +4,7 @@ AC_PREREQ(2.63)
 #     See COPYRIGHT in top-level directory.
 #
 
-# Copyright (c) 2001-2021, The Ohio State University. All rights
+# Copyright (c) 2001-2022, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -2043,13 +2043,40 @@ export NEEDSPLIB
 AM_CONDITIONAL([BUILD_PROFILING_LIB],[test "$NEEDSPLIB" = "yes"])
 
 #OMB
-omb_subdir_args="--enable-embedded"
-PAC_APPEND_FLAG([--enable-mpi], [omb_subdir_args])
-PAC_APPEND_FLAG([--enable-mpi2], [omb_subdir_args])
-PAC_APPEND_FLAG([--enable-mpi3], [omb_subdir_args])
-AS_IF([test "$NEEDSPLIB" = "yes"],
-      [PAC_APPEND_FLAG([--with-plib], [omb_subdir_args])])
-PAC_CONFIG_SUBDIR_ARGS([osu_benchmarks],[$omb_subdir_args],[],[AC_MSG_ERROR(OMB configure failed)])
+AC_ARG_ENABLE([omb],
+              [
+                AS_HELP_STRING([--disable-omb],
+                               [Disable building embedded OMB])
+              ],
+              [
+                echo "Disabling embedded OMB"
+                enable_omb=no
+              ],
+              [])
+AC_ARG_ENABLE([python-omb],
+              [
+                AS_HELP_STRING([--enable-python-omb],
+                               [Enable installation of OMB python benchmarks])
+              ],
+              [
+                enable_python_omb=yes
+              ],
+              [])
+
+
+AM_CONDITIONAL([BUILD_OMB], [test "x$enable_omb" != "xno"])
+if test "x$enable_omb" != "xno" ; then 
+    omb_subdir_args="--enable-embedded"
+    PAC_APPEND_FLAG([--enable-mpi], [omb_subdir_args])
+    PAC_APPEND_FLAG([--enable-mpi2], [omb_subdir_args])
+    PAC_APPEND_FLAG([--enable-mpi3], [omb_subdir_args])
+    AS_IF([test "$NEEDSPLIB" = "yes"],
+          [PAC_APPEND_FLAG([--with-plib], [omb_subdir_args])])
+    AS_IF([test "x$enable_python_omb" == "xyes"],
+          [PAC_APPEND_FLAG([--enable-python], [omb_subdir_args])])
+    PAC_CONFIG_SUBDIR_ARGS([osu_benchmarks],[$omb_subdir_args],[],
+                           [AC_MSG_ERROR(OMB configure failed)])
+fi
 
 
 # ---------------------------------------------------------------------------

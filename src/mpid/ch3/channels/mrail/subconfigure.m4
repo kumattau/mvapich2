@@ -226,6 +226,16 @@ AC_ARG_ENABLE([xrc],
               [enable_xrc=no],
               [enable_xrc=check])
 
+AC_CHECK_DECLS([IBV_WC_DRIVER1],[wc_drv1_found=yes],[wc_drv1_found=no],[[#include <infiniband/verbs.h>]])
+if test "x$wc_drv1_found" = "xyes"; then
+    AC_DEFINE([_ENABLE_WC_DRV1_], [1], [Define to enable support for IBV_WC_DRIVER1])
+fi
+
+AC_CHECK_DECLS([IBV_WC_DRIVER2],[wc_drv2_found=yes],[wc_drv2_found=no],[[#include <infiniband/verbs.h>]])
+if test "x$wc_drv2_found" = "xyes"; then
+    AC_DEFINE([_ENABLE_WC_DRV2_], [1], [Define to enable support for IBV_WC_DRIVER2])
+fi
+
 if test "x$enable_ibv_dlopen" = "xyes"; then
     AC_DEFINE([_ENABLE_IBV_DLOPEN_], [1], [Define to enable abstraction of calls to IB Verbs])
     if test "x$enable_xrc" = "xcheck"; then
@@ -265,12 +275,20 @@ AC_ARG_ENABLE([multi-subnet],
               [],
               [enable_multi_subnet=no])
 
+AC_ARG_ENABLE([hsam],
+              [AS_HELP_STRING([--enable-hsam],
+                              [enable hot spot avoidance support])
+              ],
+              [enable_hsam=yes],
+              [enable_hsam=no])
+
 AC_ARG_ENABLE([sharp],
               [AS_HELP_STRING([--enable-sharp],
                               [enable SHARP support])
               ],
-              [enable_sharp=yes],
-              [enable_sharp=no])
+              [],
+              [enable_sharp=check])
+
 
 AC_ARG_ENABLE([3dtorus-support],
               [AS_HELP_STRING([--enable-3dtorus-support],
@@ -401,6 +419,16 @@ AC_ARG_WITH([fuse-libpath],
                     [with_fuse=yes])
             ],
             [])
+
+AC_TRY_COMPILE([#include <infiniband/verbs.h>],
+               [struct ibv_device_attr_ex dev_attr; (void) dev_attr.max_dm_size;],
+               ibv_device_attr_ex_has_max_dm_size=yes,
+               ibv_device_attr_ex_has_max_dm_size=no)
+
+if test $ibv_device_attr_ex_has_max_dm_size = "yes"; then
+    AC_DEFINE(_IBV_DEVICE_ATTR_EX_HAS_MAX_DM_SIZE_, 1 , [Define to check for max_dm_size.])
+    AC_MSG_NOTICE([Support for max_dm_size available])
+fi
 
 AC_ARG_WITH(cluster-size,
 [--with-cluster-size=level - Specify the cluster size.],,with_cluster_size=small)
@@ -681,6 +709,10 @@ if test "$with_rdma" = "gen2"; then
         fi
     fi
 
+    if test "$enable_hsam" = "yes" ; then
+        AC_DEFINE(_ENABLE_HSAM_, 1 , [Define to enable support for hot spot avoidance.])
+    fi
+
     if test "$enable_mcast" == "check"; then
         AC_CHECKING([for hardware multicast support])
         AC_CHECK_HEADER([infiniband/mad.h],
@@ -698,9 +730,19 @@ if test "$with_rdma" = "gen2"; then
         AC_MSG_NOTICE([Hardware multicast support enabled])
     fi
 
-    if test "$enable_sharp" != "no"; then
+    if test "$enable_sharp" = "check"; then
         AC_CHECKING([for SHARP support enabled])
-        AC_CHECK_HEADER([api/sharp_coll.h],,[AC_MSG_ERROR(['api/sharp_coll.h  not found. Please retry without --enable-sharp'])])
+        AC_CHECK_HEADER([api/sharp_coll.h],
+                        [enable_sharp=yes],
+                        [AC_MSG_NOTICE(['api/sharp_coll.h  not found. SHARP support disabled automatically.'])])
+        if test "$enable_sharp" = "yes"; then
+            AC_DEFINE(_SHARP_SUPPORT_, 1 , [Define to enable switch IB-2 sharp support.])
+            AC_MSG_NOTICE([SHARP support enabled])
+        fi
+    elif test "$enable_sharp" = "yes"; then
+        AC_CHECKING([for SHARP support enabled])
+        AC_CHECK_HEADER([api/sharp_coll.h],,
+                        [AC_MSG_ERROR(['api/sharp_coll.h  not found. Please retry without --enable-sharp'])])
         AC_DEFINE(_SHARP_SUPPORT_, 1 , [Define to enable switch IB-2 sharp support.])
         AC_MSG_NOTICE([SHARP support enabled])
     fi

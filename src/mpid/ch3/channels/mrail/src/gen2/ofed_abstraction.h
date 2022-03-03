@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -51,6 +51,10 @@
 #include <infiniband/mad.h>
 
 #endif /*defined(_MCST_SUPPORT_)*/
+
+#if defined(_SHARP_SUPPORT_)
+#include "api/sharp_coll.h"
+#endif /* defined(_SHARP_SUPPORT_) */
 
 #ifdef _ENABLE_IBV_DLOPEN_
 #include <dlfcn.h>
@@ -245,6 +249,51 @@ extern mad_ops_t mad_ops;
 extern void *mad_dl_handle;
 #endif /*defined(_MCST_SUPPORT_)*/
 
+#if defined (_SHARP_SUPPORT_)
+typedef struct _sharp_ops_t {
+    int (*coll_init)(struct sharp_coll_init_spec *sharp_coll_spec,
+                struct sharp_coll_context  **sharp_coll_context);
+    int (*coll_finalize)(struct sharp_coll_context *context);
+    int (*coll_caps_query)(struct sharp_coll_context *context,
+                              struct sharp_coll_caps *sharp_caps);
+    int (*coll_progress)(struct sharp_coll_context *context);
+    int (*coll_comm_init)(struct sharp_coll_context *context,
+                 struct sharp_coll_comm_init_spec *spec,
+                 struct sharp_coll_comm **sharp_coll_comm);
+    int (*coll_comm_destroy)(struct sharp_coll_comm *comm);
+    int (*coll_do_barrier)(struct sharp_coll_comm *comm);
+    int (*coll_do_barrier_nb)(struct sharp_coll_comm *comm, void **handle);
+    int (*coll_do_allreduce)(struct sharp_coll_comm *comm,
+                     struct sharp_coll_reduce_spec *spec);
+    int (*coll_do_allreduce_nb)(struct sharp_coll_comm *comm,
+                    struct sharp_coll_reduce_spec *spec, void **handle);
+    int (*coll_do_reduce)(struct sharp_coll_comm *comm,
+                 struct sharp_coll_reduce_spec *spec);
+    int (*coll_do_reduce_nb)(struct sharp_coll_comm *comm,
+                    struct sharp_coll_reduce_spec *spec,
+                    void **handle);
+    int (*coll_do_bcast)(struct sharp_coll_comm *comm,
+                struct sharp_coll_bcast_spec *spec);
+    int (*coll_do_bcast_nb)(struct sharp_coll_comm *comm,
+                   struct sharp_coll_bcast_spec *spec,
+                   void **handle);
+    int (*coll_req_test)(void *handle);
+    int (*coll_req_wait)(void *handle);
+    int (*coll_req_free)(void *handle);
+    int (*coll_reg_mr)(struct sharp_coll_context *context,
+                  void *buf, size_t size, void **mr);
+    int (*coll_dereg_mr)(struct sharp_coll_context *context, void *mr);
+    int (*coll_print_config)(FILE *stream, enum config_print_flags print_flags);
+    const char *(*coll_strerror)(int error);
+    int (*coll_dump_stats)(struct sharp_coll_context *context);
+    int (*coll_log_early_init)();
+} sharp_ops_t;
+
+extern sharp_ops_t sharp_ops;
+extern void *sharp_dl_handle;
+#endif /* defined(_SHARP_SUPPORT_) */
+
+
 #ifdef _ENABLE_IBV_DLOPEN_
 #define MV2_STRIGIFY(v_) #v_
 
@@ -273,10 +322,21 @@ typedef enum dl_err_t {
 /* Calls to create abstractions */
 static inline int mv2_ibv_dlopen_init()
 {
+    char *path;
 #ifdef _ENABLE_IBV_DLOPEN_
     ibv_dl_handle = dlopen("libibverbs.so", RTLD_NOW);
     if (!ibv_dl_handle) {
+        path = getenv("MV2_LIBIBVERBS_PATH");
+        if (path) {
+            ibv_dl_handle = dlopen(path, RTLD_NOW);
+        }
+    }
+    if (!ibv_dl_handle) {
         fprintf(stderr, "Error opening libibverbs.so: %s.\n", dlerror());
+        if (!path) {
+            fprintf(stderr, "Please retry with MV2_LIBIBVERBS_PATH="
+                            "<path/to/libibverbs.so>\n");
+        }
         return ERROR_DLOPEN;
     }
 #endif /*_ENABLE_IBV_DLOPEN_*/
@@ -337,10 +397,21 @@ static inline int mv2_ibv_dlopen_init()
 #if defined(_MCST_SUPPORT_)
 static inline int mv2_mad_dlopen_init()
 {
+    char *path;
 #ifdef _ENABLE_IBV_DLOPEN_
     mad_dl_handle = dlopen("libibmad.so", RTLD_NOW);
     if (!mad_dl_handle) {
+        path = getenv("MV2_LIBIBMAD_PATH");
+        if (path) {
+            mad_dl_handle = dlopen(path, RTLD_NOW);
+        }
+    }
+    if (!mad_dl_handle) {
         fprintf(stderr, "Error opening libibmad.so: %s.\n", dlerror());
+        if (!path) {
+            fprintf(stderr, "Please retry with MV2_LIBIBMAD_PATH="
+                            "<path/to/libibmad.so>\n");
+        }
         return ERROR_DLOPEN;
     }
 #endif /*_ENABLE_IBV_DLOPEN_*/
@@ -360,10 +431,21 @@ static inline int mv2_mad_dlopen_init()
 #if defined(HAVE_LIBIBUMAD)
 static inline int mv2_umad_dlopen_init()
 {
+    char *path;
 #ifdef _ENABLE_IBV_DLOPEN_
     umad_dl_handle = dlopen("libibumad.so", RTLD_NOW);
     if (!umad_dl_handle) {
+        path = getenv("MV2_LIBIBUMAD_PATH");
+        if (path) {
+            umad_dl_handle = dlopen(path, RTLD_NOW);
+        }
+    }
+    if (!umad_dl_handle) {
         fprintf(stderr, "Error opening libibumad.so: %s.\n", dlerror());
+        if (!path) {
+            fprintf(stderr, "Please retry with MV2_LIBIBUMAD_PATH="
+                            "<path/to/libibumad.so>\n");
+        }
         return ERROR_DLOPEN;
     }
     /* Since "register" is a keyword and "free" is a known function, we cannot
@@ -399,10 +481,21 @@ static inline int mv2_umad_dlopen_init()
 #if defined(RDMA_CM)
 static inline int mv2_rdma_dlopen_init()
 {
+    char *path;
 #ifdef _ENABLE_IBV_DLOPEN_
     rdma_dl_handle = dlopen("librdmacm.so", RTLD_NOW);
     if (!rdma_dl_handle) {
+        path = getenv("MV2_LIBRDMACM_PATH");
+        if (path) {
+            rdma_dl_handle = dlopen(path, RTLD_NOW);
+        }
+    }
+    if (!rdma_dl_handle) {
         fprintf(stderr, "Error opening librdmacm.so: %s.\n", dlerror());
+        if (!path) {
+            fprintf(stderr, "Please retry with MV2_LIBRDMACM_PATH="
+                            "<path/to/librdmacm.so>\n");
+        }
         return ERROR_DLOPEN;
     }
 #endif /*_ENABLE_IBV_DLOPEN_*/
@@ -439,9 +532,63 @@ static inline int mv2_rdma_dlopen_init()
 }
 #endif /*defined(RDMA_CM)*/
 
-static inline int mv2_dlopen_init()
+#if defined(_SHARP_SUPPORT_) 
+static inline int mv2_sharp_dlopen_init() 
 {
-    int err = SUCCESS_DLOPEN;
+    char *path;
+#ifdef _ENABLE_IBV_DLOPEN_
+    sharp_dl_handle = dlopen("libsharp_coll.so", RTLD_NOW);
+    if (!sharp_dl_handle) {
+        path = getenv("MV2_LIBSHARP_PATH");
+        if (path) {
+            sharp_dl_handle = dlopen(path, RTLD_NOW);
+        }
+    }
+    if (!sharp_dl_handle) {
+        fprintf(stderr, "Error opening libsharp_coll.so: %s.\n", dlerror());
+        if (!path) {
+            fprintf(stderr, "Please retry with MV2_LIBSHARP_PATH="
+                            "<path/to/libsharp_coll.so>\n");
+            fprintf(stderr, "Or please try with MV2_ENABLE_SHARP=0\n");
+        } else {
+            fprintf(stderr, "Please try with MV2_ENABLE_SHARP=0\n");
+        }
+        return ERROR_DLOPEN;
+    }
+#endif /*_ENABLE_IBV_DLOPEN_*/
+
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_init);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_finalize);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_caps_query);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_progress);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_comm_init);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_comm_destroy);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_do_barrier);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_do_barrier_nb);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_do_allreduce);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_do_allreduce_nb);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_do_reduce);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_do_reduce_nb);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_do_bcast);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_do_bcast_nb);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_req_test);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_req_wait);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_req_free);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_reg_mr);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_dereg_mr);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_print_config);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_strerror);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_dump_stats);
+    MV2_DLSYM(sharp_ops, sharp_dl_handle, sharp, coll_log_early_init);
+
+    return SUCCESS_DLOPEN;
+}
+#endif /* defined(_SHARP_SUPPORT_) */
+
+static inline int mv2_dlopen_init()
+{ 
+    int err = SUCCESS_DLOPEN; 
+
     err = mv2_ibv_dlopen_init();
     if (err != SUCCESS_DLOPEN) {
         fprintf(stderr, "mv2_ibv_dlopen_init returned %d\n", err);
@@ -464,6 +611,16 @@ static inline int mv2_dlopen_init()
         fprintf(stderr, "mv2_rdma_dlopen_init returned %d\n", err);
     }
 #endif /*defined(RDMA_CM)*/
+
+#if defined(_SHARP_SUPPORT_)
+    char *value;
+    if ((value = getenv("MV2_ENABLE_SHARP")) != NULL && atoi(value)) {
+        err = mv2_sharp_dlopen_init();
+        if (err != SUCCESS_DLOPEN) {
+            fprintf(stderr, "mv2_sharp_dlopen_init returned %d\n", err);
+        }
+    }
+#endif /*defined(_SHARP_SUPPORT_)*/
 
     return err;
 }
@@ -511,6 +668,17 @@ static inline void mv2_rdma_dlopen_finalize()
 }
 #endif /*defined(RDMA_CM)*/
 
+#if defined(_SHARP_SUPPORT_)
+static inline void mv2_sharp_dlopen_finalize()
+{
+#ifdef _ENABLE_IBV_DLOPEN_
+    if (sharp_dl_handle) {
+        dlclose(sharp_dl_handle);
+    }
+#endif /*_ENABLE_IBV_DLOPEN_*/
+}
+#endif /*defined(_SHARP_SUPPORT)*/
+
 static inline int mv2_dlopen_finalize()
 {
     mv2_ibv_dlopen_finalize();
@@ -523,6 +691,9 @@ static inline int mv2_dlopen_finalize()
 #if defined(RDMA_CM)
     mv2_rdma_dlopen_finalize();
 #endif /*defined(RDMA_CM)*/
+#if defined(_SHARP_SUPPORT_)
+    mv2_sharp_dlopen_finalize();
+#endif /*defined(_SHARP_SUPPORT_)*/
 
     return SUCCESS_DLOPEN;
 }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -462,7 +462,7 @@ static inline int mv2_op_mcast_group(mcast_init_info_t * all_init_info,
                                                  IB_SA_MCM_MLID_F);
                     mad_ops.get_array(mad, IB_SA_DATA_OFFS, IB_SA_MCM_MGID_F, mgid->raw);
                     PRINT_DEBUG(DEBUG_MCST_verbose > 1,
-                                "multicast join returned mlid:%8x mgid:0x%16lx\n ",
+                                "multicast join returned mlid:%8x mgid:0x%16llx\n ",
                                 *mlid, mgid->global.interface_id);
                 }
             }

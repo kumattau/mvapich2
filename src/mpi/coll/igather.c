@@ -28,6 +28,53 @@ int MPI_Igather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void 
 #undef MPI_Igather
 #define MPI_Igather PMPI_Igather
 
+#if (defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM))
+#include "coll_shmem.h"
+
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_igather_binomial);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_igather_inter);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_igather_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_binomial);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_binomial_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_binomial_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_binomial_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_binomial_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igather_count_recv);
+
+#define PVAR_TIME_START(optype, op, algo) \
+        MPIR_TIMER_START(optype, op, algo); 
+
+#define PVAR_TIME_STOP(optype, op, algo) \
+        MPIR_TIMER_END(optype, op, algo);
+    
+
+#define PVAR_INC_1(M, alg, num) \
+    MPIR_T_PVAR_COUNTER_INC(M, alg, num);
+
+#define PVAR_INC_MSG(op, algo, sr, count, datatype) \
+    MPIR_PVAR_INC(op, algo, sr, count, datatype);
+
+#else
+/* Idea of redefining macros to wrap around calls for portability reasons */
+#define PVAR_TIME_START(optype, op, algo) 
+#define PVAR_TIME_STOP(optype, op, algo) 
+#define PVAR_INC_1(M, alg, num)   
+#define PVAR_INC_MSG(op, algo, sr, count, datatype)
+
+#endif
 /* any non-MPI functions go here, especially non-static ones */
 
 /* This is the default implementation of igather. The algorithm is:
@@ -57,6 +104,7 @@ int MPI_Igather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void 
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Igather_binomial(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, igather, binomial);
     int mpi_errno = MPI_SUCCESS;
     int comm_size, rank;
     int relative_rank, is_homogeneous;
@@ -72,6 +120,7 @@ int MPIR_Igather_binomial(const void *sendbuf, int sendcount, MPI_Datatype sendt
     int copy_offset = 0, copy_blks = 0;
     MPI_Datatype types[2], tmp_type;
     MPIR_SCHED_CHKPMEM_DECL(1);
+    PVAR_INC_1(MV2, mv2_coll_igather_binomial, 1);
 
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -169,12 +218,16 @@ int MPIR_Igather_binomial(const void *sendbuf, int sendcount, MPI_Datatype sendt
                              * should cover the case where the root is
                              * rank 0. */
                             char *rp = (char *)recvbuf + (((rank + mask) % comm_size)*recvcount*extent);
+                            PVAR_INC_MSG(igather, binomial, recv, (recvblks * recvcount), recvtype);
+                            PVAR_INC_MSG(igather, intra, recv, (recvblks * recvcount), recvtype);
                             mpi_errno = MPID_Sched_recv(rp, (recvblks * recvcount), recvtype, src, comm_ptr, s);
                             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                             mpi_errno = MPID_Sched_barrier(s);
                             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                         }
                         else if (nbytes < MPIR_CVAR_GATHER_VSMALL_MSG_SIZE) {
+                            PVAR_INC_MSG(igather, binomial, recv, (recvblks * nbytes), MPI_BYTE);
+                            PVAR_INC_MSG(igather, intra, recv, (recvblks * nbytes), MPI_BYTE);
                             mpi_errno = MPID_Sched_recv(tmp_buf, (recvblks * nbytes), MPI_BYTE, src, comm_ptr, s);
                             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                             mpi_errno = MPID_Sched_barrier(s);
@@ -187,12 +240,13 @@ int MPIR_Igather_binomial(const void *sendbuf, int sendcount, MPI_Datatype sendt
                             displs[0] = recvcount * (root + mask);
                             blocks[1] = (recvcount * recvblks) - blocks[0];
                             displs[1] = 0;
-
                             mpi_errno = MPIR_Type_indexed_impl(2, blocks, displs, recvtype, &tmp_type);
                             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                             mpi_errno = MPIR_Type_commit_impl(&tmp_type);
                             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
+                            PVAR_INC_MSG(igather, binomial, recv, 1, tmp_type);
+                            PVAR_INC_MSG(igather, intra, recv, 1, tmp_type);
                             mpi_errno = MPID_Sched_recv(recvbuf, 1, tmp_type, src, comm_ptr, s);
                             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                             mpi_errno = MPID_Sched_barrier(s);
@@ -215,6 +269,8 @@ int MPIR_Igather_binomial(const void *sendbuf, int sendcount, MPI_Datatype sendt
                             offset = mask * nbytes;
                         else
                             offset = (mask - 1) * nbytes;
+                        PVAR_INC_MSG(igather, binomial, recv, (recvblks * nbytes), MPI_BYTE);
+                        PVAR_INC_MSG(igather, intra, recv, (recvblks * nbytes), MPI_BYTE);
                         mpi_errno = MPID_Sched_recv(((char *)tmp_buf + offset), (recvblks * nbytes),
                                                     MPI_BYTE, src, comm_ptr, s);
                         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -230,12 +286,15 @@ int MPIR_Igather_binomial(const void *sendbuf, int sendcount, MPI_Datatype sendt
 
                 if (!tmp_buf_size) {
                     /* leaf nodes send directly from sendbuf */
+                    PVAR_INC_MSG(igather, binomial, send, sendcount, sendtype);
                     mpi_errno = MPID_Sched_send(sendbuf, sendcount, sendtype, dst, comm_ptr, s);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                     mpi_errno = MPID_Sched_barrier(s);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                 }
                 else if (nbytes < MPIR_CVAR_GATHER_VSMALL_MSG_SIZE) {
+                    PVAR_INC_MSG(igather, binomial, send, curr_cnt, MPI_BYTE);
+                    PVAR_INC_MSG(igather, intra, send, curr_cnt, MPI_BYTE);
                     mpi_errno = MPID_Sched_send(tmp_buf, curr_cnt, MPI_BYTE, dst, comm_ptr, s);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                     mpi_errno = MPID_Sched_barrier(s);
@@ -260,7 +319,8 @@ int MPIR_Igather_binomial(const void *sendbuf, int sendcount, MPI_Datatype sendt
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                     mpi_errno = MPIR_Type_commit_impl(&tmp_type);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-
+                    PVAR_INC_MSG(igather, binomial, send, 1, tmp_type);
+                    PVAR_INC_MSG(igather, intra, send, 1, tmp_type);
                     mpi_errno = MPID_Sched_send(MPI_BOTTOM, 1, tmp_type, dst, comm_ptr, s);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                     MPID_SCHED_BARRIER(s);
@@ -379,6 +439,7 @@ int MPIR_Igather_binomial(const void *sendbuf, int sendcount, MPI_Datatype sendt
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, igather, binomial);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -391,12 +452,15 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Igather_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, igather, intra);
     int mpi_errno = MPI_SUCCESS;
+    PVAR_INC_1(MV2, mv2_coll_igather_intra, 1);
 
     mpi_errno = MPIR_Igather_binomial(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm_ptr, s);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
 fn_exit:
+    PVAR_TIME_STOP(coll, igather, intra);
     return mpi_errno;
 fn_fail:
     goto fn_exit;
@@ -408,6 +472,7 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Igather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, igather, inter);
     int mpi_errno = MPI_SUCCESS;
     int rank;
     MPI_Aint local_size, remote_size;
@@ -417,6 +482,7 @@ int MPIR_Igather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     void *tmp_buf = NULL;
     MPID_Comm *newcomm_ptr = NULL;
     MPIR_SCHED_CHKPMEM_DECL(1);
+    PVAR_INC_1(MV2, mv2_coll_igather_inter, 1);
 
 /*  Intercommunicator gather.
     For short messages, remote group does a local intracommunicator
@@ -450,6 +516,7 @@ int MPIR_Igather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     if (nbytes < MPIR_CVAR_GATHER_INTER_SHORT_MSG_SIZE) {
         if (root == MPI_ROOT) {
             /* root receives data from rank 0 on remote group */
+            PVAR_INC_MSG(igather, inter, send, recvcount * remote_size, recvtype);
             mpi_errno = MPID_Sched_recv(recvbuf, recvcount*remote_size, recvtype, 0, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         }
@@ -484,9 +551,12 @@ int MPIR_Igather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendtype
             mpi_errno = newcomm_ptr->coll_fns->Igather_sched(sendbuf, sendcount, sendtype,
                                                        tmp_buf, sendcount, sendtype, 0,
                                                        newcomm_ptr, s);
+            PVAR_INC_MSG(igather, inter, send, sendcount, sendtype);
+            PVAR_INC_MSG(igather, inter, recv, sendcount, sendtype);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
             if (rank == 0) {
+                PVAR_INC_MSG(igather, inter, send, sendcount*local_size, sendtype);
                 mpi_errno = MPID_Sched_send(tmp_buf, sendcount*local_size, sendtype, root, comm_ptr, s);
                 if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             }
@@ -500,12 +570,14 @@ int MPIR_Igather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendtype
                                              (recvcount*remote_size*extent));
 
             for (i=0; i<remote_size; i++) {
+                PVAR_INC_MSG(igather, inter, recv, recvcount, recvtype);
                 mpi_errno = MPID_Sched_recv(((char *)recvbuf+recvcount*i*extent),
                                             recvcount, recvtype, i, comm_ptr, s);
                 if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             }
         }
         else {
+            PVAR_INC_MSG(igather, inter, send, sendcount, sendtype);
             mpi_errno = MPID_Sched_send(sendbuf, sendcount, sendtype, root, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         }
@@ -513,6 +585,7 @@ int MPIR_Igather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendtype
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, igather, inter);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);

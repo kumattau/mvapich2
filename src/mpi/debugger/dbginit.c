@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2001-2021, The Ohio State University. All rights
+ * Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -165,7 +165,7 @@ const char * MPIR_debug_abort_string = 0;
  * all of the processes.
  */
 typedef struct {
-    char *host_name;         /* Valid name for inet_addr */
+    char *host_name;         /* Valid name for inet_pton */
     char *executable_name;   /* The name of the image */
     int  pid;                /* The process id */
 } MPIR_PROCDESC;

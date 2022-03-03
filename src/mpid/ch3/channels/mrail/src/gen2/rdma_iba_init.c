@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -447,8 +447,6 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     }
     mv2_take_timestamp("rdma_iba_hca_init (loop)", NULL);
 
-    mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize = RDMA_MAX_RDMA_SIZE;
-	
     mv2_take_timestamp("RDMA_init (Section 3)", NULL);
     mv2_take_timestamp("RDMA_init (Section 4)", NULL);
 
@@ -1497,7 +1495,6 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
     int ud_width    = 0;
     int hca_index   = 0;
 #endif /*_ENABLE_UD_*/
-    int hostid      = 0;
     int offset      = 0;
     int mpi_errno   = MPI_SUCCESS;
     int chunk_num   = 0;
@@ -1641,6 +1638,7 @@ int MPIDI_CH3I_PMI_Get_Init_Info(MPIDI_PG_t * pg, int tgt_rank,
                 mpi_errno = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val,
                         mv2_pmi_max_vallen);
                 if (mpi_errno != UPMI_SUCCESS) {
+                    mpi_errno = MPI_ERR_INTERN;
                     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get",
                             "**pmi_kvs_get %d", mpi_errno);
                 }
@@ -2147,8 +2145,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
         MPIU_Memset(&(vc->mrail), 0, sizeof(vc->mrail));
     }
     mv2_take_timestamp("init vc structure (loop)", NULL);
-
-    mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize = RDMA_MAX_RDMA_SIZE;
 
     /* Initialize the registration cache */
     mv2_take_timestamp("dreg_init", NULL);
@@ -2670,8 +2666,6 @@ int MPIDI_CH3I_RDMA_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     if (mpi_errno != MPI_SUCCESS) {
         MPIR_ERR_POP(mpi_errno);
     }
-
-    mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize = RDMA_MAX_RDMA_SIZE;
 
     error = UPMI_BARRIER();
     if (error != UPMI_SUCCESS) {

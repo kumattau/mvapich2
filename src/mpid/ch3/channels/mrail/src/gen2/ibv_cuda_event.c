@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -197,7 +197,7 @@ void process_cuda_event_op(mv2_device_event_t * event)
  
         if (req->mrail.device_transfer_mode == DEVICE_TO_DEVICE) {
             if (size <= rdma_large_msg_rail_sharing_threshold) {
-                rail = MRAILI_Send_select_rail(vc);
+                rail = MRAILI_Send_select_rail(vc, size);
 
                 v = cuda_vbuf;
                 v->sreq = req;        
@@ -237,7 +237,7 @@ void process_cuda_event_op(mv2_device_event_t * event)
             req->mrail.num_remote_device_done++;
         } else if (req->mrail.device_transfer_mode == DEVICE_TO_HOST) {
             if (size <= rdma_large_msg_rail_sharing_threshold) {
-                rail = MRAILI_Send_select_rail(vc);
+                rail = MRAILI_Send_select_rail(vc, size);
 
                 v = cuda_vbuf;
                 v->sreq = req;

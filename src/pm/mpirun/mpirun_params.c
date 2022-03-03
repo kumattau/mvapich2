@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -172,7 +172,7 @@ static inline int mpirun_get_launcher(char *launcher_arg)
             USE_SRUN = 1;
             DBG(fprintf(stderr, "srun => use_rsh: %d, USE_SRUN: %d\n", use_rsh, USE_SRUN));
             break;
-        defaut:
+        default:
             fprintf(stderr, "Invalid launcher selected. Launcher must be one of:\n");
             for (i = 0; i < launchers; i++) {
                 fprintf(stderr, "\t%s\n", mpirun_launcher_options[i]);
@@ -433,8 +433,14 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 
     }
 
-    if (!hostfile_on) {
+    if (!hostfile_on && !nprocs_per_node) {
         /* get hostnames from argument list */
+        /* TODO: this line is a bad hack and assumes that args < np will
+         * always be hostnames. However, consider the case of np=2 and the
+         * benchmark './osu_latency -m 256'. In this instance we would
+         * consider './osu_latency' and '-m' to be hosts. It would be much
+         * better practice to delimit the host list with a flag
+         */
         if (strchr(argv[optind], '=') || argc - optind < nprocs + 1) {
             /* only fall back to default host file if no RM detected */
             if (using_slurm || using_pbs) {
@@ -452,8 +458,10 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
                 aout_index = optind;
                 goto cont;
             } else {
-                PRINT_ERROR("No hostfile specified and no supported RM detected.\n");
-                fprintf(stderr, "Without hostfile option, hostnames must be " "specified on command line.\n");
+                PRINT_ERROR("No hostfile specified and no supported RM "
+                            "detected.\n");
+                PRINT_ERROR("Without hostfile option, hostnames must be " 
+                                "specified on command line.\n");
                 usage(argv[0]);
                 exit(EXIT_FAILURE);
             }
@@ -462,7 +470,6 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
         cmd_line_hosts = 1;
         aout_index = nprocs + optind;
     } else {                    /* if (!hostfile_on) */
-
         aout_index = optind;
     }
 

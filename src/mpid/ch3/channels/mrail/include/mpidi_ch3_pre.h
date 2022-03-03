@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,6 +26,7 @@
 
 #if defined (_SHARP_SUPPORT_)
 #include "api/sharp_coll.h"
+#include "ibv_sharp.h"
 #endif
 
 /*#define MPICH_DBG_OUTPUT*/
@@ -64,6 +65,11 @@ typedef struct {
     int     reduce_coll_count;
     int     bcast_coll_count;
     int     scatter_coll_count;
+    int     scatterv_coll_count;
+    int     iallreduce_coll_count;
+    int     ireduce_coll_count;
+    int     ibcast_coll_count;
+    int     ibarrier_coll_count;
     void    *shmem_info; /* intra node shmem info */
     MPI_Comm     intra_sock_comm;
     MPI_Comm     intra_sock_leader_comm;
@@ -98,8 +104,8 @@ typedef struct {
 #define MPIDI_CH3_SHARP_REQUEST_INIT(_req)  \
             (_req)->sharp_req = NULL;       \
 
-#define MPID_SHARP_COLL_REQ_WAIT(_req)     sharp_coll_req_wait(_req->sharp_req)
-#define MPID_SHARP_COLL_REQ_FREE(_req)     sharp_coll_req_free(_req->sharp_req)
+#define MPID_SHARP_COLL_REQ_WAIT(_req)     sharp_ops.coll_req_wait(_req->sharp_req)
+#define MPID_SHARP_COLL_REQ_FREE(_req)     sharp_ops.coll_req_free(_req->sharp_req)
 #define MPID_SHARP_COLL_SUCCESS            SHARP_COLL_SUCCESS 
 #endif
 

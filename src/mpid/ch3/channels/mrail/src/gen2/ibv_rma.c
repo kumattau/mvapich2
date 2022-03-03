@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -62,7 +62,7 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
         MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(req, rndv);
     }
 
-    rail = MRAILI_Send_select_rail(vc);
+    rail = MRAILI_Send_select_rail(vc, rdma_iba_eager_threshold+1);
 
     /* STEP 2: Push RDMA write */
     while ((req->mrail.rndv_buf_off < req->mrail.rndv_buf_sz)

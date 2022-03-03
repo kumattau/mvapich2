@@ -102,9 +102,10 @@ SOCKET_FD_TYPE client_routine(int portnum)
 {
     SOCKET_FD_TYPE sockfd;
     struct sockaddr_in server_addr;
-    struct hostent *server_ent;
+    struct addrinfo *info = NULL;
     char hostname[MPI_MAX_PROCESSOR_NAME];
     int hostnamelen;
+    int mpi_errno = 0;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == INVALID_SOCKET_FD) {
@@ -114,21 +115,19 @@ SOCKET_FD_TYPE client_routine(int portnum)
 
     /* Try to get the processor name from MPI */
     MPI_Get_processor_name(hostname, &hostnamelen);
-    server_ent = gethostbyname(hostname);
-    if (server_ent == NULL) {
-        fprintf(stderr, "gethostbyname fails\n");
-        return -1;
+    struct addrinfo hints = { .ai_family = AF_INET };
+    mpi_errno = getaddrinfo(hostname, NULL, &hints, &info);
+    if (mpi_errno != 0) {
+        fprintf(stderr, "getaddrinfo failed with return code %d\n", mpi_errno);
+        return mpi_errno;
     }
 
+    struct sockaddr_in* ai_addr = (struct sockaddr_in*)info->ai_addr;
     memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(portnum);
-    /* POSIX might define h_addr_list only and not define h_addr */
-#ifdef HAVE_H_ADDR_LIST
-    bcopy(server_ent->h_addr_list[0], (char *) &server_addr.sin_addr.s_addr, server_ent->h_length);
-#else
-    bcopy(server_ent->h_addr, (char *) &server_addr.sin_addr.s_addr, server_ent->h_length);
-#endif
+    server_addr.sin_family = ai_addr->sin_family;
+    server_addr.sin_port = ai_addr->sin_port;
+    bcopy(&ai_addr->sin_addr, &server_addr.sin_addr.s_addr, sizeof(ai_addr->sin_addr));
+    freeaddrinfo(info);
 
     if (connect(sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
         perror("client connect");

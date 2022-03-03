@@ -26,6 +26,67 @@ int MPI_Iallgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, vo
 #undef MPI_Iallgather
 #define MPI_Iallgather PMPI_Iallgather
 
+#if (defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)) && ENABLE_PVAR_MV2
+#include "coll_shmem.h"
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_iallgather_rec_dbl);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_iallgather_bruck);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_iallgather_ring);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_iallgather_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_iallgather_inter);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_rec_dbl);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_bruck);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_ring);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_rec_dbl_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_rec_dbl_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_bruck_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_bruck_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_ring_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_ring_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_rec_dbl_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_rec_dbl_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_bruck_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_bruck_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_ring_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_ring_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_iallgather_count_recv);
+
+#define PVAR_TIME_START(optype, op, algo) \
+        MPIR_TIMER_START(optype, op, algo); 
+
+#define PVAR_TIME_STOP(optype, op, algo) \
+        MPIR_TIMER_END(optype, op, algo); 
+    
+
+#define PVAR_INC_1(M, alg, num) \
+    MPIR_T_PVAR_COUNTER_INC(M, alg, num);
+
+#define PVAR_INC_MSG(op, algo, sr, count, datatype) \
+    MPIR_PVAR_INC(op, algo, sr, count, datatype);
+
+
+#else /* (CHANNEL MRAIL OR PSM) AND ENABLE_MV2_PVAR */
+/* Idea of redefining macros to wrap around calls for portability reasons */
+#define PVAR_TIME_START(optype, op, algo) 
+#define PVAR_TIME_STOP(optype, op, algo) 
+#define PVAR_INC_1(M, alg, num)   
+#define PVAR_INC_MSG(op, algo, sr, count, datatype)
+  
+#endif
+
 /* any non-MPI functions go here, especially non-static ones */
 
 /* helper callbacks and associated state structures */
@@ -59,6 +120,7 @@ static int dtp_release_ref(MPID_Comm *comm, int tag, void *state)
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Iallgather_rec_dbl(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, iallgather, rec_dbl);
     int mpi_errno = MPI_SUCCESS;
     struct shared_state *ss = NULL;
     int comm_size, rank;
@@ -69,6 +131,7 @@ int MPIR_Iallgather_rec_dbl(const void *sendbuf, int sendcount, MPI_Datatype sen
     MPI_Aint recvtype_extent;
     MPID_Datatype *recv_dtp;
     MPIR_SCHED_CHKPMEM_DECL(1);
+    PVAR_INC_1(MV2, mv2_coll_iallgather_rec_dbl, 1);
 
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -121,6 +184,8 @@ int MPIR_Iallgather_rec_dbl(const void *sendbuf, int sendcount, MPI_Datatype sen
         recv_offset = dst_tree_root * recvcount * recvtype_extent;
 
         if (dst < comm_size) {
+            PVAR_INC_MSG(iallgather, rec_dbl, send,*( &ss->curr_count), recvtype);
+            PVAR_INC_MSG(iallgather, rec_dbl, recv, ((comm_size-dst_tree_root)*recvcount), recvtype);
             mpi_errno = MPID_Sched_send_defer(((char *)recvbuf + send_offset),
                                               &ss->curr_count, recvtype, dst, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -186,6 +251,8 @@ int MPIR_Iallgather_rec_dbl(const void *sendbuf, int sendcount, MPI_Datatype sen
                     /* last_recv_count was set in the previous
                        receive. that's the amount of data to be
                        sent now. */
+                    PVAR_INC_MSG(iallgather, rec_dbl, send, *(&ss->last_recv_count), recvtype);
+                   
                     mpi_errno = MPID_Sched_send_defer(((char *)recvbuf + offset),
                                                       &ss->last_recv_count,
                                                       recvtype, dst, comm_ptr, s);
@@ -200,6 +267,7 @@ int MPIR_Iallgather_rec_dbl(const void *sendbuf, int sendcount, MPI_Datatype sen
                 {
                     /* nprocs_completed is also equal to the
                        no. of processes whose data we don't have */
+                    PVAR_INC_MSG(iallgather, rec_dbl, recv, ((comm_size-(my_tree_root+mask))*recvcount), recvtype);
                     mpi_errno = MPID_Sched_recv_status(((char *)recvbuf + offset),
                                                        ((comm_size - (my_tree_root + mask))*recvcount),
                                                        recvtype, dst, comm_ptr, &ss->status, s);
@@ -226,6 +294,7 @@ int MPIR_Iallgather_rec_dbl(const void *sendbuf, int sendcount, MPI_Datatype sen
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, iallgather, rec_dbl);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -238,12 +307,14 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Iallgather_bruck(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, iallgather, bruck);
     int mpi_errno = MPI_SUCCESS;
     int pof2, curr_cnt, rem, src, dst;
     int rank, comm_size;
     MPI_Aint recvtype_extent, recvtype_true_lb, recvtype_true_extent, recvbuf_extent;
     void *tmp_buf = NULL;
     MPIR_SCHED_CHKPMEM_DECL(1);
+    PVAR_INC_1(MV2, mv2_coll_iallgather_bruck, 1);
 
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -287,7 +358,8 @@ int MPIR_Iallgather_bruck(const void *sendbuf, int sendcount, MPI_Datatype sendt
     while (pof2 <= comm_size/2) {
         src = (rank + pof2) % comm_size;
         dst = (rank - pof2 + comm_size) % comm_size;
-
+        PVAR_INC_MSG(iallgather, bruck, send, curr_cnt, recvtype);
+        PVAR_INC_MSG(iallgather, bruck, recv, curr_cnt, recvtype);
         mpi_errno = MPID_Sched_send(tmp_buf, curr_cnt, recvtype, dst, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         /* logically sendrecv, so no barrier here */
@@ -306,7 +378,8 @@ int MPIR_Iallgather_bruck(const void *sendbuf, int sendcount, MPI_Datatype sendt
     if (rem) {
         src = (rank + pof2) % comm_size;
         dst = (rank - pof2 + comm_size) % comm_size;
-
+        PVAR_INC_MSG(iallgather, bruck, send, rem * recvcount, recvtype);
+        PVAR_INC_MSG(iallgather, bruck, recv, rem * recvcount, recvtype);
         mpi_errno = MPID_Sched_send(tmp_buf, rem * recvcount, recvtype, dst, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         /* logically sendrecv, so no barrier here */
@@ -334,6 +407,7 @@ int MPIR_Iallgather_bruck(const void *sendbuf, int sendcount, MPI_Datatype sendt
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, iallgather, bruck);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -346,6 +420,7 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Iallgather_ring(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, iallgather, ring);
     int mpi_errno = MPI_SUCCESS;
     int rank, comm_size;
     int i, j, jnext, left, right;
@@ -377,6 +452,8 @@ int MPIR_Iallgather_ring(const void *sendbuf, int sendcount, MPI_Datatype sendty
     j     = rank;
     jnext = left;
     for (i=1; i<comm_size; i++) {
+        PVAR_INC_MSG(iallgather, bruck, send, recvcount, recvtype);
+        PVAR_INC_MSG(iallgather, bruck, recv, recvcount, recvtype);
         mpi_errno = MPID_Sched_send(((char *)recvbuf + j*recvcount*recvtype_extent),
                                      recvcount, recvtype, right, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -391,6 +468,7 @@ int MPIR_Iallgather_ring(const void *sendbuf, int sendcount, MPI_Datatype sendty
     }
 
 fn_exit:
+    PVAR_TIME_STOP(coll, iallgather, ring);
     return mpi_errno;
 fn_fail:
     goto fn_exit;
@@ -447,9 +525,11 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Iallgather_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, iallgather, intra);
     int mpi_errno = MPI_SUCCESS;
     int comm_size, recvtype_size;
     int tot_bytes;
+    PVAR_INC_1(MV2, mv2_coll_iallgather_intra, 1);
 
     if (((sendcount == 0) && (sendbuf != MPI_IN_PLACE)) || (recvcount == 0))
         return MPI_SUCCESS;
@@ -462,6 +542,7 @@ int MPIR_Iallgather_intra(const void *sendbuf, int sendcount, MPI_Datatype sendt
     if ((tot_bytes < MPIR_CVAR_ALLGATHER_LONG_MSG_SIZE) && !(comm_size & (comm_size - 1))) {
         /* Short or medium size message and power-of-two no. of processes. Use
          * recursive doubling algorithm */
+        
         mpi_errno = MPIR_Iallgather_rec_dbl(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
@@ -477,8 +558,10 @@ int MPIR_Iallgather_intra(const void *sendbuf, int sendcount, MPI_Datatype sendt
         mpi_errno = MPIR_Iallgather_ring(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
-
+    PVAR_INC_MSG(iallgather, intra, send, recvcount * comm_size, recvtype);
+    PVAR_INC_MSG(iallgather, intra, recv, recvcount * comm_size, recvtype);
 fn_exit:
+    PVAR_TIME_STOP(coll, iallgather, intra);
     return mpi_errno;
 fn_fail:
     goto fn_exit;
@@ -494,12 +577,14 @@ int MPIR_Iallgather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendt
        Each group does a gather to local root with the local
        intracommunicator, and then does an intercommunicator broadcast.
     */
+    PVAR_TIME_START(coll, iallgather, inter);
     int mpi_errno = MPI_SUCCESS;
     int rank, local_size, remote_size, root;
     MPI_Aint true_extent, true_lb = 0, extent, send_extent;
     void *tmp_buf = NULL;
     MPID_Comm *newcomm_ptr = NULL;
     MPIR_SCHED_CHKPMEM_DECL(1);
+    PVAR_INC_1(MV2, mv2_coll_iallgather_inter, 1);
 
     local_size = comm_ptr->local_size;
     remote_size = comm_ptr->remote_size;
@@ -531,6 +616,8 @@ int MPIR_Iallgather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendt
         mpi_errno = newcomm_ptr->coll_fns->Igather_sched(sendbuf, sendcount, sendtype,
                                                    tmp_buf, sendcount, sendtype,
                                                    0, newcomm_ptr, s);
+        PVAR_INC_MSG(iallgather, inter, send, sendcount * local_size, recvtype);
+        PVAR_INC_MSG(iallgather, inter, send, recvcount * local_size, recvtype);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         MPID_SCHED_BARRIER(s);
     }
@@ -542,6 +629,8 @@ int MPIR_Iallgather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendt
         /* bcast to right*/
         if (sendcount != 0) {
             root = (rank == 0) ? MPI_ROOT : MPI_PROC_NULL;
+            PVAR_INC_MSG(iallgather, inter, send, sendcount * local_size, recvtype);
+            PVAR_INC_MSG(iallgather, inter, send, sendcount * local_size, recvtype);
             mpi_errno = comm_ptr->coll_fns->Ibcast_sched(tmp_buf, sendcount*local_size,
                                                    sendtype, root, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -552,6 +641,8 @@ int MPIR_Iallgather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendt
         /* receive bcast from right */
         if (recvcount != 0) {
             root = 0;
+            PVAR_INC_MSG(iallgather, inter, send, recvcount * remote_size, recvtype);
+            PVAR_INC_MSG(iallgather, inter, send, recvcount * remote_size, recvtype);
             mpi_errno = comm_ptr->coll_fns->Ibcast_sched(recvbuf, recvcount*remote_size,
                                                    recvtype, root, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -562,6 +653,8 @@ int MPIR_Iallgather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendt
         /* receive bcast from left */
         if (recvcount != 0) {
             root = 0;
+            PVAR_INC_MSG(iallgather, inter, send, sendcount * remote_size, recvtype);
+            PVAR_INC_MSG(iallgather, inter, send, recvcount * remote_size, recvtype);
             mpi_errno = comm_ptr->coll_fns->Ibcast_sched(recvbuf, recvcount*remote_size,
                                                    recvtype, root, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -572,6 +665,8 @@ int MPIR_Iallgather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendt
         /* bcast to left */
         if (sendcount != 0) {
             root = (rank == 0) ? MPI_ROOT : MPI_PROC_NULL;
+            PVAR_INC_MSG(iallgather, inter, send, sendcount * local_size, recvtype);
+            PVAR_INC_MSG(iallgather, inter, send, sendcount * local_size, recvtype);
             mpi_errno = comm_ptr->coll_fns->Ibcast_sched(tmp_buf, sendcount*local_size,
                                                    sendtype, root, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -581,6 +676,7 @@ int MPIR_Iallgather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendt
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, iallgather, inter);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -604,6 +700,7 @@ int MPIR_Iallgather_impl(const void *sendbuf, int sendcount, MPI_Datatype sendty
     if (comm_ptr->coll_fns->Iallgather_req != NULL) {
         /* --BEGIN USEREXTENSION-- */
         mpi_errno = comm_ptr->coll_fns->Iallgather_req(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype,comm_ptr, &reqp);
+        
         if (reqp) {
             *request = reqp->handle;
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -621,7 +718,7 @@ int MPIR_Iallgather_impl(const void *sendbuf, int sendcount, MPI_Datatype sendty
     MPIU_Assert(comm_ptr->coll_fns->Iallgather_sched != NULL);
     mpi_errno = comm_ptr->coll_fns->Iallgather_sched(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm_ptr, s);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-
+    
     mpi_errno = MPID_Sched_start(&s, comm_ptr, tag, &reqp);
     if (reqp)
         *request = reqp->handle;

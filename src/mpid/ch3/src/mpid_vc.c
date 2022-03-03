@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1347,7 +1347,6 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     int odd_even_cliques = 0;
     int pmi_version = MPIDI_CH3I_DEFAULT_PMI_VERSION;
     int pmi_subversion = MPIDI_CH3I_DEFAULT_PMI_SUBVERSION;
-    char *using_slurm = getenv("SLURM_NPROCS");
     MPIU_CHKLMEM_DECL(4);
 
     /* See if the user wants to override our default values */
@@ -1405,6 +1404,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         int rank;
         int block, block_node, node_proc;
         int did_map = 0;
+        char *using_slurm = getenv("SLURM_NPROCS");
 
         mpi_errno = UPMI_GET_JOB_ATTR("PMI_process_mapping", process_mapping, sizeof(process_mapping), &found);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);

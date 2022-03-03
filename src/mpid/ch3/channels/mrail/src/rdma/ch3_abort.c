@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -13,9 +13,9 @@
 #include "mpidi_ch3_impl.h"
 #include "upmi.h"
 #include "error_handling.h"
-#if !defined(SLURM_PMI_CLIENT) && !defined(JSM_PMI_CLIENT) && !defined(FLUX_PMI_CLIENT)
+#ifdef HYDRA_PMI_CLIENT
 #include "src/pm/hydra/include/hydra_config.h"
-#endif /* !defined(SLURM_PMI_CLIENT) && !defined(JSM_PMI_CLIENT) && !defined(FLUX_PMI_CLIENT) */
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Abort

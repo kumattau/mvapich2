@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -260,7 +260,7 @@ static inline vbuf * MRAILI_Get_Vbuf(MPIDI_VC_t * vc, size_t pkt_len)
         }
     }
 
-    rail = MRAILI_Send_select_rail(vc);
+    rail = MRAILI_Send_select_rail(vc, pkt_len);
     /* if there already wasn't a vbuf that could
      * hold our packet we need to allocate a 
      * new one
@@ -507,7 +507,7 @@ static inline int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_MRAILI_FAST_RDMA_SEND_COMPLETE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_MRAILI_FAST_RDMA_SEND_COMPLETE);
 
-    rail = MRAILI_Send_select_rail(vc);
+    rail = MRAILI_Send_select_rail(vc, *num_bytes_ptr);
     MRAILI_Fast_rdma_fill_start_buf(vc, iov, n_iov, num_bytes_ptr);
 
     post_len = *num_bytes_ptr;
@@ -957,7 +957,7 @@ static inline int mv2_eager_fast_send(MPIDI_VC_t* vc, const void *buf,
     MPIDI_CH3_Pkt_t *upkt = NULL;
     MPIDI_CH3_Pkt_eager_send_t *eager_pkt = NULL;
 
-    rail = MRAILI_Send_select_rail(vc);
+    rail = MRAILI_Send_select_rail(vc, data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t));
 
     /* Get VBUF */
     MRAILI_Get_buffer(vc, v, data_sz+sizeof(MPIDI_CH3_Pkt_eager_send_t));

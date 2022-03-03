@@ -141,7 +141,7 @@ static int easy_create_ranged(SOCKET *sock, int port, unsigned long addr)
 	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_FAIL, "**socket", "**socket %s %d", get_error_string(mpi_errno), mpi_errno);
 	return mpi_errno;
     }
-    
+
     MPIR_ERR_CHKANDJUMP(MPIR_CVAR_CH3_PORT_RANGE.low < 0 || MPIR_CVAR_CH3_PORT_RANGE.low > MPIR_CVAR_CH3_PORT_RANGE.high, mpi_errno, MPI_ERR_OTHER, "**badportrange");
     if (port == 0 && MPIR_CVAR_CH3_PORT_RANGE.low != 0 && MPIR_CVAR_CH3_PORT_RANGE.high != 0)
     {
@@ -150,7 +150,7 @@ static int easy_create_ranged(SOCKET *sock, int port, unsigned long addr)
     }
 
     memset(&sockAddr,0,sizeof(sockAddr));
-    
+
     sockAddr.sin_family = AF_INET;
     sockAddr.sin_addr.s_addr = addr;
     sockAddr.sin_port = htons((unsigned short)port);
@@ -249,9 +249,9 @@ static int easy_create(SOCKET *sock, int port, unsigned long addr)
 	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_FAIL, "**socket", "**socket %s %d", get_error_string(mpi_errno), mpi_errno);
 	return mpi_errno;
     }
-    
+
     memset(&sockAddr,0,sizeof(sockAddr));
-    
+
     sockAddr.sin_family = AF_INET;
     sockAddr.sin_addr.s_addr = addr;
     sockAddr.sin_port = htons((unsigned short)port);
@@ -262,7 +262,7 @@ static int easy_create(SOCKET *sock, int port, unsigned long addr)
 	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_FAIL, "**socket", "**socket %s %d", get_error_string(mpi_errno), mpi_errno);
 	return mpi_errno;
     }
-    
+
     /* Set the linger on close option */
     /*
     linger.l_onoff = 1 ;
@@ -384,12 +384,12 @@ static inline int post_next_accept(sock_state_t * context)
 	return mpi_errno;
     }
     if (!AcceptEx(
-	context->listen_sock, 
-	context->sock, 
-	context->accept_buffer, 
-	0, 
-	sizeof(struct sockaddr_in)+16, 
-	sizeof(struct sockaddr_in)+16, 
+	context->listen_sock,
+	context->sock,
+	context->accept_buffer,
+	0,
+	sizeof(struct sockaddr_in)+16,
+	sizeof(struct sockaddr_in)+16,
 	&context->read.num_bytes,
 	&context->read.ovl))
     {
@@ -572,9 +572,9 @@ static int already_used_or_add(char *host, socki_host_name_t **list)
         iter->next = NULL;
         *list = iter;
     }
-    /* insert new hosts at the beginning of the list                            
-    iter->next = *list;                                                         
-    *list = iter;                                                               
+    /* insert new hosts at the beginning of the list
+    iter->next = *list;
+    *list = iter;
     */
 
     return 0;
@@ -712,7 +712,7 @@ int MPIDU_Sock_hostname_to_host_description(char *hostname, char *host_descripti
 #define FUNCNAME MPIDU_Sock_get_host_description
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIDU_Sock_get_host_description(int myRank, 
+int MPIDU_Sock_get_host_description(int myRank,
 				    char * host_description, int len)
 {
     int mpi_errno;
@@ -1139,6 +1139,17 @@ int MPIDU_Sock_post_connect(MPIDU_Sock_set_t set, void * user_ptr, char * host_d
     char *pEnv, *token;
     unsigned int nNicNet=0, nNicMask=0;
     int use_subnet = 0;
+    /* getaddrinfo hints struct */
+    struct addrinfo addr_hint = {
+        .ai_flags = AI_CANONNAME,
+        .ai_family = AF_INET,
+        .ai_socktype = 0,
+        .ai_protocol = 0,
+        .ai_addrlen = 0,
+        .ai_addr = NULL,
+        .ai_canonname = NULL,
+        .ai_next = NULL
+    };
     MPIDI_STATE_DECL(MPID_STATE_MPIDU_SOCK_POST_CONNECT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDU_SOCK_POST_CONNECT);
@@ -1212,23 +1223,28 @@ int MPIDU_Sock_post_connect(MPIDU_Sock_set_t set, void * user_ptr, char * host_d
 	}
 
 	sockAddr.sin_family = AF_INET;
-	sockAddr.sin_addr.s_addr = inet_addr(host);
+	int success = inet_pton(AF_INET, host, sockAddr.sin_addr.s_addr);
 
-	if (sockAddr.sin_addr.s_addr == INADDR_NONE || sockAddr.sin_addr.s_addr == 0)
+	if ( success != 1 )
 	{
-	    lphost = gethostbyname(host);
-	    if (lphost != NULL)
-		sockAddr.sin_addr.s_addr = ((struct in_addr *)lphost->h_addr)->s_addr;
+        // host is not valid address
+	    mpi_errno = getaddrinfo(host, NULL, &addr_hint, &res);
+	    if (lphost != NULL) {
+            sockAddr.sin_addr.s_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr;
+        }
 	    else
 	    {
-		mpi_errno = WSAGetLastError();
-		connect_errno = MPIR_Err_create_code(connect_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_FAIL, "**gethostbyname", "**gethostbyname %s %d", get_error_string(mpi_errno), mpi_errno);
-		/*
-		MPIDI_FUNC_EXIT(MPID_STATE_MPIDU_SOCK_POST_CONNECT);
-		return mpi_errno;
-		*/
-		continue;
-	    }
+            connect_errno = MPIR_Err_create_code(connect_errno,
+                            MPIR_ERR_RECOVERABLE, FCNAME, __LINE__,
+                            MPIDU_SOCK_ERR_FAIL, "**getaddrinfo",
+                            "**getaddrinfo %s %d", get_error_string(mpi_errno),
+                            mpi_errno);
+            /*
+            MPIDI_FUNC_EXIT(MPID_STATE_MPIDU_SOCK_POST_CONNECT);
+            return mpi_errno;
+            */
+            continue;
+        }
 	}
 
 	/* if a subnet was specified, make sure the currently extracted ip falls in the subnet */
@@ -1777,7 +1793,7 @@ int MPIDU_Sock_wait(MPIDU_Sock_set_t set, int timeout, MPIDU_Sock_event_t * out)
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDU_SOCK_WAIT);
 
-    for (;;) 
+    for (;;)
     {
 #if defined(MPICH_IS_THREADED)
 #       if (MPICH_THREAD_GRANULARITY == MPICH_THREAD_GRANULARITY_GLOBAL)
@@ -2126,7 +2142,7 @@ int MPIDU_Sock_wait(MPIDU_Sock_set_t set, int timeout, MPIDU_Sock_event_t * out)
 			{
 			    if (sock->write.iov[sock->write.index].MPL_IOV_LEN <= num_bytes)
 			    {
-				/*MPIU_DBG_PRINTF(("sock_wait: write.index %d, len %d\n", sock->write.index, 
+				/*MPIU_DBG_PRINTF(("sock_wait: write.index %d, len %d\n", sock->write.index,
 				sock->write.iov[sock->write.index].MPL_IOV_LEN));*/
 				num_bytes -= sock->write.iov[sock->write.index].MPL_IOV_LEN;
 				sock->write.index++;

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -573,9 +573,13 @@ int MPIDI_CH3I_SMP_read_progress(MPIDI_PG_t *pg);
 
 int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg);
 
+int MPIDI_CH3I_SMP_COLL_init(MPIDI_PG_t *pg);
+
 int MPIDI_CH3I_SMP_attach_shm_pool();
 
 int MPIDI_CH3I_SMP_finalize(void);
+
+int MPIDI_CH3I_SMP_COLL_finalize(void);
 
 void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPL_IOV * iov,
 	const int n, int *num_bytes_ptr);

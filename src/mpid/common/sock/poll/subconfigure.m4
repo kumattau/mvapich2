@@ -104,7 +104,7 @@ if test "$ac_cv_func_gethostname" = "yes" ; then
 fi
 
 AC_SEARCH_LIBS([socket],[socket])
-AC_SEARCH_LIBS([gethostbyname],[nsl])
+AC_SEARCH_LIBS([getaddrinfo],[nsl])
 
 # Check first for sys/socket.h .  We check not only for existence but whether
 # it can be compiled (!), as we have seen some problems with this.

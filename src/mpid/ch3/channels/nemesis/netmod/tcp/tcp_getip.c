@@ -151,8 +151,9 @@ int MPIDI_GetIPInterface( MPIDU_Sock_ifaddr_t *ifaddr, int *found )
 
 	    addr = ((struct sockaddr_in *) &(ifreq->ifr_addr))->sin_addr;
 	    if (dbg_ifname) {
-		fprintf( stdout, "IPv4 address = %08x (%s)\n", addr.s_addr, 
-			 inet_ntoa( addr ) );
+            char* ip[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, addr, ip, sizeof(ip));
+            fprintf(stdout, "IPv4 address = %08x (%s)\n", addr.s_addr, ip);
 	    }
 
 	    if (addr.s_addr == localhost && dbg_ifname) {

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -112,9 +112,9 @@ typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
 struct dreg_entry;
 #ifdef _ENABLE_UD_
 #define MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL            \
-        uint8_t num_hcas;		                    \
         mv2_rndv_qp_t *rndv_qp_entry;               \
-        uint32_t remote_qpn[MAX_NUM_HCAS];
+        uint32_t remote_qpn[MAX_NUM_HCAS];          \
+        uint8_t num_hcas;		                    
 #else
 #define MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL
 #endif
@@ -155,33 +155,60 @@ struct dreg_entry;
 #define MPIDI_CH3I_MRAILI_DEVICE_REQ_DECL
 #endif
 
+#ifdef _ENABLE_HSAM_
 #define MPIDI_CH3I_MRAILI_REQUEST_DECL                                      \
     struct __attribute__((__aligned__(64))) MPIDI_CH3I_MRAILI_Request {     \
-        MPI_Request partner_id;                                             \
-        uint8_t rndv_buf_alloc;                                             \
         void * rndv_buf;                                                    \
+        void     *remote_addr;                                              \
         MPIDI_msg_sz_t rndv_buf_sz;                                         \
         MPIDI_msg_sz_t rndv_buf_off;                                        \
-        MRAILI_Protocol_t protocol;                                         \
+        struct MPID_Request *next_inflow;                                   \
+        struct vbuf *eager_vbuf_head;                                       \
+        struct vbuf *eager_vbuf_tail;                                       \
         struct dreg_entry *d_entry;                                         \
-        void     *remote_addr;                                              \
+        MPIDI_msg_sz_t eager_unexp_size;                                    \
         uint32_t rkey[MAX_NUM_HCAS];                                        \
-        uint8_t  nearly_complete;                                           \
+        MPI_Request partner_id;                                             \
+        MRAILI_Protocol_t protocol;                                         \
         uint32_t  local_complete;                                           \
         uint32_t  remote_complete;                                          \
         uint32_t  num_rdma_read_completions;                                \
+        uint8_t  nearly_complete;                                           \
+        uint8_t is_rma_last_stream_unit;                                    \
+        uint8_t rndv_buf_alloc;                                             \
         uint8_t  is_eager_vbuf_queued;                                      \
-        struct vbuf *eager_vbuf_head;                                       \
-        struct vbuf *eager_vbuf_tail;                                       \
-        MPIDI_msg_sz_t eager_unexp_size;                                    \
         double  initial_weight[MAX_NUM_SUBRAILS];                           \
         double  stripe_start_time;                                          \
         double  stripe_finish_time[MAX_NUM_SUBRAILS];                       \
-        struct MPID_Request *next_inflow;                                   \
-        uint8_t is_rma_last_stream_unit;                                    \
         MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL                                    \
         MPIDI_CH3I_MRAILI_DEVICE_REQ_DECL                                   \
     } mrail;
+#else
+#define MPIDI_CH3I_MRAILI_REQUEST_DECL                                      \
+    struct __attribute__((__aligned__(64))) MPIDI_CH3I_MRAILI_Request {     \
+        void * rndv_buf;                                                    \
+        void     *remote_addr;                                              \
+        MPIDI_msg_sz_t rndv_buf_sz;                                         \
+        MPIDI_msg_sz_t rndv_buf_off;                                        \
+        struct MPID_Request *next_inflow;                                   \
+        struct vbuf *eager_vbuf_head;                                       \
+        struct vbuf *eager_vbuf_tail;                                       \
+        struct dreg_entry *d_entry;                                         \
+        MPIDI_msg_sz_t eager_unexp_size;                                    \
+        uint32_t rkey[MAX_NUM_HCAS];                                        \
+        MPI_Request partner_id;                                             \
+        MRAILI_Protocol_t protocol;                                         \
+        uint32_t  local_complete;                                           \
+        uint32_t  remote_complete;                                          \
+        uint32_t  num_rdma_read_completions;                                \
+        uint8_t  nearly_complete;                                           \
+        uint8_t is_rma_last_stream_unit;                                    \
+        uint8_t rndv_buf_alloc;                                             \
+        uint8_t  is_eager_vbuf_queued;                                      \
+        MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL                                    \
+        MPIDI_CH3I_MRAILI_DEVICE_REQ_DECL                                   \
+    } mrail;
+#endif
 
 #ifndef MV2_DISABLE_HEADER_CACHING 
 #define MAX_SIZE_WITH_HEADER_CACHING 255

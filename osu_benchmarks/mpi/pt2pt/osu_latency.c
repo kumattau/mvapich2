@@ -1,7 +1,7 @@
 #define BENCHMARK "OSU MPI%s Latency Test"
 /*
  * Copyright (C) 2002-2021 the Network-Based Computing Laboratory
- * (NBCL), The Ohio State University. 
+ * (NBCL), The Ohio State University.
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
  *
@@ -10,22 +10,23 @@
  */
 #include <osu_util_mpi.h>
 
-#ifdef _ENABLE_CUDA_
+#ifdef _ENABLE_CUDA_KERNEL_
 double measure_kernel_lo(char *, int);
 void touch_managed_src(char *, int);
 void touch_managed_dst(char *, int);
-#endif
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
 double calculate_total(double, double, double);
 
 int
 main (int argc, char *argv[])
 {
-    int myid, numprocs, i;
+    int myid, numprocs, i, j;
     int size;
     MPI_Status reqstat;
     char *s_buf, *r_buf;
     double t_start = 0.0, t_end = 0.0, t_lo = 0.0, t_total = 0.0;
     int po_ret = 0;
+    int errors = 0;
 
     options.bench = PT2PT;
     options.subtype = LAT;
@@ -85,8 +86,8 @@ main (int argc, char *argv[])
             break;
     }
 
-    if(numprocs != 2) {
-        if(myid == 0) {
+    if (numprocs != 2) {
+        if (myid == 0) {
             fprintf(stderr, "This test requires exactly two processes\n");
         }
 
@@ -105,7 +106,8 @@ main (int argc, char *argv[])
     print_header(myid, LAT);
 
     /* Latency test */
-    for(size = options.min_message_size; size <= options.max_message_size; size = (size ? size * 2 : 1)) {
+    for (size = options.min_message_size; size <= options.max_message_size;
+            size = (size ? size * 2 : 1)) {
 
         if (options.buf_num == MULTIPLE) {
             if (allocate_memory_pt2pt_size(&s_buf, &r_buf, myid, size)) {
@@ -118,67 +120,102 @@ main (int argc, char *argv[])
         set_buffer_pt2pt(s_buf, myid, options.accel, 'a', size);
         set_buffer_pt2pt(r_buf, myid, options.accel, 'b', size);
 
-        if(size > LARGE_MESSAGE_SIZE) {
+        if (size > LARGE_MESSAGE_SIZE) {
             options.iterations = options.iterations_large;
             options.skip = options.skip_large;
         }
 
-#ifdef _ENABLE_CUDA_
-        if ((options.src == 'M' && options.MMsrc == 'D') || (options.dst == 'M' && options.MMdst == 'D')) {
+#ifdef _ENABLE_CUDA_KERNEL_
+        if ((options.src == 'M' && options.MMsrc == 'D') ||
+            (options.dst == 'M' && options.MMdst == 'D')) {
             t_lo = measure_kernel_lo(s_buf, size);
         }
-#endif
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
 
         MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
         t_total = 0.0;
 
-        for(i = 0; i < options.iterations + options.skip; i++) {
-#ifdef _ENABLE_CUDA_
-            if (options.src == 'M') {
-                touch_managed_src(s_buf, size);
-            } else if (options.dst == 'M') {
-                touch_managed_dst(s_buf, size);
+        for (i = 0; i < options.iterations + options.skip; i++) {
+            if (options.validate) {
+                set_buffer_validation(s_buf, r_buf, size, options.accel, i);
+                MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
             }
-#endif
-
             if (myid == 0) {
-                if(i >= options.skip) {
-                    t_start = MPI_Wtime();
+                for (j = 0; j <= options.warmup_validation; j++) {
+                    if (i >= options.skip && j == options.warmup_validation) {
+                        t_start = MPI_Wtime();
+                    }
+#ifdef _ENABLE_CUDA_KERNEL_
+                    if (options.src == 'M') {
+                        touch_managed_src(s_buf, size);
+                    }
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
+                    MPI_CHECK(MPI_Send(s_buf, size, MPI_CHAR, 1, 1,
+                                MPI_COMM_WORLD));
+                    MPI_CHECK(MPI_Recv(r_buf, size, MPI_CHAR, 1, 1,
+                                MPI_COMM_WORLD, &reqstat));
+#ifdef _ENABLE_CUDA_KERNEL_
+                    if (options.src == 'M') {
+                        touch_managed_src(r_buf, size);
+                    }
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
+                    if (i >= options.skip && j == options.warmup_validation) {
+                        t_end = MPI_Wtime();
+                        t_total += calculate_total(t_start, t_end, t_lo);
+                    }
                 }
-
-                MPI_CHECK(MPI_Send(s_buf, size, MPI_CHAR, 1, 1, MPI_COMM_WORLD));
-                MPI_CHECK(MPI_Recv(r_buf, size, MPI_CHAR, 1, 1, MPI_COMM_WORLD, &reqstat));
-#ifdef _ENABLE_CUDA_
-                if (options.src == 'M') {
-                    touch_managed_src(r_buf, size);
-                }
-#endif
-
-                if (i >= options.skip) {
-                    t_end = MPI_Wtime();
-                    t_total += calculate_total(t_start, t_end, t_lo);
+                if (options.validate) {
+                    int errors_recv = 0;
+                    MPI_CHECK(MPI_Recv(&errors_recv, 1, MPI_INT, 1, 2,
+                                MPI_COMM_WORLD, &reqstat));
+                    errors += errors_recv;
                 }
             } else if (myid == 1) {
-                MPI_CHECK(MPI_Recv(r_buf, size, MPI_CHAR, 0, 1, MPI_COMM_WORLD, &reqstat));
-#ifdef _ENABLE_CUDA_
-                if (options.dst == 'M') {
-                    touch_managed_dst(r_buf, size);
+                for (j = 0; j <= options.warmup_validation; j++) {
+#ifdef _ENABLE_CUDA_KERNEL_
+                    if (options.dst == 'M') {
+                        touch_managed_dst(s_buf, size);
+                    }
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
+                    MPI_CHECK(MPI_Recv(r_buf, size, MPI_CHAR, 0, 1,
+                                MPI_COMM_WORLD, &reqstat));
+#ifdef _ENABLE_CUDA_KERNEL_
+                    if (options.dst == 'M') {
+                        touch_managed_dst(r_buf, size);
+                    }
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
+                    MPI_CHECK(MPI_Send(s_buf, size, MPI_CHAR, 0, 1,
+                                MPI_COMM_WORLD));
                 }
-#endif
-
-                MPI_CHECK(MPI_Send(s_buf, size, MPI_CHAR, 0, 1, MPI_COMM_WORLD));
+                if (options.validate) {
+                    errors = validate_data(r_buf, size, 1, options.accel, i);
+                    MPI_CHECK(MPI_Send(&errors, 1, MPI_INT, 0, 2,
+                                MPI_COMM_WORLD));
+                }
             }
         }
 
-        if(myid == 0) {
+        if (myid == 0) {
             double latency = (t_total * 1e6) / (2.0 * options.iterations);
-
-            fprintf(stdout, "%-*d%*.*f\n", 10, size, FIELD_WIDTH,
-                    FLOAT_PRECISION, latency);
+            if (options.validate) {
+                fprintf(stdout, "%-*d%*.*f%*s\n", 10, size, FIELD_WIDTH,
+                        FLOAT_PRECISION, latency, FIELD_WIDTH,
+                        VALIDATION_STATUS(errors));
+            } else{
+                fprintf(stdout, "%-*d%*.*f\n", 10, size, FIELD_WIDTH,
+                        FLOAT_PRECISION, latency);
+            }
             fflush(stdout);
         }
         if (options.buf_num == MULTIPLE) {
             free_memory(s_buf, r_buf, myid);
+        }
+
+        if (options.validate) {
+            MPI_CHECK(MPI_Bcast(&errors, 1, MPI_INT, 0, MPI_COMM_WORLD));
+            if (0 != errors) {
+                break;
+            }
         }
     }
 
@@ -195,10 +232,15 @@ main (int argc, char *argv[])
         }
     }
 
+    if (errors !=0 && options.validate && myid == 0 ) {
+        fprintf(stdout, "DATA VALIDATION ERROR: %s exited with status %d on"
+                " message size %d.\n", argv[0], EXIT_FAILURE, size);
+        exit(EXIT_FAILURE);
+    }
     return EXIT_SUCCESS;
 }
 
-#ifdef _ENABLE_CUDA_
+#ifdef _ENABLE_CUDA_KERNEL_
 double measure_kernel_lo(char *buf, int size)
 {
     int i;
@@ -227,7 +269,7 @@ void touch_managed_src(char *buf, int size)
             touch_managed(buf, size);
             synchronize_stream();
         } else if ((options.MMsrc == 'H') && size > PREFETCH_THRESHOLD) {
-            prefetch_data(buf, size, -1);
+            prefetch_data(buf, size, cudaCpuDeviceId);
             synchronize_stream();
         } else {
             memset(buf, 'c', size);
@@ -249,15 +291,17 @@ void touch_managed_dst(char *buf, int size)
         }
     }
 }
-#endif
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
 
 double calculate_total(double t_start, double t_end, double t_lo)
 {
     double t_total;
 
-    if ((options.src == 'M' && options.MMsrc == 'D') && (options.dst == 'M' && options.MMdst == 'D')) {
+    if ((options.src == 'M' && options.MMsrc == 'D') &&
+        (options.dst == 'M' && options.MMdst == 'D')) {
         t_total = (t_end - t_start) - (2 * t_lo);
-    } else if ((options.src == 'M' && options.MMsrc == 'D') || (options.dst == 'M' && options.MMdst == 'D')) {
+    } else if ((options.src == 'M' && options.MMsrc == 'D') ||
+               (options.dst == 'M' && options.MMdst == 'D')) {
         t_total = (t_end - t_start) - t_lo;
     } else {
         t_total = (t_end - t_start);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -75,6 +75,7 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology);
 int get_cpu_mapping(long N_CPUs_online);
 #if defined(CHANNEL_MRAIL)
 int get_ib_socket(struct ibv_device * ibdev);
+int get_ib_numa(struct ibv_device * ibdev);
 #endif /* defined(CHANNEL_MRAIL) */
 int smpi_setaffinity(int my_local_id);
 int MPIDI_CH3I_set_affinity(struct MPIDI_PG * pg, int pg_rank);

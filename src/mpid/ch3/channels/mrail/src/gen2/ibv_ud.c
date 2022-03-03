@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -114,12 +114,16 @@ static inline void mv2_ud_place_recvwin(vbuf *v)
         } else {
             /* we are not in order */
             PRINT_DEBUG(DEBUG_UD_verbose>1,
-                        "Got out-of-order %s packet from %d recv:%d expected:%d\n",
+                        "Get one out-of-order %s packet from %d recv:%d expected:%d\n",
                         (v->transport == IB_TRANSPORT_UD)?"UD":"RC",
                         vc->pg_rank, v->seqnum, vc->mrail.seqnum_next_torecv);
             ret = mv2_ud_recv_window_add(&vc->mrail.rely.recv_window, v, vc->mrail.seqnum_next_torecv);
             if (ret == MSG_IN_RECVWIN) {
                 MPIU_Assert(v->transport == IB_TRANSPORT_UD);
+                PRINT_DEBUG(DEBUG_UD_verbose>1, 
+                        "Releasing out-of-order %s packet from %d recv:%d expected:%d\n",
+                        (v->transport == IB_TRANSPORT_UD)?"UD":"RC",
+                        vc->pg_rank, v->seqnum, vc->mrail.seqnum_next_torecv);
                 MPIDI_CH3I_MRAIL_Release_vbuf(v);
             }
 
@@ -132,7 +136,7 @@ static inline void mv2_ud_place_recvwin(vbuf *v)
         while ( vc->mrail.rely.recv_window.head != NULL && 
                 (vc->mrail.rely.recv_window.head->seqnum == 
                  vc->mrail.seqnum_next_torecv)) {
-            PRINT_DEBUG(DEBUG_UD_verbose>1,
+            PRINT_DEBUG(DEBUG_UD_verbose>2,
                         "Process one %s pkt from %d with in-order seqnum:%d, next_exp: %u \n",
                         (v->transport == IB_TRANSPORT_UD)?"UD":"RC",
                         vc->pg_rank, vc->mrail.seqnum_next_torecv,
@@ -188,7 +192,7 @@ int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *send_ud_ctx)
         MPIDI_CH3I_UD_Generate_addr_handle_for_rank(vc->pg, vc->pg_rank);
     }
 
-    PRINT_DEBUG(DEBUG_UD_verbose>1,"UD Send : to:%d seqnum:%d acknum:%d len:%d rail:%d\n", 
+    PRINT_DEBUG(DEBUG_UD_verbose>1, "UD send to rank %d seqnum:%d acknum:%d len:%d rail:%d\n", 
                 vc->pg_rank, p->seqnum, p->acknum, v->desc.sg_entry.length, rail);
 
     IBV_UD_POST_SR(v, vc->mrail.ud[rail], ud_ctx);
@@ -241,6 +245,7 @@ static inline void mv2_ud_ext_sendq_send(MPIDI_VC_t *vc, mv2_ud_ctx_t *ud_ctx)
         }
         ud_ctx->ext_send_queue.count--;
         rdma_global_ext_sendq_size--;
+        v->in_ud_ext_sendq = 0;
         v->desc.next = NULL;
 
         /* can we reset ack to latest? */
@@ -251,7 +256,8 @@ static inline void mv2_ud_ext_sendq_send(MPIDI_VC_t *vc, mv2_ud_ctx_t *ud_ctx)
             ibv_error_abort(-1, "extend sendq send  failed");
         }
         ud_ctx->ext_sendq_count++;
-        PRINT_DEBUG(DEBUG_UD_verbose>1,"sending from ext send queue seqnum :%d qlen:%d\n", v->seqnum, ud_ctx->ext_send_queue.count);
+        PRINT_DEBUG(DEBUG_UD_verbose>1, "sending ext send queue to rank %d seqnum :%d qlen:%d\n",
+                    vc->pg_rank, v->seqnum, ud_ctx->ext_send_queue.count);
     } 
 }
 void mv2_ud_update_send_credits(vbuf *v)
@@ -279,27 +285,16 @@ void mv2_send_explicit_ack(MPIDI_VC_t *vc)
     PRINT_DEBUG(DEBUG_UD_verbose>1,"Sent explicit ACK to :%d acknum:%d\n", vc->pg_rank, ack_pkt->acknum);
 }
 
-void mv2_ud_resend(vbuf *v)
+int mv2_ud_resend(vbuf *v)
 {
-
+    int resend = 0;
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
     MPIDI_VC_t *vc;
     mv2_ud_ctx_t *ud_ctx;
 
     if ((v->flags & UD_VBUF_SEND_INPROGRESS) && 
         !(v->flags & UD_VBUF_RETRY_ALWAYS)) {
-        return;
-    }
-
-    v->retry_count++;
-    if (v->retry_count > rdma_ud_max_retry_count) {
-        PRINT_ERROR ("UD reliability error. Exceeded max retries(%d) "
-                "in resending the message(%p). current retry timeout(us): %lu. "
-                "This Error may happen on clusters based on the InfiniBand "
-                "topology and traffic patterns. Please try with increased "
-                "timeout using MV2_UD_RETRY_TIMEOUT\n", 
-                v->retry_count, v, rdma_ud_retry_timeout );
-        exit(EXIT_FAILURE);
+        return resend;
     }
 
     p = v->pheader;
@@ -316,13 +311,22 @@ void mv2_ud_resend(vbuf *v)
     } else {
         ud_ctx = mv2_MPIDI_CH3I_RDMA_Process.ud_rails[v->rail];
     }
-    p->acknum = vc->mrail.seqnum_next_toack;
-    MARK_ACK_COMPLETED(vc);
-    v->flags |= UD_VBUF_SEND_INPROGRESS;
+    if (ud_ctx->send_wqes_avail > 0) {
+        v->retry_count++;
+        if (v->retry_count > rdma_ud_max_retry_count) {
+            PRINT_ERROR ("UD reliability error. Exceeded max retries(%d) "
+                    "in resending the message(%p). current retry timeout(us): %lu. "
+                    "This Error may happen on clusters based on the InfiniBand "
+                    "topology and traffic patterns. Please try with increased "
+                    "timeout using MV2_UD_RETRY_TIMEOUT\n", 
+                    v->retry_count, v, rdma_ud_retry_timeout );
+            exit(EXIT_FAILURE);
+        }
 
-    if (ud_ctx->send_wqes_avail <= 0) {
-        mv2_ud_ext_sendq_queue(&ud_ctx->ext_send_queue, v);
-    } else {
+        /* Set the ACK number */
+        p->acknum = vc->mrail.seqnum_next_toack;
+        /* Mark ACK as completed for VC */
+        MARK_ACK_COMPLETED(vc);
         /* Mark VBUF as send in progress */
         v->flags |= UD_VBUF_SEND_INPROGRESS;
         /* Remove free_pending flag from VBUF */
@@ -334,13 +338,27 @@ void mv2_ud_resend(vbuf *v)
         if (ibv_post_send(ud_ctx->qp, &(v->desc.u.sr),&(v->desc.y.bad_sr))) {
             ibv_error_abort(-1, "reliability resend failed");
         }
+        PRINT_DEBUG(DEBUG_UD_verbose>1, "Resend seqnum %u to rank %d\n", v->seqnum, vc->pg_rank);
         /* Handle condition where the last close message keeps getting lost */
         if (unlikely(vc->state == MPIDI_VC_STATE_CLOSE_ACKED ||
                      vc->state == MPIDI_VC_STATE_CLOSED)) {
             mv2_unack_queue_clear(vc);
         }
+        vc->mrail.rely.resend_count++;
+        /* Indicate to caller that we were able to resend sucessfully */
+        resend = 1;
+    } else {
+        if (!(v->in_ud_ext_sendq)) {
+            mv2_ud_ext_sendq_queue(&ud_ctx->ext_send_queue, v);
+            /* Indicate to caller that we were able to resend sucessfully */
+            resend = 1;
+        } else {
+            /* Indicate to caller that we were NOT able to resend sucessfully */
+            resend = 0;
+        }
     }
-    vc->mrail.rely.resend_count++;
+
+    return resend;
 }    
 
 void MRAILI_Process_recv(vbuf *v) 

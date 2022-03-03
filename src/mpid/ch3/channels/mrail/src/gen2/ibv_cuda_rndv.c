@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -679,7 +679,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_device(MPIDI_VC_t * vc,
             }
 
             if (nbytes <= rdma_large_msg_rail_sharing_threshold) {
-                rail = MRAILI_Send_select_rail(vc);
+                rail = MRAILI_Send_select_rail(vc, nbytes);
                 rail_index = vc->mrail.rails[rail].hca_index;
 
                 GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);

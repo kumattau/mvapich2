@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,106 @@
 
 #include "mpiimpl.h"
 #include "helper_fns.h"
+#include "coll_shmem.h"
+#if defined (_SHARP_SUPPORT_)
+#include "api/sharp_coll.h"
+#include "ibv_sharp.h"
+extern int mv2_sharp_tuned_msg_size;
+#endif
+
+#if defined (_SHARP_SUPPORT_)
+#undef FUNCNAME
+#define FUNCNAME "MPIR_Sharp_Scatterv_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Sharp_Scatterv_MV2 (const void *sendbuf, const int *sendcounts,
+                             const int *displs, MPI_Datatype sendtype,
+                             void *recvbuf, int recvcount,
+                             MPI_Datatype recvtype, int root,
+                             MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPI_Aint type_size = 0;
+    /* Get size of data */
+    MPID_Datatype_get_size_macro(sendtype, type_size);
+    MPIDI_msg_sz_t nbytes;
+    int rank = comm_ptr->rank;
+    int size = comm_ptr->local_size;
+    void *buffer = NULL;
+    int copy_offset;
+    int total_count = 0;
+    int i;
+    int nonroot_displs[size];
+ 
+    i = type_size * recvcount * size;
+    if (i >= mv2_coll_tmp_buf_size) {
+        mpi_errno = MPI_ERR_NO_MEM;
+        PRINT_DEBUG(DEBUG_Sharp_verbose, "coll_tmp_buf out of mem (%d), "
+                                         "need %d, continue without SHARP\n",
+                                         mv2_coll_tmp_buf_size, i);
+        MPIR_ERR_SETANDJUMP2(mpi_errno, MPI_ERR_INTERN, "**sharpcoll", 
+                            "coll_tmp_buf out of mem (%d), need %d, "
+                            "continue without SHARP", mv2_coll_tmp_buf_size,
+                            i);
+    }
+
+    buffer = (void *)comm_ptr->dev.ch.coll_tmp_buf;
+    if (rank == root) {
+        for (i = 0; i < size; i++) {
+            total_count += sendcounts[i];
+            ((int *)buffer)[i] = displs[i];
+        }
+        ((int *)buffer)[size] = total_count; 
+    }
+
+    mpi_errno = MPIR_Bcast_MV2(buffer, size + 1, MPI_INT, root, comm_ptr,
+                               errflag);
+    if (mpi_errno) {
+         MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**sharpcoll");
+    }
+
+    if (rank != root) {
+        for (i = 0; i < size; i++) {
+            nonroot_displs[i] = ((int *)buffer)[i];
+        }
+        total_count = ((int *)buffer)[size];
+    }   
+  
+    nbytes = (MPIDI_msg_sz_t)(total_count) * (type_size);
+
+    if (rank == root) {
+        buffer = (void *)sendbuf;
+    } else {
+        buffer = (void *)comm_ptr->dev.ch.coll_tmp_buf;
+    }
+
+    mpi_errno = MPIR_Sharp_Bcast_MV2(buffer, total_count, sendtype,
+                                     root, comm_ptr, errflag);
+    if (mpi_errno) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**sharpcoll");
+    }
+
+    if(rank == root) {
+        if(recvbuf != MPI_IN_PLACE)  {
+            copy_offset = displs[rank] * type_size; 
+            mpi_errno = MPIR_Localcopy((char *)buffer + copy_offset, recvcount, 
+                                       recvtype, recvbuf, recvcount,
+                                       recvtype);
+        }
+    } else {
+        copy_offset = nonroot_displs[rank] * type_size; 
+        mpi_errno = MPIR_Localcopy((char *)buffer + copy_offset, recvcount,
+                                   recvtype, recvbuf, recvcount,
+                                   recvtype);
+    }
+
+  fn_exit:
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+#endif
 
 /* -- Begin Profiling Symbol Block for routine MPI_Scatterv */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -253,6 +353,21 @@ int MPIR_Scatterv_impl(const void *sendbuf, const int *sendcounts, const int *di
     }
 #endif       
  
+#if defined (_SHARP_SUPPORT_)
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 &&
+        mv2_enable_sharp_coll == 1 && mv2_enable_sharp_scatterv) {
+        /* Direct flat algorithm in which every process calls Sharp
+         * MV2_ENABLE_SHARP should be set to 1 */
+        mpi_errno = MPIR_Sharp_Scatterv_MV2 (sendbuf, sendcounts, displs, 
+                                             sendtype, recvbuf, recvcount,
+                                             recvtype, root, comm_ptr, errflag);
+        if (mpi_errno == MPI_SUCCESS) {
+            return mpi_errno;
+        }    
+        /* SHArP collective is not supported, continue without using SHArP */
+    }    
+#endif /* end of defined (_SHARP_SUPPORT_) */
+
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Scatter != NULL) {
 	/* --BEGIN USEREXTENSION-- */
 	mpi_errno = comm_ptr->coll_fns->Scatterv(sendbuf, sendcounts, displs,
@@ -482,6 +597,34 @@ int MPI_Scatterv(const void *sendbuf, const int *sendcounts, const int *displs,
                                    recvbuf, recvcount, recvtype,
                                    root, comm_ptr, &errflag);
     if (mpi_errno) goto fn_fail;
+
+#ifdef _OSU_MVAPICH_
+    if (mv2_use_osu_collectives) {
+        if (comm_ptr->dev.ch.shmem_coll_ok == 0) {
+            mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
+#if defined(_SHARP_SUPPORT_)
+        comm_ptr->dev.ch.scatterv_coll_count++;
+        if (mv2_enable_sharp_coll &&
+            mv2_enable_sharp_scatterv &&
+            (comm_ptr->dev.ch.is_sharp_ok == 0) &&
+            (comm_ptr->dev.ch.shmem_coll_ok == 1) &&
+            (comm_ptr->dev.ch.scatterv_coll_count >= 
+                            shmem_coll_count_threshold)) {
+            disable_split_comm(pthread_self());
+            mpi_errno = create_sharp_comm(comm_ptr->handle,
+                                          comm_ptr->local_size, comm_ptr->rank);
+            if (mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);
+            }
+            enable_split_comm(pthread_self());
+        }
+#endif /*(_SHARP_SUPPORT_)*/
+    }
+#endif /* _OSU_MVAPICH_ */
 
     /* ... end of body of routine ... */
     

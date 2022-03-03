@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,11 +20,20 @@
 #include "common_tuning.h"
 #include "alltoallv_tuning.h"
 
-MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_pw);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_alltoallv_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_alltoallv_intra_scatter);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_scatter);
+
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_scatter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_scatter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_scatter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_intra_scatter_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_alltoallv_count_send);
@@ -77,6 +86,8 @@ int MPIR_Alltoallv_intra_scatter_MV2(const void *sendbuf,
                              MPI_Datatype recvtype,
                              MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,alltoallv,intra_scatter);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoallv_intra_scatter, 1);
     int comm_size, i, j ;
     MPI_Aint send_extent, recv_extent;
     int mpi_errno = MPI_SUCCESS;
@@ -177,7 +188,7 @@ int MPIR_Alltoallv_intra_scatter_MV2(const void *sendbuf,
         mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE,
                 FCNAME, __LINE__, MPI_ERR_OTHER,
                 "**fail", 0);
-        return mpi_errno;
+        goto fn_fail;
     }
 
     /* Do the exchanges */
@@ -188,6 +199,7 @@ int MPIR_Alltoallv_intra_scatter_MV2(const void *sendbuf,
         for ( i=0; i<ss; i++ ) {
             src = (rank + i + ii) % comm_size;
             MPIR_PVAR_INC(alltoallv, intra, recv, recvcnts[src], recvtype);
+            MPIR_PVAR_INC(alltoallv, intra_scatter, recv, recvcnts[src], recvtype);
             mpi_errno = MPIC_Irecv(((char *) recvbuf +
                                     rdispls[src] * recv_extent),
                                     recvcnts[src], recvtype, src,
@@ -200,6 +212,7 @@ int MPIR_Alltoallv_intra_scatter_MV2(const void *sendbuf,
         for ( i=0; i<ss; i++ ) {
             dst = (rank - i - ii + comm_size) % comm_size;
             MPIR_PVAR_INC(alltoallv, intra, send, sendcnt_tmp[dst], sendtype_tmp);
+            MPIR_PVAR_INC(alltoallv, intra_scatter, send, sendcnt_tmp[dst], sendtype_tmp);
             mpi_errno = MPIC_Isend(((char *) sendbuf_tmp +
                                     sdispls_tmp[dst] * send_extent),
                                     sendcnt_tmp[dst], sendtype_tmp, dst,
@@ -251,10 +264,15 @@ int MPIR_Alltoallv_intra_scatter_MV2(const void *sendbuf,
         MPIU_Free(sendbuf_tmp);
     }
 
+
+fn_exit:
+    MPIR_TIMER_END(coll,alltoallv,intra_scatter);
+    return (mpi_errno);
+
 fn_fail:
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
-    return (mpi_errno);
+    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -272,7 +290,8 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
                              MPI_Datatype recvtype,
                              MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
-    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoallv_pw, 1);
+    MPIR_TIMER_START(coll,alltoallv,intra);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_alltoallv_intra, 1);
     int comm_size, i, j;
     MPI_Aint send_extent, recv_extent;
     int mpi_errno = MPI_SUCCESS;
@@ -405,6 +424,7 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
 
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
+    MPIR_TIMER_END(coll,alltoallv,intra);
     return (mpi_errno);
 }
 

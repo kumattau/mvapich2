@@ -2,7 +2,7 @@
 
 %{
 /*
- * Copyright (c) 2001-2021, The Ohio State University. All rights
+ * Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -166,7 +166,7 @@ read_hostfile(char const * pathname, int using_pbs)
     int n = offset + nprocs;
     int host_index = 0;
     int host_num = 0;
-    pid_t cpid, pid = 0;
+    pid_t cpid;
     int status = 0;
 
     multiplier = 1;

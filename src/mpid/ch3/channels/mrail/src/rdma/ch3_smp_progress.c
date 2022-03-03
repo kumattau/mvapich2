@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -441,14 +441,14 @@ static inline int MPIDI_CH3I_SMP_attach_shm_pool_inline()
        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                 FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", "%s: %s",
                 "mmap", strerror(errno));
-       goto cleanup_files;
+       MPIR_ERR_POP(mpi_errno);
     }
 
     s_buffer_head = (SEND_BUF_T **) MPIU_Malloc(sizeof(SEND_BUF_T *) * g_smpi.num_local_nodes);
     if(!s_buffer_head) {
        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                 FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-       goto cleanup_files;
+       MPIR_ERR_POP(mpi_errno);
     }
 
     for(i=0; i < g_smpi.num_local_nodes; ++i) {
@@ -461,7 +461,7 @@ static inline int MPIDI_CH3I_SMP_attach_shm_pool_inline()
           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s",
                    "error in shifting mapped pool");
-          goto cleanup_files;
+          MPIR_ERR_POP(mpi_errno);
        }
     }
     s_my_buffer_head = s_buffer_head[g_smpi.my_local_id];
@@ -472,14 +472,14 @@ static inline int MPIDI_CH3I_SMP_attach_shm_pool_inline()
     if(!s_sh_buf_pool.send_queue) {
        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                 FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-       goto cleanup_files;
+       MPIR_ERR_POP(mpi_errno);
     }
 
     s_sh_buf_pool.tail = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
     if(!s_sh_buf_pool.tail) {
        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                 FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-       goto cleanup_files;
+       MPIR_ERR_POP(mpi_errno);
     }
 
     for (i = 0; i < g_smpi.num_local_nodes; ++i) {
@@ -513,11 +513,8 @@ static inline int MPIDI_CH3I_SMP_attach_shm_pool_inline()
 fn_exit:
     return mpi_errno;
 
-cleanup_files:
+fn_fail:
     MPIDI_CH3I_SMP_cleanup();
-    if (mv2_enable_shmem_collectives){
-        MPIDI_CH3I_SHMEM_COLL_Cleanup();
-    }
     goto fn_exit;
 }
 
@@ -1568,8 +1565,15 @@ void MPIDI_CH3I_set_smp_only()
     g_smpi.only_one_device = 0;
     SMP_ONLY = 0;
 
-    if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
+    if ((value = getenv("MV2_USE_PT2PT_SHMEM")) != NULL) {
         rdma_use_smp = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
+        mv2_use_smp = !!atoi(value);
+        if (!mv2_use_smp) {
+            rdma_use_smp = 0;
+        }
     }
 
     if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
@@ -1850,6 +1854,78 @@ fn_fail:
 }
 
 #undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SMP_COLL_init
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIDI_CH3I_SMP_COLL_init(MPIDI_PG_t *pg)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int local_num_processes = MPIDI_Num_local_processes(pg);
+    int local_id = MPIDI_Get_local_process_id(pg);
+    void *mmap_ptr = NULL;
+    int *bar_array = NULL;
+    int fd = -1;
+    char *shmem_coll_init_file = NULL;
+    size_t bar_array_size = sizeof(int) * local_num_processes;
+    mpi_errno = MPIDI_CH3I_SHMEM_Helper_fn(pg, local_id, &shmem_coll_init_file,
+                "coll_bar_shmem", &fd, bar_array_size);
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIR_ERR_POP(mpi_errno);
+    }
+    mmap_ptr = mmap(0, bar_array_size,
+                (PROT_READ | PROT_WRITE), (MAP_SHARED), fd, 0);
+    if (mmap_ptr == (void *) -1) {
+        /* to clean up tmp shared file */
+        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                    FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", "%s: %s",
+                    "mmap", strerror(errno));
+        MPIR_ERR_POP(mpi_errno);
+    }
+    bar_array = (int *) mmap_ptr;
+
+    /* Shared memory for collectives */
+    mv2_take_timestamp("MPIDI_CH3I_SHMEM_COLL_init", NULL);
+    if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(pg, local_id)) != MPI_SUCCESS)
+    {
+        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                "%s", "SHMEM_COLL_init failed");
+        MPIR_ERR_POP(mpi_errno);
+    }
+    mv2_take_timestamp("MPIDI_CH3I_SHMEM_COLL_init", NULL);
+    /* Memory Mapping shared files for collectives*/
+    if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap(pg, local_id)) != MPI_SUCCESS)
+    {
+        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s",
+                "SHMEM_COLL_Mmap failed");
+    }
+    mv2_take_timestamp("MPIDI_CH3I_CM_SHMEM_Sync", NULL);
+    mpi_errno = MPIDI_CH3I_CM_SHMEM_Sync(bar_array, local_id, local_num_processes);
+    mv2_take_timestamp("MPIDI_CH3I_CM_SHMEM_Sync", NULL);
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIR_ERR_POP(mpi_errno);
+    }
+    MPIDI_CH3I_SHMEM_COLL_Unlink();
+fn_exit:
+    if (mmap_ptr != NULL) {
+        munmap((void *)mmap_ptr, bar_array_size);
+    }
+    if (fd != -1) {
+        close(fd);
+        unlink(shmem_coll_init_file);
+    }
+    if (shmem_coll_init_file != NULL) {
+        MPIU_Free(shmem_coll_init_file);
+    }
+    shmem_coll_init_file = NULL;
+    return mpi_errno;
+fn_fail:
+    MPIDI_CH3I_SHMEM_COLL_Cleanup();
+    goto fn_exit;
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SMP_init
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
@@ -1979,7 +2055,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
                                         "ib_shmem", &g_smpi.fd, g_size_shmem);
     mv2_take_timestamp("MPIDI_CH3I_SHMEM_Helper_fn [ib_smem]", NULL);
     if (mpi_errno != MPI_SUCCESS) {
-       goto cleanup_files;
+       MPIR_ERR_POP(mpi_errno);
     }
 
     /* Call helper function to create shmem region */
@@ -1988,27 +2064,14 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
                                         "ib_pool", &g_smpi.fd_pool, g_size_pool);
     mv2_take_timestamp("MPIDI_CH3I_SHMEM_Helper_fn [ib_pool]", NULL);
     if (mpi_errno != MPI_SUCCESS) {
-       goto cleanup_files;
-    }
-
-    if (mv2_enable_shmem_collectives) {
-        /* Shared memory for collectives */
-	    mv2_take_timestamp("MPIDI_CH3I_SHMEM_COLL_init", NULL);
-        if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(pg, g_smpi.my_local_id)) != MPI_SUCCESS)
-        {
-            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 
-                   "%s", "SHMEM_COLL_init failed");
-            goto cleanup_files;
-        }
-        mv2_take_timestamp("MPIDI_CH3I_SHMEM_COLL_init", NULL);
+       MPIR_ERR_POP(mpi_errno);
     }
 
     g_smpi_shmem = (struct shared_mem *) MPIU_Malloc(sizeof(struct shared_mem));
     if(!g_smpi_shmem) {
        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                 FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-       goto cleanup_files;
+       MPIR_ERR_POP(mpi_errno);
     }
 
     PRINT_DEBUG(DEBUG_SHM_verbose>1, "before mmap\n");
@@ -2021,7 +2084,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                 FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", "%s: %s", 
                 "mmap", strerror(errno));
-       goto cleanup_files;
+       MPIR_ERR_POP(mpi_errno);
     }
 
     shmem = (struct shared_mem *) g_smpi.mmap_ptr;
@@ -2030,7 +2093,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                 FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", "%s", 
                 "error in shifting mapped shmem");
-       goto cleanup_files;
+       MPIR_ERR_POP(mpi_errno);
     }
 
     if(!g_smp_delay_shmem_pool_init) {
@@ -2042,7 +2105,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
             mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                     FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", "%s: %s", 
                     "mmap", strerror(errno));
-            goto cleanup_files;
+            MPIR_ERR_POP(mpi_errno);
         }
     }
 
@@ -2068,7 +2131,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         g_smpi_shmem->shared_tails == NULL ) {
          mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                   FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-         goto cleanup_files;
+         MPIR_ERR_POP(mpi_errno);
     }
 
     if (g_smpi.num_local_nodes > 1) {
@@ -2129,24 +2192,13 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
             g_smpi_shmem->rqueues_limits_r[i].first) = 0;
     }
 
-    if (mv2_enable_shmem_collectives) {
-        /* Memory Mapping shared files for collectives*/
-        if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap(pg, g_smpi.my_local_id)) != MPI_SUCCESS)
-        {
-           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
-                 FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s", 
-                 "SHMEM_COLL_Mmap failed");
-           goto cleanup_files;
-        }
-    }
-
     /* Another synchronization barrier */
     mv2_take_timestamp("MPIDI_CH3I_CM_SHMEM_Sync", NULL);
     mpi_errno = MPIDI_CH3I_CM_SHMEM_Sync(g_smpi_shmem->pid, g_smpi.my_local_id,
                                             g_smpi.num_local_nodes);
     mv2_take_timestamp("MPIDI_CH3I_CM_SHMEM_Sync", NULL);
     if (mpi_errno != MPI_SUCCESS) {
-        goto cleanup_files;
+        MPIR_ERR_POP(mpi_errno);
     }
 
 #if defined(_SMP_CMA_)
@@ -2166,7 +2218,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
                                 strerror(errno));
                         PRINT_ERROR("CMA is not available. Set "
                                 "MV2_SMP_USE_CMA=0 to disable CMA.\n");
-                        goto cleanup_files;
+                        MPIR_ERR_POP(mpi_errno);
                     }
                 } else {
                     mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,
@@ -2175,7 +2227,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
                             "*g_smpi_shmem->cma_test_buffer");
                     PRINT_ERROR("CMA is not available. Set MV2_SMP_USE_CMA=0 "
                             "to disable CMA.\n");
-                    goto cleanup_files;
+                    MPIR_ERR_POP(mpi_errno);
                 }
                 break;
             case 1:
@@ -2194,9 +2246,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #endif /* defined(_SMP_CMA_) */
     /* Unlinking shared memory files*/
     MPIDI_CH3I_SMP_unlink();
-    if (mv2_enable_shmem_collectives){
-        MPIDI_CH3I_SHMEM_COLL_Unlink();
-    }
 
 #if defined(__x86_64__)
     /*
@@ -2206,7 +2255,12 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
      * near the first process).
      */
     mv2_take_timestamp("Walk Shared Pages", NULL);
-    {
+    char *value = NULL;
+    static int mv2_walk_shared_pages = 1;
+    if ((value = getenv("MV2_WALK_SHARED_PAGES")) != NULL){
+        mv2_walk_shared_pages = !!atoi(value);
+    }
+    if (mv2_walk_shared_pages) {
        int receiver, sender;
  
        for (receiver = 0; receiver < g_smpi.num_local_nodes; ++receiver) {
@@ -2333,12 +2387,8 @@ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_INIT);
     return mpi_errno;
 
-cleanup_files:
-    MPIDI_CH3I_SMP_cleanup();
-    if (mv2_enable_shmem_collectives){
-        MPIDI_CH3I_SHMEM_COLL_Cleanup();
-    }
 fn_fail:
+    MPIDI_CH3I_SMP_cleanup();
     goto fn_exit;
 }
 
@@ -2511,6 +2561,25 @@ void MPIDI_CH3I_SMP_device_ipc_init(MPID_Comm *comm_ptr)
 
 
 #undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SMP_COLL_finalize
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIDI_CH3I_SMP_COLL_finalize()
+{
+    int mpi_errno = MPI_SUCCESS;
+
+    MPIDI_PG_t *pg = MPIDI_Process.my_pg;
+    int local_num_processes = MPIDI_Num_local_processes(pg);
+    int local_id = MPIDI_Get_local_process_id(pg);
+    if (mv2_enable_shmem_collectives || finalize_coll_comm == 1){
+        /* Freeing up shared memory collective resources*/
+        mpi_errno = MPIDI_CH3I_SHMEM_COLL_finalize(local_id, local_num_processes);
+    }
+
+    return mpi_errno;
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SMP_finalize
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
@@ -2609,11 +2678,6 @@ int MPIDI_CH3I_SMP_finalize()
 
     if (s_sh_buf_pool.tail) {
         MPIU_Free(s_sh_buf_pool.tail);
-    }
-
-    if (mv2_enable_shmem_collectives || finalize_coll_comm == 1){
-        /* Freeing up shared memory collective resources*/
-        MPIDI_CH3I_SHMEM_COLL_finalize( g_smpi.my_local_id, g_smpi.num_local_nodes);
     }
 
 #ifdef _SMP_LIMIC_
@@ -4371,6 +4435,11 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov
     if (dma_flag == SMP_DMA_CMA) {
         mpi_errno = MPIDI_CH3I_SMP_do_cma_read(
                 iov, iovlen, cma_header, num_bytes_ptr);
+        if (mpi_errno) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "CMA: MPIDI_CH3I_SMP_readv_rndv_cont fail");
+        }
     } else {
 #endif /* _SMP_CMA_ */
 
@@ -4698,6 +4767,11 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPL_IOV * iov,
     if (dma_flag == SMP_DMA_CMA) {
         mpi_errno = MPIDI_CH3I_SMP_do_cma_read(
                 iov, iovlen, cma_header, num_bytes_ptr);
+        if (mpi_errno) {
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "CMA: MPIDI_CH3I_SMP_readv_rndv fail");
+        }
     } else {
 #endif /* _SMP_CMA_ */
 

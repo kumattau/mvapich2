@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -17,14 +17,27 @@
    iov[0] contains the packet information which includes tag/destrank/context_id
    to use. Extract iov[0], cast it to a packet type and use it */
 
-#define PSM_ESTABLISH_CONNECTION(peer)          \
-do {                                            \
-    if(unlikely(!PSM_ADDR_RESOLVED(peer))) {    \
-        mpi_errno = psm_connect_peer(peer);     \
-        if (mpi_errno != MPI_SUCCESS) {         \
-            MPIR_ERR_POP(mpi_errno);            \
-        }                                       \
-    }                                           \
+#define PSM_ESTABLISH_CONNECTION(peer)                                      \
+do {                                                                        \
+    if(unlikely(!PSM_ADDR_RESOLVED(peer))) {                                \
+        int n_retry = 0;                                                    \
+        mpi_errno = psm_connect_peer(peer);                                 \
+        while (mpi_errno != MPI_SUCCESS &&                                  \
+               n_retry++ < mv2_psm_retry_max) {                             \
+            sleep(mv2_psm_retry_delay);                                     \
+            mpi_errno = psm_connect_peer(peer);                             \
+        }                                                                   \
+        if (mpi_errno != MPI_SUCCESS) {                                     \
+            PRINT_ERROR("Failed to establish PSM connection. "              \
+                        "The PSM channel may be overloaded, "               \
+                        "please consider increasing MV2_PSM_RETRY_MAX "     \
+                        "or MV2_PSM_RETRY_DELAY (currently "                \
+                        "MV2_PSM_RETRY_MAX=%d, MV2_PSM_RETRY_DELAY=%ds)."   \
+                        "Setting PSM_RANKS_PER_CONTEXT=4 may also help.",   \
+                        mv2_psm_retry_max, mv2_psm_retry_delay);            \
+            MPIR_ERR_POP(mpi_errno);                                        \
+        }                                                                   \
+    }                                                                       \
 } while(0)
 
 #undef FUNCNAME

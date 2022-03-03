@@ -28,6 +28,79 @@ int MPI_Ireduce_scatter_block(const void *sendbuf, void *recvbuf, int recvcount,
 #undef MPI_Ireduce_scatter_block
 #define MPI_Ireduce_scatter_block PMPI_Ireduce_scatter_block
 
+#if (defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)) && ENABLE_PVAR_MV2
+#include "coll_shmem.h"
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ireduce_scatter_block_rec_hlv);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ireduce_scatter_block_pairwise);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ireduce_scatter_block_rec_dbl);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ireduce_scatter_block_noncomm);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ireduce_scatter_block_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ireduce_scatter_block_inter);
+
+
+/* 
+ * Count MPICH/MVAPICH Ireduce_scatter algorithms used
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_rec_hlv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_pairwise);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_rec_dbl);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_noncomm);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_inter);
+
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_rec_hlv_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_rec_hlv_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_rec_hlv_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_rec_hlv_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_pairwise_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_pairwise_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_pairwise_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_pairwise_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_rec_dbl_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_rec_dbl_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_rec_dbl_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_rec_dbl_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_noncomm_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_noncomm_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_noncomm_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_noncomm_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_intra_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_intra_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_intra_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_intra_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_inter_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_inter_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_inter_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_inter_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_scatter_block_count_recv);
+
+#define PVAR_TIME_START(optype, op, algo) \
+        MPIR_TIMER_START(optype, op, algo); 
+
+#define PVAR_TIME_STOP(optype, op, algo) \
+        MPIR_TIMER_END(optype, op, algo); 
+    
+
+#define PVAR_INC_1(M, alg, num) \
+    MPIR_T_PVAR_COUNTER_INC(M, alg, num);
+
+#define PVAR_INC_MSG(op, algo, sr, count, datatype) \
+    MPIR_PVAR_INC(op, algo, sr, count, datatype);
+
+
+#else /* (CHANNEL MRAIL OR PSM) AND ENABLE_MV2_PVAR */
+/* Idea of redefining macros to wrap around calls for portability reasons */
+#define PVAR_TIME_START(optype, op, algo) 
+#define PVAR_TIME_STOP(optype, op, algo) 
+#define PVAR_INC_1(M, alg, num)   
+#define PVAR_INC_MSG(op, algo, sr, count, datatype)
+  
+#endif
+
+
 /* any non-MPI functions go here, especially non-static ones */
 
 /* A recursive halving MPI_Ireduce_scatter_block algorithm.  Requires that op is
@@ -38,6 +111,7 @@ int MPI_Ireduce_scatter_block(const void *sendbuf, void *recvbuf, int recvcount,
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ireduce_scatter_block_rec_hlv(const void *sendbuf, void *recvbuf, int recvcount, MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ireduce_scatter_block, rec_hlv);
     int mpi_errno = MPI_SUCCESS;
     int rank, comm_size, i;
     MPI_Aint extent, true_extent, true_lb;
@@ -49,6 +123,7 @@ int MPIR_Ireduce_scatter_block_rec_hlv(const void *sendbuf, void *recvbuf, int r
         last_idx, send_cnt, recv_cnt;
     int pof2, old_i, newrank;
     MPIR_SCHED_CHKPMEM_DECL(5);
+    PVAR_INC_1(MV2, mv2_coll_ireduce_scatter_block_rec_hlv, 1);
 
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -107,6 +182,8 @@ int MPIR_Ireduce_scatter_block_rec_hlv(const void *sendbuf, void *recvbuf, int r
 
     if (rank < 2*rem) {
         if (rank % 2 == 0) { /* even */
+            PVAR_INC_MSG(ireduce_scatter_block, rec_hlv, send, total_count, datatype);
+            PVAR_INC_MSG(ireduce_scatter_block, intra, send, total_count, datatype);
             mpi_errno = MPID_Sched_send(tmp_results, total_count, datatype, rank+1, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             MPID_SCHED_BARRIER(s);
@@ -117,6 +194,8 @@ int MPIR_Ireduce_scatter_block_rec_hlv(const void *sendbuf, void *recvbuf, int r
             newrank = -1;
         }
         else { /* odd */
+            PVAR_INC_MSG(ireduce_scatter_block, rec_hlv, recv, total_count, datatype);
+            PVAR_INC_MSG(ireduce_scatter_block, intra, recv, total_count, datatype);
             mpi_errno = MPID_Sched_recv(tmp_recvbuf, total_count, datatype, rank-1, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             MPID_SCHED_BARRIER(s);
@@ -190,6 +269,11 @@ int MPIR_Ireduce_scatter_block_rec_hlv(const void *sendbuf, void *recvbuf, int r
                 int send_dst = (send_cnt ? dst : MPI_PROC_NULL);
                 int recv_dst = (recv_cnt ? dst : MPI_PROC_NULL);
 
+                PVAR_INC_MSG(ireduce_scatter_block, rec_hlv, send, send_cnt, datatype);
+                PVAR_INC_MSG(ireduce_scatter_block, rec_hlv, recv, recv_cnt, datatype);
+                PVAR_INC_MSG(ireduce_scatter_block, intra, send, send_cnt, datatype);
+                PVAR_INC_MSG(ireduce_scatter_block, intra, recv, recv_cnt, datatype);
+
                 mpi_errno = MPID_Sched_send(((char *)tmp_results + newdisps[send_idx]*extent),
                                             send_cnt, datatype, send_dst, comm_ptr, s);
                 if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -229,12 +313,16 @@ int MPIR_Ireduce_scatter_block_rec_hlv(const void *sendbuf, void *recvbuf, int r
        calculated for that process */
     if (rank < 2*rem) {
         if (rank % 2) { /* odd */
+            PVAR_INC_MSG(ireduce_scatter_block, rec_hlv, send, recvcount, datatype);
+            PVAR_INC_MSG(ireduce_scatter_block, intra, send, recvcount, datatype);
             mpi_errno = MPID_Sched_send(((char *)tmp_results + disps[rank-1]*extent),
                                         recvcount, datatype, rank-1, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             MPID_SCHED_BARRIER(s);
         }
         else  {   /* even */
+            PVAR_INC_MSG(ireduce_scatter_block, rec_hlv, recv, recvcount, datatype);
+            PVAR_INC_MSG(ireduce_scatter_block, intra, recv, recvcount, datatype);
             mpi_errno = MPID_Sched_recv(recvbuf, recvcount, datatype, rank+1, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             MPID_SCHED_BARRIER(s);
@@ -244,6 +332,7 @@ int MPIR_Ireduce_scatter_block_rec_hlv(const void *sendbuf, void *recvbuf, int r
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, ireduce_scatter_block, rec_hlv);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -258,6 +347,7 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ireduce_scatter_block_pairwise(const void *sendbuf, void *recvbuf, int recvcount, MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ireduce_scatter_block, pairwise);
     int mpi_errno = MPI_SUCCESS;
     int   rank, comm_size, i;
     MPI_Aint extent, true_extent, true_lb;
@@ -267,6 +357,7 @@ int MPIR_Ireduce_scatter_block_pairwise(const void *sendbuf, void *recvbuf, int 
     int is_commutative;
     int total_count;
     MPIR_SCHED_CHKPMEM_DECL(2);
+    PVAR_INC_1(MV2, mv2_coll_ireduce_scatter_block_pairwise, 1);
 
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -313,15 +404,21 @@ int MPIR_Ireduce_scatter_block_pairwise(const void *sendbuf, void *recvbuf, int 
         /* send the data that dst needs. recv data that this process
            needs from src into tmp_recvbuf */
         if (sendbuf != MPI_IN_PLACE) {
+            PVAR_INC_MSG(ireduce_scatter_block, pairwise, send, recvcount, datatype);
+            PVAR_INC_MSG(ireduce_scatter_block, intra, send, recvcount, datatype);
             mpi_errno = MPID_Sched_send(((char *)sendbuf+disps[dst]*extent),
                                         recvcount, datatype, dst, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         }
         else {
+            PVAR_INC_MSG(ireduce_scatter_block, pairwise, send, recvcount, datatype);
+            PVAR_INC_MSG(ireduce_scatter_block, intra, send, recvcount, datatype);
             mpi_errno = MPID_Sched_send(((char *)recvbuf+disps[dst]*extent),
                                         recvcount, datatype, dst, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         }
+        PVAR_INC_MSG(ireduce_scatter_block, pairwise, recv, recvcount, datatype);
+        PVAR_INC_MSG(ireduce_scatter_block, intra, recv, recvcount, datatype);
         mpi_errno = MPID_Sched_recv(tmp_recvbuf, recvcount, datatype, src, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         MPID_SCHED_BARRIER(s);
@@ -381,6 +478,7 @@ int MPIR_Ireduce_scatter_block_pairwise(const void *sendbuf, void *recvbuf, int 
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, ireduce_scatter_block, pairwise);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -395,6 +493,7 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ireduce_scatter_block_rec_dbl(const void *sendbuf, void *recvbuf, int recvcount, MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ireduce_scatter_block, rec_dbl);
     int mpi_errno = MPI_SUCCESS;
     int rank, comm_size, i;
     MPI_Aint extent, true_extent, true_lb;
@@ -406,6 +505,7 @@ int MPIR_Ireduce_scatter_block_rec_dbl(const void *sendbuf, void *recvbuf, int r
     MPI_Datatype sendtype, recvtype;
     int nprocs_completed, tmp_mask, tree_root, is_commutative;
     MPIR_SCHED_CHKPMEM_DECL(5);
+    PVAR_INC_1(MV2, mv2_coll_ireduce_scatter_block_rec_dbl, 1);
 
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -556,6 +656,8 @@ int MPIR_Ireduce_scatter_block_rec_dbl(const void *sendbuf, void *recvbuf, int r
                     && (dst >= tree_root + nprocs_completed))
                 {
                     /* send the current result */
+                    PVAR_INC_MSG(ireduce_scatter_block, rec_dbl, send, 1, recvtype);
+                    PVAR_INC_MSG(ireduce_scatter_block, intra, send, 1, recvtype);
                     mpi_errno = MPID_Sched_send(tmp_recvbuf, 1, recvtype, dst, comm_ptr, s);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                     MPID_SCHED_BARRIER(s);
@@ -566,6 +668,8 @@ int MPIR_Ireduce_scatter_block_rec_dbl(const void *sendbuf, void *recvbuf, int r
                          (dst < tree_root + nprocs_completed) &&
                          (rank >= tree_root + nprocs_completed))
                 {
+                    PVAR_INC_MSG(ireduce_scatter_block, rec_dbl, recv, 1, recvtype);
+                    PVAR_INC_MSG(ireduce_scatter_block, intra, recv, 1, recvtype);
                     mpi_errno = MPID_Sched_recv(tmp_recvbuf, 1, recvtype, dst, comm_ptr, s);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                     MPID_SCHED_BARRIER(s);
@@ -631,6 +735,7 @@ int MPIR_Ireduce_scatter_block_rec_dbl(const void *sendbuf, void *recvbuf, int r
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, ireduce_scatter_block, rec_dbl);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -647,6 +752,7 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ireduce_scatter_block_noncomm(const void *sendbuf, void *recvbuf, int recvcount, MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ireduce_scatter_block, noncomm);
     int mpi_errno = MPI_SUCCESS;
     int comm_size = comm_ptr->local_size;
     int rank = comm_ptr->rank;
@@ -661,6 +767,7 @@ int MPIR_Ireduce_scatter_block_noncomm(const void *sendbuf, void *recvbuf, int r
     void *tmp_buf1;
     void *result_ptr;
     MPIR_SCHED_CHKPMEM_DECL(2);
+    PVAR_INC_1(MV2, mv2_coll_ireduce_scatter_block_noncomm, 1);
 
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
 
@@ -715,7 +822,10 @@ int MPIR_Ireduce_scatter_block_noncomm(const void *sendbuf, void *recvbuf, int r
             /* we have the lower rank: recv top half, send bottom half */
             send_offset += size;
         }
-
+        PVAR_INC_MSG(ireduce_scatter_block, noncomm, send, size, datatype);
+        PVAR_INC_MSG(ireduce_scatter_block, noncomm, recv, size, datatype);
+        PVAR_INC_MSG(ireduce_scatter_block, intra, send, size, datatype);
+        PVAR_INC_MSG(ireduce_scatter_block, intra, recv, size, datatype);
         mpi_errno = MPID_Sched_send((outgoing_data + send_offset*true_extent),
                                     size, datatype, peer, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -758,6 +868,7 @@ int MPIR_Ireduce_scatter_block_noncomm(const void *sendbuf, void *recvbuf, int r
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, ireduce_scatter_block, noncomm);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -770,10 +881,12 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ireduce_scatter_block_intra(const void *sendbuf, void *recvbuf, int recvcount, MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ireduce_scatter_block, intra);
     int mpi_errno = MPI_SUCCESS;
     int is_commutative;
     int total_count, type_size, nbytes;
     int comm_size;
+    PVAR_INC_1(MV2, mv2_coll_ireduce_scatter_block_intra, 1);
 
     is_commutative = MPIR_Op_is_commutative(op);
 
@@ -808,6 +921,7 @@ int MPIR_Ireduce_scatter_block_intra(const void *sendbuf, void *recvbuf, int rec
     }
 
 fn_exit:
+    PVAR_TIME_STOP(coll, ireduce_scatter_block, intra);
     return mpi_errno;
 fn_fail:
     goto fn_exit;
@@ -820,6 +934,7 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ireduce_scatter_block_inter(const void *sendbuf, void *recvbuf, int recvcount, MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ireduce_scatter_block, inter);
 /* Intercommunicator Ireduce_scatter_block.
    We first do an intercommunicator reduce to rank 0 on left group,
    then an intercommunicator reduce to rank 0 on right group, followed
@@ -831,6 +946,7 @@ int MPIR_Ireduce_scatter_block_inter(const void *sendbuf, void *recvbuf, int rec
     void *tmp_buf = NULL;
     MPID_Comm *newcomm_ptr = NULL;
     MPIR_SCHED_CHKPMEM_DECL(1);
+    PVAR_INC_1(MV2, mv2_coll_ireduce_scatter_block_inter, 1);
 
     rank = comm_ptr->rank;
     local_size = comm_ptr->local_size;
@@ -855,6 +971,8 @@ int MPIR_Ireduce_scatter_block_inter(const void *sendbuf, void *recvbuf, int rec
     if (comm_ptr->is_low_group) {
         /* reduce from right group to rank 0*/
         root = (rank == 0) ? MPI_ROOT : MPI_PROC_NULL;
+        PVAR_INC_MSG(ireduce_scatter_block, inter, send, total_count, datatype);
+        PVAR_INC_MSG(ireduce_scatter_block, inter, recv, total_count, datatype);
         mpi_errno = comm_ptr->coll_fns->Ireduce_sched(sendbuf, tmp_buf, total_count,
                                                 datatype, op, root, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -864,6 +982,8 @@ int MPIR_Ireduce_scatter_block_inter(const void *sendbuf, void *recvbuf, int rec
 
         /* reduce to rank 0 of right group */
         root = 0;
+        PVAR_INC_MSG(ireduce_scatter_block, inter, send, total_count, datatype);
+        PVAR_INC_MSG(ireduce_scatter_block, inter, recv, total_count, datatype);
         mpi_errno = comm_ptr->coll_fns->Ireduce_sched(sendbuf, tmp_buf, total_count,
                                                 datatype, op, root, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -871,6 +991,8 @@ int MPIR_Ireduce_scatter_block_inter(const void *sendbuf, void *recvbuf, int rec
     else {
         /* reduce to rank 0 of right group */
         root = 0;
+        PVAR_INC_MSG(ireduce_scatter_block, inter, send, total_count, datatype);
+        PVAR_INC_MSG(ireduce_scatter_block, inter, recv, total_count, datatype);
         mpi_errno = comm_ptr->coll_fns->Ireduce_sched(sendbuf, tmp_buf, total_count,
                                                 datatype, op, root, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -880,6 +1002,8 @@ int MPIR_Ireduce_scatter_block_inter(const void *sendbuf, void *recvbuf, int rec
 
         /* reduce from right group to rank 0*/
         root = (rank == 0) ? MPI_ROOT : MPI_PROC_NULL;
+        PVAR_INC_MSG(ireduce_scatter_block, inter, send, total_count, datatype);
+        PVAR_INC_MSG(ireduce_scatter_block, inter, recv, total_count, datatype);
         mpi_errno = comm_ptr->coll_fns->Ireduce_sched(sendbuf, tmp_buf, total_count,
                                                 datatype, op, root, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -898,10 +1022,13 @@ int MPIR_Ireduce_scatter_block_inter(const void *sendbuf, void *recvbuf, int rec
     mpi_errno = newcomm_ptr->coll_fns->Iscatter_sched(tmp_buf, recvcount, datatype,
                                                 recvbuf, recvcount, datatype, 0,
                                                 newcomm_ptr, s);
+    PVAR_INC_MSG(ireduce_scatter_block, inter, send, total_count, datatype);
+    PVAR_INC_MSG(ireduce_scatter_block, inter, recv, total_count, datatype);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, ireduce_scatter_block, inter);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);

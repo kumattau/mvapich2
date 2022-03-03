@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  *
- * Copyright (c) 2001-2021, The Ohio State University. All rights
+ * Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -74,7 +74,7 @@ MPIDI_CH3I_Pkt_sc_conn_accept_t;
    ToDo: change the "host description" to an "interface address" so that
    socket connections are targeted at particularly interfaces, not
    compute nodes, and that the address is in ready-to-use IP address format, 
-   and does not require a gethostbyname lookup.  - Partially done
+   and does not require a getaddrinfo lookup.  - Partially done
  */
 
 /*
@@ -460,8 +460,6 @@ int MPIDI_CH3U_Get_business_card_sock(int myRank,
     }
 
     /* Look up the interface address cooresponding to this host description */
-    /* FIXME: We should start switching to getaddrinfo instead of 
-       gethostbyname */
     /* FIXME: We don't make use of the ifname in Windows in order to 
        provide backward compatibility with the (undocumented) host
        description string used by the socket connection routine 
@@ -479,11 +477,14 @@ int MPIDI_CH3U_Get_business_card_sock(int myRank,
 	struct hostent *info;
 	char ifname[256];
 	unsigned char *p;
-	info = gethostbyname( ifname );
-	if (info && info->h_addr_list) {
-	    p = (unsigned char *)(info->h_addr_list[0]);
+    struct addrinfo hints = { .ai_family = AF_INET };
+    mpi_errno = getaddrinfo(ifname, NULL, &hints, &info);
+    if (mpi_errno == 0) {
+        sockaddr_in* ai_addr = (sockaddr_in*)info->ai_addr;
+	    p = (unsigned char *)(ai_addr->sin_addr);
 	    MPL_snprintf( ifname, sizeof(ifname), "%u.%u.%u.%u", 
 			   p[0], p[1], p[2], p[3] );
+        freeaddrinfo(info);
 	    MPIU_DBG_MSG_S(CH3_CONNECT,VERBOSE,"ifname = %s",ifname );
 	    str_errno = MPIU_Str_add_string_arg( bc_val_p,
 						 val_max_sz_p,

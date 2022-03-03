@@ -35,6 +35,12 @@ PAC_SET_HEADER_LIB_PATH([slurm])
 
 # with_pmi is set by the top level configure
 
+# find the srun binary and create an mpiexec exe
+    AC_ARG_VAR([SRUN_MPIEXEC_CMD], [path to srun command])
+    AC_PATH_PROG([SRUN_MPIEXEC_CMD], [srun], [/usr/bin/srun])
+    AC_SUBST(MPIEXEC_NAME)
+    PAC_GET_EXENAME("mpiexec", MPIEXEC_NAME)
+
 if test "x$with_pmi" = "xsimple" -o "x$with_pmi" = "xpmi1"; then
     AC_CHECK_HEADER([slurm/pmi.h], [], [AC_MSG_ERROR([could not find slurm/pmi.h.  Configure aborted])])
     AC_CHECK_LIB([pmi], [PMI_Init],

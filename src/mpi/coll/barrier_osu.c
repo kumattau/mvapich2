@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -33,10 +33,14 @@
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_barrier_pairwise);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_barrier_shmem);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_barrier_subcomm);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_barrier_sharp);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_barrier_topo_aware_shmem);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_pairwise);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_shmem);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_subcomm);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_sharp);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_topo_aware_shmem);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_pairwise_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_barrier_pairwise_bytes_recv);
@@ -118,11 +122,8 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errfl
 #define FCNAME MPL_QUOTE(FUNCNAME)
 static inline int MPIR_Sharp_Barrier_MV2 (MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag) 
 {
-
-    /*
-     * TODO add PVARS 
-     */
-
+    MPIR_TIMER_START(coll,barrier,sharp);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_barrier_sharp, 1);
     int mpi_errno = MPI_SUCCESS;
 
     struct sharp_coll_comm * sharp_comm =
@@ -134,7 +135,7 @@ static inline int MPIR_Sharp_Barrier_MV2 (MPID_Comm * comm_ptr, MPIR_Errflag_t *
         MPIDI_CH3_Progress_test();
     }
 
-    mpi_errno = sharp_coll_do_barrier(sharp_comm);
+    mpi_errno = sharp_ops.coll_do_barrier(sharp_comm);
 
     if (mpi_errno != SHARP_COLL_SUCCESS) {
         goto fn_fail;
@@ -143,10 +144,11 @@ static inline int MPIR_Sharp_Barrier_MV2 (MPID_Comm * comm_ptr, MPIR_Errflag_t *
     mpi_errno = MPI_SUCCESS;
 
 fn_exit:
+    MPIR_TIMER_END(coll,barrier,sharp);
     return (mpi_errno);
 
 fn_fail:
-    PRINT_DEBUG(DEBUG_Sharp_verbose, "Continue without SHArP: %s \n", sharp_coll_strerror(mpi_errno));
+    PRINT_DEBUG(DEBUG_Sharp_verbose, "Continue without SHArP: %s \n", sharp_ops.coll_strerror(mpi_errno));
     mpi_errno = MPI_ERR_INTERN;
     goto fn_exit;
 
@@ -326,8 +328,6 @@ static int MPIR_socket_aware_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errfla
     PMPI_Comm_size(shmem_commptr->dev.ch.intra_sock_comm, &intra_sock_size);
     MPID_Comm_get_ptr(shmem_commptr->dev.ch.intra_sock_comm, intra_sock_commptr);
 
-    int shmem_comm_rank = intra_sock_commptr->dev.ch.shmem_comm_rank;
-
     if (local_size > 1) {
         mv2_shm_barrier_gather(intra_sock_commptr->dev.ch.shmem_info);
     }
@@ -347,15 +347,11 @@ static int MPIR_socket_aware_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errfla
         else
         {
             MPID_Comm *shmem_leader_shmemcomm = NULL;
-            MPID_Comm_get_ptr(shmem_leader_commptr->dev.ch.shmem_comm, shmem_leader_shmemcomm);
-            int leader_shmem_comm_rank=0, leader_size=0, leader_rank=0;
+            MPID_Comm_get_ptr(shmem_leader_commptr->dev.ch.shmem_comm, 
+                              shmem_leader_shmemcomm);
 
             if(shmem_leader_commptr->local_size > 1)
             {
-                leader_shmem_comm_rank = shmem_leader_shmemcomm->dev.ch.shmem_comm_rank;
-                leader_size = shmem_leader_commptr->local_size;
-                leader_rank = shmem_leader_commptr->rank;
-
                 mv2_shm_barrier_gather(shmem_leader_shmemcomm->dev.ch.shmem_info);
             }
 
@@ -396,6 +392,8 @@ static int MPIR_socket_aware_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errfla
 
 static int MPIR_topo_aware_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,barrier,topo_aware_shmem);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_barrier_topo_aware_shmem, 1);
     MPIU_Assert(comm_ptr->dev.ch.topo_coll_ok == 1 && comm_ptr->dev.ch.shmem_coll_ok == 1);
     int mpi_errno = MPI_SUCCESS;    
 #if defined(_SHARP_SUPPORT_)
@@ -453,6 +451,7 @@ static int MPIR_topo_aware_shmem_barrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_
             }
         }
     }
+    MPIR_TIMER_END(coll,barrier,topo_aware_shmem);
     return mpi_errno;
 }
 

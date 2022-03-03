@@ -75,6 +75,18 @@ static int listenfd = -1;
 typedef unsigned int socklen_t;
 #endif
 
+/* getaddrinfo hints struct */
+static struct addrinfo addr_hint = {
+    .ai_flags = AI_CANONNAME,
+    .ai_family = AF_INET,
+    .ai_socktype = 0,
+    .ai_protocol = 0,
+    .ai_addrlen = 0,
+    .ai_addr = NULL,
+    .ai_canonname = NULL,
+    .ai_next = NULL
+};
+
 /*
  * Input Parameters:
  *   portLen - Number of characters in portString
@@ -187,12 +199,13 @@ int PMIServGetPort( int *fdout, char *portString, int portLen )
     return 0;
 }
 
-/* defs of gethostbyname */
+/* defs of getaddrinfo */
 #include <netdb.h>
 int MPIE_GetMyHostName( char myname[MAX_HOST_NAME+1], int namelen )
 {
-    struct hostent     *hp;
+    struct addrinfo *info = NULL;
     char *hostname = 0;
+    int mpi_errno = 0;
     /*
      * First, get network name if necessary
      */
@@ -201,9 +214,10 @@ int MPIE_GetMyHostName( char myname[MAX_HOST_NAME+1], int namelen )
 	gethostname( myname, namelen );
     }
     /* ??? */
-    hp = gethostbyname( hostname );
-    if (!hp) {
-	return -1;
+    int mpi_errno = getaddrinfo( hostname, NULL, NULL, &info );
+    freeaddrinfo(info);
+    if (mpi_errno != 0) {
+        return mpi_errno;
     }
     return 0;
 }
@@ -351,8 +365,8 @@ int PMIServEndPort( void )
    interface name) and port.  It returns the fd, or -1 on failure */
 int MPIE_ConnectToPort( char *hostname, int portnum )
 {
-    struct hostent     *hp;
-    struct sockaddr_in sa;
+    struct addrinfo    res;
+    int                err; 
     int                fd;
     int                optval = 1;
     int                q_wait = 1;
@@ -363,17 +377,16 @@ int MPIE_ConnectToPort( char *hostname, int portnum )
     /* FIXME: simple_pmi should *never* start mpiexec with a bogus
        interface name */
     if (strcmp(hostname,"default_interface") == 0) {
-	defaultHostname[0] = 0;
-	MPIE_GetMyHostName( defaultHostname, sizeof(defaultHostname) );
-	hostname = defaultHostname;
-	DBG_PRINTF( ( "Connecting to %s:%d\n", hostname, portnum ) );
+        defaultHostname[0] = 0;
+        MPIE_GetMyHostName( defaultHostname, sizeof(defaultHostname) );
+        hostname = defaultHostname;
+        DBG_PRINTF( ( "Connecting to %s:%d\n", hostname, portnum ) );
     }
-    hp = gethostbyname( hostname );
-    if (!hp) {
-	return -1;
+    err = getaddrinfo(env, NULL, &addr_hint, &res);
+    if (err) {
+        return -1;
     }
     
-    memset( (void *)&sa, 0, sizeof(sa) );
     /* POSIX might define h_addr_list only and not define h_addr */
 #ifdef HAVE_H_ADDR_LIST
     memcpy( (void *)&sa.sin_addr, (void *)hp->h_addr_list[0], hp->h_length);
@@ -381,11 +394,11 @@ int MPIE_ConnectToPort( char *hostname, int portnum )
     memcpy( (void *)&sa.sin_addr, (void *)hp->h_addr, hp->h_length);
 #endif
     sa.sin_family = hp->h_addrtype;
-    sa.sin_port   = htons( (unsigned short) portnum );
+    ((struct sockaddr_in)res)->ai_addr->sin_port = htons((unsigned short)portnum);
     
     fd = socket( AF_INET, SOCK_STREAM, TCP );
     if (fd < 0) {
-	return -1;
+        return -1;
     }
     
     if (setsockopt( fd, IPPROTO_TCP, TCP_NODELAY, 
@@ -394,7 +407,7 @@ int MPIE_ConnectToPort( char *hostname, int portnum )
     }
 
     /* We wait here for the connection to succeed */
-    if (connect( fd, (struct sockaddr *)&sa, sizeof(sa) ) < 0) {
+    if (connect( fd, res->ai_addr, sizeof(struct sockaddr_in)) < 0) {
 	switch (errno) {
 	case ECONNREFUSED:
 	    /* (close socket, get new socket, try again) */

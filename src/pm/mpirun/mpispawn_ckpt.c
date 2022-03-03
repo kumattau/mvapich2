@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -141,11 +141,9 @@ int CR_Init(int nProcs)
     char *temp;
 
 #ifndef CR_FTB
-    int mpirun_port;
-    temp = getenv("MPISPAWN_MPIRUN_CR_PORT");
-    if (temp) {
-        mpirun_port = atoi(temp);
-    } else {
+    char *mpirun_port = NULL;
+    mpirun_port = getenv("MPISPAWN_MPIRUN_CR_PORT");
+    if (!mpirun_port) {
         PRINT_ERROR("MPISPAWN_MPIRUN_CR_PORT unknown\n");
         exit(EXIT_FAILURE);
     }
@@ -209,9 +207,6 @@ int CR_Init(int nProcs)
         exit(EXIT_FAILURE);
     }
 #else
-    struct hostent *hp;
-    struct sockaddr_in sa;
-
     /* Connect to mpirun_rsh */
     mpirun_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (mpirun_fd < 0) {
@@ -219,21 +214,31 @@ int CR_Init(int nProcs)
         exit(EXIT_FAILURE);
     }
 
-    hp = gethostbyname(getenv("MPISPAWN_MPIRUN_HOST"));
-    if (!hp) {
-        perror("[CR_Init] gethostbyname()");
+    /* getaddrinfo hints struct */
+    struct addrinfo addr_hint = {
+        .ai_flags = AI_CANONNAME,
+        .ai_family = AF_INET,
+        .ai_socktype = 0,
+        .ai_protocol = 0,
+        .ai_addrlen = 0,
+        .ai_addr = NULL,
+        .ai_canonname = NULL,
+        .ai_next = NULL
+    };
+
+    struct addrinfo *res;
+    int err = getaddrinfo(getenv("MPISPAWN_MPIRUN_HOST"), mpirun_port, &addr_hint, &res);
+    if (err || !res) {
+        perror("[CR_Init] getaddrinfo()");
         exit(EXIT_FAILURE);
     }
 
-    bzero((void *) &sa, sizeof(sa));
-    bcopy((void *) hp->h_addr, (void *) &sa.sin_addr, hp->h_length);
-    sa.sin_family = AF_INET;
-    sa.sin_port = htons(mpirun_port);
-
-    if (connect(mpirun_fd, (struct sockaddr *) &sa, sizeof(sa)) < 0) {
+    if (connect(mpirun_fd, res->ai_addr, sizeof(struct sockaddr_in)) < 0) {
+        freeaddrinfo(res);
         perror("[CR_Init] connect()");
         exit(EXIT_FAILURE);
     }
+    freeaddrinfo(res);
 
     mpispawn_fd = malloc(nProcs * sizeof(int));
     if (!mpispawn_fd) {

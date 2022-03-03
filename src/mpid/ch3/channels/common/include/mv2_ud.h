@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -158,7 +158,7 @@ struct ibv_qp *mv2_ud_create_qp (mv2_ud_qp_info_t *qp_info, int hca_index);
 
 /* destroy ud context */
 void mv2_ud_destroy_ctx (mv2_ud_ctx_t *ctx);
-void mv2_ud_resend(vbuf *v);
+int mv2_ud_resend(vbuf *v);
 
 #endif /* #ifndef _MV2_UD_H_ */
 

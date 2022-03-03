@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -444,16 +444,9 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
     vbuf *v;
     int queued = 0;
     int ext_sendq_size = 0;
-    int rail, disp, s_total, inc;
+    int rail, inc;
     int rail_index;
     MPIDI_msg_sz_t nbytes;
-
-    int count_rail;
-
-    int mapped[MAX_NUM_SUBRAILS];
-    int actual_index[MAX_NUM_SUBRAILS];
-
-    double time;
 
     if (rreq->mrail.rndv_buf_off == 0) {
         rreq->mrail.num_rdma_read_completions = 0;
@@ -474,7 +467,13 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
     }
 #endif /* defined(DEBUG) */
 
+#ifdef _ENABLE_HSAM_
     /* Use the HSAM Functionality */
+    double time;
+    int count_rail, disp, s_total; 
+    int mapped[MAX_NUM_SUBRAILS];
+    int actual_index[MAX_NUM_SUBRAILS];
+
     if(mv2_MPIDI_CH3I_RDMA_Process.has_hsam && 
             (rreq->mrail.rndv_buf_sz > rdma_large_msg_rail_sharing_threshold)) {
 
@@ -499,6 +498,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
         }
 
     }
+#endif /*_ENABLE_HSAM_*/
 
     while (rreq->mrail.rndv_buf_off < 
             rreq->mrail.rndv_buf_sz) {
@@ -516,7 +516,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                 rreq->mrail.rndv_buf_off, rreq->mrail.remote_addr);
         
         if (nbytes <= rdma_large_msg_rail_sharing_threshold) {
-            rail = MRAILI_Send_select_rail(vc);
+            rail = MRAILI_Send_select_rail(vc, rdma_iba_eager_threshold+1);
             /* Get current number of pending entries */
             GET_EXT_SENDQ_SIZE(vc, rail, ext_sendq_size);
             if (ext_sendq_size >= rdma_rndv_ext_sendq_size) {
@@ -580,7 +580,9 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                     nbytes - (rdma_num_rails - 1) * inc, rail);
             rreq->mrail.num_rdma_read_completions++;
 
-        } else {
+        }
+#ifdef _ENABLE_HSAM_
+        else {
             rail = 0;
             count_rail = 0;
            
@@ -643,6 +645,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
             rreq->mrail.num_rdma_read_completions++;
 
         }
+#endif /*_ENABLE_HSAM_*/
         /* Send the finish message immediately after the data */  
         rreq->mrail.rndv_buf_off += nbytes; 
     }
@@ -671,18 +674,12 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
         MPID_Request * sreq)
 {
     vbuf *v;
-    int rail, disp, s_total;
+    int rail;
     MPIDI_msg_sz_t nbytes, inc;
     int rail_index;
 
-    int count_rail;
-
-    int mapped[MAX_NUM_SUBRAILS];
-    int actual_index[MAX_NUM_SUBRAILS];
     int queued = 0;
     int ext_sendq_size = 0;
-
-    double time;
 
     for(rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
         if(mv2_MPIDI_CH3I_RDMA_Process.has_apm && apm_tester) {
@@ -699,7 +696,14 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
     }
 #endif /* defined(DEBUG) */
 
+#ifdef _ENABLE_HSAM_
     /* Use the HSAM Functionality */
+    double time;
+    int count_rail;
+    int disp, s_total;
+    int mapped[MAX_NUM_SUBRAILS];
+    int actual_index[MAX_NUM_SUBRAILS];
+
     if(mv2_MPIDI_CH3I_RDMA_Process.has_hsam && 
             (sreq->mrail.rndv_buf_sz > rdma_large_msg_rail_sharing_threshold)) {
 
@@ -724,6 +728,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
         }
 
     }
+#endif /*_ENABLE_HSAM_*/
 
 #ifdef _ENABLE_CUDA_
     if (mv2_enable_device && sreq->mrail.device_transfer_mode != NONE) {
@@ -745,7 +750,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
                 sreq->mrail.rndv_buf_off, sreq->mrail.remote_addr);
         
         if (nbytes <= rdma_large_msg_rail_sharing_threshold) {
-            rail = MRAILI_Send_select_rail(vc);
+            rail = MRAILI_Send_select_rail(vc, rdma_iba_eager_threshold+1);
 
             /* Get current number of pending entries */
             GET_EXT_SENDQ_SIZE(vc, rail, ext_sendq_size);
@@ -807,7 +812,9 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
                     sreq->mrail.rkey[vc->mrail.rails[rail].hca_index], 
                     nbytes - (rdma_num_rails - 1) * inc, rail);
 
-        } else {
+        }
+#ifdef _ENABLE_HSAM_
+        else {
             rail = 0;
             count_rail = 0;
            
@@ -870,6 +877,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
 
 
         }
+#endif /*_ENABLE_HSAM_*/
         sreq->mrail.rndv_buf_off += nbytes; 
     }
 
@@ -900,7 +908,7 @@ int MPIDI_CH3I_MRAILI_Rendezvous_r3_ack_send(MPIDI_VC_t *vc)
     MPID_Seqnum_t seqnum;
 
     MRAILI_Get_buffer(vc, v, rdma_vbuf_total_size);
-    rail = MRAILI_Send_select_rail(vc);
+    rail = MRAILI_Send_select_rail(vc, rdma_vbuf_total_size);
  
     MPIDI_CH3_Pkt_rndv_r3_ack_t r3_ack;
     MPIDI_Pkt_init(&r3_ack, MPIDI_CH3_PKT_RNDV_R3_ACK);
@@ -988,6 +996,7 @@ void get_sorted_index(MPIDI_VC_t *vc, int *b)
 
 
 
+#ifdef _ENABLE_HSAM_
 #undef FUNCNAME 
 #define FUNCNAME adjust_weights 
 #undef FCNAME       
@@ -1039,6 +1048,7 @@ void adjust_weights(MPIDI_VC_t *vc, double start_time,
         }
     }
 }
+#endif /*_ENABLE_HSAM_*/
 
 /* User defined function for wall-time */
 void get_wall_time(double *t)

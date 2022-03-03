@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,6 +23,7 @@
 #include "debug_utils.h"
 #include "api/sharp_coll.h"
 #include <mpiimpl.h>
+#include "ofed_abstraction.h"
 
 struct coll_sharp_module_t {
     struct sharp_coll_comm *sharp_coll_comm;

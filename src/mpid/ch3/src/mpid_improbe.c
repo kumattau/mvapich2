@@ -61,6 +61,7 @@ int MPID_Improbe(int source, int tag, MPID_Comm *comm, int context_offset,
     } else {
         *flag = FALSE;
         MPID_Request_release(rreq);
+        MPID_Request_release(rreq);
     }
     goto fn_exit;
 #endif

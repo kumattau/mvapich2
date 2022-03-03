@@ -7,3 +7,6 @@
 **rdmacmportrange:Invalid port range.
 **rdmacmportrange %d %d:Invalid port range of %d. The required range is %d.
 **cpuaffinity:CPU Affinity is undefined.
+**sharpcoll:SHARP collective failed.
+**sharpcoll %d:SHARP collective failed with error code %d.
+**sharpcoll %s %d:SHARP collective failed with error %s (%d).

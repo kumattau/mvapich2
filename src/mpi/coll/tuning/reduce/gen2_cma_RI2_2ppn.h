@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2021, The Ohio State University. All rights
+ * Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -15,7 +15,7 @@
     2,      \
     4,      \
     4,      \
-    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1},      \
+    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0},      \
     19,     \
     {       \
     {4, &MPIR_Reduce_inter_knomial_wrapper_MV2},        \
@@ -36,7 +36,7 @@
     {131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},       \
     {262144, &MPIR_Reduce_binomial_MV2},        \
     {524288, &MPIR_Reduce_inter_knomial_wrapper_MV2},       \
-    {1048576, &MPIR_Reduce_redscat_gather_MV2}      \
+    {1048576, &MPIR_Reduce_allreduce_MV2}      \
     },      \
     19,     \
     {       \
@@ -86,7 +86,7 @@
 	{131072, &MPIR_Reduce_binomial_MV2},		\
 	{262144, &MPIR_Reduce_inter_knomial_wrapper_MV2},		\
 	{524288, &MPIR_Reduce_inter_knomial_wrapper_MV2},		\
-	{1048576, &MPIR_Reduce_inter_knomial_wrapper_MV2}		\
+	{1048576, &MPIR_Reduce_allreduce_MV2}		\
 	},		\
 	19,		\
 	{		\

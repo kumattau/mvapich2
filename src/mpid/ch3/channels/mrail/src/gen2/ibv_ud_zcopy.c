@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -279,7 +279,6 @@ static inline void mv2_ud_post_zcopy_recv(MPID_Request *req, mv2_ud_zcopy_info_t
 
 void MPIDI_CH3I_MRAIL_Prepare_rndv_zcopy(MPIDI_VC_t * vc, MPID_Request * req)
 {
-    int hca_num = 0;
     mv2_rndv_qp_t *rqp = NULL;
     mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
 
@@ -363,8 +362,9 @@ void MPIDI_CH3I_MRAILI_Rendezvous_zcopy_push(MPIDI_VC_t * vc,
     struct ibv_send_wr sr[rdma_ud_zcopy_push_segment];
     struct ibv_sge sg_entry[rdma_ud_zcopy_push_segment];
     mv2_ud_ctx_t *ud_ctx = NULL;
-    PRINT_DEBUG(DEBUG_ZCY_verbose>0, "ZCOPY rndv push remote qpn:%d hcas:%d remote:%d\n",
-                    sreq->mrail.remote_qpn, sreq->mrail.num_hcas, vc->pg_rank);
+    PRINT_DEBUG(DEBUG_ZCY_verbose > 0, "ZCOPY rndv push remote hcas:%d "
+                                        "remote:%d\n", sreq->mrail.num_hcas,
+                                        vc->pg_rank);
 
     posts_required = ((sreq->mrail.rndv_buf_sz + MRAIL_MAX_UD_SIZE - 1) / MRAIL_MAX_UD_SIZE);
     if (posts_required <= 0) {

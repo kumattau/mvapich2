@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
 * reserved.
 *
 * This file is part of the MVAPICH2 software package developed by the
@@ -15,11 +15,68 @@
 
 #include "ibarrier_tuning.h"
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibarrier_sharp);
+
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 
 int (*MV2_Ibarrier_function) (MPID_Comm *comm_ptr, MPID_Sched_t s) = NULL;
 
 int (*MV2_Ibarrier_intra_node_function) (MPID_Comm *comm_ptr, MPID_Sched_t s) = NULL;
+
+#if defined (_SHARP_SUPPORT_)
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ibarrier_sharp);
+
+#undef FUNCNAME
+#define FUNCNAME "MPIR_Sharp_Ibarrier_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Sharp_Ibarrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag,
+                            MPID_Request **req)
+{
+    MPIR_TIMER_START(coll, ibarrier,sharp);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_ibarrier_sharp, 1);
+    int mpi_errno = MPI_SUCCESS;
+    SHARP_REQ_HANDLE * sharp_req = NULL;
+
+    struct sharp_coll_comm * sharp_comm =
+        ((sharp_info_t *)comm_ptr->dev.ch.sharp_coll_info)
+        ->sharp_comm_module
+        ->sharp_coll_comm;
+
+    /* Ensure that all messages in non-sharp channels are progressed first
+     * to prevent deadlocks in subsequent blocking sharp API calls */
+    while (rdma_global_ext_sendq_size) {
+        MPIDI_CH3_Progress_test();
+    }
+
+    mpi_errno = sharp_ops.coll_do_barrier_nb(sharp_comm, &sharp_req);
+
+    if (mpi_errno != SHARP_COLL_SUCCESS) {
+        MPIR_ERR_SETANDJUMP2(mpi_errno, MPI_ERR_INTERN, "**sharpcoll", 
+                             "**sharpcoll %s %d", 
+                             sharp_ops.coll_strerror(mpi_errno), mpi_errno);
+    }
+    /* now create and populate the request */
+    *req = MPID_Request_create();
+    if(*req == NULL) {
+        MPIR_ERR_SETANDJUMP2(mpi_errno, MPI_ERR_INTERN, "**sharpcoll",
+                             "**sharpcoll %s %d", 
+                             sharp_ops.coll_strerror(mpi_errno), mpi_errno);
+    }
+    (*req)->sharp_req = sharp_req;
+    (*req)->kind = MPID_COLL_REQUEST;
+    mpi_errno = MPI_SUCCESS;
+
+  fn_exit:
+    MPIR_TIMER_END(coll,ibarrier,sharp);
+    return (mpi_errno);
+
+  fn_fail:
+    PRINT_DEBUG(DEBUG_Sharp_verbose, "Continuing without SHArP: %s \n",
+                sharp_ops.coll_strerror(mpi_errno));
+    goto fn_exit;
+}
+#endif /* end of defined (_SHARP_SUPPORT_) */
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ibarrier_tune_helper_MV2

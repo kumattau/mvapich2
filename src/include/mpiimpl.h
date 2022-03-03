@@ -12,7 +12,7 @@
  * excludes the implied warranties of merchantability, fitness for a
  * particular purpose and non-infringement.
  */
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -4059,6 +4059,10 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf, const int *sendcnts, const int
                          const int *rdispls, MPI_Datatype recvtype, MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag);
 int MPIR_Bcast_MV2 (void *buffer, int count, MPI_Datatype datatype, int
                 root, MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag);
+#if defined (_SHARP_SUPPORT_)
+int MPIR_Sharp_Bcast_MV2(void *buffer, int count, MPI_Datatype datatype, int root,
+                         MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag);
+#endif /*defined (_SHARP_SUPPORT_)*/
 int MPIR_Gather_MV2 (const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                  void *recvbuf, int recvcnt, MPI_Datatype recvtype,
                  int root, MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag);
@@ -4628,6 +4632,22 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
                       MPI_Status array_of_statuses[]);
 int MPIR_Comm_set_attr_impl(MPID_Comm *comm_ptr, int comm_keyval, void *attribute_val, 
                             MPIR_AttrType attrType);
+
+#if defined (_SHARP_SUPPORT_)
+int MPIR_Sharp_Iallreduce_MV2(const void *sendbuf, void *recvbuf, int count,
+                              MPI_Datatype datatype, MPI_Op op,
+                              MPID_Comm * comm_ptr, int *errflag,
+                              MPID_Request **req);
+int MPIR_Sharp_Ireduce_MV2(const void *sendbuf, void *recvbuf, int count,
+                           MPI_Datatype datatype, MPI_Op op, int root,
+                           MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag,
+                           MPID_Request **req);
+int MPIR_Sharp_Ibcast_MV2(void *buffer, int count, MPI_Datatype datatype,
+                          int root, MPID_Comm * comm_ptr,
+                          MPIR_Errflag_t *errflag, MPID_Request **req);
+int MPIR_Sharp_Ibarrier_MV2(MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag,
+                            MPID_Request **req);
+#endif /* End of SHARP SUPPORT */
 
 /* Pull the error status out of the tag space and put it into an errflag. */
 #undef FUNCNAME

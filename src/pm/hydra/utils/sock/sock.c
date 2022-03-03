@@ -18,6 +18,18 @@ struct fwd_hash {
     struct fwd_hash *next;
 };
 
+/* getaddrinfo hints struct */
+static struct addrinfo addr_hint = {
+    .ai_flags = AI_CANONNAME,
+    .ai_family = AF_INET,
+    .ai_socktype = 0,
+    .ai_protocol = 0,
+    .ai_addrlen = 0,
+    .ai_addr = NULL,
+    .ai_canonname = NULL,
+    .ai_next = NULL
+};
+
 HYD_status HYDU_sock_listen(int *listen_fd, char *port_range, uint16_t * port)
 {
     struct sockaddr_in sa;
@@ -126,26 +138,23 @@ HYD_status HYDU_sock_listen(int *listen_fd, char *port_range, uint16_t * port)
 HYD_status HYDU_sock_connect(const char *host, uint16_t port, int *fd, int retries,
                              unsigned long delay)
 {
-    struct hostent *ht;
-    struct sockaddr_in sa;
     int one = 1, ret, retry_count;
     HYD_status status = HYD_SUCCESS;
+    int err;
+    struct addrinfo *res = NULL;
 
     HYDU_FUNC_ENTER();
-
-    memset((char *) &sa, 0, sizeof(struct sockaddr_in));
-    sa.sin_family = AF_INET;
-    sa.sin_port = htons(port);
 
     /* Get the remote host's IP address. Note that this is not
      * thread-safe. Since we don't use threads right now, we don't
      * worry about locking it. */
-    ht = gethostbyname(host);
-    if (ht == NULL)
+    err = getaddrinfo(host, NULL, &addr_hint, &res);
+    if (err)
         HYDU_ERR_SETANDJUMP(status, HYD_INVALID_PARAM,
-                            "unable to get host address for %s (%s)\n", host, HYDU_herror(h_errno));
-    memcpy(&sa.sin_addr, ht->h_addr_list[0], ht->h_length);
-
+                            "unable to get host address for %s (%s)\n",
+                            host, HYDU_strerror(err));
+    /* manually set port since it was given to us as an int instead of a string */
+    ((struct sockaddr_in *)res->ai_addr)->sin_port = htons(port);
     /* Create a socket and set the required options */
     *fd = socket(AF_INET, SOCK_STREAM, 0);
     if (*fd < 0)
@@ -157,7 +166,7 @@ HYD_status HYDU_sock_connect(const char *host, uint16_t port, int *fd, int retri
      * layer can decide what to do with the return status. */
     retry_count = 0;
     do {
-        ret = connect(*fd, (struct sockaddr *) &sa, sizeof(struct sockaddr_in));
+        ret = connect(*fd,  res->ai_addr, sizeof(struct sockaddr_in));
         if (ret < 0 && errno == ECONNREFUSED) {
             /* connection error; increase retry count and delay */
             retry_count++;
@@ -533,13 +542,13 @@ HYD_status HYDU_sock_get_iface_ip(char *iface, char **ip)
 #if defined(HAVE_GETIFADDRS) && defined (HAVE_INET_NTOP)
 HYD_status HYDU_sock_is_local(char *host, int *is_local)
 {
-    struct hostent *ht;
     char *host_ip = NULL, *lhost_ip = NULL;
     char lhost[MAX_HOSTNAME_LEN];
-    struct sockaddr_in sa;
     struct ifaddrs *ifaddr, *ifa;
     char buf[MAX_HOSTNAME_LEN];
     HYD_status status = HYD_SUCCESS;
+    struct addrinfo *res;
+    int err;
 
     *is_local = 0;
 
@@ -576,31 +585,29 @@ HYD_status HYDU_sock_is_local(char *host, int *is_local)
         /* If we are unable to resolve the remote host name, it need
          * not be an error. It could mean that the user is using an
          * alias for the hostname (e.g., an ssh config alias) */
-        if ((ht = gethostbyname(host)) == NULL)
+        if ((err = getaddrinfo(host, NULL, &addr_hint, &res))) {
             goto fn_exit;
-
-        memset((char *) &sa, 0, sizeof(struct sockaddr_in));
-        memcpy(&sa.sin_addr, ht->h_addr_list[0], ht->h_length);
+        }
 
         /* Find the IP address of the host */
-        host_ip = HYDU_strdup((char *) inet_ntop(AF_INET, (const void *) &sa.sin_addr, buf,
-                                                 MAX_HOSTNAME_LEN));
+        host_ip = HYDU_strdup((char *)inet_ntop(AF_INET, 
+                              &((struct sockaddr_in *)res->ai_addr)->sin_addr,
+                              buf, MAX_HOSTNAME_LEN));
         HYDU_ASSERT(host_ip, status);
     }
 
     /* OK, if we are here, we got the remote IP.  We have two ways of
-     * getting the local IP: gethostbyname or getifaddrs.  We'll try
+     * getting the local IP: getaddrinfo or getifaddrs.  We'll try
      * both.  */
 
-    /* STEP 2: Let's try the gethostbyname model */
+    /* STEP 2: Let's try the getaddrinfo model */
 
-    if ((ht = gethostbyname(lhost))) {
-        memset((char *) &sa, 0, sizeof(struct sockaddr_in));
-        memcpy(&sa.sin_addr, ht->h_addr_list[0], ht->h_length);
-
+    err = getaddrinfo(lhost, NULL, &addr_hint, &res);
+    if (!err) {
         /* Find the IP address of the host */
-        lhost_ip = HYDU_strdup((char *) inet_ntop(AF_INET, (const void *) &sa.sin_addr, buf,
-                                                  MAX_HOSTNAME_LEN));
+        lhost_ip = HYDU_strdup((char *)inet_ntop(AF_INET, 
+                              &((struct sockaddr_in *)res->ai_addr)->sin_addr,
+                              buf, MAX_HOSTNAME_LEN));
         HYDU_ASSERT(lhost_ip, status);
 
         /* See if the IP address of the hostname we got matches the IP
@@ -611,7 +618,7 @@ HYD_status HYDU_sock_is_local(char *host, int *is_local)
         }
     }
 
-    /* Either gethostbyname didn't resolve or we didn't find a match.
+    /* Either getaddrinfo didn't resolve or we didn't find a match.
      * Either way, let's try the getifaddr model. */
 
     /* STEP 3: Let's try the getifaddr model */

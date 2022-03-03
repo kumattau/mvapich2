@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,11 @@
 #include "debug_utils.h"
 #include "mv2_arch_hca_detect.h"
 
+typedef enum _mv2_roce_mode_t {
+    MV2_ROCE_MODE_V1 = 1,
+    MV2_ROCE_MODE_V2 = 2
+} mv2_roce_mode_t;
+
 extern int mv2_use_opt_eager_recv;
 extern int mv2_enable_eager_threshold_reduction;
 #if defined(_SHARP_SUPPORT_)
@@ -28,6 +33,13 @@ extern int mv2_enable_sharp_allreduce;
 extern int mv2_enable_sharp_barrier;
 extern int mv2_enable_sharp_reduce;
 extern int mv2_enable_sharp_bcast;
+extern int mv2_enable_sharp_scatter;
+extern int mv2_enable_sharp_scatterv;
+extern int mv2_enable_sharp_iallreduce;
+extern int mv2_enable_sharp_ireduce;
+extern int mv2_enable_sharp_ibcast;
+extern int mv2_enable_sharp_ibarrier;
+
 #endif
 extern int mv2_is_in_finalize;
 /* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
@@ -91,6 +103,7 @@ extern int rdma_inter_node_r3_threshold;
 extern int rdma_r3_threshold_nocache;
 extern int rdma_max_r3_pending_data;
 extern int rdma_vbuf_total_size;
+extern int rdma_max_num_vbufs;
 extern int rdma_max_inline_size;
 extern int rdma_local_id;
 extern int rdma_num_local_procs;
@@ -140,6 +153,7 @@ extern int mv2_use_pmi_ibarrier;
 extern int mv2_shmem_backed_ud_cm;
 extern int mv2_show_runlog_level;
 extern int mv2_system_has_roce;
+extern int mv2_system_has_rockport;
 extern int mv2_system_has_ib;
 extern int mv2_process_placement_aware_hca_mapping;
 extern int mv2_allow_heterogeneous_hca_selection;
@@ -162,7 +176,9 @@ extern int mv2_spins_before_lock;
 extern int rdma_use_xrc;
 extern int xrc_rdmafp_init;
 extern int rdma_use_smp;
+extern int mv2_use_smp;
 extern int use_iboeth;
+extern mv2_roce_mode_t mv2_use_roce_mode;
 extern int mv2_use_post_srq_send;
 extern int rdma_iwarp_multiple_cq_threshold;
 extern int rdma_iwarp_use_multiple_cq;
@@ -262,6 +278,7 @@ extern uint16_t rdma_hybrid_pending_rc_conn;
 #ifdef _MV2_UD_DROP_PACKET_RATE_
 extern uint32_t ud_drop_packet_rate;
 #endif
+extern int rdma_max_num_ud_vbufs;
 #endif
 #if defined(_MCST_SUPPORT_)
 extern uint32_t mcast_bcast_min_msg;
@@ -331,8 +348,9 @@ extern int rdma_default_async_thread_stack_size;
 #define MAX_NUM_PORTS                   (1)
 #endif
 #ifndef MAX_NUM_QP_PER_PORT
-#define MAX_NUM_QP_PER_PORT             (2)
+#define MAX_NUM_QP_PER_PORT             (4)
 #endif
+#define MV2_ROCKPORT_NUM_QP_PER_PORT    (4)
 #define RDMA_QOS_MAX_NUM_SLS	        (15)
 #define RDMA_QOS_DEFAULT_NUM_SLS	    (8)
 #define RDMA_DEFAULT_NUM_SA_QUERY_RETRIES   (20)
@@ -368,8 +386,10 @@ extern int rdma_default_async_thread_stack_size;
 #define DEFAULT_RDMA_CONNECT_ATTEMPTS   (20)
 #define RDMA_DEFAULT_CONNECT_INTERVAL   (100)
 
-#define DEFAULT_SMALL_VBUF_SIZE          (256)
-#define DEFAULT_MEDIUM_VBUF_SIZE         (5120)
+#define DEFAULT_SMALL_VBUF_SIZE         (256)
+#define DEFAULT_MEDIUM_VBUF_SIZE        (5120)
+
+#define DEFAULT_MAX_NUM_VBUFS           (8192)
 
 #ifdef _ENABLE_CUDA_
 #define DEFAULT_CUDA_VBUF_SIZES          {DEFAULT_SMALL_VBUF_SIZE, DEFAULT_MEDIUM_VBUF_SIZE, rdma_vbuf_total_size, mv2_device_stage_block_size, mv2_device_stage_block_size}
@@ -387,6 +407,7 @@ extern int rdma_default_async_thread_stack_size;
 #define DEFAULT_UD_VBUF_SIZES               {DEFAULT_SMALL_VBUF_SIZE, RDMA_MAX_UD_MTU, RDMA_MAX_UD_MTU}
 #define DEFAULT_UD_VBUF_POOL_SIZE           {rdma_ud_vbuf_pool_size, rdma_ud_vbuf_pool_size, rdma_ud_vbuf_pool_size}
 #define DEFAULT_UD_VBUF_SECONDARY_POOL_SIZE {rdma_ud_vbuf_pool_size, rdma_ud_vbuf_pool_size, rdma_ud_vbuf_pool_size}
+#define DEFAULT_MAX_NUM_UD_VBUFS        (INT_MAX)
 #endif /*defined(_ENABLE_UD_)*/
 
 #define RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD  (32)
@@ -397,7 +418,7 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_MAX_REGISTERED_PAGES       (0)
 
 /* SRQ related parameters */
-#define MV2_DEFAULT_SRQ_ALLOC_SIZE  32767
+#define MV2_DEFAULT_SRQ_ALLOC_SIZE  8192
 #define MV2_DEFAULT_SRQ_FILL_SIZE   256
 #define MV2_DEFAULT_SRQ_LIMIT       30
 
@@ -412,6 +433,11 @@ extern int rdma_default_async_thread_stack_size;
 /* Statistically sending a stripe below this may not lead
  * to benefit */
 #define STRIPING_THRESHOLD              8 * 1024
+
+/* Parameters specific to DGX-2 A100 nodes at ALCF */
+#define MV2_DGX2_A100_NUM_HCAS              12
+#define MV2_DGX2_A100_SAN_HCA_MAX_DM_SIZE   131072
+
 extern char rdma_iba_hcas[MAX_NUM_HCAS][32];
 
 typedef enum _mv2_vbuf_pool_offsets {
@@ -702,6 +728,7 @@ typedef enum mv2_env_param_id {
     MV2_SMP_NUM_SEND_BUFFER,
     MV2_SMP_SEND_BUF_SIZE,
     MV2_USE_SHARED_MEM,
+    MV2_USE_PT2PT_SHMEM,
     MV2_SMP_CMA_MAX_SIZE,
     MV2_SMP_LIMIC2_MAX_SIZE,
     /* cuda */

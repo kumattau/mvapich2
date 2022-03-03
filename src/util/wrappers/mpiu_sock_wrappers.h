@@ -40,14 +40,14 @@
 #   undef FCNAME
 #   define FCNAME MPL_QUOTE(FUNCNAME)
 #   define MPIU_SOCKW_Inet_addr(ipv4_dd_str, inaddr) (              \
-        ((*(inaddr) = inet_addr(ipv4_dd_str))                       \
-            != INADDR_NONE)                                         \
+        ((inet_pton(AF_INET, ipv4_dd_str, *(inaddr)))               \
+            == 1)                                                   \
         ? MPI_SUCCESS                                               \
         : MPIR_Err_create_code(MPI_SUCCESS,                         \
                 MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER,    \
-                "**inet_addr", "**inet_addr %s %d",                 \
-                MPIU_OSW_Strerror(MPIU_OSW_Get_errno()),             \
-                MPIU_OSW_Get_errno())                                \
+                "**inet_pton", "**inet_pton %s %d",                 \
+                MPIU_OSW_Strerror(MPIU_OSW_Get_errno()),            \
+                MPIU_OSW_Get_errno())                               \
     )
 
 #   undef FUNCNAME

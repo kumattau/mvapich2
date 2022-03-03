@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -12,6 +12,8 @@
 
 #ifndef _COMMON_TUNING_
 #define _COMMON_TUNING_
+
+#include "mpichconf.h"
 
 #define MV2_COLL_TUNING_SETUP_TABLE(_cname)                     \
     int *mv2_##_cname##_table_ppn_conf = NULL;                  \
@@ -138,6 +140,7 @@ enum mv2_reduce_tuning
     REDUCE_RDSC_GATHER,
     REDUCE_ZCPY,
     REDUCE_X1, /* place holder for master-x algorithm */
+    REDUCE_ALLREDUCE
 };
 
 enum mv2_gather_tuning 
@@ -171,6 +174,14 @@ enum mv2_scatter_tuning
     SCATTER_TWO_LEVEL_BINOMIAL,
     SCATTER_TWO_LEVEL_DIRECT,
     SCATTER_MCAST
+};
+
+enum {
+    RED_SCAT_BASIC = 1,
+    RED_SCAT_REC_HALF,
+    RED_SCAT_PAIRWISE,
+    RED_SCAT_RING,
+    RED_SCAT_RING_2LVL,
 };
 
 enum mv2_allgather_tuning 

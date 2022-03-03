@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -104,6 +104,13 @@ int MPIDI_CH3_Finalize()
     if (SMP_INIT) {
         mpi_errno = MPIDI_CH3I_SMP_finalize();
         if(mpi_errno) MPIR_ERR_POP(mpi_errno);
+    }
+
+    if (mv2_enable_shmem_collectives) {
+        mpi_errno = MPIDI_CH3I_SMP_COLL_finalize();
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
     }
 
     /* Deallocate PMI Key Value Pair */

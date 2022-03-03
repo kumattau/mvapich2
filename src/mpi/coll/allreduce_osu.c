@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,7 +32,6 @@
 extern int mv2_sharp_tuned_msg_size;
 #endif
 
-MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_subcomm);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_sharp);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_shm_rd);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_shm_rs);
@@ -42,6 +41,11 @@ MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_2lvl);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_shmem);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_mcast);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_reduce_scatter_allgather_colls);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_subcomm);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_topo_aware_hierarchical);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_pt2pt_ring);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_pt2pt_ring_wrapper);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_allreduce_pt2pt_ring_inplace);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_sharp);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_shm_rd);
@@ -53,15 +57,31 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_shmem);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_mcast);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_reduce_scatter_allgather_colls);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_subcomm);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_topo_aware_hierarchical);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_wrapper);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_inplace);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rd_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rs_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_wrapper_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_inplace_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rd_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rs_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_wrapper_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_inplace_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rd_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rs_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_wrapper_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_inplace_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rd_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_rs_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_wrapper_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_pt2pt_ring_inplace_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_allreduce_count_send);
@@ -174,7 +194,7 @@ do {                                                                            
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Sharp_Allreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
-                        MPI_Datatype datatype, MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
+                        MPI_Datatype datatype, MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
     MPIR_TIMER_START(coll,allreduce,sharp);
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_sharp, 1);
@@ -183,10 +203,10 @@ int MPIR_Sharp_Allreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
     int is_contig = 0;
     int is_inplace = 0;
     struct sharp_coll_reduce_spec reduce_spec;
-    struct sharp_reduce_datatyepe_size * dt_size = NULL; 
+    struct sharp_reduce_datatyepe_size * dt_size = NULL;
     struct sharp_coll_comm * sharp_comm = NULL;
     MPID_Datatype * dtp = NULL;
-    
+
     if (HANDLE_GET_KIND(datatype) == HANDLE_KIND_BUILTIN) {
         is_contig = 1;
     } else {
@@ -196,13 +216,12 @@ int MPIR_Sharp_Allreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
 
     mv2_get_sharp_datatype(datatype, &dt_size);
     reduce_spec.dtype = dt_size->sharp_data_type;
-
     if (reduce_spec.dtype == SHARP_DTYPE_NULL) {
         mpi_errno = SHARP_COLL_ENOT_SUPP;
         goto fn_fail;
     }
- 
-    reduce_spec.op = mv2_get_sharp_reduce_op(op);;     
+
+    reduce_spec.op = mv2_get_sharp_reduce_op(op);
     if (reduce_spec.op == SHARP_OP_NULL) {
         mpi_errno = SHARP_COLL_ENOT_SUPP;
         goto fn_fail;
@@ -241,7 +260,7 @@ int MPIR_Sharp_Allreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
         MPIDI_CH3_Progress_test();
     }
 
-    mpi_errno = sharp_coll_do_allreduce(sharp_comm, &reduce_spec);
+    mpi_errno = sharp_ops.coll_do_allreduce(sharp_comm, &reduce_spec);
     if (mpi_errno != SHARP_COLL_SUCCESS) {
         goto fn_fail;
     }
@@ -257,7 +276,7 @@ fn_exit:
     return (mpi_errno);
 
 fn_fail:
-    PRINT_DEBUG(DEBUG_Sharp_verbose, "Continue without SHArP: %s \n", sharp_coll_strerror(mpi_errno));
+    PRINT_DEBUG(DEBUG_Sharp_verbose, "Continue without SHArP: %s \n", sharp_ops.coll_strerror(mpi_errno));
     mpi_errno = MPI_ERR_INTERN;
     goto fn_exit;
 }
@@ -2256,6 +2275,8 @@ int MPIR_Allreduce_topo_aware_hierarchical_MV2(const void *sendbuf,
                                           MPI_Datatype datatype,
                                           MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
+    MPIR_TIMER_START(coll,allreduce,topo_aware_hierarchical);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_topo_aware_hierarchical, 1);
     MPIU_Assert(comm_ptr->dev.ch.topo_coll_ok == 1 && comm_ptr->dev.ch.shmem_coll_ok == 1);
     int i = 0;
     shmem_info_t *shmem = NULL;
@@ -2378,6 +2399,7 @@ int MPIR_Allreduce_topo_aware_hierarchical_MV2(const void *sendbuf,
     }
 
 fn_exit:
+    MPIR_TIMER_END(coll,allreduce,topo_aware_hierarchical);
     return (mpi_errno);
 
 fn_fail:
@@ -3736,6 +3758,8 @@ int MPIR_Allreduce_MV2(const void *sendbuf,
 int MPIR_Allreduce_pt2pt_ring_wrapper_MV2(const void *sendbuf, void *recvbuf,
         int count, MPI_Datatype datatype, MPI_Op op, MPID_Comm * comm_ptr,
         MPIR_Errflag_t *errflag) {
+    MPIR_TIMER_START(coll,allreduce,pt2pt_ring_wrapper);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_pt2pt_ring_wrapper, 1);
 
     /* TODO make this algo cyclic process mapping aware */
     int mpi_errno           = MPI_SUCCESS;
@@ -3758,8 +3782,10 @@ int MPIR_Allreduce_pt2pt_ring_wrapper_MV2(const void *sendbuf, void *recvbuf,
 
     if((comm_ptr->local_size == 1) || (comm_ptr->dev.ch.allgather_comm_ok != 0 && comm_ptr->dev.ch.is_blocked == 0)) {
         /* for local size 1 or cyclic hostfiles use red-scat-allgather algorithm */
-        return MPIR_Allreduce_pt2pt_rs_MV2(sendbuf, recvbuf, count, datatype,
+        mpi_errno = MPIR_Allreduce_pt2pt_rs_MV2(sendbuf, recvbuf, count, datatype,
                 op, comm_ptr, errflag);    
+        MPIR_TIMER_END(coll,allreduce,pt2pt_ring_wrapper);
+        return mpi_errno;
     }
 
     if (sendbuf != MPI_IN_PLACE)
@@ -3769,18 +3795,25 @@ int MPIR_Allreduce_pt2pt_ring_wrapper_MV2(const void *sendbuf, void *recvbuf,
         mpi_errno = MPIR_Allreduce_pt2pt_ring_inplace_MV2(sendbuf, recvbuf, new_count, datatype,
             op, comm_ptr, errflag);
 
-    if (mpi_errno != MPI_SUCCESS || (remaining_count == 0)) 
+    if (mpi_errno != MPI_SUCCESS || (remaining_count == 0)) {
+        MPIR_TIMER_END(coll,allreduce,pt2pt_ring_wrapper);
         return mpi_errno;
-    
+    }
+
     /* now Allreduce the remaining count */ 
-    if (sendbuf != MPI_IN_PLACE)
-        return MPIR_Allreduce_pt2pt_rs_MV2(sendbuf+new_count*sendtype_size,
+    if (sendbuf != MPI_IN_PLACE) {
+        mpi_errno = MPIR_Allreduce_pt2pt_rs_MV2(sendbuf+new_count*sendtype_size,
                 recvbuf+new_count*sendtype_size, remaining_count, datatype,
                 op, comm_ptr, errflag);
-    else 
-        return MPIR_Allreduce_pt2pt_rs_MV2(MPI_IN_PLACE,
+        MPIR_TIMER_END(coll,allreduce,pt2pt_ring_wrapper);
+        return mpi_errno;
+    } else {
+        mpi_errno = MPIR_Allreduce_pt2pt_rs_MV2(MPI_IN_PLACE,
                 recvbuf+new_count*sendtype_size, remaining_count, datatype,
                 op, comm_ptr, errflag);
+        MPIR_TIMER_END(coll,allreduce,pt2pt_ring_wrapper);
+        return mpi_errno;
+    }
 }
 
 /* This is flat ring-allreduce  allreduce */
@@ -3794,7 +3827,6 @@ int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
-//    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_ring_colls, 1);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     MPI_Aint true_lb, true_extent, extent;
@@ -3805,10 +3837,10 @@ int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
     int is_cxx_uop = 0;
 #endif
     MPIU_THREADPRIV_DECL;
-    MPIU_CHKLMEM_DECL(3);
 
     if (count == 0) {
-        return MPI_SUCCESS;
+        mpi_errno = MPI_SUCCESS;
+        goto fn_exit;
     }
 
     MPIU_THREADPRIV_GET;
@@ -3860,10 +3892,11 @@ int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
 
     if (count % comm_size != 0 || sendbuf == MPI_IN_PLACE ||
             count < comm_size || !is_commutative) {
-        mpi_errno = MPIR_Allreduce_pt2pt_rs_MV2(sendbuf, recvbuf, count, datatype,
+        return MPIR_Allreduce_pt2pt_rs_MV2(sendbuf, recvbuf, count, datatype,
                 op, comm_ptr, errflag);
-        return mpi_errno;
     }
+    MPIR_TIMER_START(coll,allreduce,pt2pt_ring);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_pt2pt_ring, 1);
     //memset(recvbuf, 0, type_size*count);
 
     MPIU_Assert((count * type_size) % comm_size == 0);
@@ -3880,7 +3913,6 @@ int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
         void * recv_chunk = NULL, * send_chunk = NULL, * comp_chunk = NULL;
         MPID_Request *recv_req_ptr = NULL, *send_req_ptr = NULL;
 
-        //fprintf(stderr, "starting the  main loop\n");
         for (i = 1; i < comm_size; i++) {
 
             MPID_Request *recv_req_ptr = NULL, *send_req_ptr = NULL;
@@ -3903,10 +3935,12 @@ int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
                             i + comm_size) % comm_size), left, ((rank - i +
                                 comm_size) % comm_size));
             */
+            MPIR_PVAR_INC(allreduce, pt2pt_ring, recv, chunk_count, datatype);
             mpi_errno = MPID_Irecv(recv_chunk, chunk_count, datatype, left, 11, comm_ptr,
                     context_id, &recv_req_ptr);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
+            MPIR_PVAR_INC(allreduce, pt2pt_ring, send, chunk_count, datatype);
             mpi_errno = MPID_Isend(send_chunk, chunk_count, datatype, right, 11,
                                    comm_ptr, context_id, &send_req_ptr);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -3931,8 +3965,6 @@ int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
 
             MPID_Request_release(send_req_ptr);
             MPID_Request_release(recv_req_ptr);
-
-          //  fprintf(stderr, "finished it = %d \n");
         }
 
 
@@ -3947,18 +3979,17 @@ int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
         }
         */
            /* Allgather on recvbuf with  one elemented  shifted to right */
-          // MPIR_Allgather_MV2(MPI_IN_PLACE, chunk_count, datatype, recvbuf, chunk_count,
-            //       datatype, comm_ptr, errflag);
-           
 
         for (i = 1; i < comm_size; i++) {
         
             recv_chunk = ((rank - (i-1) + comm_size)%comm_size)*chunk_size + recvbuf;
+            MPIR_PVAR_INC(allreduce, pt2pt_ring, recv, chunk_count, datatype);
             mpi_errno = MPID_Irecv(recv_chunk, chunk_count, datatype, left, 11, comm_ptr,
                     context_id, &recv_req_ptr);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
             send_chunk = ((rank - (i-2) + comm_size)%comm_size)*chunk_size + recvbuf;
+            MPIR_PVAR_INC(allreduce, pt2pt_ring, send, chunk_count, datatype);
             mpi_errno = MPID_Isend(send_chunk, chunk_count, datatype, right, 11,
                                    comm_ptr, context_id, &send_req_ptr);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -3973,9 +4004,6 @@ int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
         }
     }
 
-
-
-
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
 
@@ -3984,7 +4012,7 @@ int MPIR_Allreduce_pt2pt_ring_MV2(const void *sendbuf,
     }
 
   fn_exit:
-    MPIU_CHKLMEM_FREEALL();
+    MPIR_TIMER_END(coll,allreduce,pt2pt_ring);
     return (mpi_errno);
 
   fn_fail:
@@ -4003,7 +4031,6 @@ int MPIR_Allreduce_pt2pt_ring_inplace_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag)
 {
-//    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_ring_colls, 1);
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     MPI_Aint true_lb, true_extent, extent;
@@ -4073,6 +4100,8 @@ int MPIR_Allreduce_pt2pt_ring_inplace_MV2(const void *sendbuf,
                 op, comm_ptr, errflag);
         return mpi_errno;
     }
+    MPIR_TIMER_START(coll,allreduce,pt2pt_ring_inplace);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_allreduce_pt2pt_ring_inplace, 1);
     //memset(recvbuf, 0, type_size*count);
 
     MPIU_Assert((count * type_size) % comm_size == 0);
@@ -4115,10 +4144,12 @@ int MPIR_Allreduce_pt2pt_ring_inplace_MV2(const void *sendbuf,
                             i + comm_size) % comm_size), left, ((rank - i +
                                 comm_size) % comm_size));
             */
+            MPIR_PVAR_INC(allreduce, pt2pt_ring_inplace, recv, chunk_count, datatype);
             mpi_errno = MPID_Irecv(recv_chunk, chunk_count, datatype, left, 11, comm_ptr,
                     context_id, &recv_req_ptr);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
+            MPIR_PVAR_INC(allreduce, pt2pt_ring_inplace, send, chunk_count, datatype);
             mpi_errno = MPID_Isend(send_chunk, chunk_count, datatype, right, 11,
                                    comm_ptr, context_id, &send_req_ptr);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -4166,11 +4197,13 @@ int MPIR_Allreduce_pt2pt_ring_inplace_MV2(const void *sendbuf,
         for (i = 1; i < comm_size; i++) {
         
             recv_chunk = ((rank - (i-1) + comm_size)%comm_size)*chunk_size + recvbuf;
+            MPIR_PVAR_INC(allreduce, pt2pt_ring_inplace, recv, chunk_count, datatype);
             mpi_errno = MPID_Irecv(recv_chunk, chunk_count, datatype, left, 11, comm_ptr,
                     context_id, &recv_req_ptr);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
             send_chunk = ((rank - (i-2) + comm_size)%comm_size)*chunk_size + recvbuf;
+            MPIR_PVAR_INC(allreduce, pt2pt_ring_inplace, send, chunk_count, datatype);
             mpi_errno = MPID_Isend(send_chunk, chunk_count, datatype, right, 11,
                                    comm_ptr, context_id, &send_req_ptr);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -4198,6 +4231,7 @@ int MPIR_Allreduce_pt2pt_ring_inplace_MV2(const void *sendbuf,
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPIU_Free(temp_buf);
+    MPIR_TIMER_END(coll,allreduce,pt2pt_ring);
     return (mpi_errno);
 
   fn_fail:

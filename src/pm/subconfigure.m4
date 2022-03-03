@@ -15,6 +15,8 @@ done
 # we handle these conditionals here in the BODY because they depend on logic in
 # the main portion of the top-level configure
 AM_CONDITIONAL([BUILD_PM_HYDRA],[test "x$build_pm_hydra" = "xyes"])
+AS_IF([test "x$build_pm_hydra" = "xyes"], 
+    [AC_DEFINE([HYDRA_PMI_CLIENT], [1], [Define if using hydra pmi client])])
 
 dnl AC_MSG_NOTICE([RUNNING CONFIGURE FOR PROCESS MANAGERS])
 # do nothing extra here for now

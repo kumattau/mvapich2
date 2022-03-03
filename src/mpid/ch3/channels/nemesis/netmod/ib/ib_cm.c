@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -771,7 +771,6 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 {
     int i, ne, index_to_send, rail_index, pg_size;
     int hostid;
-    struct hostent *hostent;
     char hostname[HOSTNAME_LEN + 1];
     int mpi_errno = MPI_SUCCESS;
     uint64_t last_send = 0;
@@ -779,6 +778,8 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
     struct addr_packet * send_packet;
     struct addr_packet * recv_packet;
+
+    struct addrinfo *res;
 
     /* work entries related variables */
     struct ibv_recv_wr rr;
@@ -793,6 +794,18 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
     int result;
 
+    /* getadrrinfo hint struct */
+    struct addrinfo addr_hint = {
+        .ai_flags = AI_CANONNAME,
+        .ai_family = AF_INET,
+        .ai_socktype = 0,
+        .ai_protocol = 0,
+        .ai_addrlen = 0,
+        .ai_addr = NULL,
+        .ai_canonname = NULL,
+        .ai_next = NULL
+    };
+   
     /* Post the window of recvs: The first entry
      * is not posted since it is used for the
      * initial send
@@ -833,13 +846,13 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         exit(1);
     }
 
-    hostent = gethostbyname(hostname);
-    if (hostent == NULL) {
+    mpi_errno = getaddrinfo(hostname, NULL, &addr_hint, &res);
+    if (mpi_errno) {
         MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
-                "**gethostbyname", "**gethostbyname %s %d",
-                hstrerror(h_errno), h_errno );
+                "**getaddrinfo", "**getaddrinfo %s %d",
+                strerror(mpi_errno), mpi_errno);
     }
-    hostid = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
+    hostid = (int) ((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr;
 
     /* send information for each rail */
 

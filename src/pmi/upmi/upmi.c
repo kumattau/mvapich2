@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2021, The Ohio State University. All rights
+ * Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -461,7 +461,8 @@ int UPMI_ABORT( int exit_code, const char error_msg[] ) {
     rc = PMIx_Abort(exit_code, error_msg, NULL, 0);
     return convert_err(rc);
     #elif USE_PMI2_API
-    return PMI2_Abort( 1, error_msg );    //flag = 1, abort all processes
+    /* flag = 1, abort all processes */
+    return PMI2_Abort( 1, error_msg );
     #else
     return PMI_Abort( exit_code, error_msg );
     #endif

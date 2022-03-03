@@ -28,6 +28,11 @@ MPI_Aint disp_local;
 #define DIM 25
 static float **a, *x, *y;
 
+/* Validation multiplier constants*/
+#define FLOAT_VALIDATION_MULTIPLIER 2.0
+#define CHAR_VALIDATION_MULTIPLIER 7
+#define CHAR_RANGE (int) pow(2, __CHAR_BIT__)
+
 #ifdef _ENABLE_CUDA_
 CUcontext cuContext;
 #endif
@@ -62,7 +67,7 @@ static int is_alloc = 0;
 
 /* Arrays on device for dummy compute */
 static float *d_x, *d_y;
-#endif
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
 
 void set_device_memory (void * ptr, int data, size_t size)
 {
@@ -188,11 +193,11 @@ void usage_one_sided (char const * name)
     }
     fprintf(stdout, "  -x, --warmup ITER           number of warmup iterations to skip before timing"
                    "(default 100)\n");
-    
+
     if(options.subtype == BW) {
         fprintf(stdout, "  -W, --window-size SIZE      set number of messages to send before synchronization (default 64)\n");
     }
-    
+
     fprintf(stdout, "  -i, --iterations ITER       number of iterations for timing (default 10000)\n");
 
     fprintf(stdout, "  -h, --help                  print this help message\n");
@@ -282,6 +287,7 @@ void usage_mbw_mr()
         fprintf(stdout, "  -d, --accelerator  TYPE     use accelerator device buffers, which can be of TYPE `cuda', \n");
         fprintf(stdout, "                              `managed', `openacc', or `rocm' (uses standard host buffers if not specified)\n");
     }
+    fprintf(stdout, "  -c, --validation               Enable or disable validation. Disabled by default. \n");
     fprintf(stdout, "  -h, --help                     Print this help\n");
     fprintf(stdout, "\n");
     fprintf(stdout, "  Note: This benchmark relies on block ordering of the ranks.  Please see\n");
@@ -355,11 +361,31 @@ void print_help_message (int rank)
         fprintf(stdout, "  -W, --window-size SIZE      set number of messages to send before synchronization (default 64)\n");
     }
 
+    if ((options.bench == PT2PT)) {
+        fprintf(stdout, "  -c, --validation            Enable or disable"
+                " validation. Disabled by default. \n");
+        fprintf(stdout, "  -u, --validation-warmup ITR Set number of warmup"
+                " iterations to skip before timing when validation is enabled"
+                " (default 5)\n");
+    }
+
     if (options.bench == COLLECTIVE) {
         fprintf(stdout, "  -f, --full                  print full format listing (MIN/MAX latency and ITERATIONS\n");
         fprintf(stdout, "                              displayed in addition to AVERAGE latency)\n");
+        if (options.subtype != NBC) {
+            fprintf(stdout, "  -c, --validation            Enable or disable"
+                    " validation. Disabled by default. \n");
+            fprintf(stdout, "  -u, --validation-warmup ITR Set number of warmup"
+                    " iterations to skip before timing when validation is enabled"
+                    " (default 5)\n");
+        }
 
-        if (options.subtype == NBC) {
+        if (options.subtype == NBC ||
+                options.subtype == NBC_ALLTOALL ||
+                options.subtype == NBC_BCAST ||
+                options.subtype == NBC_GATHER ||
+                options.subtype == NBC_REDUCE ||
+                options.subtype == NBC_SCATTER) {
             fprintf(stdout, "  -t, --num_test_calls CALLS  set the number of MPI_Test() calls during the dummy computation, \n");
             fprintf(stdout, "                              set CALLS to 100, 1000, or any number > 0.\n");
         }
@@ -557,14 +583,18 @@ void print_preamble_nbc (int rank)
         fprintf(stdout, "%*s", FIELD_WIDTH, "Pure Comm.(us)");
         fprintf(stdout, "%*s", FIELD_WIDTH, "Min Comm.(us)");
         fprintf(stdout, "%*s", FIELD_WIDTH, "Max Comm.(us)");
-        fprintf(stdout, "%*s\n", FIELD_WIDTH, "Overlap(%)");
+        fprintf(stdout, "%*s", FIELD_WIDTH, "Overlap(%)");
 
     } else {
         fprintf(stdout, "%*s", FIELD_WIDTH, "Compute(us)");
         fprintf(stdout, "%*s", FIELD_WIDTH, "Pure Comm.(us)");
-        fprintf(stdout, "%*s\n", FIELD_WIDTH, "Overlap(%)");
+        fprintf(stdout, "%*s", FIELD_WIDTH, "Overlap(%)");
     }
 
+    if (options.validate) {
+        fprintf(stdout, "%*s", FIELD_WIDTH, "Validation");
+    }
+    fprintf(stdout, "\n");
     fflush(stdout);
 }
 
@@ -620,18 +650,19 @@ void print_preamble (int rank)
     if (options.show_full) {
         fprintf(stdout, "%*s", FIELD_WIDTH, "Min Latency(us)");
         fprintf(stdout, "%*s", FIELD_WIDTH, "Max Latency(us)");
-        fprintf(stdout, "%*s\n", 12, "Iterations");
-    } else {
-        fprintf(stdout, "\n");
+        fprintf(stdout, "%*s", 12, "Iterations");
     }
 
+    if (options.validate)
+        fprintf(stdout, "%*s", FIELD_WIDTH, "Validation");
+    fprintf(stdout, "\n");
     fflush(stdout);
 }
 
-void calculate_and_print_stats(int rank, int size, int numprocs,
-                          double timer, double latency,
-                          double test_time, double cpu_time,
-                          double wait_time, double init_time)
+void calculate_and_print_stats(int rank, int size, int numprocs, double timer,
+                               double latency, double test_time,
+                               double cpu_time, double wait_time,
+                               double init_time, int errors)
 {
     double test_total   = (test_time * 1e6) / options.iterations;
     double tcomp_total  = (cpu_time * 1e6) / options.iterations;
@@ -691,18 +722,18 @@ void calculate_and_print_stats(int rank, int size, int numprocs,
     wait_total = wait_total/numprocs;
     /* Time for the NBC call */
     init_total = init_total/numprocs;
-    
 
-    print_stats_nbc(rank, size, overall_time, tcomp_total, avg_comm_time, 
-                    min_comm_time, max_comm_time, wait_total, init_total, test_total);
+
+    print_stats_nbc(rank, size, overall_time, tcomp_total, avg_comm_time,
+                    min_comm_time, max_comm_time, wait_total, init_total,
+                    test_total, errors);
 
 }
 
-void print_stats_nbc (int rank, int size, double overall_time,
-                 double cpu_time, double avg_comm_time,
-                 double min_comm_time, double max_comm_time,
-                 double wait_time, double init_time,
-                 double test_time)
+void print_stats_nbc (int rank, int size, double overall_time, double cpu_time,
+                      double avg_comm_time, double min_comm_time,
+                      double max_comm_time, double wait_time, double init_time,
+                      double test_time, int errors)
 {
     if (rank) {
         return;
@@ -726,7 +757,7 @@ void print_stats_nbc (int rank, int size, double overall_time,
     }
 
     if (options.show_full) {
-        fprintf(stdout, "%*.*f%*.*f%*.*f%*.*f%*.*f%*.*f%*.*f%*.*f\n",
+        fprintf(stdout, "%*.*f%*.*f%*.*f%*.*f%*.*f%*.*f%*.*f%*.*f",
                 FIELD_WIDTH, FLOAT_PRECISION, (cpu_time - test_time),
                 FIELD_WIDTH, FLOAT_PRECISION, init_time,
                 FIELD_WIDTH, FLOAT_PRECISION, test_time,
@@ -738,8 +769,13 @@ void print_stats_nbc (int rank, int size, double overall_time,
     } else {
         fprintf(stdout, "%*.*f", FIELD_WIDTH, FLOAT_PRECISION, (cpu_time - test_time));
         fprintf(stdout, "%*.*f", FIELD_WIDTH, FLOAT_PRECISION, avg_comm_time);
-        fprintf(stdout, "%*.*f\n", FIELD_WIDTH, FLOAT_PRECISION, overlap);
+        fprintf(stdout, "%*.*f", FIELD_WIDTH, FLOAT_PRECISION, overlap);
     }
+
+    if (options.validate) {
+        fprintf(stdout, "%*s", FIELD_WIDTH, VALIDATION_STATUS(errors));
+    }
+    fprintf(stdout, "\n");
 
     fflush(stdout);
 }
@@ -769,7 +805,32 @@ void print_stats (int rank, int size, double avg_time, double min_time, double m
     fflush(stdout);
 }
 
-void set_buffer_pt2pt (void * buffer, int rank, enum accel_type type, int data, size_t size)
+void print_stats_validate(int rank, int size, double avg_time, double min_time,
+            double max_time, int errors)
+{
+    if (rank) {
+        return;
+    }
+
+    if (options.show_size) {
+        fprintf(stdout, "%-*d", 10, size);
+        fprintf(stdout, "%*.*f", FIELD_WIDTH, FLOAT_PRECISION, avg_time);
+    } else {
+        fprintf(stdout, "%*.*f", 17, FLOAT_PRECISION, avg_time);
+    }
+
+    if (options.show_full) {
+        fprintf(stdout, "%*.*f%*.*f%*lu",
+                FIELD_WIDTH, FLOAT_PRECISION, min_time,
+                FIELD_WIDTH, FLOAT_PRECISION, max_time,
+                12, options.iterations);
+    }
+    fprintf(stdout, "%*s\n", FIELD_WIDTH, VALIDATION_STATUS(errors));
+    fflush(stdout);
+}
+
+void set_buffer_pt2pt (void * buffer, int rank, enum accel_type type, int data,
+                       size_t size)
 {
     char buf_type = 'H';
 
@@ -840,6 +901,439 @@ void set_buffer (void * buffer, enum accel_type type, int data, size_t size)
 #endif
             break;
     }
+}
+
+void set_buffer_validation(void* s_buf, void* r_buf, size_t size,
+                           enum accel_type type, int iter)
+{
+    void *temp_r_buffer = NULL;
+    void *temp_s_buffer = NULL;
+
+    switch (options.bench)
+    {
+        case PT2PT:
+        case MBW_MR:
+            {
+                int num_elements = size / sizeof(char);
+                temp_r_buffer = malloc(size);
+                temp_s_buffer = malloc(size);
+                char* temp_char_s_buffer = (char*) temp_s_buffer;
+                char* temp_char_r_buffer = (char*) temp_r_buffer;
+                register int i;
+                for(i = 0; i < num_elements; i++) {
+                    temp_char_s_buffer[i] = (CHAR_VALIDATION_MULTIPLIER * (i +
+                                1) + size + iter) % CHAR_RANGE;
+                }
+                for(i = 0; i < num_elements; i++) {
+                    temp_char_r_buffer[i] = 0;
+                }
+                switch (type) {
+                    case NONE:
+                        memcpy((void *)s_buf, (void *)temp_s_buffer, size);
+                        memcpy((void *)r_buf, (void *)temp_r_buffer, size);
+                        break;
+                    case CUDA:
+                    case MANAGED:
+#ifdef _ENABLE_CUDA_
+                        CUDA_CHECK(cudaMemcpy((void *)s_buf,
+                                    (void *)temp_s_buffer, size,
+                                    cudaMemcpyHostToDevice));
+                        CUDA_CHECK(cudaMemcpy((void *)r_buf,
+                                    (void *)temp_r_buffer, size,
+                                    cudaMemcpyHostToDevice));
+                        CUDA_CHECK(cudaDeviceSynchronize());
+#endif
+                        break;
+                }
+                free(temp_s_buffer);
+                free(temp_r_buffer);
+
+            }
+            break;
+        case COLLECTIVE:
+            {
+                switch(options.subtype) {
+                    case ALLTOALL:
+                    case NBC_ALLTOALL:
+                        {
+                            int rank, numprocs;
+                            MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+                            MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+                            set_buffer_char(s_buf, 1, size, rank, numprocs,
+                                    type, iter);
+                            set_buffer_char(r_buf, 0, size, rank, numprocs,
+                                    type, iter);
+                        }
+                        break;
+                    case GATHER:
+                    case NBC_GATHER:
+                        {
+                            int rank, numprocs;
+                            MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+                            MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+                            set_buffer_char(s_buf, 1, size, rank * numprocs, 1,
+                                    type, iter);
+                            if (0 == rank) {
+                                set_buffer_char(r_buf, 0, size, rank, numprocs,
+                                        type, iter);
+                            }
+                        }
+                        break;
+                    case REDUCE:
+                    case NBC_REDUCE:
+                        {
+                            int rank, numprocs;
+                            MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+                            MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+                            set_buffer_float(s_buf, 1, size, iter,
+                                    options.accel);
+                            set_buffer_float(r_buf, 0, size, iter,
+                                    options.accel);
+                        break;
+                    }
+                    case SCATTER:
+                    case NBC_SCATTER:
+                        {
+                            int rank, numprocs;
+                            MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+                            MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+                            if (0 == rank) {
+                                set_buffer_char(s_buf, 1, size, rank, numprocs,
+                                        type, iter);
+                            }
+                            set_buffer_char(r_buf, 0, size, rank * numprocs, 1,
+                                    type, iter);
+                        }
+                        break;
+                    case REDUCE_SCATTER:
+                        {
+                            int rank, numprocs;
+                            MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+                            MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+                            set_buffer_float(s_buf, 1, size, iter,
+                                    options.accel);
+                            set_buffer_float(r_buf, 0, size / numprocs + 1,
+                                    iter, options.accel);
+                        }
+                        break;
+                    case BCAST:
+                    case NBC_BCAST:
+                        {
+                            int rank, numprocs;
+                            MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+                            MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+                            if (0 == rank) {
+                                set_buffer_char(s_buf, 1, size, 1, 1, type,
+                                        iter);
+                            } else {
+                                set_buffer_char(s_buf, 0, size, 1, 1, type,
+                                        iter);
+                            }
+                        }
+                        break;
+                }
+            }
+            break;
+        default:
+            break;
+
+    }
+}
+
+void set_buffer_float (float* buffer, int is_send_buf, size_t size, int iter,
+                       enum accel_type type)
+{
+    if (NULL == buffer) {
+        return;
+    }
+
+    int i = 0, j = 0;
+    int num_elements = size;
+    float *temp_buffer = malloc(size * sizeof(float));
+    if (is_send_buf) {
+        for(i = 0; i < num_elements; i++) {
+            j = (i % 100);
+            temp_buffer[i] = (j + 1) * (iter + 1) * 1.0;
+        }
+    } else {
+        for(i = 0; i < num_elements; i++) {
+            temp_buffer[i] = 0.0;
+        }
+    }
+    switch (type) {
+        case NONE:
+            memcpy((void *)buffer, (void *)temp_buffer, size * sizeof(float));
+            break;
+        case CUDA:
+        case MANAGED:
+#ifdef _ENABLE_CUDA_
+            CUDA_CHECK(cudaMemcpy((void *)buffer, (void *)temp_buffer,
+                       size * sizeof(float), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaDeviceSynchronize());
+#endif
+            break;
+    }
+    free(temp_buffer);
+}
+
+void set_buffer_char (char * buffer, int is_send_buf, size_t size, int rank,
+                      int num_procs, enum accel_type type, int iter)
+{
+    if (NULL == buffer) {
+        return;
+    }
+
+    int num_elements = size / sizeof(char);
+    int i, j;
+    char *temp_buffer = malloc(size * num_procs);
+    if (is_send_buf) {
+        for(i = 0; i < num_procs; i++) {
+            for(j = 0; j < num_elements; j++) {
+                temp_buffer[i * num_elements + j] = (rank * num_procs + i +
+                        ((iter + 1) * (rank * num_procs + 1) * (i + 1))) %
+                        (1<<8);
+            }
+        }
+    } else {
+        for(i = 0; i < num_procs * num_elements; i++) {
+            temp_buffer[i] = 0;
+        }
+    }
+    switch (type) {
+        case NONE:
+            memcpy((void *)buffer, (void *)temp_buffer, size * num_procs);
+            break;
+        case CUDA:
+        case MANAGED:
+#ifdef _ENABLE_CUDA_
+            CUDA_CHECK(cudaMemcpy((void *)buffer, (void *)temp_buffer,
+                       size * num_procs, cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaDeviceSynchronize());
+#endif
+            break;
+    }
+    free(temp_buffer);
+}
+
+uint8_t validate_data(void* r_buf, size_t size, int num_procs,
+                      enum accel_type type, int iter)
+{
+    void *temp_r_buf = NULL;
+
+    switch (options.bench)
+    {
+        case PT2PT:
+        case MBW_MR:
+            {
+                register int i = 0;
+                int num_elements = size / sizeof(char);
+                temp_r_buf = malloc(size);
+                char* temp_char_r_buf = (char*) temp_r_buf;
+                char* expected_buffer = malloc(size);
+                switch (type) {
+                    case NONE:
+                        memcpy((void *)temp_char_r_buf, (void *)r_buf, size);
+
+                        break;
+#ifdef _ENABLE_CUDA_
+                    case CUDA:
+                    case MANAGED:
+                        CUDA_CHECK(cudaMemcpy((void *)temp_r_buf, (void *)r_buf,
+                                    size, cudaMemcpyDeviceToHost));
+                        CUDA_CHECK(cudaDeviceSynchronize());
+                        break;
+#endif
+                }
+                for(i = 0; i < num_elements; i++) {
+                    expected_buffer[i] = (CHAR_VALIDATION_MULTIPLIER * (i + 1) +
+                            size + iter) % CHAR_RANGE;
+                }
+                if(memcmp(temp_char_r_buf, expected_buffer, num_elements)) {
+                    free(temp_r_buf);
+                    return 1;
+                }
+                free(temp_r_buf);
+                return 0;
+            }
+            break;
+        case COLLECTIVE:
+            switch (options.subtype)
+            {
+            case REDUCE:
+            case NBC_REDUCE:
+                {
+                    int numprocs;
+                    MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+                    return validate_reduction(r_buf, size, iter, numprocs,
+                            options.accel);
+                }
+                break;
+            case ALLTOALL:
+            case NBC_ALLTOALL:
+                {
+                    int numprocs, rank;
+                    MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+                    MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+                    return validate_collective(r_buf, size, rank, numprocs,
+                            type, iter);
+                }
+                break;
+            case GATHER:
+            case NBC_GATHER:
+                {
+                    int numprocs;
+                    MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+                    return validate_collective(r_buf, size, 0, numprocs, type,
+                            iter);
+                }
+                break;
+
+            case SCATTER:
+            case NBC_SCATTER:
+                {
+                    int numprocs, rank;
+                    MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+                    MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+                    return validate_collective(r_buf, size, rank, 1, type,
+                            iter);
+                }
+                break;
+            case REDUCE_SCATTER:
+                {
+                    int numprocs;
+                    MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+                    return validate_reduction(r_buf, size, iter, numprocs,
+                            options.accel);
+                }
+                break;
+            case BCAST:
+            case NBC_BCAST:
+                {
+                    return validate_collective(r_buf, size, 1, 1, type, iter);
+                }
+                break;
+
+            default:
+                break;
+            }
+            break;
+        default:
+            break;
+
+    }
+    return 1;
+}
+
+int validate_reduce_scatter(float *buffer, size_t size, int* recvcounts,
+                            int rank, int num_procs, enum accel_type type,
+                            int iter)
+{
+    int i = 0, j = 0, k = 0, errors = 0;
+    float *expected_buffer = malloc(size * sizeof(float));
+    float *temp_buffer = malloc(size * sizeof(float));
+
+    switch (type) {
+        case NONE:
+            memcpy((void *)temp_buffer, (void *)buffer, size * sizeof(float));
+            break;
+#ifdef _ENABLE_CUDA_
+        case CUDA:
+        case MANAGED:
+            CUDA_CHECK(cudaMemcpy((void *)temp_buffer, (void *)buffer, size *
+                        sizeof(float), cudaMemcpyDeviceToHost));
+            CUDA_CHECK(cudaDeviceSynchronize());
+            break;
+#endif
+    }
+
+    i = 0;
+    for (k = 0; k < rank; k++) {
+        i += recvcounts[k] + 1;
+    }
+    for (i = i; i < recvcounts[k]; i++) {
+        j = (i % 100);
+        expected_buffer[i] = (j + 1) * (iter + 1) * 1.0 * num_procs;
+        if (abs(temp_buffer[i] - expected_buffer[i]) > ERROR_DELTA) {
+            errors = 1;
+            break;
+        }
+    }
+    free(expected_buffer);
+    free(temp_buffer);
+    return errors;
+
+}
+
+int validate_reduction(float *buffer, size_t size, int iter, int num_procs,
+                       enum accel_type type)
+{
+    int i = 0, j = 0, errors = 0;
+    float *expected_buffer = malloc(size * sizeof(float));
+    float *temp_buffer = malloc(size * sizeof(float));
+    int num_elements = size;
+
+    switch (type) {
+        case NONE:
+            memcpy((void *)temp_buffer, (void *)buffer, size * sizeof(float));
+            break;
+#ifdef _ENABLE_CUDA_
+        case CUDA:
+        case MANAGED:
+            CUDA_CHECK(cudaMemcpy((void *)temp_buffer, (void *)buffer, size *
+                        sizeof(float), cudaMemcpyDeviceToHost));
+            CUDA_CHECK(cudaDeviceSynchronize());
+            break;
+#endif
+    }
+
+    for (i = 0; i < num_elements; i++) {
+        j = (i % 100);
+        expected_buffer[i] = (j + 1) * (iter + 1) * 1.0 * num_procs;
+        if (abs(temp_buffer[i] - expected_buffer[i]) > ERROR_DELTA) {
+            errors = 1;
+            break;
+        }
+    }
+    free(expected_buffer);
+    free(temp_buffer);
+    return errors;
+}
+
+int validate_collective(char *buffer, size_t size, int value1, int value2,
+                        enum accel_type type, int itr)
+{
+    int i = 0, j = 0, errors = 0;
+    char *expected_buffer = malloc(size * value2);
+    char *temp_buffer = malloc(size* value2);
+    int num_elements = size / sizeof(char);
+
+    switch (type) {
+        case NONE:
+            memcpy((void *)temp_buffer, (void *)buffer, size * value2);
+            break;
+#ifdef _ENABLE_CUDA_
+        case CUDA:
+        case MANAGED:
+            CUDA_CHECK(cudaMemcpy((void *)temp_buffer, (void *)buffer, size *
+                        value2, cudaMemcpyDeviceToHost));
+            CUDA_CHECK(cudaDeviceSynchronize());
+            break;
+#endif
+    }
+
+    for (i = 0; i < value2; i++) {
+        for(j = 0; j < num_elements; j++) {
+            expected_buffer[i * num_elements + j] = (i * value2 + value1 +
+                            ((itr + 1) * (value1 + 1) * (i * value2 + 1))) %
+                            (1<<8);
+            }
+        }
+        if (memcmp(temp_buffer, expected_buffer, size * value2) != 0) {
+            errors = 1;
+        }
+    free(expected_buffer);
+    free(temp_buffer);
+    return errors;
 }
 
 int allocate_memory_coll (void ** buffer, size_t size, enum accel_type type)
@@ -1439,8 +1933,10 @@ int init_accel (void)
 #endif
 
     switch (options.accel) {
-#ifdef _ENABLE_CUDA_
+#ifdef _ENABLE_CUDA_KERNEL_
         case MANAGED:
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
+#ifdef _ENABLE_CUDA_
         case CUDA:
             if (local_rank >= 0) {
                 CUDA_CHECK(cudaGetDeviceCount(&dev_count));
@@ -1463,7 +1959,9 @@ int init_accel (void)
                 return 1;
             }
 
+#ifdef _ENABLE_CUDA_KERNEL_
             create_cuda_stream();
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
             break;
 #endif
 #ifdef _ENABLE_OPENACC_
@@ -1487,7 +1985,9 @@ int init_accel (void)
             break;
 #endif
         default:
-            fprintf(stderr, "Invalid device type, should be cuda, openacc, or rocm\n");
+            fprintf(stderr, "Invalid device type, should be cuda, openacc, or rocm. "
+                    "Check configure time options to verify that support for chosen "
+                    "device type is enabled.\n");
             return 1;
     }
 
@@ -1501,11 +2001,15 @@ int cleanup_accel (void)
 #endif
 
     switch (options.accel) {
-#ifdef _ENABLE_CUDA_
+#ifdef _ENABLE_CUDA_KERNEL_
         case MANAGED:
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
+#ifdef _ENABLE_CUDA_
         case CUDA:
-            /* reset the device to release all resources */
+            /* Reset the device to release all resources */
+#ifdef _ENABLE_CUDA_KERNEL_
             destroy_cuda_stream();
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
             CUDA_CHECK(cudaDeviceReset());
             break;
 #endif
@@ -1636,7 +2140,7 @@ double dummy_compute(double seconds, MPI_Request* request)
     return test_time;
 }
 
-#ifdef _ENABLE_CUDA_
+#ifdef _ENABLE_CUDA_KERNEL_
 void create_cuda_stream()
 {
     CUDA_CHECK(cudaStreamCreate(&um_stream));
@@ -1658,7 +2162,7 @@ void destroy_cuda_event()
     CUDA_CHECK(cudaEventDestroy(start));
     CUDA_CHECK(cudaEventDestroy(stop));
 }
-    
+
 void event_record_start()
 {
     CUDA_CHECK(cudaEventRecord(start, um_stream));
@@ -1671,11 +2175,11 @@ void event_record_stop()
 
 void event_elapsed_time(float * t_elapsed)
 {
-    
+
     CUDA_CHECK(cudaEventSynchronize(stop));
     CUDA_CHECK(cudaEventElapsedTime(t_elapsed, start, stop));
 }
-    
+
 void synchronize_device()
 {
     CUDA_CHECK(cudaDeviceSynchronize());
@@ -1700,9 +2204,7 @@ void launch_empty_kernel(char *buf, size_t length)
 {
     call_empty_kernel(buf, length, &um_stream);
 }
-#endif
 
-#ifdef _ENABLE_CUDA_KERNEL_
 void do_compute_gpu(double seconds)
 {
     double time_elapsed = 0.0, t1 = 0.0, t2 = 0.0;
@@ -1722,7 +2224,7 @@ void do_compute_gpu(double seconds)
         time_elapsed += (t2-t1);
     }
 }
-#endif
+#endif /* #ifdef _ENABLE_CUDA_KERNEL_ */
 
 void
 compute_on_host()

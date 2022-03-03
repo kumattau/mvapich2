@@ -52,6 +52,7 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
             mpi_errno = MPI_ERR_INTERN;
             MPIR_ERR_POP(mpi_errno);
         }
+        MPID_Request_release(request_ptr);
         mpi_errno = MPI_SUCCESS;
         goto fn_exit;
     }

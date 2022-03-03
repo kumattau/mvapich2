@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -57,6 +57,12 @@ int mv2_enable_sharp_allreduce = 1;
 int mv2_enable_sharp_barrier   = 1;
 int mv2_enable_sharp_reduce    = 1;
 int mv2_enable_sharp_bcast     = 1;
+int mv2_enable_sharp_scatter   = 1;
+int mv2_enable_sharp_scatterv  = 1;
+int mv2_enable_sharp_iallreduce = 1;
+int mv2_enable_sharp_ireduce    = 1;
+int mv2_enable_sharp_ibcast     = 1;
+int mv2_enable_sharp_ibarrier   = 1;
 #endif
 int mv2_num_extra_polls = 0;
 int mv2_is_in_finalize = 0;
@@ -120,6 +126,7 @@ int num_rdma_buffer = 0;
 int rdma_use_xrc = 0;
 int xrc_rdmafp_init = 0;
 int rdma_use_smp = 1;
+int mv2_use_smp = 1;
 int rdma_use_qos = 0;
 #ifdef ENABLE_3DTORUS_SUPPORT
 int rdma_3dtorus_support = 1;
@@ -174,6 +181,7 @@ int mv2_use_pmi_ibarrier = 0;
 int mv2_use_pmi_iallgather = 0;
 int mv2_shmem_backed_ud_cm = 0;
 int mv2_system_has_roce = 0;
+int mv2_system_has_rockport = 0;
 int mv2_system_has_ib = 0;
 int mv2_process_placement_aware_hca_mapping = 0;
 int mv2_allow_heterogeneous_hca_selection = 0;
@@ -189,6 +197,8 @@ int rdma_coalesce_threshold = DEFAULT_COALESCE_THRESHOLD;
  * -1 means no limit.
  */
 int rdma_vbuf_max = -1;
+int rdma_max_num_vbufs = DEFAULT_MAX_NUM_VBUFS;
+
 /* number of vbufs to allocate in a secondary region if we should
  * run out of the initial allocation.  This is re-computed (below)
  * once other parameters are known.
@@ -243,6 +253,7 @@ uint16_t rdma_hybrid_pending_rc_conn = 0;
 #ifdef _MV2_UD_DROP_PACKET_RATE_
 uint32_t ud_drop_packet_rate = 0;
 #endif
+int rdma_max_num_ud_vbufs = DEFAULT_MAX_NUM_UD_VBUFS;
 #endif
 #if defined(_MCST_SUPPORT_)
 uint8_t rdma_enable_mcast = USE_MCAST_DEFAULT_FLAG;
@@ -324,6 +335,9 @@ int striping_threshold = STRIPING_THRESHOLD;
 int use_iboeth = 0;
 int mv2_use_post_srq_send = 1;
 int rdma_enable_hugepage = 1;
+
+/* Set default version for RoCE*/
+mv2_roce_mode_t mv2_use_roce_mode = MV2_ROCE_MODE_V2;
 
 /* Linear update factor for HSAM */
 double alpha = 0.9;
@@ -542,75 +556,70 @@ int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type)
 {
     char *p2r_only_numbers =
         (char *) MPIU_Malloc((mrail_p2r_length + 1) * sizeof(char));
-    int i, j = 0;
+    int i, j = 0, k = 0;
     int num_total_devices = 0;
-    int num_devices = 0, num_devices_on_my_sock = 0;
+    int num_devices = 0, num_devices_on_my_numa = 0;
     char *tp = mrail_p2r_string;
     char *cp = NULL;
     char tp_str[mrail_p2r_length + 1];
     struct ibv_device **dev_list = NULL;
     struct ibv_device **usable_dev_list = MPIU_Malloc(sizeof(struct ibv_device *)*MAX_NUM_HCAS);
-    struct ibv_device **usable_devs_on_my_sock = MPIU_Malloc(sizeof(struct ibv_device *)*MAX_NUM_HCAS);
+    struct ibv_device **usable_devs_on_my_numa = MPIU_Malloc(sizeof(struct ibv_device *)*MAX_NUM_HCAS);
     int bunch_hca_count;
 
     dev_list = ibv_ops.get_device_list(&num_total_devices);
 
     rdma_find_network_type(dev_list, num_total_devices, usable_dev_list,
-                              usable_devs_on_my_sock, &num_devices,
-                              &num_devices_on_my_sock);
+                              usable_devs_on_my_numa, &num_devices,
+                              &num_devices_on_my_numa, NULL);
 
     if (rdma_num_req_hcas && rdma_num_req_hcas <= num_devices) {
         num_devices = rdma_num_req_hcas;
     }
     switch (mrail_user_defined_p2r_type) {
         case MV2_UDEF_POLICY_NONE:
-
-            if (((mrail_p2r_length + 1) / 2) != rdma_num_local_procs) {
-                if (rdma_local_id == 0) {
-                    fprintf(stderr,
-                            "Mapping should contain %d values. "
-                            "Falling back to default scheme.\n",
-                            rdma_num_local_procs);
+            /* Start with default setting */
+            mrail_use_default_mapping = 1;
+            while (*tp != '\0') {
+                i = 0;
+                cp = tp;
+                while (*cp != '\0' && *cp != ':' && i < mrail_p2r_length) {
+                    ++cp;
+                    ++i;
                 }
-                mrail_use_default_mapping = 1;
-                rdma_rail_sharing_policy = FIXED_MAPPING;
-            } else {
 
-                while (*tp != '\0') {
-                    i = 0;
-                    cp = tp;
-                    while (*cp != '\0' && *cp != ':' && i < mrail_p2r_length) {
-                        ++cp;
-                        ++i;
-                    }
+                strncpy(tp_str, tp, i);
+                tp_str[i] = '\0';
 
-                    strncpy(tp_str, tp, i);
-                    if (atoi(tp) < 0 || atoi(tp) >= num_devices) {
-                        if (rdma_local_id == 0) {
-                            fprintf(stderr,
-                                    "\nWarning! : HCA #%d does not "
-                                    "exist on this machine. Falling back to "
-                                    "default scheme\n", atoi(tp));
+                if (j == rdma_local_id) {
+                    for (k = 0; k < num_devices; ++k) {
+                        if (!strcmp(usable_dev_list[k]->name, tp_str)) {
+                            mrail_user_defined_p2r_mapping = k;
+                            mrail_use_default_mapping = 0;
+                            break;
                         }
+                    }
+                    if (k == num_devices) {
+                        PRINT_ERROR("HCA %s either does not exist on this machine "
+                                    "or is deemed unusable due to heterogeneity or "
+                                    "because of being on different subnets. "
+                                    "Falling back to default scheme\n", tp_str);
                         mrail_use_default_mapping = 1;
                         rdma_rail_sharing_policy = FIXED_MAPPING;
                         goto fn_exit;
                     }
-                    tp_str[i] = '\0';
-
-                    if (j == rdma_local_id) {
-                        mrail_user_defined_p2r_mapping = atoi(tp_str);
-                        break;
-                    }
-
-                    if (*cp == '\0') {
-                        break;
-                    }
-
-                    tp = cp;
-                    ++tp;
-                    ++j;
+                    PRINT_DEBUG(DEBUG_INIT_verbose, "Mapping HCA %s. Index: %d\n",
+                                tp_str, mrail_user_defined_p2r_mapping);
+                    break;
                 }
+
+                if (*cp == '\0') {
+                    break;
+                }
+
+                tp = cp;
+                ++tp;
+                ++j;
             }
             break;
 
@@ -637,7 +646,7 @@ int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type)
   fn_exit:
     /* Housekeeping operations */
     MPIU_Free(usable_dev_list);
-    MPIU_Free(usable_devs_on_my_sock);
+    MPIU_Free(usable_devs_on_my_numa);
     if (dev_list) {
         ibv_ops.free_device_list(dev_list);
     }
@@ -871,6 +880,30 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             s_smp_block_size = 8192;
             break;
 
+        /* TODO: tune single socket millan */
+        case MV2_ARCH_AMD_EPYC_7763_128:
+        /* lonestar6 */
+#if defined(_SMP_CMA_)
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 28672;
+                s_smp_cma_max_size = 4194304;
+            } else
+#endif
+#if defined(_SMP_LIMIC_)
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 16384;
+                s_smp_limic2_max_size = 4194304;
+            } else
+#endif
+            {
+                g_smp_eagersize = 28672;
+            }
+            s_smp_queue_length = 131072;
+            s_smp_num_send_buffer = 32;
+            s_smp_batch_size = 8;
+            s_smp_block_size = 8192;
+            break;
+
         case MV2_ARCH_AMD_EPYC_7601_64:
 #if defined(_SMP_CMA_)
             if (g_smp_use_cma) {
@@ -935,6 +968,28 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             s_smp_num_send_buffer = 16;
             s_smp_batch_size = 8;
             s_smp_block_size = 30 * 1024;
+            break;
+
+        case MV2_ARCH_AMD_EPYC_7662_64:
+#if defined(_SMP_CMA_)
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 1048576;
+                s_smp_cma_max_size = 4194304;
+            } else
+#endif
+#if defined(_SMP_LIMIC_)
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 1048576;
+                s_smp_limic2_max_size = 4194304;
+            } else
+#endif
+            {
+                g_smp_eagersize = 1048576;
+            }
+            s_smp_queue_length = 4194304;
+            s_smp_num_send_buffer = 32;
+            s_smp_batch_size = 8;
+            s_smp_block_size = 16384;
             break;
 
         case MV2_ARCH_AMD_EPYC_7742_128:
@@ -1505,7 +1560,47 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             s_smp_block_size = 8192;
             break;
 
+        case MV2_ARCH_INTEL_XEON_E5_2697A_V4_2S_32:
+            g_smp_eagersize = 65536;
+            s_smp_queue_length = 262144;
+            s_smp_num_send_buffer = 256;
+            s_smp_batch_size = 8;
+            s_smp_block_size = 8192;
+            break;
+
         case MV2_ARCH_INTEL_PLATINUM_8170_2S_52:
+#if defined(_SMP_CMA_)
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 5120;
+                s_smp_cma_max_size = 4194304;
+            } else
+#endif
+            {
+                g_smp_eagersize = 65536;
+            }
+            s_smp_queue_length = 262144;
+            s_smp_num_send_buffer = 32;
+            s_smp_batch_size = 8;
+            s_smp_block_size = 8192;
+            break;
+
+        case MV2_ARCH_INTEL_PLATINUM_8268_2S_48:
+#if defined(_SMP_CMA_)
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 5120;
+                s_smp_cma_max_size = 4194304;
+            } else
+#endif
+            {
+                g_smp_eagersize = 65536;
+            }
+            s_smp_queue_length = 262144;
+            s_smp_num_send_buffer = 32;
+            s_smp_batch_size = 8;
+            s_smp_block_size = 8192;
+            break;
+
+        case MV2_ARCH_INTEL_GOLD_6148_2S_40:
 #if defined(_SMP_CMA_)
             if (g_smp_use_cma) {
                 g_smp_eagersize = 5120;
@@ -1802,13 +1897,16 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         mrail_use_default_mapping = 1;
     }
 
+#ifdef _ENABLE_HSAM_
     /* Start HSAM Parameters */
     if ((value = getenv("MV2_USE_HSAM")) != NULL) {
         proc->has_hsam = atoi(value);
         if (proc->has_hsam) {
             check_hsam_parameters();
         }
-    } else {
+    } else
+#endif /*_ENABLE_HSAM_*/
+    {
         /* By default disable the HSAM, due to problem with
          * multi-pathing with current version of opensm and
          * up/down */
@@ -1914,10 +2012,10 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     }
 #endif
 
-    /* If there is only one process per node, or just one node allow it use
+    /* If there is only one process per node allow it use
      * all HCAs. The code to force rail selection to MV2_MRAIL_SHARING must
      * come before opening the HCAs. */
-    if ((rdma_num_nodes_in_job == pg_size) || (rdma_num_nodes_in_job == 1)) {
+    if (rdma_num_nodes_in_job == pg_size) {
         rdma_multirail_usage_policy = MV2_MRAIL_SHARING;
     }
 
@@ -1959,6 +2057,9 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
          * these cases */
         if ((MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7551_64,
+              MV2_HCA_MLX_CX_HDR)) ||
+            (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7763_128,
               MV2_HCA_MLX_CX_HDR)) ||
             (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7601_64,
@@ -2805,6 +2906,50 @@ static void rdma_set_default_parameters_numrail_4(struct
     }
 
     else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7662_64,
+              MV2_HCA_MLX_CX_EDR)) {
+        rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7662_64,
+              MV2_HCA_MLX_CX_HDR)) {
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7763_128,
+              MV2_HCA_MLX_CX_EDR)) {
+        rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7763_128,
+              MV2_HCA_MLX_CX_HDR)) {
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7601_64,
               MV2_HCA_MLX_CX_HDR)) {
         rdma_vbuf_total_size = 13 * 1024 + EAGER_THRESHOLD_ADJUST;
@@ -3578,6 +3723,50 @@ static void rdma_set_default_parameters_numrail_3(struct
              (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7551_64,
               MV2_HCA_MLX_CX_HDR)) {
         rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7662_64,
+              MV2_HCA_MLX_CX_EDR)) {
+        rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7662_64,
+              MV2_HCA_MLX_CX_HDR)) {
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7763_128,
+              MV2_HCA_MLX_CX_EDR)) {
+        rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7763_128,
+              MV2_HCA_MLX_CX_HDR)) {
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
         rdma_fp_buffer_size = 5 * 1024;
         rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
         rdma_eagersize_1sc = 8 * 1024;
@@ -4366,6 +4555,50 @@ static void rdma_set_default_parameters_numrail_2(struct
     }
 
     else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7662_64,
+              MV2_HCA_MLX_CX_EDR)) {
+        rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7662_64,
+              MV2_HCA_MLX_CX_HDR)) {
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7763_128,
+              MV2_HCA_MLX_CX_EDR)) {
+        rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7763_128,
+              MV2_HCA_MLX_CX_HDR)) {
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7601_64,
               MV2_HCA_MLX_CX_HDR)) {
         rdma_vbuf_total_size = 13 * 1024 + EAGER_THRESHOLD_ADJUST;
@@ -5146,6 +5379,50 @@ static void rdma_set_default_parameters_numrail_1(struct
     }
 
     else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7662_64,
+              MV2_HCA_MLX_CX_EDR)) {
+        rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7662_64,
+              MV2_HCA_MLX_CX_HDR)) {
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7763_128,
+              MV2_HCA_MLX_CX_EDR)) {
+        rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7763_128,
+              MV2_HCA_MLX_CX_HDR)) {
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7601_64,
               MV2_HCA_MLX_CX_HDR)) {
         rdma_vbuf_total_size = 13 * 1024 + EAGER_THRESHOLD_ADJUST;
@@ -5903,6 +6180,50 @@ static void rdma_set_default_parameters_numrail_unknwn(struct
     }
 
     else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7662_64,
+              MV2_HCA_MLX_CX_EDR)) {
+        rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7662_64,
+              MV2_HCA_MLX_CX_HDR)) {
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7763_128,
+              MV2_HCA_MLX_CX_EDR)) {
+        rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7763_128,
+              MV2_HCA_MLX_CX_HDR)) {
+        rdma_vbuf_total_size = 32 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_AMD_EPYC_7601_64,
               MV2_HCA_MLX_CX_HDR)) {
         rdma_vbuf_total_size = 13 * 1024 + EAGER_THRESHOLD_ADJUST;
@@ -6250,6 +6571,16 @@ void rdma_set_default_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         rdma_credit_preserve = 3;
     }
 
+    if (!SMP_ONLY && rdma_vbuf_total_size < 128 * 1024
+#ifdef _ENABLE_UD_
+        && !rdma_enable_only_ud
+#endif
+        && !mv2_system_has_rockport
+    ) {
+        rdma_vbuf_total_size = 128 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+    }
+
     return;
 }
 
@@ -6259,7 +6590,6 @@ void rdma_set_default_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
  *      rdma_iba_eager_threshold
  *      proc->has_srq
  *      rdma_credit_preserve
- *      rdma_max_inline_size
  *      rdma_default_qp_ous_rd_atom
  *      rdma_put_fallback_threshold
  *      rdma_get_fallback_threshold
@@ -6298,7 +6628,6 @@ void rdma_param_handle_heterogeneity(mv2_arch_hca_type arch_hca_type[],
             mv2_MPIDI_CH3I_RDMA_Process.has_srq = 0;
 	    mv2_use_post_srq_send = 0;
             rdma_credit_preserve = 3;
-            rdma_max_inline_size = -1;
         }
 
         if (arch_hca_type[i] != type) {
@@ -6315,7 +6644,6 @@ void rdma_param_handle_heterogeneity(mv2_arch_hca_type arch_hca_type[],
         rdma_vbuf_total_size = 8 * 1024 + EAGER_THRESHOLD_ADJUST;
         rdma_fp_buffer_size = 8 * 1024;
         rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
-        rdma_max_inline_size = (rdma_max_inline_size == -1) ? -1 : 64;
         rdma_put_fallback_threshold = 4 * 1024;
         rdma_get_fallback_threshold = 192 * 1024;
         num_rdma_buffer = 16;
@@ -6854,6 +7182,9 @@ void rdma_get_user_parameters(int num_proc, int me)
 static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
 {
     char *value = NULL;
+    int my_rank = -1;
+
+    UPMI_GET_RANK(&my_rank);
 
     if ((value = getenv("MV2_MEMORY_OPTIMIZATION")) != NULL) {
         rdma_memory_optimization = !!atoi(value);
@@ -6915,6 +7246,15 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
             MPL_usage_printf("UD SRQ limit shouldn't be greater than UD SRQ size\n");
         }
     }
+    if ((value = getenv("MV2_MAX_NUM_UD_VBUFS")) != NULL) {
+        rdma_max_num_ud_vbufs = atoi(value);
+        if (rdma_max_num_ud_vbufs < 1) {
+            PRINT_INFO(!my_rank, "MV2_MAX_NUM_UD_VBFUS must be greater than 1\n"
+                                 "Setting MV2_MAX_NUM_UD_VBUFS to %d\n",
+                                 DEFAULT_MAX_NUM_UD_VBUFS);
+            rdma_max_num_ud_vbufs = DEFAULT_MAX_NUM_UD_VBUFS;
+        }
+    }
 #endif /*defined(_ENABLE_UD_)*/
 
     if ((value = getenv("MV2_MAX_INLINE_SIZE")) != NULL) {
@@ -6965,6 +7305,15 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_VBUF_POOL_SIZE")) != NULL) {
         rdma_vbuf_pool_size = atoi(value);
     }
+    if ((value = getenv("MV2_MAX_NUM_VBUFS")) != NULL) {
+        rdma_max_num_vbufs = atoi(value);
+        if (rdma_max_num_vbufs < 1) {
+            PRINT_INFO(!my_rank, "MV2_MAX_NUM_VBFUS must be greater than 1\n"
+                                 "Setting MV2_MAX_NUM_VBUFS to %d\n",
+                                 DEFAULT_MAX_NUM_UD_VBUFS);
+            rdma_max_num_vbufs = DEFAULT_MAX_NUM_VBUFS;
+        }
+    }
 #ifdef _ENABLE_UD_
     if (!rdma_enable_only_ud && rdma_vbuf_pool_size <= 10)
 #else
@@ -7011,18 +7360,21 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
         if ((value = getenv("MV2_CUDA_NUM_RNDV_BLOCKS")) != NULL) {
             mv2_device_num_rndv_blocks = atoi(value);
         }
-
+    }
+#endif /* defined(_ENABLE_CUDA_) */
 #if defined(_ENABLE_UD_)
-        if (!rdma_enable_only_ud)
+    if (!rdma_enable_only_ud)
 #endif
-        {
+    {
+#ifdef _ENABLE_CUDA_
+        if (mv2_enable_device) {
             rdma_num_vbuf_pools = MV2_MAX_NUM_VBUF_POOLS;
-    
+
             int default_vbuf_sizes[] = DEFAULT_CUDA_VBUF_SIZES;
             int default_vbuf_init_count[] = DEFAULT_CUDA_VBUF_POOL_SIZE;
             int default_vbuf_secondary_count[] =
                 DEFAULT_CUDA_VBUF_SECONDARY_POOL_SIZE;
-    
+
             result = MPIU_Memalign((void**) &rdma_vbuf_pools, alignment_dma,
                                     (sizeof(vbuf_pool_t) * rdma_num_vbuf_pools));
             if ((result != 0) || (NULL == rdma_vbuf_pools)) {
@@ -7033,62 +7385,34 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
             MPIU_Memset(&mv2_srq_repost_pool, 0, sizeof(vbuf_pool_t));
             mv2_srq_repost_pool.buf_size = rdma_vbuf_total_size;
             mv2_srq_repost_pool.index = MV2_RECV_VBUF_POOL_OFFSET;
-    
+
             for (i = 0; i < rdma_num_vbuf_pools; i++) {
                 RDMA_VBUF_POOL_INIT(rdma_vbuf_pools[i]);
                 rdma_vbuf_pools[i].buf_size = default_vbuf_sizes[i];
                 rdma_vbuf_pools[i].incr_count = default_vbuf_secondary_count[i];
                 rdma_vbuf_pools[i].initial_count = default_vbuf_init_count[i];
+                /* Limit the number of VBUFs for large pool */
+                if (i == MV2_LARGE_DATA_VBUF_POOL_OFFSET) {
+                    rdma_vbuf_pools[i].max_num_buf = rdma_max_num_vbufs;
+                }
                 rdma_vbuf_pools[i].index = i;
             }
-        }
-#if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
-        if (rdma_enable_hybrid || rdma_enable_mcast) {
-            rdma_num_ud_vbuf_pools = MV2_MAX_NUM_UD_VBUF_POOLS;
-    
-            int default_ud_vbuf_sizes[] = DEFAULT_UD_VBUF_SIZES;
-            int default_ud_vbuf_init_count[] = DEFAULT_UD_VBUF_POOL_SIZE;
-            int default_ud_vbuf_secondary_count[] = DEFAULT_UD_VBUF_SECONDARY_POOL_SIZE;
-    
-            result = MPIU_Memalign((void**) &rdma_ud_vbuf_pools, alignment_dma,
-                                    (sizeof(vbuf_pool_t) * rdma_num_ud_vbuf_pools));
-            if ((result != 0) || (NULL == rdma_ud_vbuf_pools)) {
-                ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc vbuf_pool");
-            }
-            MPIU_Memset(rdma_ud_vbuf_pools, 0,
-                        sizeof(vbuf_pool_t) * rdma_num_ud_vbuf_pools);
-            MPIU_Memset(&mv2_ud_srq_repost_pool, 0, sizeof(vbuf_pool_t));
-            mv2_ud_srq_repost_pool.buf_size = RDMA_MAX_UD_MTU;
-            mv2_ud_srq_repost_pool.index = MV2_RECV_UD_VBUF_POOL_OFFSET;
-
-            for (i = 0; i < rdma_num_ud_vbuf_pools; i++) {
-                RDMA_VBUF_POOL_INIT(rdma_ud_vbuf_pools[i]);
-                rdma_ud_vbuf_pools[i].buf_size = default_ud_vbuf_sizes[i];
-                rdma_ud_vbuf_pools[i].incr_count = default_ud_vbuf_secondary_count[i];
-                rdma_ud_vbuf_pools[i].initial_count = default_ud_vbuf_init_count[i];
-                rdma_ud_vbuf_pools[i].index = i;
-            }
-        }
-#endif /*defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)*/
-    } else
-#endif
-    {
-#if defined(_ENABLE_UD_)
-        if (!rdma_enable_only_ud)
-#endif
+        } else
+#endif /* defined(_ENABLE_CUDA_) */
         {
 #ifdef _ENABLE_CUDA_
             /* If built with CUDA support, the last VBUF pool is for CUDA VBUF.
-             * This is not needed if CUDA support is not enabled at runtime */
-            rdma_num_vbuf_pools = MV2_MAX_NUM_VBUF_POOLS-1;
-#else
+             * This last buffer is not needed if CUDA support is not enabled at runtime */
+            rdma_num_vbuf_pools = MV2_MAX_NUM_VBUF_POOLS - 1;
+#else 
             rdma_num_vbuf_pools = MV2_MAX_NUM_VBUF_POOLS;
 #endif
-    
+
             int default_vbuf_sizes[] = DEFAULT_VBUF_SIZES;
             int default_vbuf_init_count[] = DEFAULT_VBUF_POOL_SIZE;
-            int default_vbuf_secondary_count[] = DEFAULT_VBUF_SECONDARY_POOL_SIZE;
-    
+            int default_vbuf_secondary_count[] =
+                DEFAULT_VBUF_SECONDARY_POOL_SIZE;
+
             result = MPIU_Memalign((void**) &rdma_vbuf_pools, alignment_dma,
                                     (sizeof(vbuf_pool_t) * rdma_num_vbuf_pools));
             if ((result != 0) || (NULL == rdma_vbuf_pools)) {
@@ -7099,54 +7423,63 @@ static inline void rdma_get_vbuf_user_parameters(int num_proc, int me)
             MPIU_Memset(&mv2_srq_repost_pool, 0, sizeof(vbuf_pool_t));
             mv2_srq_repost_pool.buf_size = rdma_vbuf_total_size;
             mv2_srq_repost_pool.index = MV2_RECV_VBUF_POOL_OFFSET;
-    
+
             for (i = 0; i < rdma_num_vbuf_pools; i++) {
                 RDMA_VBUF_POOL_INIT(rdma_vbuf_pools[i]);
                 rdma_vbuf_pools[i].buf_size = default_vbuf_sizes[i];
                 rdma_vbuf_pools[i].incr_count = default_vbuf_secondary_count[i];
                 rdma_vbuf_pools[i].initial_count = default_vbuf_init_count[i];
+                /* Limit the number of VBUFs for large pool */
+                if (i == MV2_LARGE_DATA_VBUF_POOL_OFFSET) {
+                    rdma_vbuf_pools[i].max_num_buf = rdma_max_num_vbufs;
+                }
                 rdma_vbuf_pools[i].index = i;
             }
         }
+    } 
 #if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
-        if (rdma_enable_hybrid
+    if (rdma_enable_hybrid
 #if defined(_MCST_SUPPORT_)
-            || rdma_enable_mcast
+        || rdma_enable_mcast
 #endif
-            ) {
-            rdma_num_ud_vbuf_pools = MV2_MAX_NUM_UD_VBUF_POOLS;
-    
-            int default_ud_vbuf_sizes[] = DEFAULT_UD_VBUF_SIZES;
-            int default_ud_vbuf_init_count[] = DEFAULT_UD_VBUF_POOL_SIZE;
-            int default_ud_vbuf_secondary_count[] = DEFAULT_UD_VBUF_SECONDARY_POOL_SIZE;
-    
-            result = MPIU_Memalign((void**) &rdma_ud_vbuf_pools, alignment_dma,
-                                    (sizeof(vbuf_pool_t) * rdma_num_ud_vbuf_pools));
-            if ((result != 0) || (NULL == rdma_ud_vbuf_pools)) {
-                ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc vbuf_pool");
-            }
-            MPIU_Memset(rdma_ud_vbuf_pools, 0,
-                        sizeof(vbuf_pool_t) * rdma_num_ud_vbuf_pools);
-            MPIU_Memset(&mv2_ud_srq_repost_pool, 0, sizeof(vbuf_pool_t));
-            mv2_ud_srq_repost_pool.buf_size = RDMA_MAX_UD_MTU;
-            mv2_ud_srq_repost_pool.index = MV2_RECV_UD_VBUF_POOL_OFFSET;
+        ) {
+        rdma_num_ud_vbuf_pools = MV2_MAX_NUM_UD_VBUF_POOLS;
 
-            for (i = 0; i < rdma_num_ud_vbuf_pools; i++) {
-                RDMA_VBUF_POOL_INIT(rdma_ud_vbuf_pools[i]);
-                rdma_ud_vbuf_pools[i].buf_size = default_ud_vbuf_sizes[i];
-                rdma_ud_vbuf_pools[i].incr_count = default_ud_vbuf_secondary_count[i];
-                rdma_ud_vbuf_pools[i].initial_count = default_ud_vbuf_init_count[i];
-                rdma_ud_vbuf_pools[i].index = i;
-            }
+        int default_ud_vbuf_sizes[] = DEFAULT_UD_VBUF_SIZES;
+        int default_ud_vbuf_init_count[] = DEFAULT_UD_VBUF_POOL_SIZE;
+        int default_ud_vbuf_secondary_count[] = DEFAULT_UD_VBUF_SECONDARY_POOL_SIZE;
+
+        result = MPIU_Memalign((void**) &rdma_ud_vbuf_pools, alignment_dma,
+                                (sizeof(vbuf_pool_t) * rdma_num_ud_vbuf_pools));
+        if ((result != 0) || (NULL == rdma_ud_vbuf_pools)) {
+            ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc vbuf_pool");
         }
-#endif /*defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)*/
+        MPIU_Memset(rdma_ud_vbuf_pools, 0,
+                    sizeof(vbuf_pool_t) * rdma_num_ud_vbuf_pools);
+        MPIU_Memset(&mv2_ud_srq_repost_pool, 0, sizeof(vbuf_pool_t));
+        mv2_ud_srq_repost_pool.buf_size = RDMA_MAX_UD_MTU;
+        mv2_ud_srq_repost_pool.index = MV2_RECV_UD_VBUF_POOL_OFFSET;
+
+        for (i = 0; i < rdma_num_ud_vbuf_pools; i++) {
+            RDMA_VBUF_POOL_INIT(rdma_ud_vbuf_pools[i]);
+            rdma_ud_vbuf_pools[i].buf_size = default_ud_vbuf_sizes[i];
+            rdma_ud_vbuf_pools[i].incr_count = default_ud_vbuf_secondary_count[i];
+            rdma_ud_vbuf_pools[i].initial_count = default_ud_vbuf_init_count[i];
+            /* Limit the number of VBUFs for large pool */
+            if (i == MV2_SEND_UD_VBUF_POOL_OFFSET) {
+                rdma_ud_vbuf_pools[i].max_num_buf = rdma_max_num_ud_vbufs;
+            }
+            rdma_ud_vbuf_pools[i].index = i;
+        }
     }
+#endif /*defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)*/
     return;
 }
 
 /* This function is specifically written to make sure that HSAM
  * parameters are configured correctly */
 
+#ifdef _ENABLE_HSAM_
 static int check_hsam_parameters(void)
 {
     char *value;
@@ -7188,6 +7521,7 @@ static int check_hsam_parameters(void)
 
     return MPI_SUCCESS;
 }
+#endif /* _ENABLE_HSAM_ */
 
 void rdma_get_pm_parameters(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
 {
@@ -7227,8 +7561,25 @@ void rdma_get_pm_parameters(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
     }
 #endif
 
-    if ((value = getenv("MV2_USE_RoCE")) != NULL) {
+    if ((value = getenv("MV2_USE_RoCE")) != NULL ||
+        (value = getenv("MV2_USE_ROCE")) != NULL) {
         use_iboeth = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_RoCE_MODE")) != NULL ||
+        (value = getenv("MV2_USE_ROCE_MODE")) != NULL) {
+        mv2_use_roce_mode = atoi(value);
+        if (mv2_use_roce_mode != MV2_ROCE_MODE_V1 && 
+            mv2_use_roce_mode != MV2_ROCE_MODE_V2) {
+            
+            PRINT_INFO(my_rank == 0,
+                    "Value for MV2_USE_RoCE_MODE must either be 1 or 2. Falling"
+                    " back to the latest RoCE version available on system.\n");
+            /* Use RoCEv2 if avaiable. If not avaialble, we fall back to RoCEv1 */
+            mv2_use_roce_mode = MV2_ROCE_MODE_V2;
+        }
+        /* Automatically set use_iboeth = 1 if ROCE mode is set */
+        use_iboeth = 1;
     }
 
     switch (MPIDI_CH3I_Process.cm_type) {

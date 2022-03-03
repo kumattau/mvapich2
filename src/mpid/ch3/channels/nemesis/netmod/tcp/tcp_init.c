@@ -79,7 +79,7 @@ cvars:
       scope       : MPI_T_SCOPE_ALL_EQ
       description : >-
         This cvar controls the number of times to retry the
-        gethostbyname() function before giving up.
+        getaddrinfo() function before giving up.
 
 === END_MPI_T_CVAR_INFO_BLOCK ===
 */
@@ -107,6 +107,18 @@ MPID_nem_netmod_funcs_t MPIDI_nem_tcp_funcs = {
     NULL, /* anysource iprobe */
     NULL, /* anysource_improbe */
     MPID_nem_tcp_get_ordering
+};
+
+/* getaddrinfo hints struct */
+struct addrinfo addr_hint = {
+    .ai_flags = AI_CANONNAME,
+    .ai_family = AF_INET,
+    .ai_socktype = 0,
+    .ai_protocol = 0,
+    .ai_addrlen = 0,
+    .ai_addr = NULL,
+    .ai_canonname = NULL,
+    .ai_next = NULL
 };
 
 /* in case there are no packet types defined (e.g., they're ifdef'ed out) make sure the array is not zero length */
@@ -278,7 +290,7 @@ fn_fail:
  * MPICH_INTERFACE_HOSTNAME
  * MPICH_INTERFACE_HOSTNAME_R%d
  * a single (non-localhost) available IP address, if possible
- * gethostbyname(gethostname())
+ * getaddrinfo(gethostname())
  *
  * We return the following items:
  *
@@ -370,17 +382,20 @@ static int GetSockInterfaceAddr(int myRank, char *ifname, int maxIfname,
     /* If we don't have an IP address, try to get it from the name */
     if (!ifaddrFound) {
         int i;
-	struct hostent *info = NULL;
+        struct addrinfo *info = NULL;
         for (i = 0; i < MPIR_CVAR_NEMESIS_TCP_HOST_LOOKUP_RETRIES; ++i) {
-            info = gethostbyname( ifname_string );
-            if (info || h_errno != TRY_AGAIN)
+            mpi_errno = getaddrinfo(ifname_string, NULL, &addr_hint, &info);
+            if (!mpi_errno);
                 break;
         }
-        MPIR_ERR_CHKANDJUMP2(!info || !info->h_addr_list, mpi_errno, MPI_ERR_OTHER, "**gethostbyname", "**gethostbyname %s %d", ifname_string, h_errno);
-        
+        MPIR_ERR_CHKANDJUMP2(mpierrno != 0, mpi_errno, MPI_ERR_OTHER,
+                            "**getaddrinfo", "**getaddrinfo %s %d",
+                            ifname_string, mpi_errno);
+
         /* Use the primary address */
-        ifaddr->len  = info->h_length;
-        ifaddr->type = info->h_addrtype;
+        struct in_addr *sin_addr = &((struct sockaddr_in *)info->ai_addr)->sin_addr;
+        ifaddr->len  = sizeof(*sin_addr);
+        ifaddr->type = info->ai_family;
         if (ifaddr->len > sizeof(ifaddr->ifaddr)) {
             /* If the address won't fit in the field, reset to
                no address */
@@ -388,8 +403,9 @@ static int GetSockInterfaceAddr(int myRank, char *ifname, int maxIfname,
             ifaddr->type = -1;
             MPIR_ERR_INTERNAL(mpi_errno, "Address too long to fit in field");
         } else {
-            MPIU_Memcpy( ifaddr->ifaddr, info->h_addr_list[0], ifaddr->len );
-	}
+            MPIU_Memcpy(ifaddr->ifaddr, sin_addr, ifaddr->len);
+        }
+        freeaddrinfo(info);
     }
 
 fn_exit:

@@ -27,6 +27,42 @@ int MPI_Igatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void
 #undef MPI_Igatherv
 #define MPI_Igatherv PMPI_Igatherv
 
+#if (defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM))
+#include "coll_shmem.h"
+
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_igatherv_algo);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igatherv_algo);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igatherv_def_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igatherv_def_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igatherv_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igatherv_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igatherv_def_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igatherv_def_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igatherv_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_igatherv_count_recv);
+        
+#define PVAR_TIME_START(optype, op, algo) \
+        MPIR_TIMER_START(optype, op, algo); 
+
+#define PVAR_TIME_STOP(optype, op, algo) \
+        MPIR_TIMER_END(optype, op, algo);
+    
+
+#define PVAR_INC_1(M, alg, num) \
+    MPIR_T_PVAR_COUNTER_INC(M, alg, num);
+
+#define PVAR_INC_MSG(op, algo, sr, count, datatype) \
+    MPIR_PVAR_INC(op, algo, sr, count, datatype);
+
+#else
+/* Idea of redefining macros to wrap around calls for portability reasons */
+#define PVAR_TIME_START(optype, op, algo) 
+#define PVAR_TIME_STOP(optype, op, algo) 
+#define PVAR_INC_1(M, alg, num)   
+#define PVAR_INC_MSG(op, algo, sr, count, datatype)
+
+#endif
+
 /* any non-MPI functions go here, especially non-static ones */
 
 #undef FUNCNAME
@@ -37,11 +73,13 @@ int MPIR_Igatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, voi
                   const int recvcounts[], const int displs[], MPI_Datatype recvtype, int root,
                   MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, igatherv, algo);
     int mpi_errno = MPI_SUCCESS;
     int i;
     int comm_size, rank;
     MPI_Aint extent;
     int min_procs;
+    PVAR_INC_1(MV2, mv2_coll_igatherv_algo, 1);
 
     rank = comm_ptr->rank;
 
@@ -69,6 +107,7 @@ int MPIR_Igatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, voi
                     }
                 }
                 else {
+                    PVAR_INC_MSG(igatherv, def, recv, recvcounts[i], recvtype); 
                     mpi_errno = MPID_Sched_recv(((char *)recvbuf+displs[i]*extent),
                                                 recvcounts[i], recvtype, i, comm_ptr, s);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -95,11 +134,13 @@ int MPIR_Igatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, voi
                 mpi_errno = MPID_Sched_ssend(sendbuf, sendcount, sendtype, root, comm_ptr, s);
             else
                 mpi_errno = MPID_Sched_send(sendbuf, sendcount, sendtype, root, comm_ptr, s);
+            PVAR_INC_MSG(igatherv, def, send, sendcount, sendtype);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         }
     }
 
 fn_exit:
+    PVAR_TIME_STOP(coll, igatherv, algo);
     return mpi_errno;
 fn_fail:
     goto fn_exit;

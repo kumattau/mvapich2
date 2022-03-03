@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -13,14 +13,7 @@
 #include <regex.h>
 #include "red_scat_tuning.h"
 #include "mv2_arch_hca_detect.h"
-
-enum {
-    RED_SCAT_BASIC = 1,
-    RED_SCAT_REC_HALF,
-    RED_SCAT_PAIRWISE,
-    RED_SCAT_RING,
-    RED_SCAT_RING_2LVL,
-};
+#include "common_tuning.h"
 
 int mv2_size_red_scat_tuning_table = 0;
 mv2_red_scat_tuning_table *mv2_red_scat_thresholds_table = NULL;

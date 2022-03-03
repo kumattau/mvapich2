@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -60,7 +60,6 @@ int MPIR_Sharp_Iallreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
 
     mv2_get_sharp_datatype(datatype, &dt_size);
     reduce_spec.dtype = dt_size->sharp_data_type;
-
     if (reduce_spec.dtype == SHARP_DTYPE_NULL) {
         mpi_errno = SHARP_COLL_ENOT_SUPP;
         goto fn_fail;
@@ -81,12 +80,15 @@ int MPIR_Sharp_Iallreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
             reduce_spec.sbuf_desc.buffer.ptr    = MPIU_Malloc(reduce_spec.sbuf_desc.buffer.length);
             MPIU_Memcpy(reduce_spec.sbuf_desc.buffer.ptr, recvbuf, reduce_spec.sbuf_desc.buffer.length);
         }
-        reduce_spec.sbuf_desc.type          = SHARP_DATA_BUFFER;
+        reduce_spec.sbuf_desc.type              = SHARP_DATA_BUFFER;
+        reduce_spec.sbuf_desc.mem_type          = SHARP_MEM_TYPE_HOST;
         reduce_spec.sbuf_desc.buffer.mem_handle = NULL;
-        reduce_spec.rbuf_desc.buffer.ptr    = recvbuf;
-        reduce_spec.rbuf_desc.buffer.length = count * dt_size->size;
-        reduce_spec.rbuf_desc.type          = SHARP_DATA_BUFFER;
-        reduce_spec.rbuf_desc.buffer.mem_handle = NULL;    
+        reduce_spec.rbuf_desc.buffer.ptr        = recvbuf;
+        reduce_spec.rbuf_desc.buffer.length     = count * dt_size->size;
+        reduce_spec.rbuf_desc.type              = SHARP_DATA_BUFFER;
+        reduce_spec.rbuf_desc.mem_type          = SHARP_MEM_TYPE_HOST;
+        reduce_spec.rbuf_desc.buffer.mem_handle = NULL;
+        reduce_spec.aggr_mode                   = SHARP_AGGREGATION_NONE;
     } else {
         /* NOT implemented in Sharp */
         mpi_errno = SHARP_COLL_ENOT_SUPP;
@@ -95,7 +97,14 @@ int MPIR_Sharp_Iallreduce_MV2 (const void *sendbuf, void *recvbuf, int count,
 
     reduce_spec.length = count;     
     sharp_comm = ((sharp_info_t *)comm_ptr->dev.ch.sharp_coll_info)->sharp_comm_module->sharp_coll_comm;
-    mpi_errno = sharp_coll_do_allreduce_nb(sharp_comm, &reduce_spec, &sharp_req);
+
+    /* Ensure that all messages in non-sharp channels are progressed first
+     * to prevent deadlocks in subsequent blocking sharp API calls */
+    while (rdma_global_ext_sendq_size) {
+        MPIDI_CH3_Progress_test();
+    }
+
+    mpi_errno = sharp_ops.coll_do_allreduce_nb(sharp_comm, &reduce_spec, &sharp_req);
     if (mpi_errno != SHARP_COLL_SUCCESS) {
         goto fn_fail;
     }
@@ -116,7 +125,7 @@ fn_exit:
     return (mpi_errno);
 
 fn_fail:
-    PRINT_DEBUG(DEBUG_Sharp_verbose, "Continue without SHArP: %s \n", sharp_coll_strerror(mpi_errno));
+    PRINT_DEBUG(DEBUG_Sharp_verbose, "Continue without SHArP: %s \n", sharp_ops.coll_strerror(mpi_errno));
     mpi_errno = MPI_ERR_INTERN;
     goto fn_exit;
 }

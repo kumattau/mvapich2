@@ -48,7 +48,7 @@ static int MPIDI_CH3U_GetIPInterface( MPIDU_Sock_ifaddr_t *, int * );
  * MPICH_INTERFACE_HOSTNAME
  * MPICH_INTERFACE_HOSTNAME_R%d
  * a single (non-localhost) available IP address, if possible
- * gethostbyname(gethostname())
+ * getaddrinfo(gethostname(), null, &hints, &info)
  *
  * We return the following items:
  *
@@ -125,23 +125,25 @@ int MPIDU_CH3U_GetSockInterfaceAddr( int myRank, char *ifname, int maxIfname,
 
     /* If we don't have an IP address, try to get it from the name */
     if (!ifaddrFound) {
-	struct hostent *info;
-	/* printf( "Name to check is %s\n", ifname_string ); fflush(stdout); */
-	info = gethostbyname( ifname_string );
-	if (info && info->h_addr_list) {
-	    /* Use the primary address */
-	    ifaddr->len  = info->h_length;
-	    ifaddr->type = info->h_addrtype;
-	    if (ifaddr->len > sizeof(ifaddr->ifaddr)) {
-		/* If the address won't fit in the field, reset to
-		   no address */
-		ifaddr->len = 0;
-		ifaddr->type = -1;
-	    }
-	    else {
-		MPIU_Memcpy( ifaddr->ifaddr, info->h_addr_list[0], ifaddr->len );
-	    }
-	}
+        struct addrinfo *info = NULL;
+        struct addrinfo hints = { .ai_family = AF_INET };
+        mpi_errno = getaddrinfo(ifname_string, NULL, &hints, &info);
+            if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+
+        /* Use the primary address */
+        struct in_addr *sin_addr = &((struct sockaddr_in *)info->ai_addr)->sin_addr;
+        ifaddr->len  = sizeof(*sin_addr);
+        ifaddr->type = info->ai_family;
+        if (ifaddr->len > sizeof(ifaddr->ifaddr)) {
+            /* If the address won't fit in the field, reset to
+                no address */
+            ifaddr->len = 0;
+            ifaddr->type = -1;
+        }
+        else {
+            MPIU_Memcpy(ifaddr->ifaddr, sin_addr, ifaddr->len);
+        }
+        freeaddrinfo(info);
     }
 
 fn_exit:
@@ -279,8 +281,9 @@ static int MPIDI_CH3U_GetIPInterface( MPIDU_Sock_ifaddr_t *ifaddr, int *found )
 
 	    addr = ((struct sockaddr_in *) &(ifreq->ifr_addr))->sin_addr;
 	    if (dbg_ifname) {
-		fprintf( stdout, "IPv4 address = %08x (%s)\n", addr.s_addr, 
-			 inet_ntoa( addr ) );
+            char* ip[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, addr, ip, sizeof(ip));
+            fprintf(stdout, "IPv4 address = %08x (%s)\n", addr.s_addr, ip);
 	    }
 
 	    if (addr.s_addr == localhost && dbg_ifname) {

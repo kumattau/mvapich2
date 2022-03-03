@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -51,6 +51,7 @@ struct ibv_qp * mv2_ud_create_qp(mv2_ud_qp_info_t *qp_info, int hca_index)
         fprintf(stderr,"error in creating UD qp\n");
         return NULL;
     }
+    rdma_max_inline_size = init_attr.cap.max_inline_data;
     
     if (mv2_ud_qp_transition(qp, hca_index)) {
         return NULL;

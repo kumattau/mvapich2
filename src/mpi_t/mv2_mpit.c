@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -94,6 +94,8 @@ MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_bcast_mcast_internode);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_bcast_pipelined);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_bcast_pipelined_zcpy);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_bcast_shmem_zcpy);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_bcast_sharp);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_bcast_topo_aware_hierarchical);
 
 /*
  * Count MVAPICH Broadcast algorithms used
@@ -108,6 +110,8 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_knomial_intranode);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_mcast_internode);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_pipelined);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_shmem_zcpy);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_sharp);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_topo_aware_hierarchical);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_pipelined_zcpy);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_binomial_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_bcast_scatter_for_bcast_bytes_send);
@@ -205,16 +209,21 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoall_count_recv);
 * Timers for mv2 (MVAPICH) AlltoAllv algorithms
 */
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_alltoallv_intra);
-MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_alltoallv_pw);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_alltoallv_intra_scatter);
 
 /*
  * Count MVAPICH Alltoallv algorithms used
  */
-MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_pw);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_intra_scatter);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_intra_scatter_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_intra_scatter_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_intra_scatter_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_intra_scatter_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_alltoallv_count_send);
@@ -250,6 +259,10 @@ MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_2lvl);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_shmem);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_mcast);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_reduce_scatter_allgather_colls);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_topo_aware_hierarchical);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_pt2pt_ring);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_pt2pt_ring_wrapper);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allreduce_pt2pt_ring_inplace);
 
 /*
  * Count MVAPICH Allreduce algorithms used
@@ -264,14 +277,30 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_2lvl);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_shmem);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_mcast);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_reduce_scatter_allgather_colls);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_topo_aware_hierarchical);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_wrapper);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_inplace);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_rd_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_rs_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_wrapper_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_inplace_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_rd_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_rs_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_wrapper_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_inplace_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_rd_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_rs_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_wrapper_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_inplace_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_rd_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_rs_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_wrapper_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_pt2pt_ring_inplace_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allreduce_count_send);
@@ -286,6 +315,7 @@ MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allgather_ring);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allgather_direct);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allgather_directspread);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allgather_gather_bcast);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allgather_2lvl);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allgather_2lvl_nonblocked);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allgather_2lvl_ring_nonblocked);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_allgather_2lvl_direct);
@@ -301,6 +331,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_ring);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_direct);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_directspread);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_gather_bcast);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_nonblocked);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_ring_nonblocked);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_direct);
@@ -311,6 +342,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_bruck_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_ring_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_direct_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_directspread_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_nonblocked_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_ring_nonblocked_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_direct_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_ring_bytes_send);
@@ -319,6 +351,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_bruck_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_ring_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_direct_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_directspread_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_nonblocked_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_ring_nonblocked_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_direct_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_ring_bytes_recv);
@@ -327,6 +360,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_bruck_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_ring_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_direct_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_directspread_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_nonblocked_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_ring_nonblocked_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_direct_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_ring_count_send);
@@ -335,6 +369,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_bruck_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_ring_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_direct_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_directspread_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_nonblocked_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_ring_nonblocked_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_direct_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgather_2lvl_ring_count_recv);
@@ -472,6 +507,7 @@ MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_scatter_direct_blk);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_scatter_two_level_binomial);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_scatter_two_level_direct);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_scatter_inter);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_scatter_sharp);
 
 /*
  * Count MVAPICH Scatter algorithms used
@@ -483,6 +519,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_scatter_direct_blk);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_scatter_two_level_binomial);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_scatter_two_level_direct);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_scatter_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_scatter_sharp);
 
 /*
  * Count of messages and total bytes communicated by Send and Recv messages in MVAPICH Scatter algorithms
@@ -527,40 +564,58 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_scatter_count_recv);
 * Timers for mv2 (MVAPICH) Reduce algorithms
 */
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_reduce_binomial);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_reduce_allreduce);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_reduce_redscat_gather);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_reduce_shmem);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_reduce_knomial);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_reduce_zcpy);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_reduce_sharp);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_reduce_topo_aware_hierarchical);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_reduce_two_level_helper);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_reduce_scatter_non_comm);
 
 /*
  * Count MVAPICH Reduce algorithms used
  */
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_subcomm);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_binomial);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_allreduce);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_redscat_gather);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_shmem);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_knomial);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_zcpy);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_sharp);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_topo_aware_hierarchical);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_two_level_helper);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_scatter_non_comm);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_binomial_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_allreduce_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_redscat_gather_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_two_level_helper_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_knomial_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_zcpy_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_two_level_helper_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_binomial_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_allreduce_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_redscat_gather_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_two_level_helper_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_knomial_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_zcpy_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_two_level_helper_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_binomial_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_allreduce_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_redscat_gather_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_two_level_helper_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_knomial_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_zcpy_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_two_level_helper_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_binomial_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_allreduce_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_redscat_gather_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_two_level_helper_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_knomial_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_zcpy_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_two_level_helper_count_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_reduce_count_send);
@@ -624,12 +679,16 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_allgatherv_count_recv);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_barrier_subcomm);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_barrier_pairwise);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_barrier_shmem);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_barrier_sharp);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_barrier_topo_aware_shmem);
 
 /*
  * Count MVAPICH Barrier algorithms used
  */
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_barrier_pairwise);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_barrier_shmem);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_barrier_sharp);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_barrier_topo_aware_shmem);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_barrier_pairwise_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_barrier_pairwise_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_barrier_pairwise_count_send);
@@ -656,6 +715,31 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_scan_algo);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_sharp);
 
 /*
+ * Count MVAPICH Ireduce algorithms used
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_sharp);
+
+/*
+ * Count MVAPICH Ibcast algorithms used
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_sharp);
+
+/*
+ * Count MVAPICH Ibarrier algorithms used
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_sharp);
+
+/*
+ * Count MVAPICH Iscatter algorithms used
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iscatter_sharp);
+
+/*
+ * Count MVAPICH Iscatterv algorithms used
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iscatterv_sharp);
+
+/*
  * Count number of UD retransmissions
  */
 MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, rdma_ud_retransmissions);
@@ -676,6 +760,490 @@ MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL(MV2, mv2_pt2pt_mpid_send);
 MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL(MV2, mv2_pt2pt_mpid_isend);
 MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL(MV2, mv2_pt2pt_mpid_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_BUCKET_DECL(MV2, mv2_pt2pt_mpid_irecv);
+
+/* 
+ * Timer for MPICH/MVAPICH Iallgather algorithms 
+ */
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallgather_rec_dbl);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallgather_bruck);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallgather_ring);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallgather_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallgather_inter);
+
+/* 
+ * Count MPICH/MVAPICH Iallgather algorithms used 
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_rec_dbl);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_bruck);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_ring);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_inter);
+
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_rec_dbl_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_rec_dbl_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_bruck_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_bruck_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_ring_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_ring_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_rec_dbl_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_rec_dbl_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_bruck_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_bruck_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_ring_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_ring_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgather_count_recv);
+
+/* 
+ * Timer for MPICH/MVAPICH Iallgatherv algorithms 
+ */
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallgatherv_rec_dbl);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallgatherv_bruck);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallgatherv_ring);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallgatherv_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallgatherv_inter);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_rec_dbl);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_bruck);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_ring);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_inter);
+
+/* 
+ * Count MPICH/MVAPICH Iallgatherv algorithms used 
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_rec_dbl_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_rec_dbl_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_bruck_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_bruck_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_ring_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_ring_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_rec_dbl_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_rec_dbl_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_bruck_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_bruck_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_ring_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_ring_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallgatherv_count_recv);
+
+/* 
+ * Timer for MPICH/MVAPICH Iallreduce algorithms 
+ */
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallreduce_naive);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallreduce_rec_dbl);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallreduce_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallreduce_inter);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallreduce_redscat_allgather);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_iallreduce_SMP);
+
+/* 
+ * Count MPICH/MVAPICH Iallreduce algorithms used 
+ */
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_naive);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_rec_dbl);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_redscat_allgather);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_SMP);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_naive_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_naive_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_rec_dbl_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_rec_dbl_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_redscat_allgather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_redscat_allgather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_SMP_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_SMP_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_naive_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_naive_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_rec_dbl_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_rec_dbl_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_redscat_allgather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_redscat_allgather_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_SMP_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_SMP_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_iallreduce_count_recv);
+
+/* 
+ * Timer for MPICH/MVAPICH Ialltoall algorithms 
+ */
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ialltoall_inplace);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ialltoall_bruck);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ialltoall_perm_sr);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ialltoall_pairwise);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ialltoall_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ialltoall_inter);
+
+/* 
+ * Count MPICH/MVAPICH Ialltoall algorithms used 
+ */
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_inplace);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_bruck);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_perm_sr);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_pairwise);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_inplace_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_inplace_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_bruck_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_bruck_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_perm_sr_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_perm_sr_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_pairwise_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_pairwise_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_inplace_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_inplace_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_bruck_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_bruck_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_perm_sr_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_perm_sr_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_pairwise_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_pairwise_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoall_count_recv);
+
+/* 
+ * Timer for MPICH/MVAPICH Ialltoallv algorithms 
+ */
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ialltoallv_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ialltoallv_inter);
+
+
+/* 
+ * Count MPICH/MVAPICH Ialltoallv algorithms used
+ */
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ialltoallv_inter_count_recv);
+
+/* 
+ * Timer for MPICH/MVAPICH Igather algorithms
+ */
+
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_igather_binomial);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_igather_inter);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_igather_intra);
+
+/* 
+ * Count MPICH/MVAPICH Igather algorithms used 
+ */
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_binomial);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_binomial_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_binomial_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_binomial_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_binomial_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igather_count_recv);
+
+/* 
+ * Timer for MPICH/MVAPICH Igatherv algorithms
+ */
+
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_igatherv_algo);
+
+/* 
+ * Count MPICH/MVAPICH Igatherv algorithms used 
+ */
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igatherv_algo);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igatherv_def_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igatherv_def_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igatherv_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igatherv_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igatherv_def_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igatherv_def_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igatherv_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_igatherv_count_recv);
+
+/* 
+ * Timer for MPICH/MVAPICH Ireduce algorithms
+ */
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_binomial);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_inter);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_redscat_gather);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_SMP);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_sharp);
+
+/* 
+ * Count MPICH/MVAPICH Ireduce algorithms used
+ */
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_binomial);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_redscat_gather);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_SMP);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_binomial_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_binomial_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_redscat_gather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_redscat_gather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_SMP_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_SMP_bytes_recv);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_binomial_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_binomial_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_redscat_gather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_redscat_gather_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_SMP_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_SMP_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_count_recv);
+
+/* 
+ * Timer for MPICH/MVAPICH Ibcast algorithms 
+ */
+
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ibcast_binomial);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ibcast_SMP);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ibcast_scatter_rec_dbl_allgather);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ibcast_scatter_ring_allgather);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ibcast_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ibcast_inter);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ibcast_sharp);
+
+/* 
+ * Count MPICH/MVAPICH Ibcast algorithms used 
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_binomial);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_SMP);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_scatter_rec_dbl_allgather);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_scatter_ring_allgather);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_binomial_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_binomial_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_binomial_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_binomial_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_SMP_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_SMP_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_SMP_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_SMP_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_scatter_rec_dbl_allgather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_scatter_rec_dbl_allgather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_scatter_rec_dbl_allgather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_scatter_rec_dbl_allgather_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_scatter_ring_allgather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_scatter_ring_allgather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_scatter_ring_allgather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_scatter_ring_allgather_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibcast_count_recv);
+
+/* 
+ * Timer for MPICH/MVAPICH Ibarrier algorithms
+ */
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ibarrier_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ibarrier_inter);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ibarrier_sharp);
+
+/* 
+ * Count MPICH/MVAPICH Ibarrier algorithms used
+ */
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ibarrier_count_recv);
+
+/* 
+ * Timer for MPICH/MVAPICH Ireduce_scatter algorithms 
+ */
+
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_rec_hlv);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_pairwise);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_rec_dbl);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_noncomm);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_inter);
+
+/* 
+ * Count MPICH/MVAPICH Ireduce_scatter algorithms used
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_rec_hlv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_pairwise);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_rec_dbl);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_noncomm);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_inter);
+
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_rec_hlv_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_rec_hlv_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_rec_hlv_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_rec_hlv_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_pairwise_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_pairwise_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_pairwise_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_pairwise_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_rec_dbl_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_rec_dbl_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_rec_dbl_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_rec_dbl_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_noncomm_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_noncomm_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_noncomm_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_noncomm_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_intra_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_intra_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_intra_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_intra_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_inter_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_inter_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_inter_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_inter_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_count_recv);
+
+/* 
+ * Timer for MPICH/MVAPICH Ireduce_scatter_block algorithms 
+ */
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_block_rec_hlv);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_block_pairwise);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_block_rec_dbl);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_block_noncomm);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_block_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(MV2, mv2_coll_timer_ireduce_scatter_block_inter);
+
+/* 
+ * Count MPICH/MVAPICH Ireduce_scatter algorithms used
+ */
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_rec_hlv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_pairwise);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_rec_dbl);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_noncomm);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_inter);
+
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_rec_hlv_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_rec_hlv_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_rec_hlv_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_rec_hlv_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_pairwise_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_pairwise_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_pairwise_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_pairwise_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_rec_dbl_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_rec_dbl_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_rec_dbl_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_rec_dbl_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_noncomm_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_noncomm_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_noncomm_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_noncomm_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_intra_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_intra_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_intra_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_intra_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_inter_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_inter_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_inter_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_inter_count_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_bytes_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_bytes_recv);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_count_send);
+MPIR_T_PVAR_ULONG_COUNTER_DECL(MV2, mv2_coll_ireduce_scatter_block_count_recv);
 
 int num_counter_pvar_buckets = 6;
 
@@ -820,7 +1388,41 @@ void initialize_mv2_cats(void)
     MPIR_T_cat_add_subcat("COLLECTIVE", "Barrier");
     MPIR_T_cat_add_subcat("Barrier", "Barrier Timers");
     MPIR_T_cat_add_subcat("Barrier", "Barrier Algorithms");
-
+    /* Nonblocking Algorithms besides Iscatter */
+    MPIR_T_cat_add_subcat("COLLECTIVE", "Ireduce");
+    MPIR_T_cat_add_subcat("Ireduce", "Ireduce Timers");
+    MPIR_T_cat_add_subcat("Ireduce", "Ireduce Algorithms");
+    MPIR_T_cat_add_subcat("COLLECTIVE", "Igather");
+    MPIR_T_cat_add_subcat("Igather", "Igather Timers");
+    MPIR_T_cat_add_subcat("Igather", "Igather Algorithms");
+    MPIR_T_cat_add_subcat("COLLECTIVE", "Iallreduce");
+    MPIR_T_cat_add_subcat("Iallreduce", "Iallreduce Timers");
+    MPIR_T_cat_add_subcat("Iallreduce", "Iallreduce Algorithms");
+    MPIR_T_cat_add_subcat("COLLECTIVE", "Iallgather");
+    MPIR_T_cat_add_subcat("Iallgather", "Iallgather Timers");
+    MPIR_T_cat_add_subcat("Iallgather", "Iallgather Algorithms");
+    MPIR_T_cat_add_subcat("COLLECTIVE", "Iallgatherv");
+    MPIR_T_cat_add_subcat("Iallgatherv", "Iallgatherv Timers");
+    MPIR_T_cat_add_subcat("Iallgatherv", "Iallgatherv Algorithms");
+    MPIR_T_cat_add_subcat("COLLECTIVE", "Ialltoall");
+    MPIR_T_cat_add_subcat("Ialltoall", "Ialltoall Timers");
+    MPIR_T_cat_add_subcat("Ialltoall", "Ialltoall Algorithms");   
+    MPIR_T_cat_add_subcat("COLLECTIVE", "Ialltoallv");
+    MPIR_T_cat_add_subcat("Ialltoallv", "Ialltoallv Timers");
+    MPIR_T_cat_add_subcat("Ialltoallv", "Ialltoallv Algorithms");
+    MPIR_T_cat_add_subcat("COLLECTIVE", "Ibarrier");
+    MPIR_T_cat_add_subcat("Ibarrier", "Ibarrier Timers");
+    MPIR_T_cat_add_subcat("Ibarrier", "Ibarrier Algorithms");
+    MPIR_T_cat_add_subcat("COLLECTIVE", "Ibcast");
+    MPIR_T_cat_add_subcat("Ibcast", "Ibcast Timers");
+    MPIR_T_cat_add_subcat("Ibcast", "Ibcast Algorithms");
+    MPIR_T_cat_add_subcat("COLLECTIVE", "Ireduce_scatter");
+    MPIR_T_cat_add_subcat("Ireduce_scatter", "Ireduce_scatter Timers");
+    MPIR_T_cat_add_subcat("Ireduce_scatter", "Ireduce_scatter Algorithms");
+    MPIR_T_cat_add_subcat("COLLECTIVE", "Ireduce_scatter_block");
+    MPIR_T_cat_add_subcat("Ireduce_scatter_block", "Ireduce_scatter_block Timers");
+    MPIR_T_cat_add_subcat("Ireduce_scatter_block", "Ireduce_scatter_block Algorithms");
+ 
     /* these pvars would be single var categories right now, they may need
      * to be expanded to their own subcategories as we add more pvars
      */
@@ -1093,8 +1695,25 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MPI_T_BIND_NO_OBJECT,
             MPIR_T_PVAR_FLAG_SUM,
             "Bcast Timers", /* category name */
-            "total time spent on the MV2 bcast_shm_zcpy algorithm");
-
+            "total time spent on the MV2 bcast_shmem_zcpy algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_bcast_sharp,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Bcast Timers", /* category name */
+            "total time spent on the MV2 sharp algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_bcast_topo_aware_hierarchical,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Bcast Timers", /* category name */
+            "total time spent on the MV2 bcast_topo_aware_hierarchical algorithm");
     MPIR_T_PVAR_TIMER_REGISTER_STATIC(
             MV2,
             MPI_DOUBLE,
@@ -1204,6 +1823,24 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Bcast Algorithms", /* category name */
             "Number of times MV2 bcast shmem zero copy algorithm was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_bcast_sharp,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Bcast Algorithms", /* category name */
+            "Number of times MV2 bcast shmem zero copy algorithm was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_bcast_topo_aware_hierarchical,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Bcast Algorithms", /* category name */
+            "Number of times MV2 bcast_topo_aware_hierarchical algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -1980,27 +2617,36 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     		MPIR_T_PVAR_FLAG_SUM,
     		"Alltoallv Timers", /* category name */
     		"total time spent on the MV2 alltoallv_intra algorithm");
-    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
-    		MV2,
-    		MPI_DOUBLE,
-    		mv2_coll_timer_alltoallv_pw,
-    		MPI_T_VERBOSITY_USER_BASIC,
-    		MPI_T_BIND_NO_OBJECT,
-    		MPIR_T_PVAR_FLAG_SUM,
-    		"Alltoallv Timers", /* category name */
-    		"total time spent on the MV2 alltoall_pw algorithm");
+        MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+                MV2,
+                MPI_DOUBLE,
+                mv2_coll_timer_alltoallv_intra_scatter,
+                MPI_T_VERBOSITY_USER_BASIC,
+                MPI_T_BIND_NO_OBJECT,
+                MPIR_T_PVAR_FLAG_SUM,
+                "Alltoallv Timers", /* category name */
+                "total time spent on the MV2 alltoallv_intra_scatter algorithm");
 
     /* 2. Counter PVARs for alltoallv */
 
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
-            mv2_coll_alltoallv_pw,
+            mv2_coll_alltoallv_intra,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Alltoallv Algorithms", /* category name */
-            "Number of times MV2 pairwise alltoallv algorithm was invoked");
+            "Number of times MV2 alltoallv_intra_scatter algorithm was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_alltoallv_intra_scatter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Alltoallv Algorithms", /* category name */
+            "Number of times MV2 alltoallv_intra_scatter algorithm was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -2013,12 +2659,30 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_alltoallv_intra_scatter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Alltoallv Algorithms",
+            "Number of bytes send by intra scatter algorithm of alltoallv collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
             mv2_coll_alltoallv_intra_bytes_recv,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Alltoallv Algorithms",
             "Number of bytes recv by intra algorithm of alltoallv collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_alltoallv_intra_scatter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Alltoallv Algorithms",
+            "Number of bytes recv by intra scatter algorithm of alltoallv collective");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -2031,12 +2695,30 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_alltoallv_intra_scatter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Alltoallv Algorithms",
+            "Count of messages send by intra scatter algorithm of alltoallv collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
             mv2_coll_alltoallv_intra_count_recv,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Alltoallv Algorithms",
             "Count of messages recv by intra algorithm of alltoallv collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_alltoallv_intra_scatter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Alltoallv Algorithms",
+            "Count of messages recv by intra scatter algorithm of alltoallv collective");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -2260,6 +2942,42 @@ MPIT_REGISTER_MV2_VARIABLES (void)
 			MPIR_T_PVAR_FLAG_SUM,
 			"Allreduce Timers", /* category name */
 			"total time spent on the MV2 allreduce_reduce_scatter_allgather_colls algorithm");
+	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+			MV2,
+			MPI_DOUBLE,
+			mv2_coll_timer_allreduce_topo_aware_hierarchical,
+			MPI_T_VERBOSITY_USER_BASIC,
+			MPI_T_BIND_NO_OBJECT,
+			MPIR_T_PVAR_FLAG_SUM,
+			"Allreduce Timers", /* category name */
+			"total time spent on the MV2 allreduce_topo_aware_hierarchical algorithm");
+	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+			MV2,
+			MPI_DOUBLE,
+			mv2_coll_timer_allreduce_pt2pt_ring_wrapper,
+			MPI_T_VERBOSITY_USER_BASIC,
+			MPI_T_BIND_NO_OBJECT,
+			MPIR_T_PVAR_FLAG_SUM,
+			"Allreduce Timers", /* category name */
+			"total time spent on the MV2 allreduce_ring_wrapper algorithm");
+	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+			MV2,
+			MPI_DOUBLE,
+			mv2_coll_timer_allreduce_pt2pt_ring,
+			MPI_T_VERBOSITY_USER_BASIC,
+			MPI_T_BIND_NO_OBJECT,
+			MPIR_T_PVAR_FLAG_SUM,
+			"Allreduce Timers", /* category name */
+			"total time spent on the MV2 allreduce_ring algorithm");
+	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+			MV2,
+			MPI_DOUBLE,
+			mv2_coll_timer_allreduce_pt2pt_ring_inplace,
+			MPI_T_VERBOSITY_USER_BASIC,
+			MPI_T_BIND_NO_OBJECT,
+			MPIR_T_PVAR_FLAG_SUM,
+			"Allreduce Timers", /* category name */
+			"total time spent on the MV2 allreduce_ring_inplace algorithm");
 
     /* 2. Counter PVARs for allreduce */
 
@@ -2357,6 +3075,42 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_topo_aware_hierarchical,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms", /* category name */
+            "Number of times MV2 allreduce_topo_aware_hierarchical algorithm was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_wrapper,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms", /* category name */
+            "Number of times MV2 allreduce_pt2pt_ring_wrapper algorithm was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms", /* category name */
+            "Number of times MV2 allreduce_pt2pt_ring algorithm was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_inplace,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms", /* category name */
+            "Number of times MV2 allreduce_pt2pt_ring_inplace algorithm was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
             mv2_coll_allreduce_pt2pt_rd_bytes_send,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
@@ -2372,6 +3126,33 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Allreduce Algorithms",
             "Number of bytes send by pt2pt rs algorithm of allreduce collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Number of bytes sent by the MV2 allreduce_pt2pt_ring algorithm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_wrapper_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Number of bytes sent by the MV2 allreduce_pt2pt_ring_wrapper algorithm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_inplace_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Number of bytes sent by the MV2 allreduce_pt2pt_ring_inplace algorithm");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -2393,6 +3174,33 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Number of bytes recv by the MV2 allreduce_pt2pt_ring algorithm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_wrapper_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Number of bytes recv by the MV2 allreduce_pt2pt_ring_wrapper algorithm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_inplace_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Number of bytes recv by the MV2 allreduce_pt2pt_ring_inplace algorithm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
             mv2_coll_allreduce_pt2pt_rd_count_send,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
@@ -2411,6 +3219,33 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Count of messages sent by the MV2 allreduce_pt2pt_ring algorithm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_wrapper_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Count of messages sent by the MV2 allreduce_pt2pt_ring_wrapper algorithm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_inplace_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Count of messages sent by the MV2 allreduce_pt2pt_ring_inplace algorithm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
             mv2_coll_allreduce_pt2pt_rd_count_recv,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
@@ -2426,6 +3261,33 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Allreduce Algorithms",
             "Count of messages recv by pt2pt rs algorithm of allreduce collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Count of messages recv by the MV2 allreduce_pt2pt_ring algorithm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_wrapper_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Count of messages recv by the MV2 allreduce_pt2pt_ring_wrapper algorithm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allreduce_pt2pt_ring_inplace_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allreduce Algorithms",
+            "Count of messages recv by the MV2 allreduce_pt2pt_ring_inplace algorithm");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -2522,6 +3384,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
 			MPIR_T_PVAR_FLAG_SUM,
 			"Allgather Timers", /* category name */
 			"total time spent on the MV2 allgather_gather_bcast algorithm");
+	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+			MV2,
+			MPI_DOUBLE,
+			mv2_coll_timer_allgather_2lvl,
+			MPI_T_VERBOSITY_USER_BASIC,
+			MPI_T_BIND_NO_OBJECT,
+			MPIR_T_PVAR_FLAG_SUM,
+			"Allgather Timers", /* category name */
+			"total time spent on the MV2 allgather_2lvl algorithm");
 	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
 			MV2,
 			MPI_DOUBLE,
@@ -2627,6 +3498,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allgather_2lvl,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allgather Algorithms", /* category name */
+            "Number of times Allgather for non-block process mapping was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
             mv2_coll_allgather_2lvl_nonblocked,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
@@ -2708,6 +3588,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allgather_2lvl_nonblocked_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allgather Algorithms",
+            "Number of bytes send by 2lvl nonblocked algorithm of allgather collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
             mv2_coll_allgather_2lvl_ring_nonblocked_bytes_send,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
@@ -2777,6 +3666,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Allgather Algorithms",
             "Number of bytes recv by directspread algorithm of allgather collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allgather_2lvl_nonblocked_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allgather Algorithms",
+            "Number of bytes recv by 2lvl nonblocked algorithm of allgather collective");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -2852,6 +3750,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allgather_2lvl_nonblocked_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allgather Algorithms",
+            "Number of bytes recv by 2lvl nonblocked algorithm of allgather collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
             mv2_coll_allgather_2lvl_ring_nonblocked_count_send,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
@@ -2921,6 +3828,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Allgather Algorithms",
             "Count of messages recv by directspread algorithm of allgather collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_allgather_2lvl_nonblocked_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Allgather Algorithms",
+            "Number of bytes recv by 2lvl nonblocked algorithm of allgather collective");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -3890,6 +4806,24 @@ MPIT_REGISTER_MV2_VARIABLES (void)
 			MPIR_T_PVAR_FLAG_SUM,
 			"Scatter Timers", /* category name */
 			"total time spent on the MV2 scatter_two_level_direct algorithm");
+	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+			MV2,
+			MPI_DOUBLE,
+			mv2_coll_timer_scatter_inter,
+			MPI_T_VERBOSITY_USER_BASIC,
+			MPI_T_BIND_NO_OBJECT,
+			MPIR_T_PVAR_FLAG_SUM,
+			"Scatter Timers", /* category name */
+			"total time spent on the MV2 scatter_inter algorithm");
+	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+			MV2,
+			MPI_DOUBLE,
+			mv2_coll_timer_scatter_sharp,
+			MPI_T_VERBOSITY_USER_BASIC,
+			MPI_T_BIND_NO_OBJECT,
+			MPIR_T_PVAR_FLAG_SUM,
+			"Scatter Timers", /* category name */
+			"total time spent on the MV2 scatter_sharp algorithm");
 
     /* 2. Counter PVARs for Scatter */
 
@@ -3956,6 +4890,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Scatter Algorithms", /* category name */
             "Number of times Intercommunicator scatter was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_scatter_sharp,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Scatter Algorithms", /* category name */
+            "Number of times SHARP scatter was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -4260,6 +5203,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     		MPIR_T_PVAR_FLAG_SUM,
     		"Reduce Timers", /* category name */
     		"total time spent on the MV2 reduce_binomial algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+    		MV2,
+    		MPI_DOUBLE,
+    		mv2_coll_timer_reduce_allreduce,
+    		MPI_T_VERBOSITY_USER_BASIC,
+    		MPI_T_BIND_NO_OBJECT,
+    		MPIR_T_PVAR_FLAG_SUM,
+    		"Reduce Timers", /* category name */
+    		"total time spent on the MV2 reduce_allreduce algorithm");
 	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
 			MV2,
 			MPI_DOUBLE,
@@ -4296,6 +5248,33 @@ MPIT_REGISTER_MV2_VARIABLES (void)
 			MPIR_T_PVAR_FLAG_SUM,
 			"Reduce Timers", /* category name */
 			"total time spent on the MV2 reduce_zcpy algorithm");
+	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+			MV2,
+			MPI_DOUBLE,
+			mv2_coll_timer_reduce_sharp,
+			MPI_T_VERBOSITY_USER_BASIC,
+			MPI_T_BIND_NO_OBJECT,
+			MPIR_T_PVAR_FLAG_SUM,
+			"Reduce Timers", /* category name */
+			"total time spent on the MV2 reduce_sharp algorithm");
+	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+			MV2,
+			MPI_DOUBLE,
+			mv2_coll_timer_reduce_topo_aware_hierarchical,
+			MPI_T_VERBOSITY_USER_BASIC,
+			MPI_T_BIND_NO_OBJECT,
+			MPIR_T_PVAR_FLAG_SUM,
+			"Reduce Timers", /* category name */
+			"total time spent on the MV2 reduce_topo_aware_hierarchical algorithm");
+	MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+			MV2,
+			MPI_DOUBLE,
+			mv2_coll_timer_reduce_two_level_helper,
+			MPI_T_VERBOSITY_USER_BASIC,
+			MPI_T_BIND_NO_OBJECT,
+			MPIR_T_PVAR_FLAG_SUM,
+			"Reduce Timers", /* category name */
+			"total time spent on the MV2 reduce_two_level_helper algorithm");
 
     /* 2. Counter PVARs for Reduce */
 
@@ -4318,6 +5297,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Reduce Algorithms", /* category name */
             "Number of times binomial reduce was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_reduce_allreduce,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Reduce Algorithms", /* category name */
+            "Number of times reduce allreduce was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -4357,6 +5345,33 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_reduce_sharp,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Reduce Algorithms", /* category name */
+            "Number of times sharp reduce was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_reduce_topo_aware_hierarchical,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Reduce Algorithms", /* category name */
+            "Number of times topo_aware_hierarchical reduce was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_reduce_two_level_helper,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Reduce Algorithms", /* category name */
+            "Number of times two_level_helper reduce was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
             mv2_coll_reduce_binomial_bytes_send,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
@@ -4366,21 +5381,21 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_reduce_allreduce_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Reduce Algorithms",
+            "Number of bytes sent by reduce-allreduce algorithm of the reduce collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
             mv2_coll_reduce_redscat_gather_bytes_send,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Reduce Algorithms",
             "Number of bytes send by redscat gather algorithm of reduce collective");
-    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
-            MV2,
-            MPI_UNSIGNED_LONG_LONG,
-            mv2_coll_reduce_two_level_helper_bytes_send,
-            MPI_T_VERBOSITY_USER_BASIC,
-            MPI_T_BIND_NO_OBJECT,
-            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
-            "Reduce Algorithms",
-            "Number of bytes send by two level helper algorithm of reduce collective");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -4408,6 +5423,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Reduce Algorithms",
             "Number of bytes recv by binomial algorithm of reduce collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_reduce_allreduce_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Reduce Algorithms",
+            "Number of bytes recv by reduce-allreduce algorithm of reduce collective");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -4456,6 +5480,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_reduce_allreduce_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Reduce Algorithms",
+            "Count of messages send by reduce-allreduce algorithm of reduce collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
             mv2_coll_reduce_redscat_gather_count_send,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
@@ -4498,6 +5531,15 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Reduce Algorithms",
             "Count of messages recv by binomial algorithm of reduce collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_reduce_allreduce_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Reduce Algorithms",
+            "Count of messages recv by reduce-allreduce algorithm of reduce collective");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -4773,16 +5815,34 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     	    MPI_T_BIND_NO_OBJECT,
             MPIR_T_PVAR_FLAG_SUM,
     	    "Barrier Timers", /* category name */
-    	    "total time spent on the MV2 barrier_pairwise algorithm");
+            "total time spent on the MV2 barrier_pairwise algorithm");
     MPIR_T_PVAR_TIMER_REGISTER_STATIC(
-	    MV2,
-	    MPI_DOUBLE,
-	    mv2_coll_timer_barrier_shmem,
-	    MPI_T_VERBOSITY_USER_BASIC,
-	    MPI_T_BIND_NO_OBJECT,
-	    MPIR_T_PVAR_FLAG_SUM,
-	    "Barrier Timers", /* category name */
-	    "total time spent on the MV2 barrier_shmem algorithm");
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_barrier_shmem,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Barrier Timers", /* category name */
+            "total time spent on the MV2 barrier_shmem algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_barrier_sharp,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Barrier Timers", /* category name */
+            "total time spent on the MV2 barrier_sharp algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_barrier_topo_aware_shmem,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Barrier Timers", /* category name */
+            "total time spent on the MV2 barrier_topo_aware_shmem algorithm");
 
     /* 2. Counter PVARs for Barrier */
 
@@ -4814,6 +5874,24 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Barrier Algorithms", /* category name */
             "Number of times shmem barrier was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_barrier_sharp,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Barrier Algorithms", /* category name */
+            "Number of times barrier_sharp was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_barrier_topo_aware_shmem,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Barrier Algorithms", /* category name */
+            "Number of times barrier_topo_aware_shmem was invoked");
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -5214,6 +6292,7 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
             "SMP Memory Usage", /* category name */
             "Number of SMP bytes sent through rendezvous");
+
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG,
@@ -5294,6 +6373,16 @@ MPIT_REGISTER_MV2_VARIABLES (void)
     /* End: Register PVARs for IB algorithms */
 	
     /* Begin: Register PVARs for iscatter algorithms */
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iscatter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iscatter Algorithms",
+            "Number of bytes send by iscatter collective"); 
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
             MV2,
             MPI_UNSIGNED_LONG_LONG,
@@ -5307,33 +6396,6 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             MV2,
             MPI_UNSIGNED_LONG_LONG,
             mv2_coll_iscatter_binomial_bytes_recv,
-            MPI_T_VERBOSITY_USER_BASIC,
-            MPI_T_BIND_NO_OBJECT,
-            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
-            "Iscatter Algorithms",
-            "Number of bytes recv by binomial algorithm of iscatter collective");
-    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
-            MV2,
-            MPI_UNSIGNED_LONG_LONG,
-            mv2_coll_iscatter_binomial_count_send,
-            MPI_T_VERBOSITY_USER_BASIC,
-            MPI_T_BIND_NO_OBJECT,
-            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
-            "Iscatter Algorithms",
-            "Count of messages send by binomial algorithm of iscatter collective");
-    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
-            MV2,
-            MPI_UNSIGNED_LONG_LONG,
-            mv2_coll_iscatter_binomial_count_recv,
-            MPI_T_VERBOSITY_USER_BASIC,
-            MPI_T_BIND_NO_OBJECT,
-            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
-            "Iscatter Algorithms",
-            "Count of messages recv by binomial algorithm of iscatter collective");
-    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
-            MV2,
-            MPI_UNSIGNED_LONG_LONG,
-            mv2_coll_iscatter_bytes_send,
             MPI_T_VERBOSITY_USER_BASIC,
             MPI_T_BIND_NO_OBJECT,
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
@@ -5366,5 +6428,3431 @@ MPIT_REGISTER_MV2_VARIABLES (void)
             (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
             "Iscatter Algorithms",
             "Count of messages recv by iscatter collective");
-	/* End: Register PVARs for iscatter algorithms */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iscatter_binomial_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iscatter Algorithms",
+            "Count of messages send by binomial algorithm of iscatter collective");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iscatter_binomial_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iscatter Algorithms",
+            "Count of messages recv by binomial algorithm of iscatter collective");
+    
+    /* End: Register PVARs for iscatter algorithms */
+
+    /* Begin: Register Timers for iallgather algorithm */
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallgather_rec_dbl,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Iallgather Timers", /* category name */
+            "total time spent on the MPICH Iallgather_rec_dbl algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallgather_bruck,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Iallgather Timers", /* category name */
+            "total time spent on the MPICH Iallgather_bruck algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallgather_ring,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Iallgather Timers", /* category name */
+            "total time spent on the MPICH Iallgather_ring algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallgather_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Iallgather Timers", /* category name */
+            "total time spent on the MPICH Iallgather_intra algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallgather_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Iallgather Timers", /* category name */
+            "total time spent on the MPICH Iallgather_inter algorithm");
+
+    /* End: Register Timers for iallgather algorithms */
+
+    /* Start: single-increment counters for iallgather */
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_rec_dbl,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_MPI_COMM,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times rec_dbl iallgather was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_bruck,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times bruck iallgather was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_ring,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times ring iallgather was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times intra iallgather was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times inter iallgather was invoked");
+
+    /* End: Single Increment counters for iallgather */
+
+    /* Start: Byte Counters for iallgather algorithms */
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_intra_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of bytes sent from intra ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_intra_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times bytes received from intra iallgather");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_intra_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of messages sent from intra ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_intra_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times messages received from intra iallgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_inter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of bytes sent from inter ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_inter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times bytes received from inter iallgather");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_inter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of messages sent from inter ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_inter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times messages received from inter iallgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of bytes sent from inter ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times bytes received from inter iallgather");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of messages sent from inter iallgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times messages received from inter iallgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_ring_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of bytes sent from ring ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_ring_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times bytes received from ring iallgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_ring_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of messages sent from ring ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_ring_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times messages received from ring iallgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_bruck_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of bytes sent from bruck ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_bruck_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times bytes received from bruck iallgather");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_bruck_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of messages sent from bruck ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_bruck_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times messages received from bruck iallgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_rec_dbl_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of bytes sent from rec_dbl ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_rec_dbl_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times bytes received from rec_dbl iallgather");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_rec_dbl_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of messages sent from rec_dbl ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgather_rec_dbl_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgather Algorithms", /* category name */
+            "Number of times messages received from rec_dbl iallgather");
+
+    /* Begin: Register Timers for iallgatherv algorithm */
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallgatherv_rec_dbl,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Iallgather Timers", /* category name */
+            "total time spent on the MPICH Iallgather_rec_dbl algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallgatherv_bruck,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Iallgather Timers", /* category name */
+            "total time spent on the MPICH Iallgather_bruck algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallgatherv_ring,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Iallgather Timers", /* category name */
+            "total time spent on the MPICH Iallgather_ring algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallgatherv_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Iallgather Timers", /* category name */
+            "total time spent on the MPICH Iallgather_intra algorithm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallgatherv_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            MPIR_T_PVAR_FLAG_SUM,
+            "Iallgather Timers", /* category name */
+            "total time spent on the MPICH Iallgather_inter algorithm");
+
+    /* End: Register Timers for iallgatherv algorithms */
+
+    /* Start: single-increment counters for iallgatherv */
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_rec_dbl,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_MPI_COMM,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times rec_dbl iallgatherv was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_bruck,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times bruck iallgatherv was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_ring,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times ring iallgatherv was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times intra iallgatherv was invoked");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times inter iallgatherv was invoked");
+
+    /* End: Single Increment counters for iallgatherv */
+
+    /* Start: Byte Counters for iallgatherv algorithms */
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_intra_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of bytes sent from intra ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_intra_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times bytes received from intra iallgatherv");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_intra_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of messages sent from intra ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_intra_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times messages received from intra iallgatherv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_inter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of bytes sent from inter ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_inter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times bytes received from inter iallgatherv");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_inter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of messages sent from inter ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_inter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times messages received from inter iallgatherv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_ring_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of bytes sent from ring ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_ring_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times bytes received from ring iallgatherv");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_ring_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of messages sent from ring ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_ring_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times messages received from ring iallgatherv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_bruck_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of bytes sent from bruck ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_bruck_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times bytes received from bruck iallgatherv");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_bruck_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of messages sent from bruck ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_bruck_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times messages received from bruck iallgatherv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_rec_dbl_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of bytes sent from rec_dbl ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_rec_dbl_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times bytes received from rec_dbl iallgatherv");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_rec_dbl_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of messages sent from rec_dbl ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_rec_dbl_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times messages received from rec_dbl iallgatherv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of bytes sent from rec_dbl ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times bytes received from rec_dbl iallgatherv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of messages sent from rec_dbl ialgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallgatherv_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallgatherv Algorithms", /* category name */
+            "Number of times messages received from rec_dbl iallgatherv");
+    /* End: Byte Counters for Iallgathervv algorithms */
+
+    /* Start: Timer Registration for Iallreduce */
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallreduce_naive,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Time spent in naive Iallreduce");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallreduce_rec_dbl,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Time spent in rec_dbl Iallreduce");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallreduce_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Time spent in intra Iallreduce");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallreduce_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Time spent in inter Iallreduce");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallreduce_redscat_allgather,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Time spent in redscat_allgather Iallreduce");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_iallreduce_SMP,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Time spent in SMP Iallreduce");
+    
+    /* End: Timer Registration for Iallreduce */
+
+    /* Start: Single-Increment Counters for Iallreduce */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_naive,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Number of calls to naive Iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_rec_dbl,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Number of calls to rec_dbl Iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Number of calls to intra Iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Number of calls to inter Iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_redscat_allgather,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Number of calls to redscat_allgather Iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_SMP,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms",
+            "Number of calls to SMP Iallreduce");
+    /* End: Single-Increment Counters for Iallreduce*/
+
+    /* Begin: Byte counters for Iallreduce */
+     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of bytes sent from iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times bytes received from iallreduce");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of messages sent from iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times messages received from iallreduce");   
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_naive_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of bytes sent from naive iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_naive_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times bytes received from naive iallreduce");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_naive_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of messages sent from naive iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_naive_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times messages received from naive iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_rec_dbl_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of bytes sent from rec_dbl iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_rec_dbl_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times bytes received from iallreduce");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_rec_dbl_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of messages sent from rec_dbl  iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_rec_dbl_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times messages received from rec_dbl iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_intra_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of bytes sent from intra  iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_intra_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times bytes received from intra  iallreduce");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_intra_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of messages sent from intra iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_intra_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times messages received from intra iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_inter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of bytes sent from inter iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_inter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times bytes received from inter iallreduce");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_inter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of messages sent from inter  iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_inter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times messages received from inter iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_redscat_allgather_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of bytes sent from redscat_allgather  iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_redscat_allgather_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times bytes received from redscat_allgather  iallreduce");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_redscat_allgather_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of messages sent from redscat_allgather  iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_redscat_allgather_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times messages received from redscat_allgather iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_SMP_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of bytes sent from SMP iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_SMP_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times bytes received from SMP iallreduce");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_SMP_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of messages sent from SMP iallreduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_iallreduce_SMP_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Iallreduce Algorithms", /* category name */
+            "Number of times messages received from SMP iallreduce");
+
+    /* Begin: Timer Declarations for Ialltoall */
+
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ialltoall_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Time spent in intra ialltoall");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ialltoall_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Time spent in inter ialltoall");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ialltoall_pairwise,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Time spent in pairwise ialltoall");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ialltoall_perm_sr,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Time spent in perm_sr ialltoall");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ialltoall_bruck,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Time spent in bruck ialltoall");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ialltoall_inplace,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Time spent in inplace ialltoall");
+    /* End: Timer Declarations for Ialltoall */
+
+
+    /* Begin: Single Increment Counters for Ialltoall */
+
+     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Number of calls to intra ialltoall");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Number of calls to inter ialltoall");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_pairwise,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Number of calls to pairwise ialltoall");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_perm_sr,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Number of calls to perm_sr ialltoall");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_bruck,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Number of calls to bruck ialltoall");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_inplace,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms",
+            "Number of calls to inplace ialltoall");
+
+    /* End: Single Increment Counters for Ialltoall */ 
+
+    /* Begin: Message counters for Ialltoall */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of bytes sent from ialltoall");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times bytes received from ialltoall");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of messages sent from ialltoall");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times messages received from ialltoall");
+
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_inplace_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of bytes sent from ialltoall_inplace");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_inplace_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times bytes received from ialltoall_inplace");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_inplace_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of messages sent from ialltoall_inplace");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_inplace_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times messages received from ialltoall_inplace");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_bruck_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of bytes sent from ialltoall_bruck");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_bruck_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times bytes received from ialltoall_bruck");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_bruck_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of messages sent from ialltoall_bruck");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_bruck_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times messages received from ialltoall_bruck");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_perm_sr_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of bytes sent from ialltoall_perm_sr");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_perm_sr_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times bytes received from ialltoall_perm_sr");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_perm_sr_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of messages sent from ialltoall_perm_sr");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_perm_sr_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times messages received from ialltoall_perm_sr");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_pairwise_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of bytes sent from ialltoall_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_pairwise_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times bytes received from ialltoall_pairwise");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_pairwise_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of messages sent from ialltoall_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_pairwise_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times messages received from ialltoall_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_intra_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of bytes sent from ialltoall_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_intra_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times bytes received from ialltoall_intra");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_intra_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of messages sent from ialltoall_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_intra_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times messages received from ialltoall_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_inter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of bytes sent from ialltoall_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_inter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times bytes received from ialltoall_inter");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_inter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of messages sent from ialltoall_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoall_inter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoall Algorithms", /* category name */
+            "Number of times messages received from ialltoall_inter");
+
+    /*End: Message counters for Ialltoall */
+
+
+    /* Begin: Timer registration for Ialltoallv */
+    
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ialltoallv_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms",
+            "Time spent in intra ialltoallv");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ialltoallv_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms",
+            "Time spent in inter ialltoallv");
+
+    /* End: Timer registration for ialltoallv */
+
+    /* Begin: Single-Increment Counters for ialltoallv */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallvv Algorithms",
+            "Number of calls to intra ialltoallv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallvv Algorithms",
+            "Number of calls to inter ialltoallv");
+    /* End: Single-Increment Counters for ialltoallv */
+
+    /* Begin: Message Counters for ialltoallv */
+ MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_intra_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of bytes sent from ialltoallv_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_intra_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of times bytes received from ialltoallv_intra");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_intra_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of messages sent from ialltoallv_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_intra_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of times messages received from ialltoallv_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_inter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of bytes sent from ialltoallv_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_inter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of times bytes received from ialltoallv_inter");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_inter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of messages sent from ialltoallv_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_inter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of times messages received from ialltoallv_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of bytes sent from ialltoallv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of times bytes received from ialltoallv");
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of messages sent from ialltoallv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ialltoallv_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ialltoallv Algorithms", /* category name */
+            "Number of times messages received from ialltoallv");
+
+
+    /* End: Message counters for Ialltoallv */
+    /* Begin: Timer registration for Igather*/
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_igather_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Time spent in intra igather");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_igather_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Time spent in inter igather");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_igather_binomial,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Time spent in binomial igather");
+    /* End: Timer REgistration for igather */
+
+    /* Begin: Single-increment counters for igather */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of calls to intra igather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of calls to inter igather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_binomial,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of calls to binomial igather");
+    /* End: Single-increment counters for igather */
+    /* Begin: Message counters for igather */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of bytes sent via igather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of bytes recv via igather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of messages sent via igather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of messages recv via igather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_intra_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of bytes sent via igather_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_intra_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of bytes recv via igather_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_intra_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of messages sent via igather_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_intra_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of messages recv via igather_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_inter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of bytes sent via igather_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_inter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of bytes recv via igather_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_inter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of messages sent via igather_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_inter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of messages recv via igather_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_binomial_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of bytes sent via igather_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_binomial_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of bytes recv via igather_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_binomial_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of messages sent via igather_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igather_binomial_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igather Algorithms",
+            "Number of messages recv via igather_binomial");
+    /* End: Message counters for igather */
+
+    /* Begin: Timer registration for igatherv*/
+
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_igatherv_algo,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igatherv Algorithms",
+            "Time spent in igatherv");
+
+    /* End: Timer registration for igatherv */
+
+    /* Begin: Single Increment counters for igatherv */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igatherv_algo,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igatherv Algorithms",
+            "Number of calls to igatherv");
+    /* End: Single Increment counters for igatherv */
+
+    /* Begin: Message counters for igatherv*/
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igatherv_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igatherv Algorithms",
+            "Number of bytes sent via igatherv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igatherv_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igatherv Algorithms",
+            "Number of bytes recv via igatherv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igatherv_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igatherv Algorithms",
+            "Number of messages sent via igatherv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igatherv_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igatherv Algorithms",
+            "Number of messages recv via igatherv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igatherv_def_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igatherv Algorithms",
+            "Number of bytes sent via igatherv_def");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igatherv_def_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igatherv Algorithms",
+            "Number of bytes recv via igatherv_def");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igatherv_def_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igatherv Algorithms",
+            "Number of messages sent via igatherv_def");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_igatherv_def_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Igatherv Algorithms",
+            "Number of messages recv via igatherv_def");
+    /* End: Message counters for igatherv */
+
+    /* Begin: Timer registrations for ireduce */
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_binomial,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Time spent in ireduce_binomial");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Time spent in ireduce_intra");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Time spent in ireduce_inter");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_sharp,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Time spent in ireduce_sharp");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_redscat_gather,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Time spent in ireduce_redscat_gather");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_SMP,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Time spent in ireduce_SMP");
+    /* End: Timer registrations for ireduce */
+    /* Begin: Single-Increment Counters for Ireduce */
+   MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_binomial,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of calls to ireduce_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of calls to ireduce_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of calls to ireduce_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_redscat_gather,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of calls to ireduce_redscat_gather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_SMP,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of calls to ireduce_SMP"); 
+    /* End: Single-increment counters for Ireduce */
+    /* Begin: Message counters for ireduce */
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes sent via ireduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes recv via ireduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages sent via ireduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages recv via ireduce");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_binomial_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes sent via ireduce_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_binomial_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes recv via ireduce_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_binomial_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages sent via ireduce_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_binomial_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages recv via ireduce_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_intra_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes sent via ireduce_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_intra_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes recv via ireduce_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_intra_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages sent via ireduce_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_intra_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages recv via ireduce_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_inter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes sent via ireduce_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_inter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes recv via ireduce_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_inter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages sent via ireduce_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_inter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages recv via ireduce_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_redscat_gather_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes sent via ireduce_redscat_gather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_redscat_gather_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes recv via ireduce_redscat_gather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_redscat_gather_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages sent via ireduce_redscat_gather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_redscat_gather_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages recv via ireduce_redscat_gather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_SMP_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes sent via ireduce_SMP");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_SMP_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of bytes recv via ireduce_SMP");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_SMP_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages sent via ireduce_SMP");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_SMP_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce Algorithms",
+            "Number of messages recv via ireduce_SMP");
+    /* End: message counters for ireduce */
+
+    /* Begin: Timer registration for Ibcast */
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ibcast_binomial,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Time spent in ibcast_binomial");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ibcast_SMP,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Time spent in ibcast_SMP");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ibcast_scatter_rec_dbl_allgather,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Time spent in ibcast_scatter_rec_dbl_allgather");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ibcast_scatter_ring_allgather,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Time spent in ibcast_scatter_ring_allgather");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ibcast_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Time spent in ibcast_intra");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ibcast_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Time spent in ibcast_inter");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ibcast_sharp,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Time spent in ibcast_sharp");
+
+    /* End: Timer registration for Ibcast */
+    /* Begin: Single-increment counters for Ibcast */
+
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_binomial,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of calls to ibcast_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_SMP,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of calls to ibcast_SMP");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_scatter_rec_dbl_allgather,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of calls to ibcast_scatter_rec_dbl_allgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_scatter_ring_allgather,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of calls to ibcast_scatter_ring_allgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of calls to ibcast_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of calls to ibcast_inter");
+    /* End: Single-increment counters for Ibcast */
+
+    /* Begin: Message counters for Ibcast */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes sent via ibcast");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes recv via ibcast");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages sent via ibcast");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages recv via ibcast");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_intra_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes sent via ibcast_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_intra_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes recv via ibcast_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_intra_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages sent via ibcast_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_intra_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages recv via ibcast_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_inter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes sent via ibcast_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_inter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes recv via ibcast_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_inter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages sent via ibcast_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_inter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages recv via ibcast_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_binomial_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes sent via ibcast_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_binomial_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes recv via ibcast_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_binomial_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages sent via ibcast_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_binomial_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages recv via ibcast_binomial");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_SMP_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes sent via ibcast_SMP");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_SMP_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes recv via ibcast_SMP");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_SMP_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages sent via ibcast_SMP");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_SMP_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages recv via ibcast_SMP");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_scatter_rec_dbl_allgather_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes sent via ibcast_scatter_rec_dbl_allgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_scatter_rec_dbl_allgather_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes recv via ibcast_scatter_rec_dbl_allgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_scatter_rec_dbl_allgather_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages sent via ibcast_scatter_rec_dbl_allgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_scatter_rec_dbl_allgather_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages recv via ibcast_scatter_rec_dbl_allgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_scatter_ring_allgather_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes sent via ibcast_scatter_ring_allgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_scatter_ring_allgather_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of bytes recv via ibcast_scatter_ring_allgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_scatter_ring_allgather_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages sent via ibcast_scatter_ring_allgather");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibcast_scatter_ring_allgather_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibcast Algorithms",
+            "Number of messages recv via ibcast_scatter_ring_allgather");
+    /* End: Message counters for Ibcast */
+
+    /* Begin: Timer registrations for Ibarrier */
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ibarrier_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Time spent in ibarrier_intra");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ibarrier_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Time spent in ibarrier_inter");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ibarrier_sharp,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Time spent in ibarrier_sharp");
+    /* End: Timer registrations for Ibarrier */
+    /* Begin: Single-increment counters for Ibarrier */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of calls to ibarrier_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of calls to ibarrier_inter");
+    /* End: Single-increment counters for Ibarrier */
+
+    /* Begin: Message counters for Ibarrier */
+
+
+
+    /* End: Message counters for Ibarrier */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of bytes sent via ibarrier");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of bytes recv via ibarrier");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of messages sent via ibarrier");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of messages recv via ibarrier");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_intra_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of bytes sent via ibarrier_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_intra_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of bytes recv via ibarrier_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_intra_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of messages sent via ibarrier_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_intra_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of messages recv via ibarrier_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_inter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of bytes sent via ibarrier_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_inter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of bytes recv via ibarrier_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_inter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of messages sent via ibarrier_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ibarrier_inter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ibarrier Algorithms",
+            "Number of messages recv via ibarrier_inter");
+    /* End: Message counters for Ibarrier */
+
+    /* Begin: Timer registration for Ireduce_scatter */
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_rec_hlv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Time spent in ireduce_scatter_rec_hlv");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_pairwise,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Time spent in ireduce_scatter_pairwise");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_rec_dbl,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Time spent in ireduce_scatter_rec_dbl");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_noncomm,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Time spent in ireduce_scatter_noncomm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Time spent in ireduce_scatter_intra");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Time spent in ireduce_scatter_inter");
+    /* End: Timer registrations for Ireduce_scatter */
+
+    /* Begin: Single-Increment Counters for Ireduce_scatter */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_rec_hlv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_rec_hlv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_pairwise,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_rec_dbl,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_rec_dbl");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_noncomm,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_noncomm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_inter");
+    /* End: Single Increment Counters for Ireduce_scatter */
+
+    /* Begin: Message counters for Ireduce_scatter */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_rec_hlv_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_rec_hlv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_rec_hlv_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_rec_hlv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_rec_hlv_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_rec_hlv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_rec_hlv_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_rec_hlv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_pairwise_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_pairwise_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_pairwise_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_pairwise_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_rec_dbl_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_rec_dbl");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_rec_dbl_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_rec_dbl");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_rec_dbl_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_rec_dbl");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_rec_dbl_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_rec_dbl");    
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_noncomm_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_noncomm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_noncomm_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_noncomm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_noncomm_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_noncomm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_noncomm_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_noncomm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_intra_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_intra_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_intra_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_intra_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_inter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_inter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_inter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_inter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_inter");
+    /* End: Message counters for Ireduce_scatter */
+
+    /* Begin: Timer registration for Ireduce_scatter_block */
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_block_rec_hlv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter_block Algorithms",
+            "Time spent in ireduce_scatter_block_rec_hlv");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_block_pairwise,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter_block Algorithms",
+            "Time spent in ireduce_scatter_block_pairwise");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_block_rec_dbl,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter_block Algorithms",
+            "Time spent in ireduce_scatter_block_rec_dbl");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_block_noncomm,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter_block Algorithms",
+            "Time spent in ireduce_scatter_block_noncomm");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_block_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Time spent in ireduce_scatter_block_intra");
+    MPIR_T_PVAR_TIMER_REGISTER_STATIC(
+            MV2,
+            MPI_DOUBLE,
+            mv2_coll_timer_ireduce_scatter_block_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Time spent in ireduce_scatter_block_inter");
+    /* End: Timer registrations for Ireduce_scatter */
+
+    /* Begin: Single-Increment Counters for Ireduce_scatter */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_rec_hlv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_block_rec_hlv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_pairwise,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_block_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_rec_dbl,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_block_rec_dbl");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_noncomm,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_block_noncomm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_intra,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_block_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_inter,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of calls to ireduce_scatter_block_inter");
+    /* End: Single Increment Counters for Ireduce_scatter */
+
+    /* Begin: Message counters for Ireduce_scatter */
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_rec_hlv_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_block_rec_hlv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_rec_hlv_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_block_rec_hlv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_rec_hlv_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_block_rec_hlv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_rec_hlv_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_block_rec_hlv");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_pairwise_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_block_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_pairwise_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_block_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_pairwise_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_block_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_pairwise_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_block_pairwise");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_rec_dbl_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_block_rec_dbl");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_rec_dbl_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_block_rec_dbl");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_rec_dbl_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_block_rec_dbl");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_rec_dbl_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_block_rec_dbl");    
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_noncomm_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_block_noncomm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_noncomm_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_block_noncomm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_noncomm_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_block_noncomm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_noncomm_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_block_noncomm");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_intra_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_block_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_intra_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_block_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_intra_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_block_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_intra_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_block_intra");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_inter_bytes_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes sent via ireduce_scatter_block_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_inter_bytes_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of bytes recv via ireduce_scatter_block_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_inter_count_send,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages sent via ireduce_scatter_block_inter");
+    MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
+            MV2,
+            MPI_UNSIGNED_LONG_LONG,
+            mv2_coll_ireduce_scatter_block_inter_count_recv,
+            MPI_T_VERBOSITY_USER_BASIC,
+            MPI_T_BIND_NO_OBJECT,
+            (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_SUM),
+            "Ireduce_scatter Algorithms",
+            "Number of messages recv via ireduce_scatter_block_inter");
+    /* End: Message counters for Ireduce_scatter */
 }

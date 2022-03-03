@@ -571,8 +571,8 @@ unexpected messages queued.
 **ioctlsocket: ioctl on socket failed
 **ioctlsocket %s %d: ioctl on socket failed, %s (errno %d)
 
-**gethostbyname:gethostbyname failed
-**gethostbyname %s %d:gethostbyname failed, %s (errno %d)
+**getaddrinfo:getaddrinfo failed
+**getaddrinfo %s %d:getaddrinfo failed, %s (errno %d)
 **sock_gethost:gethostname failed
 **sock_gethost %s %d:gethostname failed, %s (errno %d)
 **getinfo:getaddrinfo failed
@@ -583,8 +583,8 @@ unexpected messages queued.
 **setsockopt %s %d:setsockopt failed, %s (errno %d)
 **getsockopt:getsockopt failed
 **getsockopt %s %d:getsockopt failed, %s (errno %d)
-**inet_addr: inet_addr failed
-**inet_addr %s %d: inet_addr failed, %s (errno %d)
+**inet_pton: inet_pton failed
+**inet_pton %s %d: inet_pton failed, %s (errno %d)
 **shmw_badhnd: Invalid handle to shared memory
 **shmw_gethnd: Unable to get shared memory handle
 **shmw_sethnd: Unable to set shared memory handle
@@ -897,8 +897,8 @@ is too big (> MPIU_SHMW_GHND_SZ)
 **decode_buffer %d:decode_buffer failed (%d)
 **encode_buffer:decode_buffer failed
 **encode_buffer %d:decode_buffer failed (%d)
-**inet_ntoa:Converting network address to string failed
-**inet_ntoa %s %d:Converting network address to string failed, %s (errno=%d)
+**inet_ntop:Converting network address to string failed
+**inet_ntop %s %d:Converting network address to string failed, %s (errno=%d)
 
 **invalid_netmod:Invalid netmod specified
 **invalid_netmod %s:Invalid netmod specified (%s)

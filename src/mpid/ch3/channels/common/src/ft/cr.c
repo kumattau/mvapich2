@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -286,12 +286,18 @@ int CR_MPDU_writeline(int fd, char *buf);
 int CR_MPDU_parse_keyvals(char *st);
 char *CR_MPDU_getval(const char *keystr, char *valstr, int vallen);
 
+#undef FUNCNAME
+#define FUNCNAME CR_MPDU_connect_MPD
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int CR_MPDU_connect_MPD()
 {
     int optval = 1;
     struct sockaddr_in sa;
     int fd, val;
     char session_file[32];
+    struct addrinfo *res;
+    int err;
 
     MPICR_MPD_fd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -299,10 +305,26 @@ int CR_MPDU_connect_MPD()
         return -1;
     }
 
-    struct hostent *hp = gethostbyname("localhost");
-    bzero((void *) &sa, sizeof(sa));
-    bcopy((void *) hp->h_addr, (void *) &sa.sin_addr, hp->h_length);
-    sa.sin_family = AF_INET;
+    /* getaddrinfo hints struct */
+    struct addrinfo addr_hint = {
+        .ai_flags = AI_CANONNAME,
+        .ai_family = AF_INET,
+        .ai_socktype = 0,
+        .ai_protocol = 0,
+        .ai_addrlen = 0,
+        .ai_addr = NULL,
+        .ai_canonname = NULL,
+        .ai_next = NULL
+    };
+
+    err = getaddrinfo("localhost", NULL, &addr_hint, &res);
+    if (err) {
+        MPIR_ERR_SETANDJUMP2(err, MPI_ERR_OTHER,
+            "**getaddrinfo", "**getaddrinfo %s %d",
+            strerror(err), err);
+    }
+    bcopy((void*)res->ai_addr, (void*)&sa, sizeof(sa));
+    freeaddrinfo(res);
 
     if (using_mpirun_rsh) {
         snprintf(session_file, 32, "/tmp/cr.session.%s", getenv("MV2_CKPT_SESSIONID"));
@@ -331,7 +353,11 @@ int CR_MPDU_connect_MPD()
         CR_ERR_ABORT("connect %d failed\n", MPICR_MPD_port + MPICR_pg_rank + restart_count * CR_RSRT_PORT_CHANGE);
     }
 
-    return 0;
+  fn_exit:
+    return err;
+
+  fn_fail:
+    goto fn_exit;
 }
 
 #endif                          /* !CR_FTB */
@@ -1540,6 +1566,7 @@ int CR_IBU_Rebuild_network()
     MPIDI_PG_t *pg = MPICR_pg;
     int pg_rank = MPICR_pg_rank;
     int pg_size = MPICR_pg_size;
+    struct addrinfo *res;
 
     uint32_t *ud_qpn_all = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
     uint16_t *lid_all = (uint16_t *) MPIU_Malloc(pg_size * sizeof(uint16_t));
@@ -1633,9 +1660,26 @@ int CR_IBU_Rebuild_network()
                 MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s", "Could not get hostname");
             }
 
-            struct hostent *hostent = gethostbyname(hostname);
-            int hostid = (int) ((struct in_addr *)
-                                hostent->h_addr_list[0])->s_addr;
+            /* getaddrinfo hints struct */
+            struct addrinfo addr_hint = {
+                .ai_flags = AI_CANONNAME,
+                .ai_family = AF_INET,
+                .ai_socktype = 0,
+                .ai_protocol = 0,
+                .ai_addrlen = 0,
+                .ai_addr = NULL,
+                .ai_canonname = NULL,
+                .ai_next = NULL
+            };
+
+            mpi_errno = getaddrinfo(hostname, NULL, &addr_hint, &res);
+            if (mpi_errno) {
+                MPIR_ERR_SETANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+                    "**getaddrinfo", "**getaddrinfo %s %d",
+                    strerror(mpi_errno), mpi_errno);
+            }
+            int hostid = (int) ((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr;
+	    freeaddrinfo(res);
             self_info.hostid = hostid;
 
             memcpy(&self_info.lid, &mv2_MPIDI_CH3I_RDMA_Process.lids, sizeof(uint16_t) * MAX_NUM_HCAS * MAX_NUM_PORTS);

@@ -13,7 +13,7 @@
  * particular purpose and non-infringement.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -517,11 +517,13 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
 		    MPIR_Process.comm_world->local_size);
 
 #if CH3_RANK_BITS == 16
-    if (MPIR_Process.comm_world->local_size > 32768 && !MPIR_Process.comm_world->rank) {
+    if (MPIR_Process.comm_world->local_size > INT16_MAX &&
+        !MPIR_Process.comm_world->rank) {
         mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,
                 MPI_ERR_OTHER, FCNAME, __LINE__, MPI_ERR_OTHER,
-                "**nomem", "Job size is larger than 32768 (%d). Reconfigure the library with --with-ch3-rank-bits=32",
-                MPIR_Process.comm_world->local_size);
+                "**nomem", "Job size is larger than %d (%d). "
+                "Reconfigure the library with --with-ch3-rank-bits=32",
+                INT16_MAX, MPIR_Process.comm_world->local_size);
     }
 #endif
 

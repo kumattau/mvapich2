@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -803,17 +803,37 @@ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 #ifdef _OSU_MVAPICH_
     if (mv2_use_osu_collectives) {
         comm_ptr->dev.ch.scatter_coll_count++;
-        mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
-        if (mpi_errno) {
-            MPIR_ERR_POP(mpi_errno);
+        if (comm_ptr->dev.ch.shmem_coll_ok == 0) {
+            mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
         }
+#if defined(_SHARP_SUPPORT_)
+        if (mv2_enable_sharp_coll &&
+            mv2_enable_sharp_scatter &&
+            (comm_ptr->dev.ch.is_sharp_ok == 0) &&
+            (comm_ptr->dev.ch.shmem_coll_ok == 1) &&
+            (comm_ptr->dev.ch.scatter_coll_count >= 
+                            shmem_coll_count_threshold)) {
+            disable_split_comm(pthread_self());
+            mpi_errno = create_sharp_comm(comm_ptr->handle,
+                                          comm_ptr->local_size, comm_ptr->rank);
+            if (mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);
+            }
+            enable_split_comm(pthread_self());
+        }
+#endif /*(_SHARP_SUPPORT_)*/
 #if defined(_MCST_SUPPORT_)
-        if (rdma_enable_mcast && mv2_use_mcast_scatter &&
+        if (rdma_enable_mcast && mv2_use_mcast_scatter && 
             (comm_ptr->dev.ch.is_mcast_ok == 0) &&
             (comm_ptr->dev.ch.shmem_coll_ok == 1) &&
-            (comm_ptr->dev.ch.scatter_coll_count >= shmem_coll_count_threshold)) { 
+            (comm_ptr->dev.ch.scatter_coll_count >= 
+                            shmem_coll_count_threshold)) {
             disable_split_comm(pthread_self());
-            mpi_errno = create_mcast_comm(comm_ptr->handle, comm_ptr->local_size, comm_ptr->rank);
+            mpi_errno = create_mcast_comm(comm_ptr->handle, 
+                                          comm_ptr->local_size, comm_ptr->rank);
             if(mpi_errno) {
                MPIR_ERR_POP(mpi_errno);
             }

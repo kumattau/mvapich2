@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -71,6 +71,9 @@
 #define MQ_FLAGS_NONE           0 
 
 #define MPIDI_PSM_DEFAULT_ON_DEMAND_THRESHOLD   64
+
+#define MV2_PSM_DEFAULT_RETRY_MAX       30  /* max retries for psm connection establishment */
+#define MV2_PSM_DEFAULT_RETRY_DELAY     1   /* seconds between psm connection attempts */
 
 /* tag selection macros, taken from mvapich-psm code */
 #if PSM_VERNO >= PSM_2_1_VERSION
@@ -275,7 +278,8 @@ extern uint32_t                ipath_progress_yield_count;
 extern pthread_spinlock_t   psmlock;
 extern pthread_spinlock_t   psmlock_progress;
 extern size_t ipath_max_transfer_size;
-
+extern int mv2_psm_retry_max;
+extern int mv2_psm_retry_delay;
 
 
 typedef enum{

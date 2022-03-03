@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include "rdma_impl.h"
 #if defined (_SHARP_SUPPORT_)
+#include "ofed_abstraction.h"
 #include "ibv_sharp.h"
 
 #define MAX_SHARP_PORT 5
@@ -61,7 +62,7 @@ struct sharp_data_types_t sharp_data_types [] =
 };
 
 /*sharp supported reduce op info */
-struct sharp_op_type_t sharp_ops [] =
+struct sharp_op_type_t sharp_ops_type [] =
 {
     {"MAX", SHARP_OP_MAX, MPI_MAX},
     {"MIN", SHARP_OP_MIN, MPI_MIN},
@@ -101,9 +102,9 @@ void  mv2_get_sharp_datatype(MPI_Datatype  mpi_datatype, struct
 enum sharp_reduce_op mv2_get_sharp_reduce_op(MPI_Op mpi_op) 
 {
     int i = 0;
-    for (i = 0; sharp_ops[i].sharp_op_type != SHARP_OP_NULL; i++) {
-        if (mpi_op == sharp_ops[i].mpi_op_type) {
-            return sharp_ops[i].sharp_op_type;
+    for (i = 0; sharp_ops_type[i].sharp_op_type != SHARP_OP_NULL; i++) {
+        if (mpi_op == sharp_ops_type[i].mpi_op_type) {
+            return sharp_ops_type[i].sharp_op_type;
         }
     }
     /* undefined sharp reduce op type */
@@ -223,20 +224,20 @@ int mv2_sharp_coll_init(sharp_conf_t *sharp_conf, int rank, int local_rank)
     MPI_Comm_rank(MPI_COMM_WORLD, &(init_spec->world_rank));
     MPI_Comm_size(MPI_COMM_WORLD, &(init_spec->world_size));
 
-    mpi_errno = sharp_coll_init(init_spec, &(coll_sharp_component.sharp_coll_context));   
+    mpi_errno = sharp_ops.coll_init(init_spec, &(coll_sharp_component.sharp_coll_context));   
 
     if (mpi_errno != SHARP_COLL_SUCCESS) {
         if(rank == 0)
         {
             PRINT_DEBUG(DEBUG_Sharp_verbose, "SHARP initialization failed. Continuing without SHARP"
                     " support. Errno: %d (%s) \n ", mpi_errno,
-                    sharp_coll_strerror(mpi_errno));
+                    sharp_ops.coll_strerror(mpi_errno));
         }
         mpi_errno = MPI_ERR_INTERN;
         goto fn_exit;
     }
 
-    mpi_errno = sharp_coll_caps_query(coll_sharp_component.sharp_coll_context,
+    mpi_errno = sharp_ops.coll_caps_query(coll_sharp_component.sharp_coll_context,
             &coll_sharp_component.sharp_caps);
 
     if (mpi_errno != SHARP_COLL_SUCCESS) {
@@ -244,7 +245,7 @@ int mv2_sharp_coll_init(sharp_conf_t *sharp_conf, int rank, int local_rank)
         {
             PRINT_DEBUG(DEBUG_Sharp_verbose, "SHARP cap query failed. Continuing without SHARP"
                     " support. Errno: %d (%s) \n ", mpi_errno,
-                    sharp_coll_strerror(mpi_errno));
+                    sharp_ops.coll_strerror(mpi_errno));
         }
         mpi_errno = MPI_ERR_INTERN;
         goto fn_exit;
@@ -402,10 +403,11 @@ int mv2_sharp_coll_comm_init(coll_sharp_module_t *sharp_module)
     comm_spec->size              = size;
     comm_spec->oob_ctx           = sharp_module;
 
-    mpi_errno = sharp_coll_comm_init(coll_sharp_component.sharp_coll_context,
+    mpi_errno = sharp_ops.coll_comm_init(coll_sharp_component.sharp_coll_context,
                  comm_spec, &(sharp_module->sharp_coll_comm));
     if (mpi_errno != SHARP_COLL_SUCCESS) {
-        PRINT_ERROR("sharp communicator init failed with error code %d = %s \n", mpi_errno, sharp_coll_strerror(mpi_errno));
+        PRINT_ERROR("sharp communicator init failed with error code %d = %s \n", 
+                        mpi_errno, sharp_ops.coll_strerror(mpi_errno));
         mpi_errno = MPI_ERR_INTERN;
         MPIR_ERR_POP(mpi_errno);
     }
@@ -473,17 +475,19 @@ int mv2_free_sharp_handlers (sharp_info_t * sharp_info)
     if (sharp_info != NULL && sharp_info->sharp_comm_module != NULL
             && sharp_info->sharp_comm_module->sharp_coll_comm != NULL) {
         /* destroy the sharp comm */
-        mpi_errno = sharp_coll_comm_destroy(sharp_info->sharp_comm_module->sharp_coll_comm);
+        mpi_errno = sharp_ops.coll_comm_destroy(sharp_info->sharp_comm_module->sharp_coll_comm);
         if (mpi_errno != SHARP_COLL_SUCCESS) {
-            PRINT_ERROR("sharp comm destroy failed with error code %d = %s \n", mpi_errno, sharp_coll_strerror(mpi_errno));
+            PRINT_ERROR("sharp comm destroy failed with error code %d = %s \n", 
+                            mpi_errno, sharp_ops.coll_strerror(mpi_errno));
             mpi_errno = MPI_ERR_INTERN;
             MPIR_ERR_POP(mpi_errno);
         }
         
         /* finalize SHArP */
-        mpi_errno = sharp_coll_finalize(coll_sharp_component.sharp_coll_context);
+        mpi_errno = sharp_ops.coll_finalize(coll_sharp_component.sharp_coll_context);
         if (mpi_errno != SHARP_COLL_SUCCESS) {
-            PRINT_ERROR("sharp coll finalize failed with error code %d = %s \n", mpi_errno, sharp_coll_strerror(mpi_errno));
+            PRINT_ERROR("sharp coll finalize failed with error code %d = %s \n", 
+                            mpi_errno, sharp_ops.coll_strerror(mpi_errno));
             mpi_errno = MPI_ERR_INTERN;
             MPIR_ERR_POP(mpi_errno);
         }

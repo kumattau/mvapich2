@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -46,6 +46,10 @@
 #define MV2_DEFAULT_SHMEM_BCAST_LEADERS    4096
 #define MV2_GATHER_DIRECT_SYSTEM_SIZE_SMALL      384
 #define MV2_GATHER_DIRECT_SYSTEM_SIZE_MEDIUM     1024
+
+#define MV2_DEFAULT_INTRA_NODE_KNOMIAL_FACTOR 4
+#define MV2_DEFAULT_INTER_NODE_KNOMIAL_FACTOR 4
+#define MV2_DEFAULT_ZCPY_KNOMIAL_FACTOR 2
 
 #define MV2_INTER_NODE_KNOMIAL_FACTOR_MAX 8
 #define MV2_INTER_NODE_KNOMIAL_FACTOR_MIN 2
@@ -369,6 +373,14 @@ extern int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                                           int root,
                                           MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag); 
 extern int MPIR_Reduce_binomial_MV2(const void *sendbuf,
+                                    void *recvbuf,
+                                    int count,
+                                    MPI_Datatype datatype,
+                                    MPI_Op op,
+                                    int root,
+                                    MPID_Comm * comm_ptr, MPIR_Errflag_t *errflag); 
+
+extern int MPIR_Reduce_allreduce_MV2(const void *sendbuf,
                                     void *recvbuf,
                                     int count,
                                     MPI_Datatype datatype,

@@ -6,6 +6,16 @@
 
 #include "mpiimpl.h"
 #include "collutil.h"
+#ifdef _OSU_MVAPICH_
+#include "coll_shmem.h"
+#endif /* _OSU_MVAPICH_ */
+
+#if defined (_SHARP_SUPPORT_)
+#include "api/sharp_coll.h"
+#include "ibv_sharp.h"
+#include "ireduce_tuning.h"
+extern int mv2_sharp_tuned_msg_size;
+#endif
 
 /* -- Begin Profiling Symbol Block for routine MPI_Ibcast */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -32,6 +42,74 @@ struct MPIR_Ibcast_status{
 #ifndef MPICH_MPI_FROM_PMPI
 #undef MPI_Ibcast
 #define MPI_Ibcast PMPI_Ibcast
+
+#if (defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)) && ENABLE_PVAR_MV2
+#include "coll_shmem.h"
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ibcast_binomial);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ibcast_SMP);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ibcast_scatter_rec_dbl_allgather);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ibcast_scatter_ring_allgather);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ibcast_intra);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ibcast_inter);
+
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_binomial);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_SMP);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_scatter_rec_dbl_allgather);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_scatter_ring_allgather);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_intra);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_inter);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_binomial_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_binomial_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_binomial_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_binomial_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_SMP_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_SMP_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_SMP_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_SMP_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_scatter_rec_dbl_allgather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_scatter_rec_dbl_allgather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_scatter_rec_dbl_allgather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_scatter_rec_dbl_allgather_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_scatter_ring_allgather_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_scatter_ring_allgather_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_scatter_ring_allgather_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_scatter_ring_allgather_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_intra_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_intra_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_intra_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_intra_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_inter_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_inter_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_inter_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_inter_count_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_bytes_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_bytes_recv);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_count_send);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ibcast_count_recv);
+
+#define PVAR_TIME_START(optype, op, algo) \
+        MPIR_TIMER_START(optype, op, algo); 
+
+#define PVAR_TIME_STOP(optype, op, algo) \
+        MPIR_TIMER_END(optype, op, algo);
+    
+
+#define PVAR_INC_1(M, alg, num) \
+    MPIR_T_PVAR_COUNTER_INC(M, alg, num);
+
+#define PVAR_INC_MSG(op, algo, sr, count, datatype) \
+    MPIR_PVAR_INC(op, algo, sr, count, datatype);
+
+#else
+/* Idea of redefining macros to wrap around calls for portability reasons */
+#define PVAR_TIME_START(optype, op, algo) 
+#define PVAR_TIME_STOP(optype, op, algo) 
+#define PVAR_INC_1(M, alg, num)   
+#define PVAR_INC_MSG(op, algo, sr, count, datatype)
+
+#endif
+
+
 
 #undef FUNCNAME
 #define FUNCNAME sched_test_length
@@ -100,6 +178,7 @@ static int sched_add_length(MPID_Comm * comm, int tag, void *state)
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ibcast_binomial(void *buffer, int count, MPI_Datatype datatype, int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ibcast, binomial);
     int mpi_errno = MPI_SUCCESS;
     int mask;
     int comm_size, rank;
@@ -110,6 +189,7 @@ int MPIR_Ibcast_binomial(void *buffer, int count, MPI_Datatype datatype, int roo
     struct MPIR_Ibcast_status *status;
     void *tmp_buf = NULL;
     MPIR_SCHED_CHKPMEM_DECL(2);
+    PVAR_INC_1(MV2, mv2_coll_ibcast_binomial, 1);
 
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -190,12 +270,17 @@ int MPIR_Ibcast_binomial(void *buffer, int count, MPI_Datatype datatype, int roo
         if (relative_rank & mask) {
             src = rank - mask; 
             if (src < 0) src += comm_size;
-            if (!is_contig || !is_homogeneous)
+            if (!is_contig || !is_homogeneous){
+                PVAR_INC_MSG(ibcast, binomial, recv, nbytes, MPI_BYTE);
+                PVAR_INC_MSG(ibcast, intra, recv, nbytes, MPI_BYTE);
                 mpi_errno = MPID_Sched_recv_status(tmp_buf, nbytes, MPI_BYTE, src,
-                                                    comm_ptr, &status->status, s);
-            else
+                        comm_ptr, &status->status, s);
+            }else{
+                PVAR_INC_MSG(ibcast, binomial, recv, count, datatype);
+                PVAR_INC_MSG(ibcast, intra, recv, count, datatype);
                 mpi_errno = MPID_Sched_recv_status(buffer, count, datatype, src,
-                                                   comm_ptr, &status->status, s);
+                        comm_ptr, &status->status, s);
+            }
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
             MPID_SCHED_BARRIER(s);
@@ -225,10 +310,15 @@ int MPIR_Ibcast_binomial(void *buffer, int count, MPI_Datatype datatype, int roo
         if (relative_rank + mask < comm_size) {
             dst = rank + mask;
             if (dst >= comm_size) dst -= comm_size;
-            if (!is_contig || !is_homogeneous)
+            if (!is_contig || !is_homogeneous){
+                PVAR_INC_MSG(ibcast, binomial, send, nbytes, MPI_BYTE);
+                PVAR_INC_MSG(ibcast, intra, send, nbytes, MPI_BYTE);
                 mpi_errno = MPID_Sched_send(tmp_buf, nbytes, MPI_BYTE, dst, comm_ptr, s);
-            else
+            }else{
+                PVAR_INC_MSG(ibcast, binomial, send, count, datatype);
+                PVAR_INC_MSG(ibcast, intra, send, count, datatype);
                 mpi_errno = MPID_Sched_send(buffer, count, datatype, dst, comm_ptr, s);
+            }
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
             /* NOTE: This is departure from MPIR_Bcast_binomial.  A true analog
@@ -248,6 +338,7 @@ int MPIR_Ibcast_binomial(void *buffer, int count, MPI_Datatype datatype, int roo
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, ibcast, binomial);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -388,6 +479,7 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ibcast_scatter_rec_dbl_allgather(void *buffer, int count, MPI_Datatype datatype, int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ibcast, scatter_rec_dbl_allgather);
     int mpi_errno = MPI_SUCCESS;
     int rank, comm_size, dst;
     int relative_rank, mask;
@@ -400,6 +492,7 @@ int MPIR_Ibcast_scatter_rec_dbl_allgather(void *buffer, int count, MPI_Datatype 
     void *tmp_buf;
     struct MPIR_Ibcast_status *status;
     MPIR_SCHED_CHKPMEM_DECL(2);
+    PVAR_INC_1(MV2, mv2_coll_ibcast_scatter_rec_dbl_allgather, 1);
 
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -497,13 +590,17 @@ int MPIR_Ibcast_scatter_rec_dbl_allgather(void *buffer, int count, MPI_Datatype 
             else
                 incoming_count = 0;
 
+            PVAR_INC_MSG(ibcast, scatter_rec_dbl_allgather, send, curr_size, MPI_BYTE);
+            PVAR_INC_MSG(ibcast, intra, send, curr_size, MPI_BYTE);
             mpi_errno = MPID_Sched_send(((char *)tmp_buf + send_offset),
-                                        curr_size, MPI_BYTE, dst, comm_ptr, s);
+                    curr_size, MPI_BYTE, dst, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             /* sendrecv, no barrier */
+            PVAR_INC_MSG(ibcast, scatter_rec_dbl_allgather, recv, incoming_count, MPI_BYTE);
+            PVAR_INC_MSG(ibcast, intra, recv, incoming_count, MPI_BYTE);
             mpi_errno = MPID_Sched_recv_status(((char *)tmp_buf + recv_offset),
-                                        incoming_count,
-                                        MPI_BYTE, dst, comm_ptr,&status->status, s);
+                    incoming_count,
+                    MPI_BYTE, dst, comm_ptr,&status->status, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             MPID_SCHED_BARRIER(s);
             mpi_errno = MPID_Sched_cb(&sched_add_length, status, s);
@@ -557,22 +654,24 @@ int MPIR_Ibcast_scatter_rec_dbl_allgather(void *buffer, int count, MPI_Datatype 
                    doesn't have data. */
 
                 if ((relative_dst > relative_rank) &&
-                    (relative_rank < tree_root + nprocs_completed) &&
-                    (relative_dst >= tree_root + nprocs_completed))
+                        (relative_rank < tree_root + nprocs_completed) &&
+                        (relative_dst >= tree_root + nprocs_completed))
                 {
                     /* incoming_count was set in the previous
                        receive. that's the amount of data to be
                        sent now. */
+                    PVAR_INC_MSG(ibcast, scatter_rec_dbl_allgather, send, incoming_count, MPI_BYTE);
+                    PVAR_INC_MSG(ibcast, intra, send, incoming_count, MPI_BYTE);
                     mpi_errno = MPID_Sched_send(((char *)tmp_buf + offset),
-                                                incoming_count, MPI_BYTE, dst, comm_ptr, s);
+                            incoming_count, MPI_BYTE, dst, comm_ptr, s);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                     MPID_SCHED_BARRIER(s);
                 }
                 /* recv only if this proc. doesn't have data and sender
                    has data */
                 else if ((relative_dst < relative_rank) &&
-                         (relative_dst < tree_root + nprocs_completed) &&
-                         (relative_rank >= tree_root + nprocs_completed))
+                        (relative_dst < tree_root + nprocs_completed) &&
+                        (relative_rank >= tree_root + nprocs_completed))
                 {
                     /* recalculate incoming_count, since not all processes will have
                      * this value */
@@ -583,9 +682,11 @@ int MPIR_Ibcast_scatter_rec_dbl_allgather(void *buffer, int count, MPI_Datatype 
 
                     /* nprocs_completed is also equal to the no. of processes
                        whose data we don't have */
+                    PVAR_INC_MSG(ibcast, scatter_rec_dbl_allgather, recv, incoming_count, MPI_BYTE);
+                    PVAR_INC_MSG(ibcast, intra, recv, incoming_count, MPI_BYTE);
                     mpi_errno = MPID_Sched_recv_status(((char *)tmp_buf + offset),
-                                                incoming_count, MPI_BYTE, dst, comm_ptr,
-                                                &status->status, s);
+                            incoming_count, MPI_BYTE, dst, comm_ptr,
+                            &status->status, s);
                     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                     MPID_SCHED_BARRIER(s);
                     mpi_errno = MPID_Sched_cb(&sched_add_length, status, s);
@@ -617,6 +718,7 @@ int MPIR_Ibcast_scatter_rec_dbl_allgather(void *buffer, int count, MPI_Datatype 
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, ibcast, scatter_rec_dbl_allgather);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -645,6 +747,7 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ibcast_scatter_ring_allgather(void *buffer, int count, MPI_Datatype datatype, int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ibcast, scatter_ring_allgather);
     int mpi_errno = MPI_SUCCESS;
     int comm_size, rank;
     int is_contig, is_homogeneous ATTRIBUTE((unused)), type_size, nbytes;
@@ -656,6 +759,7 @@ int MPIR_Ibcast_scatter_ring_allgather(void *buffer, int count, MPI_Datatype dat
 
     struct MPIR_Ibcast_status *status;
     MPIR_SCHED_CHKPMEM_DECL(4);
+    PVAR_INC_1(MV2, mv2_coll_ibcast_scatter_ring_allgather, 1);
 
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
@@ -735,10 +839,14 @@ int MPIR_Ibcast_scatter_ring_allgather(void *buffer, int count, MPI_Datatype dat
             right_count = 0;
         right_disp = rel_j * scatter_size;
 
+        PVAR_INC_MSG(ibcast, scatter_ring_allgather, send, right_count, MPI_BYTE);
+        PVAR_INC_MSG(ibcast, intra, send, right_count, MPI_BYTE);
         mpi_errno = MPID_Sched_send(((char *)tmp_buf + right_disp),
-                                    right_count, MPI_BYTE, right, comm_ptr, s);
+                right_count, MPI_BYTE, right, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         /* sendrecv, no barrier here */
+        PVAR_INC_MSG(ibcast, scatter_ring_allgather, recv, left_count, MPI_BYTE);
+        PVAR_INC_MSG(ibcast, intra, recv, left_count, MPI_BYTE);
         mpi_errno = MPID_Sched_recv_status(((char *)tmp_buf + left_disp),
                                     left_count, MPI_BYTE, left, comm_ptr, &status->status, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -755,6 +863,7 @@ int MPIR_Ibcast_scatter_ring_allgather(void *buffer, int count, MPI_Datatype dat
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, ibcast, scatter_ring_allgather);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -771,11 +880,13 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ibcast_SMP(void *buffer, int count, MPI_Datatype datatype, int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ibcast, SMP);
     int mpi_errno = MPI_SUCCESS;
     int is_homogeneous;
     MPI_Aint type_size;
     struct MPIR_Ibcast_status *status;
     MPIR_SCHED_CHKPMEM_DECL(1);
+    PVAR_INC_1(MV2, mv2_coll_ibcast_SMP, 1);
 
     if (!MPIR_CVAR_ENABLE_SMP_COLLECTIVES || !MPIR_CVAR_ENABLE_SMP_BCAST)
         MPID_Abort(comm_ptr, MPI_ERR_OTHER, 1, "SMP collectives are disabled!");
@@ -819,9 +930,11 @@ int MPIR_Ibcast_SMP(void *buffer, int count, MPI_Datatype datatype, int root, MP
         MPIU_Get_intranode_rank(comm_ptr, root) > 0) /* is not the node root (0) */
     {                                                /* and is on our node (!-1) */
         if (root == comm_ptr->rank) {
+            PVAR_INC_MSG(ibcast, SMP, send, count, datatype);
             mpi_errno = MPID_Sched_send(buffer, count, datatype, 0, comm_ptr->node_comm, s);
         }
         else if (0 == comm_ptr->node_comm->rank) {
+            PVAR_INC_MSG(ibcast, SMP, recv, count, datatype);
             mpi_errno = MPID_Sched_recv_status(buffer, count, datatype, MPIU_Get_intranode_rank(comm_ptr, root),
                                         comm_ptr->node_comm, &status->status, s);
         }
@@ -853,6 +966,7 @@ int MPIR_Ibcast_SMP(void *buffer, int count, MPI_Datatype datatype, int root, MP
 
     MPIR_SCHED_CHKPMEM_COMMIT(s);
 fn_exit:
+    PVAR_TIME_STOP(coll, ibcast, SMP);
     return mpi_errno;
 fn_fail:
     MPIR_SCHED_CHKPMEM_REAP(s);
@@ -868,11 +982,13 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ibcast_intra(void *buffer, int count, MPI_Datatype datatype, int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ibcast, intra);
     int mpi_errno = MPI_SUCCESS;
     int comm_size, is_homogeneous ATTRIBUTE((unused));
     MPI_Aint type_size, nbytes;
 
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
+    PVAR_INC_1(MV2, mv2_coll_ibcast_intra, 1);
 
     is_homogeneous = 1;
 #ifdef MPID_HAS_HETERO
@@ -905,6 +1021,7 @@ int MPIR_Ibcast_intra(void *buffer, int count, MPI_Datatype datatype, int root, 
     }
 
 fn_exit:
+    PVAR_TIME_STOP(coll, ibcast, intra);
     return mpi_errno;
 fn_fail:
     goto fn_exit;
@@ -919,9 +1036,11 @@ fn_fail:
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ibcast_inter(void *buffer, int count, MPI_Datatype datatype, int root, MPID_Comm *comm_ptr, MPID_Sched_t s)
 {
+    PVAR_TIME_START(coll, ibcast, inter);
     int mpi_errno = MPI_SUCCESS;
 
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTERCOMM);
+    PVAR_INC_1(MV2, mv2_coll_ibcast_inter, 1);
 
     /* Intercommunicator broadcast.
      * Root sends to rank 0 in remote group. Remote group does local
@@ -934,6 +1053,7 @@ int MPIR_Ibcast_inter(void *buffer, int count, MPI_Datatype datatype, int root, 
     else if (root == MPI_ROOT)
     {
         /* root sends to rank 0 on remote group and returns */
+        PVAR_INC_MSG(ibcast, inter, send, count, datatype);
         mpi_errno = MPID_Sched_send(buffer, count, datatype, 0, comm_ptr, s);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
@@ -941,6 +1061,7 @@ int MPIR_Ibcast_inter(void *buffer, int count, MPI_Datatype datatype, int root, 
     {
         /* remote group. rank 0 on remote group receives from root */
         if (comm_ptr->rank == 0) {
+            PVAR_INC_MSG(ibcast, inter, recv, count, datatype);
             mpi_errno = MPID_Sched_recv(buffer, count, datatype, root, comm_ptr, s);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
             MPID_SCHED_BARRIER(s);
@@ -959,6 +1080,7 @@ int MPIR_Ibcast_inter(void *buffer, int count, MPI_Datatype datatype, int root, 
     }
 
 fn_exit:
+    PVAR_TIME_STOP(coll, ibcast, inter);
     return mpi_errno;
 fn_fail:
     goto fn_exit;
@@ -968,7 +1090,8 @@ fn_fail:
 #define FUNCNAME MPIR_Ibcast_impl
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIR_Ibcast_impl(void *buffer, int count, MPI_Datatype datatype, int root, MPID_Comm *comm_ptr, MPI_Request *request)
+int MPIR_Ibcast_impl(void *buffer, int count, MPI_Datatype datatype, int root,
+                     MPID_Comm *comm_ptr, MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *reqp = NULL;
@@ -977,10 +1100,30 @@ int MPIR_Ibcast_impl(void *buffer, int count, MPI_Datatype datatype, int root, M
 
     *request = MPI_REQUEST_NULL;
 
+#if defined (_SHARP_SUPPORT_)
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 && 
+        count <= mv2_sharp_tuned_msg_size / 4 &&
+        mv2_enable_sharp_coll == 2) {
+        /* Direct flat algorithm in which every process calls Sharp
+        *  MV2_ENABLE_SHARP should be set to 2 */
+        mpi_errno = MPIR_Sharp_Ibcast_MV2(buffer, count,
+                        datatype, root, comm_ptr, NULL, &reqp);
+        if (mpi_errno == MPI_SUCCESS) {
+            if (reqp) {
+                *request = reqp->handle;
+            }
+            goto fn_exit;
+        }
+        /* SHArP collective is not supported,
+        * continue without using SHArP */
+    }
+#endif /* end of defined (_SHARP_SUPPORT_) */
+
     MPIU_Assert(comm_ptr->coll_fns != NULL);
     if (comm_ptr->coll_fns->Ibcast_req != NULL) {
         /* --BEGIN USEREXTENSION-- */
-        mpi_errno = comm_ptr->coll_fns->Ibcast_req(buffer, count, datatype, root, comm_ptr, &reqp);
+        mpi_errno = comm_ptr->coll_fns ->Ibcast_req(buffer, count, datatype,
+                                                    root, comm_ptr, &reqp);
         if (reqp) {
             *request = reqp->handle;
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -1092,6 +1235,33 @@ int MPI_Ibcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Com
 
     mpi_errno = MPIR_Ibcast_impl(buffer, count, datatype, root, comm_ptr, request);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+
+#ifdef _OSU_MVAPICH_
+    if (mv2_use_osu_collectives) {
+        if (comm_ptr->dev.ch.shmem_coll_ok == 0) {
+            mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+            if (mpi_errno) {
+                MPIR_ERR_POP(mpi_errno);
+            }
+        }
+#if defined(_SHARP_SUPPORT_)
+        comm_ptr->dev.ch.ibcast_coll_count++;
+        if (mv2_enable_sharp_coll &&
+            mv2_enable_sharp_ibcast &&
+            (comm_ptr->dev.ch.is_sharp_ok == 0) &&
+            (comm_ptr->dev.ch.shmem_coll_ok == 1) &&
+            (comm_ptr->dev.ch.ibcast_coll_count >= shmem_coll_count_threshold)) {
+            disable_split_comm(pthread_self());
+            mpi_errno = create_sharp_comm(comm_ptr->handle,
+                                          comm_ptr->local_size, comm_ptr->rank);
+            if (mpi_errno) {
+               MPIR_ERR_POP(mpi_errno);
+            }
+            enable_split_comm(pthread_self());
+        }
+#endif /*(_SHARP_SUPPORT_)*/
+    }
+#endif /* _OSU_MVAPICH_ */
 
     /* ... end of body of routine ... */
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -53,6 +53,11 @@ rdma_ops_t rdma_ops;
 void *rdma_dl_handle = NULL;
 #endif /*defined(RDMA_CM)*/
 
+#if defined(_SHARP_SUPPORT_)
+sharp_ops_t sharp_ops;
+void *sharp_dl_handle = NULL;
+#endif /* defined(_SHARP_SUPPORT_) */
+
 #undef FUNCNAME
 #define FUNCNAME split_type
 #undef FCNAME
@@ -83,6 +88,39 @@ static int split_type(MPID_Comm * comm_ptr, int stype, int key,
 static MPID_CommOps comm_fns = {
     split_type
 };
+
+#define MV2_CHECK_ALIGNMENT(_size_, _name_, _cache_)                    \
+do {                                                                    \
+    int _align = (_size_) % (_cache_);                                  \
+                                                                        \
+    if (_align) {                                                       \
+        fprintf(stderr, "Warning: %s of size %d is not aligned to"      \
+                " cache line size %d\n", (_name_), (_size_), (_cache_));\
+    }                                                                   \
+} while (0)
+
+int mv2_check_cache_alignment()
+{
+    int i = 0;
+    int mpi_errno = MPI_SUCCESS;
+
+    /* Look at packet headers */
+    for (i = 0; i < MPIDI_CH3_PKT_END_ALL; ++i) {
+        if ((i == MPIDI_CH3_PKT_END_CH3) ||
+            (MPIDI_CH3_Pkt_size_index[i] <= SMPI_CACHE_LINE_SIZE)) {
+            continue;
+        }
+        MV2_CHECK_ALIGNMENT(MPIDI_CH3_Pkt_size_index[i],
+                            MPIDI_CH3_Pkt_type_to_string[i],
+                            SMPI_CACHE_LINE_SIZE);
+    }
+
+    /* Look at different structures */
+    MV2_CHECK_ALIGNMENT(sizeof(MPID_Request), "MPID_Request",
+                        SMPI_CACHE_LINE_SIZE);
+
+    return mpi_errno;
+}
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Init
@@ -421,12 +459,19 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     mv2_take_timestamp("mv2_dlopen_init", NULL);
     mpi_errno = mv2_dlopen_init();
     mv2_take_timestamp("mv2_dlopen_init", NULL);
+    /* TODO: make this have better error handling in dl_open */
     if (mpi_errno) {
+        mpi_errno = MPI_ERR_OTHER;
         PRINT_INFO((pg_rank == 0),
                     "Failed to locate underlying libraries using dlopen."
-                    " Please reconfigure after setting --disable-ibv-dlopen\n");
-        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "mv2_dlopen_init");
+                    " Please consider setting one of the suggested environment" 
+                    " variables to the path of the missing library."
+                    " Or please reconfigure after setting --disable-ibv-dlopen\n");
+        if (!SMP_ONLY) {
+            /* If this is a multi-node execution, fail */
+            MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                    "**fail %s", "mv2_dlopen_init");
+        }
     }
     if (!SMP_ONLY) {
         /* ibv_fork_init() initializes libibverbs's data structures to handle
@@ -499,6 +544,12 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         mallopt(M_MMAP_MAX, 0);
         mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister = 0;
 #endif /* !defined(DISABLE_PTMALLOC) */
+
+        if ((value = getenv("MV2_RDMA_MAX_TRANSFER_SIZE")) != NULL) {
+            mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize = atoi(value);
+        } else {
+            mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize = RDMA_MAX_RDMA_SIZE;
+        }
 
         /* Read RDMA FAST Path related params */
         mv2_take_timestamp("rdma_set_rdma_fast_path_params", NULL);
@@ -638,6 +689,14 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
     mv2_take_timestamp("MPIDI_CH3I_SMP_init", NULL);
 
+    if (mv2_enable_shmem_collectives) {
+        mv2_take_timestamp("MPIDI_CH3I_SMP_COLL_init", NULL);
+        if ((mpi_errno = MPIDI_CH3I_SMP_COLL_init(pg))) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+        mv2_take_timestamp("MPIDI_CH3I_SMP_COLL_init", NULL);
+    }
+
     if (SMP_INIT) {
         mv2_take_timestamp("MPIDI_CH3I_SMP_Init_vc (loop)", (void *)(unsigned long)pg_size);
         for (p = 0; p < pg_size; ++p) {
@@ -658,9 +717,6 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             }
         }
         mv2_take_timestamp("MPIDI_CH3I_SMP_Init_vc (loop)", NULL);
-    } else {
-        extern int mv2_enable_shmem_collectives;
-        mv2_enable_shmem_collectives = SMP_INIT;
     }
 
     /* Allocate and Init Dummy request */
@@ -772,6 +828,14 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             mv2_take_timestamp("MPIDI_CH3I_CM_Connect_self", NULL);
         }
     }
+    if (pg_rank == 0 && (value = getenv("MV2_CHECK_CACHE_ALIGNMENT")) != NULL && 
+        !!atoi(value)) {
+        mv2_take_timestamp("mv2_check_cache_alignment", NULL);
+        mpi_errno = mv2_check_cache_alignment();
+        mv2_take_timestamp("mv2_check_cache_alignment", NULL);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+    }
+
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_INIT);
     return mpi_errno;

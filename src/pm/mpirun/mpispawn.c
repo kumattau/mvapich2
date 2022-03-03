@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -76,6 +76,18 @@ unsigned int sockaddr_len = sizeof(c_sockaddr);
 // Shouldn't this be defined by unistd.h?
 extern char **environ;
 
+/* global getaddrinfo hints struct */
+struct addrinfo addr_hint = {
+    .ai_flags = AI_CANONNAME,
+    .ai_family = AF_INET,
+    .ai_socktype = 0,
+    .ai_protocol = 0,
+    .ai_addrlen = 0,
+    .ai_addr = NULL,
+    .ai_canonname = NULL,
+    .ai_next = NULL
+};
+
 #define ENV_CMD         "/usr/bin/env"
 #define MAX_HOST_LEN 256
 
@@ -113,41 +125,44 @@ void report_error(int abort_code)
     int sock, id = env2int("MPISPAWN_ID");
     sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     int connect_attempt = 0, max_connect_attempts = 5;
-    struct sockaddr_in sockaddr;
-    struct hostent *mpirun_hostent;
-    char *env = NULL;
+    struct addrinfo *res;
+    int err;
+    char *env = NULL, *port = NULL;
+
     if (sock < 0) {
         /* Oops! */
         PRINT_ERROR_ERRNO("socket() failed", errno);
         exit(EXIT_FAILURE);
     }
 
+    port = env2str("MPISPAWN_CHECKIN_PORT");
     env = env2str("MPISPAWN_MPIRUN_HOST");
-    mpirun_hostent = gethostbyname(env);
+    err = getaddrinfo(env, port, &addr_hint, &res);
     if (env) {
         free(env);
         env = NULL;
     }
-    if (NULL == mpirun_hostent) {
+    if (err) {
+        /* try again with different host name */
         env = env2str("MPISPAWN_MPIRUN_HOSTIP");
-        mpirun_hostent = gethostbyname(env);
+        err = getaddrinfo(env, port, &addr_hint, &res);
         if (env) {
             free(env);
             env = NULL;
         }
-        if (NULL == mpirun_hostent) {
-            /* Oops! */
-            PRINT_ERROR("gethostbyname() failed: %s (%d)\n",
-                    hstrerror(h_errno), h_errno);
-            exit(EXIT_FAILURE);
-        }
+    }
+    if (port) {
+        free(port);
+        port = NULL;
+    }
+    if (err) {
+        /* Oops! */
+        PRINT_ERROR("getaddrinfo() failed with error code: %d\n",
+                err);
+        exit(EXIT_FAILURE);
     }
 
-    sockaddr.sin_family = AF_INET;
-    sockaddr.sin_addr = *(struct in_addr *) (*mpirun_hostent->h_addr_list);
-    sockaddr.sin_port = htons(env2int("MPISPAWN_CHECKIN_PORT"));
-
-    while (connect(sock, (struct sockaddr *) &sockaddr, sizeof(sockaddr)) < 0) {
+    while (connect(sock, res->ai_addr, sizeof(struct sockaddr_in)) < 0) {
         if (++connect_attempt > max_connect_attempts) {
             PRINT_ERROR_ERRNO("connect() failed", errno);
             exit(EXIT_FAILURE);
@@ -950,12 +965,12 @@ void child_handler(int signal)
 void mpispawn_checkin(char * l_port)
 {
     int connect_attempt = 0, max_connect_attempts = 5, i, sock;
-    struct hostent *mpirun_hostent;
-    struct sockaddr_in sockaddr;
-    /*struct sockaddr_in c_sockaddr; */
     int offset = 0, id;
     pid_t pid = getpid();
     char port[MAX_PORT_LEN + 1];
+    /* structs for get addr info */
+    struct addrinfo *res;
+    int err;
 
     if (!USE_LINEAR_SSH) {
         if (mt_id != 0) {
@@ -995,20 +1010,19 @@ void mpispawn_checkin(char * l_port)
         exit(EXIT_FAILURE);
     }
 
-    mpirun_hostent = gethostbyname(getenv("MPISPAWN_MPIRUN_HOST"));
-    if (mpirun_hostent == NULL) {
-        mpirun_hostent = gethostbyname(getenv("MPISPAWN_MPIRUN_HOSTIP"));
-        if (mpirun_hostent == NULL) {
-            herror("gethostbyname");
+    err = getaddrinfo(getenv("MPISPAWN_MPIRUN_HOST"), 
+                      getenv("MPISPAWN_CHECKIN_PORT"), &addr_hint, &res);
+    if (err) {
+        err = getaddrinfo(getenv("MPISPAWN_MPIRUN_HOSTIP"), 
+                          getenv("MPISPAWN_CHECKIN_PORT"), &addr_hint, &res);
+        if (err) {
+            herror("getaddrinfo");
             exit(EXIT_FAILURE);
         }
     }
 
-    sockaddr.sin_family = AF_INET;
-    sockaddr.sin_addr = *(struct in_addr *) (*mpirun_hostent->h_addr_list);
-    sockaddr.sin_port = htons(env2int("MPISPAWN_CHECKIN_PORT"));
-
-    while (connect(mpirun_socket, (struct sockaddr *) &sockaddr, sizeof(sockaddr)) < 0) {
+    while (connect(mpirun_socket, res->ai_addr, 
+                    sizeof(struct sockaddr_in)) < 0) {
         if (++connect_attempt > max_connect_attempts) {
             perror("connect [mt_checkin]");
             exit(EXIT_FAILURE);

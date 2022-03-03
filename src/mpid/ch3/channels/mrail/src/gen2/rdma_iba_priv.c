@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -44,13 +44,16 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
-extern int mv2_my_sock_id;
+extern int mv2_my_numa_id;
 extern int g_atomics_support;
 
 extern int MPIDI_Get_num_nodes();
-extern int get_socket_bound_info(int *socket_bound, int *num_sockets, int *num_cores_socket, int *is_uniform);
+extern int get_numa_bound_info(int *numa_bound, int *num_numas, int *num_cores_numa, int *is_uniform);
 
 int mv2_ib_hca_socket_info[MAX_NUM_HCAS] = {-1};
+int mv2_ib_hca_numa_info[MAX_NUM_HCAS] = {-1};
+int mv2_selected_ib_hca_socket_info[MAX_NUM_HCAS] = {-1};
+int mv2_selected_ib_hca_numa_info[MAX_NUM_HCAS] = {-1};
 int mv2_num_ud_ah_created = 0;
 int mv2_num_usable_hcas = 0;
 
@@ -71,7 +74,8 @@ int mv2_get_verbs_ips_dev_names(int *num_interfaces, ip_address_enabled_devices_
 {
     int mpi_errno = MPI_SUCCESS;
     int i = 0, max_ips = 0, ret = 0;
-    char *ip = NULL, *dev_name = NULL;
+    char ip[INET_ADDRSTRLEN];
+    char *dev_name = NULL;
     struct ifaddrs *ifaddr = NULL, *ifa;
     struct rdma_cm_id *cm_id = NULL;
     struct rdma_event_channel *ch = NULL;
@@ -106,8 +110,8 @@ int mv2_get_verbs_ips_dev_names(int *num_interfaces, ip_address_enabled_devices_
 
             PRINT_DEBUG(DEBUG_RDMACM_verbose,"ip: %s\n", ip);
             sin = (struct sockaddr_in *) ifa->ifa_addr;
-            ip = inet_ntoa(sin->sin_addr);
-            
+            inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
+
             ret = rdma_ops.bind_addr(cm_id, ifa->ifa_addr);
             if (ret == 0 && cm_id->verbs != 0) {
                 dev_name = (char *) ibv_ops.get_device_name(cm_id->verbs->device);
@@ -125,7 +129,6 @@ int mv2_get_verbs_ips_dev_names(int *num_interfaces, ip_address_enabled_devices_
                 }
             }
 
-            skip:
             PRINT_DEBUG(DEBUG_RDMACM_verbose, "i: %d, interface: %s, device: %s, ip: %s, verbs: %d\n",
                                             i, ifa->ifa_name, dev_name, ip, !!cm_id->verbs);
 
@@ -355,6 +358,31 @@ static int check_attrs(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     }
 #endif /* #if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_) */
 
+    if (dev_attr->max_qp_rd_atom < rdma_default_max_rdma_dst_ops) {
+        if ((value = getenv("MV2_DEFAULT_MAX_RDMA_DST_OPS")) == NULL) {
+            rdma_default_max_rdma_dst_ops = dev_attr->max_qp_rd_atom;
+        } else {
+            fprintf(stderr,
+                    "MV2_DEFAULT_MAX_RDMA_DST_OPS is set to %d, but maximum the HCA supports is %d.\n"
+                    "Please reset MV2_DEFAULT_MAX_RDMA_DST_OPS to a value <= %d\n",
+                    rdma_default_max_rdma_dst_ops, dev_attr->max_qp_rd_atom, dev_attr->max_qp_rd_atom);
+            ret = 1;
+        }
+    } else {
+        if ((value = getenv("MV2_DEFAULT_MAX_RDMA_DST_OPS")) == NULL) {
+#ifdef _ENABLE_XRC_
+            /* XRC does not seem to support max_qp_rd_atom as reported by the
+             * HCA. So, if we are using XRC, then fall back to using the
+             * default value of 4.
+             */
+            if (!USE_XRC)
+#endif
+            {
+                rdma_default_max_rdma_dst_ops = dev_attr->max_qp_rd_atom;
+            }
+        }
+    }
+
     if (dev_attr->max_qp_rd_atom < rdma_default_qp_ous_rd_atom) {
         if ((value = getenv("MV2_DEFAULT_QP_OUS_RD_ATOM")) == NULL) {
             rdma_default_qp_ous_rd_atom = dev_attr->max_qp_rd_atom;
@@ -378,6 +406,19 @@ static int check_attrs(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                 rdma_default_qp_ous_rd_atom = dev_attr->max_qp_rd_atom;
             }
         }
+    }
+
+    if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity && 
+            rdma_default_max_rdma_dst_ops < rdma_default_qp_ous_rd_atom) {
+        /* on some heterogeneous configurations (different arch), we observed
+         * that lack of this check leads to IBV_WC_REM_INV_REQ_ERR for bw and
+         * bibw tests */
+
+        PRINT_DEBUG(DEBUG_INIT_verbose, "Warning: in heterogeneous systems, "
+                "max_rd_atomic should be less than max_dest_rd_atomic. "
+                "qp's max_dest_rd_atomic is now set to max_rd_atomic \n");
+
+       rdma_default_max_rdma_dst_ops = rdma_default_qp_ous_rd_atom; 
     }
 
     if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
@@ -529,8 +570,9 @@ int rdma_find_active_port(struct ibv_context *context,
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
                            struct ibv_device **usable_dev_list,
-                           struct ibv_device **usable_devs_on_my_sock,
-                           int *num_usable_hcas, int *num_usable_hcas_on_my_sock)
+                           struct ibv_device **usable_devs_on_my_numa,
+                           int *num_usable_hcas, int *num_usable_hcas_on_my_numa,
+                           uint8_t *all_link_type)
 {
     char *value = NULL;
     int i = 0, k = 0, p = 0;
@@ -540,38 +582,47 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
     int hca_type = 0;
     int hca_rate = 0;
     int num_hcas = 0;
-    int my_sock = mv2_my_sock_id;
+    int my_numa = mv2_my_numa_id;
     int user_selected = 0;
-    int num_hcas_on_my_sock = 0;
+    int num_hcas_on_my_numa = 0;
     int fastest_hca_type = MV2_HCA_UNKWN;
     int fastest_hca_rate = 0;
-    uint16_t fastest_hca_sm_lid = 0;
+    uint8_t *all_hca_link_type;
     uint16_t sm_lid = 0;
+    uint16_t max_hcas_in_sm_lid = 0;
+    uint16_t num_unique_sm_lids = 0;
     uint8_t link_type = IBV_LINK_LAYER_UNSPECIFIED;
     uint8_t fastest_hca_link_type = IBV_LINK_LAYER_UNSPECIFIED;
     int fastest_network_type = MV2_NETWORK_CLASS_UNKNOWN;
     int network_type = MV2_NETWORK_CLASS_UNKNOWN;
     int *all_hca_rate = MPIU_Malloc(sizeof(int)*num_devices);
-    uint8_t *all_hca_link_type = MPIU_Malloc(sizeof(uint8_t)*num_devices);
     uint16_t *all_hca_sm_lid = MPIU_Malloc(sizeof(uint16_t)*num_devices);
+    uint16_t *unique_hca_sm_lid = MPIU_Malloc(sizeof(uint16_t)*num_devices);
+    uint16_t *num_hcas_in_sm = MPIU_Malloc(sizeof(uint16_t)*num_devices);
     struct ibv_context **nic_context = MPIU_Malloc(sizeof(struct ibv_context*)*num_devices);
+
+    if (all_link_type == NULL) {
+        all_hca_link_type = MPIU_Malloc(sizeof(uint8_t) * num_devices);
+    } else {
+        all_hca_link_type = all_link_type;
+    }
 
     if ((value = getenv("MV2_ALLOW_HETEROGENEOUS_HCA_SELECTION")) != NULL) {
         mv2_allow_heterogeneous_hca_selection = !!atoi(value);
     }
 
-    if (my_sock == -1) {
+    if (my_numa == -1) {
         int is_uniform = 0;
-        int num_sockets = 0;
-        int num_cores_socket = 0;
-        get_socket_bound_info(&my_sock, &num_sockets, &num_cores_socket, &is_uniform);
-        if (my_sock == -1) {
-            /* get_socket_bound_info failed to query hwloc */
-            my_sock = 0;
+        int num_numas = 0;
+        int num_cores_numa = 0;
+        get_numa_bound_info(&my_numa, &num_numas, &num_cores_numa, &is_uniform);
+        if (my_numa == -1) {
+            /* get_numa_bound_info failed to query hwloc */
+            my_numa = 0;
             /* Disable process placement aware hca mapping if we are unable to
-             * determine our socket */
+             * determine our numa */
             if (mv2_process_placement_aware_hca_mapping) {
-                PRINT_ERROR("Unable to find the socket process is bound to."
+                PRINT_ERROR("Unable to find the numa process is bound to."
                             " Disabling process placement aware hca mapping.\n");
                 mv2_process_placement_aware_hca_mapping = 0;
             }
@@ -587,6 +638,27 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
             PRINT_ERROR("Failed to open the HCA context\n");
             return 0;
         }
+#if defined(_IBV_DEVICE_ATTR_EX_HAS_MAX_DM_SIZE_)
+        /* TODO: This is hack to avoid using the SAN HCAs on DGX2 A100 systems. */
+        if (num_devices == MV2_DGX2_A100_NUM_HCAS) {
+            int ret = 0;
+            struct verbs_context *vctx = NULL;
+            struct ibv_device_attr_ex dev_attr = {};
+
+            vctx = verbs_get_ctx_op(nic_context[i], query_device_ex);
+            if (vctx) {
+                ret = vctx->query_device_ex(nic_context[i], NULL, &dev_attr,
+                                            sizeof(struct ibv_device_attr_ex));
+                if (!ret) {
+                    if (dev_attr.max_dm_size == MV2_DGX2_A100_SAN_HCA_MAX_DM_SIZE) {
+                        PRINT_DEBUG(DEBUG_INIT_verbose,"Skipping HCA %s for SAN on DGX node at ALCF\n",
+                                    dev_list[i]->name);
+                        continue;
+                    }
+                }
+            }
+        }
+#endif /*defined(_IBV_DEVICE_ATTR_EX_HAS_MAX_DM_SIZE_)*/
         if (ERROR == rdma_find_active_port(nic_context[i], NULL, &hca_rate, &link_type, &sm_lid)) {
             /* No active port, skip HCA */
             ibv_ops.close_device(nic_context[i]);
@@ -603,6 +675,48 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
         all_hca_sm_lid[i] = sm_lid;
         /* Get type for HCA */
         hca_type = mv2_get_hca_type(dev_list[i]);
+        /* Find the number of unique subnets */
+        if (num_unique_sm_lids == 0) {
+            unique_hca_sm_lid[num_unique_sm_lids] = sm_lid;
+            num_hcas_in_sm[num_unique_sm_lids] = max_hcas_in_sm_lid = 1;
+            num_unique_sm_lids++;
+            PRINT_DEBUG(DEBUG_INIT_verbose,
+                        "Found HCA %s with unique SM LID %u: num_unique_sm_lids = %u, num_hcas_in_sm[%d] = %u\n",
+                        dev_list[i]->name, sm_lid, num_unique_sm_lids, num_unique_sm_lids-1,
+                        num_hcas_in_sm[num_unique_sm_lids-1]);
+        } else {
+            for (p = 0; p < num_unique_sm_lids; ++p) {
+                /* Find number of HCAs in subnet sm_lid */
+                if (unique_hca_sm_lid[p] == sm_lid) {
+                    num_hcas_in_sm[p]++;
+                    PRINT_DEBUG(DEBUG_INIT_verbose,
+                                "Found HCA %s with SM LID %u. Total HCAs in SM = %u\n",
+                                dev_list[i]->name, sm_lid, num_hcas_in_sm[p]);
+                    /* Update max_hcas_in_sm_lid */
+                    if (max_hcas_in_sm_lid < num_hcas_in_sm[p]) {
+                        max_hcas_in_sm_lid = num_hcas_in_sm[p];
+                        PRINT_DEBUG(DEBUG_INIT_verbose,
+                                    "Updating MAX HCAS: sm_lid '%u' has the max num of hcas, max_hcas_in_sm_lid = %u\n",
+                                    sm_lid, max_hcas_in_sm_lid);
+                    } else if (max_hcas_in_sm_lid == num_hcas_in_sm[p]) {
+                        PRINT_DEBUG(DEBUG_INIT_verbose,
+                                    "sm_lid '%u' has the max num of hcas, max_hcas_in_sm_lid = %u\n",
+                                    sm_lid, max_hcas_in_sm_lid);
+                    }
+                    break;
+                }
+            }
+            /* We found another unique SM LID */
+            if (p == num_unique_sm_lids) {
+                num_hcas_in_sm[num_unique_sm_lids] = 1;
+                unique_hca_sm_lid[num_unique_sm_lids] = sm_lid;
+                num_unique_sm_lids++;
+                PRINT_DEBUG(DEBUG_INIT_verbose,
+                        "Found HCA %s with unique SM LID %u: num_unique_sm_lids = %u, num_hcas_in_sm[%u] = %u\n",
+                        dev_list[i]->name, sm_lid, num_unique_sm_lids, num_unique_sm_lids-1,
+                        num_hcas_in_sm[num_unique_sm_lids-1]);
+            }
+        }
         /* HCA types have been defined in increasing order of speeds. If we have
          * a faster HCA OR if we have the same HCA type, and the current HCAs
          * link type is less than fastest_hca_link_type, use this a fastest HCA.
@@ -620,12 +734,9 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
             fastest_hca_rate = hca_rate;
             /* Get the link type for the fastest HCA */
             fastest_hca_link_type = link_type;
-            /* Get the SM Lid for the fastest HCA */
-            fastest_hca_sm_lid = sm_lid;
         }
-        PRINT_DEBUG(DEBUG_INIT_verbose>1, "HCA %s type = %s. Socket = %d\n",
-                    dev_list[i]->name, mv2_get_hca_name(hca_type),
-                    mv2_ib_hca_socket_info[i]);
+        PRINT_DEBUG(DEBUG_INIT_verbose>1, "HCA %s type = %s SM LID = %u.\n",
+                    dev_list[i]->name, mv2_get_hca_name(hca_type), sm_lid);
     }
     /* Count fastest HCA type */
     num_hcas++;
@@ -635,17 +746,17 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
         if (nic_context[i] == NULL) {
             continue;
         }
-        /* Skip HCA is rate is less than fastest rate and user has not allowed
+        /* Skip HCA if rate is less than fastest rate and user has not allowed
          * heterogeneous HCAs and user has not specified HCA. */
         if (((all_hca_rate[i] < fastest_hca_rate) ||
             (all_hca_link_type[i] != fastest_hca_link_type)) &&
             !mv2_allow_heterogeneous_hca_selection) {
             /* Check if the user specified to use this HCA */
             user_selected = 0;
-            /* User has selected some HCA */
             if (strncmp(rdma_iba_hcas[0], RDMA_IBA_NULL_HCA, 32)) {
                 for (p = 0; p < rdma_num_req_hcas; p++) {
                     if (!strncmp(rdma_iba_hcas[p], dev_list[i]->name, 32)) {
+                        /* User has selected this HCA */
                         user_selected = 1;
                         break;
                     }
@@ -666,13 +777,30 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
                 continue;
             }
         }
-        if (all_hca_sm_lid[i] != fastest_hca_sm_lid) {
-            PRINT_ERROR("Warning: Detected active HCAs in different subnets"
-                        " (%s in subnet %u and %s in subnet %u)."
-                        " This can cause hangs. Plese use MV2_IBA_HCA to"
-                        " select appropriate HCAs or force rail sharing.\n",
-                        dev_list[i]->name, all_hca_sm_lid[i],
-                        usable_dev_list[0]->name, fastest_hca_sm_lid);
+        for (k = 0; k < num_unique_sm_lids; ++k) {
+            if (unique_hca_sm_lid[k] == all_hca_sm_lid[i]) {
+                break;
+            }
+        }
+        if ((num_hcas_in_sm[k] < max_hcas_in_sm_lid) &&
+            !mv2_allow_heterogeneous_hca_selection) {
+            /* Check if the user specified to use this HCA */
+            user_selected = 0;
+            /* User has selected some HCA */
+            if (strncmp(rdma_iba_hcas[0], RDMA_IBA_NULL_HCA, 32)) {
+                for (p = 0; p < rdma_num_req_hcas; p++) {
+                    if (!strncmp(rdma_iba_hcas[p], dev_list[i]->name, 32)) {
+                        user_selected = 1;
+                        break;
+                    }
+                }
+            }
+            if (!user_selected) {
+                /* this HCA was neither user selected nor has an SM LID with the max HCAs */
+                PRINT_DEBUG(DEBUG_INIT_verbose>1, "Skipping HCA %s with SM LID (%d) since num_hcas_in_sm (%d) < max_hcas_in_sm_lid (%d)\n",
+                            dev_list[i]->name, all_hca_sm_lid[i], num_hcas_in_sm[k], max_hcas_in_sm_lid);
+                continue;
+            }
         }
         if (num_hcas > MAX_NUM_HCAS) {
             PRINT_ERROR("MVAPICH2 only has support for %d HCAs in this build."
@@ -683,14 +811,24 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
         hca_type = mv2_get_hca_type(dev_list[i]);
         /* Get the network type for the HCA */
         network_type = MV2_GET_NETWORK_TYPE(hca_type);
-        /* Find the socket HCA is connected to */
-        mv2_ib_hca_socket_info[i] = get_ib_socket(dev_list[i]);
-        /* Count the number of HCAs on my socket */
-        if ((dev_list[i] == usable_dev_list[0]) &&
-            (mv2_ib_hca_socket_info[i] == my_sock)) {
-            num_hcas_on_my_sock++;
-            usable_devs_on_my_sock[k] = dev_list[i];
-            k++;
+        /* Handle the fastest HCA separately */
+        if (dev_list[i] == usable_dev_list[0]) {
+            /* Find the socket fastest HCA is connected to */
+            mv2_ib_hca_socket_info[0] = get_ib_socket(dev_list[i]);
+            /* Find the NUMA fastest HCA is connected to */
+            mv2_ib_hca_numa_info[0] = get_ib_numa(dev_list[i]);
+            /* Count the number of HCAs on my socket */
+            if (mv2_ib_hca_numa_info[0] == my_numa) {
+                PRINT_DEBUG(DEBUG_INIT_verbose>1, "1. Adding HCA %s as HCA %d on my numa %d\n",
+                            dev_list[i]->name, num_hcas_on_my_numa, my_numa);
+                usable_devs_on_my_numa[num_hcas_on_my_numa] = dev_list[i];
+                num_hcas_on_my_numa++;
+            }
+        } else {
+            /* Find the socket HCA is connected to */
+            mv2_ib_hca_socket_info[j] = get_ib_socket(dev_list[i]);
+            /* Find the NUMA HCA is connected to */
+            mv2_ib_hca_numa_info[j] = get_ib_numa(dev_list[i]);
         }
         /* If network type is not fastest or if we have already stored the HCA
          * index in usable_dev_list[0] skip it */
@@ -709,14 +847,17 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
             rdma_rail_sharing_policy = USE_FIRST;
         }
         usable_dev_list[j] = dev_list[i];
-        /* Count the number of HCAs on my socket */
-        if (mv2_ib_hca_socket_info[i] == my_sock) {
-            num_hcas_on_my_sock++;
-            usable_devs_on_my_sock[k] = dev_list[i];
-            k++;
+        /* Count the number of HCAs on my numa */
+        if (mv2_ib_hca_numa_info[j] == my_numa) {
+            PRINT_DEBUG(DEBUG_INIT_verbose>1, "2. Adding HCA %s as HCA %d on my numa %d\n",
+                        dev_list[i]->name, num_hcas_on_my_numa, my_numa);
+            usable_devs_on_my_numa[num_hcas_on_my_numa] = dev_list[i];
+            num_hcas_on_my_numa++;
         }
-	    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Other usable HCA %d = %s. Type = %s\n",
-                    j, dev_list[i]->name, mv2_get_hca_name(hca_type));
+	    PRINT_DEBUG(DEBUG_INIT_verbose>1, "Other usable HCA %d = %s."
+                    " Type = %s. Socket = %d.\n",
+                    j, dev_list[i]->name, mv2_get_hca_name(hca_type),
+                    mv2_ib_hca_numa_info[j]);
         j++;
         num_hcas++;
         if ((MV2_IS_QLE_CARD(hca_type) || MV2_IS_INTEL_CARD(hca_type)) && !mv2_suppress_hca_warnings) {
@@ -730,18 +871,22 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
     }
 
     *num_usable_hcas = num_hcas;
-    *num_usable_hcas_on_my_sock = num_hcas_on_my_sock;
+    *num_usable_hcas_on_my_numa = num_hcas_on_my_numa;
     PRINT_DEBUG(DEBUG_INIT_verbose, "Fastest HCA (Network) type = %s (%s)."
-                " Usable HCAs of type %s = %d, Usable HCAs of type %s on socket %d = %d\n",
+                " Usable HCAs of type %s = %d, Usable HCAs of type %s on numa %d = %d\n",
                 mv2_get_hca_name(fastest_hca_type), mv2_get_network_name(fastest_network_type),
                 mv2_get_network_name(fastest_network_type), *num_usable_hcas,
-                mv2_get_network_name(fastest_network_type), my_sock,
-                *num_usable_hcas_on_my_sock);
+                mv2_get_network_name(fastest_network_type), my_numa,
+                *num_usable_hcas_on_my_numa);
 
     /* Free memory */
     MPIU_Free(all_hca_rate);
-    MPIU_Free(all_hca_link_type);
+    if (all_link_type == NULL) {
+        MPIU_Free(all_hca_link_type);
+    }
     MPIU_Free(all_hca_sm_lid);
+    MPIU_Free(unique_hca_sm_lid);
+    MPIU_Free(num_hcas_in_sm);
     MPIU_Free(nic_context);
 
     return network_type;
@@ -906,21 +1051,26 @@ int ring_rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
-    int i = 0, j = 0;
+    int i = 0, j = 0, k = 0, index = 0;
     char *value = NULL;
     int num_devices = 0;
     int num_usable_hcas = 0;
-    int num_usable_hcas_on_my_sock = 0;
+    int num_usable_hcas_on_my_numa = 0;
     int mpi_errno = MPI_SUCCESS;
     struct ibv_device *ib_dev = NULL;
     struct ibv_device **dev_list = NULL;
     struct ibv_device **usable_dev_list = NULL;
-    struct ibv_device **usable_devs_on_my_sock = NULL;
+    struct ibv_device **usable_devs_on_my_numa = NULL;
     int network_type = MV2_NETWORK_CLASS_UNKNOWN;
     int total_ips = 0, ip_index = 0;
+    uint8_t *all_hca_link_type = NULL;
 #ifdef CRC_CHECK
     gen_crc_table();
 #endif
+    int fd = -1;
+    char mv2_hca_board_id_path[MV2_MAX_HCA_BOARD_ID_PATH_LEN];
+    char read_buf[MV2_MAX_HCA_BOARD_ID_LEN];
+    ssize_t read_bytes = -1;
 
     /* If MV2_MRAIL_SHARING is selected, enable PROCESS PLACEMENT AWARE HCA
      * selection so that small message performance is not affected. Since
@@ -936,21 +1086,28 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     rdma_num_hcas = 0;
 
     dev_list = ibv_ops.get_device_list(&num_devices);
+    if (num_devices == 0) {
+        PRINT_ERROR("No HCAs found on the system.\n");
+        MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                  "**fail %s", "No IB device found");
+    }
 
     /* Allocate memory for devices */
     usable_dev_list = MPIU_Malloc(sizeof(struct ibv_device *)*num_devices);
-    usable_devs_on_my_sock = MPIU_Malloc(sizeof(struct ibv_device *)*num_devices);
+    all_hca_link_type = MPIU_Malloc(sizeof(uint8_t)*num_devices);
+    usable_devs_on_my_numa = MPIU_Malloc(sizeof(struct ibv_device *)*num_devices);
 
     network_type = rdma_find_network_type(dev_list, num_devices, usable_dev_list,
-                                          usable_devs_on_my_sock,
+                                          usable_devs_on_my_numa,
                                           &num_usable_hcas,
-                                          &num_usable_hcas_on_my_sock);
+                                          &num_usable_hcas_on_my_numa,
+                                          all_hca_link_type);
 
     if (network_type == MV2_NETWORK_CLASS_UNKNOWN) {
         if (num_usable_hcas) {
             PRINT_INFO((mv2_suppress_hca_warnings==0),
 			"Unknown HCA type: this build of MVAPICH2 does not"
-                        "fully support the HCA found on the system (try with"
+                        " fully support the HCA found on the system (try with"
                         " other build options)\n");
         } else {
             if ((MPIDI_Get_num_nodes() == 1) && MPIDI_CH3I_Process.has_dpm) {
@@ -998,24 +1155,42 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                 " multirail policy to MV2_MRAIL_SHARING since IB and RoCE"
                 " were detected on the system.\n");
         rdma_multirail_usage_policy = MV2_MRAIL_SHARING;
+    } else if (mv2_system_has_ib && mv2_system_has_roce && !use_iboeth) {
+        /* If system has IB and RoCE, prevent the code from using the RoCE side
+         * of the code. This can lead to hangs in heterogeneous systems where
+         * some nodes have RoCE and some others do not. */
+        mv2_system_has_roce = 0;
     }
 
     for (i = 0; i < num_usable_hcas; i++) {
         if (rdma_multirail_usage_policy == MV2_MRAIL_BINDING) {
             /* Bind a process to a HCA */
             if (mrail_use_default_mapping) {
-                if (num_usable_hcas_on_my_sock && mv2_process_placement_aware_hca_mapping) {
-                    ib_dev = usable_devs_on_my_sock[rdma_local_id % num_usable_hcas_on_my_sock];
+                if (num_usable_hcas_on_my_numa && mv2_process_placement_aware_hca_mapping) {
+                    ib_dev = usable_devs_on_my_numa[rdma_local_id % num_usable_hcas_on_my_numa];
+                    /* Find the correct index in usable_dev_list to be used
+                     * later to find out the correct NUMA and Socket info */
+                    for (k = 0; k < num_usable_hcas; ++k) {
+                        if (ib_dev == usable_dev_list[k]) {
+                            index = k;
+                            break;
+                        }
+                    }
                 } else {
-                    mrail_user_defined_p2r_mapping =
+                    index = mrail_user_defined_p2r_mapping =
                         rdma_local_id % num_usable_hcas;
                     ib_dev = usable_dev_list[mrail_user_defined_p2r_mapping];
                 }
+            } else {
+                index = mrail_user_defined_p2r_mapping;
+                ib_dev = usable_dev_list[mrail_user_defined_p2r_mapping];
+                PRINT_DEBUG(DEBUG_INIT_verbose,"Using HCA %s specified by user\n", ib_dev->name);
             }
         } else if (!strncmp(rdma_iba_hcas[i], RDMA_IBA_NULL_HCA, 32)) {
             /* User hasn't specified any HCA name
              * We will use the first available HCA(s) */
             ib_dev = usable_dev_list[i];
+            index = i;
         } else {
             /* User specified HCA(s), try to look for it */
             ib_dev = NULL;
@@ -1024,6 +1199,7 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                 if (!strncmp(ibv_ops.get_device_name(usable_dev_list[j]),
                              rdma_iba_hcas[rdma_num_hcas], 32)) {
                     ib_dev = usable_dev_list[j];
+                    index = j;
                     break;
                 }
                 j++;
@@ -1034,8 +1210,15 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                 MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                         "**fail %s", "Requested IB device not found");
             }
+            if (all_hca_link_type[index] == IBV_LINK_LAYER_ETHERNET) {
+                mv2_system_has_ib = 0;
+                mv2_system_has_roce = 1;
+            } else if (all_hca_link_type[index] == IBV_LINK_LAYER_INFINIBAND) {
+                mv2_system_has_ib = 1;
+                mv2_system_has_roce = 0;
+            }
         }
-        PRINT_DEBUG(DEBUG_INIT_verbose,"Selecting HCA %s on my socket\n", ib_dev->name);
+        PRINT_DEBUG(DEBUG_INIT_verbose,"Selecting HCA %s on my numa\n", ib_dev->name);
 
         if (!ib_dev) {
             /* Clean up before exit */
@@ -1095,8 +1278,15 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                                       strerror(errno));
         }
 
-        PRINT_DEBUG(DEBUG_INIT_verbose,"HCA %d/%d = %s\n", rdma_num_hcas+1,
-                    rdma_num_req_hcas, proc->ib_dev[rdma_num_hcas]->name);
+        /* Store the socket and NUMA info of selected HCAs */
+        mv2_selected_ib_hca_numa_info[rdma_num_hcas] = mv2_ib_hca_numa_info[index];
+        mv2_selected_ib_hca_socket_info[rdma_num_hcas] = mv2_ib_hca_socket_info[index];
+
+        PRINT_DEBUG(DEBUG_INIT_verbose, "HCA %d/%d = %s. NUMA = %d, Socket = %d\n",
+                    rdma_num_hcas+1, rdma_num_req_hcas,
+                    proc->ib_dev[rdma_num_hcas]->name,
+                    mv2_selected_ib_hca_numa_info[rdma_num_hcas],
+                    mv2_selected_ib_hca_socket_info[rdma_num_hcas]);
         
 #if defined(_MCST_SUPPORT_) && defined(RDMA_CM)
         if (rdma_use_rdma_cm_mcast == 1 &&
@@ -1117,16 +1307,16 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #endif /*defined(_MCST_SUPPORT_) && defined(RDMA_CM)*/
         /* Find the offset in the array of the closest HCA */
         if (mv2_process_placement_aware_hca_mapping) {
-            for (j = 0; j < num_usable_hcas_on_my_sock; ++j) {
-                if ((num_usable_hcas_on_my_sock > 1) &&
-                    (j != (rdma_local_id%num_usable_hcas_on_my_sock))) {
-                    /* If we have more than one HCA on our socket, load balance
+            for (j = 0; j < num_usable_hcas_on_my_numa; ++j) {
+                if ((num_usable_hcas_on_my_numa > 1) &&
+                    (j != (rdma_local_id%num_usable_hcas_on_my_numa))) {
+                    /* If we have more than one HCA on our numa, load balance
                      * their use between different processes */
                     PRINT_DEBUG(DEBUG_INIT_verbose,"Skipping closest HCA %s at index %d\n",
                                 proc->ib_dev[mv2_closest_hca_offset]->name, mv2_closest_hca_offset);
                     continue;
                 }
-                if (!strcmp(proc->ib_dev[rdma_num_hcas]->name, usable_devs_on_my_sock[j]->name)) {
+                if (!strcmp(proc->ib_dev[rdma_num_hcas]->name, usable_devs_on_my_numa[j]->name)) {
                     mv2_closest_hca_offset = rdma_num_hcas;
                     PRINT_DEBUG(DEBUG_INIT_verbose,"Index of closest HCA (%s) = %d\n",
                                 proc->ib_dev[mv2_closest_hca_offset]->name, mv2_closest_hca_offset);
@@ -1142,6 +1332,26 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         }
     }
     
+    /* Temporary logic to detect if a Rockport network board is selected. For
+     * now, we only consider the case where one HCA is used and use 4 QPs per
+     * port for RC connections */
+    if (rdma_num_hcas == 1) {
+        sprintf(mv2_hca_board_id_path, MV2_HCA_BOARD_ID_PATH, proc->ib_dev[0]->name);
+        fd = open(mv2_hca_board_id_path, O_RDONLY);
+        if (fd >= 0) {
+            read_bytes = read(fd, read_buf, sizeof(read_buf) - 1);
+            if (read_bytes < sizeof(read_buf) - 1) {
+                read_buf[read_bytes] = '\0';
+            }
+            if (!strncmp(read_buf, MV2_ROCKPORT_FW_BOARD_ID,
+                    strlen(MV2_ROCKPORT_FW_BOARD_ID))) {
+                mv2_system_has_rockport = 1;
+                rdma_num_qp_per_port = MV2_ROCKPORT_NUM_QP_PER_PORT;
+            }
+            close(fd);
+        }
+    }
+
     if (unlikely(rdma_num_hcas == 0)) {
 #if defined(_MCST_SUPPORT_) && defined(RDMA_CM)
         if (rdma_use_rdma_cm_mcast == 1 && rdma_local_id == 0) {
@@ -1159,7 +1369,8 @@ int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
   fn_exit:
     /* Clean up before exit */
     MPIU_Free(usable_dev_list);
-    MPIU_Free(usable_devs_on_my_sock);
+    MPIU_Free(all_hca_link_type);
+    MPIU_Free(usable_devs_on_my_numa);
     if (dev_list) {
         ibv_ops.free_device_list(dev_list);
     }
@@ -1185,24 +1396,70 @@ static inline int ipv6_addr_v4mapped(const struct in6_addr *a)
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int rdma_find_best_gid_index(struct ibv_context *ctx, struct ibv_port_attr *attr, int port)
 {
-    int gid_index = 0, i;
+    int gid_index = RDMA_DEFAULT_GID_INDEX, i = 0;
     union ibv_gid temp_gid, temp_gid_rival;
     int is_ipv4, is_ipv4_rival;
+    int fd;
+    char gid_path[MV2_MAX_GID_PATH_LEN];
 
-    for (i = 1; i < attr->gid_tbl_len; i++) {
-        if (ibv_ops.query_gid(ctx, port, gid_index, &temp_gid)) {
-            return RDMA_DEFAULT_GID_INDEX;
+    /* If the link layer is ethernet (RoCEv1/RoCEv2), attempt
+     * to find the gid index of the first valid interfaces 
+     * supporting RoCEv1 and RoCEv2 from the gid table */
+    if (attr->link_layer == IBV_LINK_LAYER_ETHERNET) {
+        int first_rocev1_index = -1;
+        int first_rocev2_index = -1;
+        while (i < attr->gid_tbl_len && 
+               (first_rocev1_index == -1 || first_rocev2_index == -1)) {
+            int ret = ibv_ops.query_gid(ctx, port, i, &temp_gid);
+            if (ret == MPI_SUCCESS) {
+                sprintf(gid_path, GID_ATTR_PATH, ctx->device->name, port, i);
+                is_ipv4 = ipv6_addr_v4mapped((struct in6_addr *)temp_gid.raw);
+                if (is_ipv4) {
+                    fd = open(gid_path, O_RDONLY);
+                    if (fd >= 0) {
+                        char buf[16];
+                        int buf_size = sizeof(buf);
+                        ssize_t read_bytes = -1;
+                        read_bytes = read(fd, buf, buf_size - 1);
+                        if (read_bytes < buf_size - 1) {
+                            buf[read_bytes] = '\0';
+                        }
+                        if (!strncmp(buf, "IB/RoCE v1", 10)) {
+                            first_rocev1_index = i;
+                        } else if (!strncmp(buf, "RoCE v2", 7)) {
+                            first_rocev2_index = i;
+                        }
+                        close(fd);
+                    }
+                }
+            }
+            i++;
         }
-
-        if (ibv_ops.query_gid(ctx, port, i, &temp_gid_rival)) {
-            return RDMA_DEFAULT_GID_INDEX;
+        /* Set gid_index based on the value of mv2_use_roce_mode. If an
+         * interface with the RoCE version specified isn't available, we fall
+         * back to the latest available version. If neither is available, upper
+         * level functions error out and the process/job aborts. */
+        if (mv2_use_roce_mode == MV2_ROCE_MODE_V1) {
+            gid_index = (first_rocev1_index == -1) ? first_rocev2_index : first_rocev1_index;
+        } else if (mv2_use_roce_mode == MV2_ROCE_MODE_V2) {
+            gid_index = (first_rocev2_index == -1) ? first_rocev1_index : first_rocev2_index;
         }
+    } else {
+        for (i = 1; i < attr->gid_tbl_len; i++) {
+            if (ibv_ops.query_gid(ctx, port, gid_index, &temp_gid)) {
+                return RDMA_DEFAULT_GID_INDEX;
+            }
 
-        is_ipv4 = ipv6_addr_v4mapped((struct in6_addr *)temp_gid.raw);
-        is_ipv4_rival = ipv6_addr_v4mapped((struct in6_addr *)temp_gid_rival.raw);
+            if (ibv_ops.query_gid(ctx, port, i, &temp_gid_rival)) {
+                return RDMA_DEFAULT_GID_INDEX;
+            }
 
-        if (is_ipv4_rival && !is_ipv4) {
-            gid_index = i;
+            is_ipv4 = ipv6_addr_v4mapped((struct in6_addr *)temp_gid.raw);
+            is_ipv4_rival = ipv6_addr_v4mapped((struct in6_addr *)temp_gid_rival.raw);
+
+            if (is_ipv4_rival && !is_ipv4) {
+                gid_index = i;
+            }
         }
     }
 
@@ -1747,6 +2004,7 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                                           "**fail", "%s%d",
                                           "Failed to create qp for rank ", i);
             }
+            rdma_max_inline_size = attr.cap.max_inline_data;
 
             vc->mrail.rails[rail_index].nic_context =
                 proc->nic_context[hca_index];
@@ -2072,11 +2330,10 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                 qp_attr.ah_attr.grh.dgid = info->gid[i][rail_index];
                 qp_attr.ah_attr.is_global = 1;
                 qp_attr.ah_attr.dlid = 0;
-                qp_attr.path_mtu = IBV_MTU_1024;
             } else {
                 qp_attr.ah_attr.is_global = 0;
-                qp_attr.path_mtu = rdma_default_mtu;
             }
+            qp_attr.path_mtu = rdma_default_mtu;
             qp_attr.dest_qp_num = info->qp_num_rdma[i][rail_index];
             qp_attr.ah_attr.port_num = vc->mrail.rails[rail_index].port;
             qp_attr.ah_attr.dlid = info->lid[i][rail_index];
@@ -2087,12 +2344,14 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
             /* Both source and destination should have the same value of the
              * bits */
 
+#ifdef _ENABLE_HSAM_
             if (mv2_MPIDI_CH3I_RDMA_Process.has_hsam) {
                 qp_attr.ah_attr.src_path_bits = rail_index %
                     power_two(mv2_MPIDI_CH3I_RDMA_Process.lmc);
                 qp_attr.ah_attr.dlid = info->lid[i][rail_index]
                     + rail_index % power_two(mv2_MPIDI_CH3I_RDMA_Process.lmc);
             }
+#endif /*_ENABLE_HSAM_*/
             qp_attr_mask |= IBV_QP_DEST_QPN;
 
             if (!(use_iboeth || vc->mrail.rails[rail_index].is_roce)
@@ -2517,7 +2776,7 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
         } else {
             vc->mrail.rails[rail_index].is_roce = 0;
         }
-        MPIU_Memset(&attr, 0, sizeof attr);
+        MPIU_Memset(&attr, 0, sizeof(attr));
         attr.cap.max_send_wr = rdma_default_max_send_wqe;
 #ifdef _ENABLE_XRC_
         if (USE_XRC && qptype == MV2_QPT_XRC) {
@@ -2548,8 +2807,11 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
             ibv_ops.create_qp(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_index], &attr);
 
         if (!vc->mrail.rails[rail_index].qp_hndl) {
-            ibv_va_error_abort(GEN_EXIT_ERR, "Failed to create QP. Error: %d (%s)\n", errno, strerror(errno));
+            ibv_va_error_abort(GEN_EXIT_ERR, "Failed to create QP. "
+                                "Error: %d (%s)\n", errno, strerror(errno));
         }
+        rdma_max_inline_size = attr.cap.max_inline_data;
+
         vc->mrail.rails[rail_index].nic_context =
             mv2_MPIDI_CH3I_RDMA_Process.nic_context[hca_index];
         vc->mrail.rails[rail_index].hca_index = hca_index;
@@ -2751,12 +3013,11 @@ int cm_qp_move_to_rtr(MPIDI_VC_t * vc, uint16_t * lids, union ibv_gid *gids,
             qp_attr.ah_attr.grh.hop_limit = 1;
             qp_attr.ah_attr.grh.traffic_class = 0;
             qp_attr.ah_attr.is_global = 1;
-            qp_attr.path_mtu = IBV_MTU_1024;
             qp_attr.ah_attr.grh.dgid = gids[rail_index];
         } else {
             qp_attr.ah_attr.is_global = 0;
-            qp_attr.path_mtu = rdma_default_mtu;
         }
+        qp_attr.path_mtu = rdma_default_mtu;
         qp_attr.ah_attr.dlid = lids[rail_index];
 
 #ifdef _ENABLE_XRC_
@@ -2773,13 +3034,14 @@ int cm_qp_move_to_rtr(MPIDI_VC_t * vc, uint16_t * lids, union ibv_gid *gids,
                         rail_index[qpns], lids[rail_index]);
         }
 
+#ifdef _ENABLE_HSAM_
         if (mv2_MPIDI_CH3I_RDMA_Process.has_hsam) {
             qp_attr.ah_attr.src_path_bits = rdma_default_src_path_bits
                 + rail_index % power_two(mv2_MPIDI_CH3I_RDMA_Process.lmc);
             qp_attr.ah_attr.dlid = lids[rail_index] + rail_index %
                 power_two(mv2_MPIDI_CH3I_RDMA_Process.lmc);
         }
-
+#endif /*_ENABLE_HSAM_*/
         qp_attr_mask |= IBV_QP_STATE;
         qp_attr_mask |= IBV_QP_PATH_MTU;
         qp_attr_mask |= IBV_QP_RQ_PSN;
@@ -2966,7 +3228,6 @@ int rdma_init_ud(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     int hca_index;
     mv2_ud_ctx_t *ud_ctx;
     mv2_ud_qp_info_t qp_info;
-    char *val;
 
     for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
         qp_info.send_cq = qp_info.recv_cq = proc->cq_hndl[hca_index];
@@ -3084,7 +3345,6 @@ int MPIDI_CH3I_UD_Generate_addr_handle_for_rank(MPIDI_PG_t * pg, int tgt_rank)
     int idx         = 0;
     int offset      = 0;
     int hca_index   = 0;
-    int rail_index  = 0;
     int found_index = 0;
     union ibv_gid null_gid;
     MPIDI_VC_t *vc  = NULL;
@@ -3102,8 +3362,6 @@ int MPIDI_CH3I_UD_Generate_addr_handle_for_rank(MPIDI_PG_t * pg, int tgt_rank)
     vc->mrail.ud = MPIU_Malloc(sizeof(mv2_ud_vc_info_t) * rdma_num_hcas);
 
     for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-        rail_index = hca_index * rdma_num_ports * rdma_num_qp_per_port;
-
         /* Initialize found_index */
         found_index = -1;
         /* In multi-rail scenarios when processes use rail-binding, different

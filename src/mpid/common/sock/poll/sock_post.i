@@ -205,12 +205,12 @@ int MPIDU_Sock_post_connect_ifaddr( struct MPIDU_Sock_set * sock_set,
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDU_Sock_post_connect(struct MPIDU_Sock_set * sock_set, void * user_ptr, 
-			    char * host_description, int port,
-			    struct MPIDU_Sock ** sockp)
+                char * host_description, int port,
+                struct MPIDU_Sock ** sockp)
 {
     int mpi_errno = MPI_SUCCESS;
     MPIDU_Sock_ifaddr_t ifaddr;
-    struct hostent * hostent;
+    struct addrinfo * info = NULL;
 
     /*
      * Convert hostname to IP address
@@ -220,23 +220,24 @@ int MPIDU_Sock_post_connect(struct MPIDU_Sock_set * sock_set, void * user_ptr,
      * specific interface if one is specified by the user.
      */
     /* FIXME: strtok may change the contents of host_description.  Shouldn't
-       the host description be a const char [] and not modified by this 
+       the host description be a const char [] and not modified by this
        routine? */
     strtok(host_description, " ");
-    /* FIXME: For ipv6, we should use getaddrinfo */
-    hostent = gethostbyname(host_description);
+    mpi_errno = getaddrinfo(host_description, NULL, NULL, &info);
     /* --BEGIN ERROR HANDLING-- */
-    if (hostent == NULL || hostent->h_addrtype != AF_INET) {
-	/* FIXME: Set error */
+    if (mpi_errno != 0 || info->ai_family != AF_INET) {
+	/* FIXME: Set error if not IPv4 */
 	goto fn_exit;
     }
     /* --END ERROR HANDLING-- */
     /* These are correct for IPv4 */
-    memcpy( ifaddr.ifaddr, (unsigned char *)hostent->h_addr_list[0], 4 );
-    ifaddr.len  = 4;
-    ifaddr.type = AF_INET;
-    mpi_errno = MPIDU_Sock_post_connect_ifaddr( sock_set, user_ptr, 
-						&ifaddr, port, sockp );
+    struct sockaddr_in* ai_addr = (struct sockaddr_in*)info->ai_addr;
+    ifaddr.len  = sizeof(ai_addr->sin_addr);
+    ifaddr.type = info->ai_family;
+    memcpy(ifaddr.ifaddr, &ai_addr->sin_addr, ifaddr.len);
+    freeaddrinfo(info);
+    mpi_errno = MPIDU_Sock_post_connect_ifaddr( sock_set, user_ptr,
+                        &ifaddr, port, sockp );
  fn_exit:
     return mpi_errno;
 }

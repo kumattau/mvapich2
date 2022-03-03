@@ -3,7 +3,7 @@
  *  (C) 2007 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1653,7 +1653,7 @@ fn_fail:
 /* sockaddr_un (Unix) */
 #include <sys/un.h>
 
-/* defs of gethostbyname */
+/* defs of getaddrinfo */
 #include <netdb.h>
 
 /* fcntl, F_GET/SETFL */
@@ -1668,27 +1668,31 @@ fn_fail:
    specified fd inherited from a parent process */
 static int PMII_Connect_to_pm( char *hostname, int portnum )
 {
-    struct hostent     *hp;
-    struct sockaddr_in sa;
+    struct addrinfo    *res;
+    int                err;
     int                fd;
     int                optval = 1;
     int                q_wait = 1;
 
-    hp = gethostbyname( hostname );
-    if (!hp) {
-	PMI2U_printf( 1, "Unable to get host entry for %s\n", hostname );
-	return -1;
+    /* getaddrinfo hints struct */
+    struct addrinfo addr_hint = {
+        .ai_flags = AI_CANONNAME,
+        .ai_family = AF_INET,
+        .ai_socktype = 0,
+        .ai_protocol = 0,
+        .ai_addrlen = 0,
+        .ai_addr = NULL,
+        .ai_canonname = NULL,
+        .ai_next = NULL
+    };
+    err = getaddrinfo(hostname, NULL, &addr_hint, &res);
+    if (err) {
+        PMI2U_printf( 1, "Unable to get host entry for %s\n", hostname );
+        return -1;
     }
 
-    memset( (void *)&sa, 0, sizeof(sa) );
-    /* POSIX might define h_addr_list only and node define h_addr */
-#ifdef HAVE_H_ADDR_LIST
-    PMI2U_Memcpy( (void *)&sa.sin_addr, (void *)hp->h_addr_list[0], hp->h_length);
-#else
-    PMI2U_Memcpy( (void *)&sa.sin_addr, (void *)hp->h_addr, hp->h_length);
-#endif
-    sa.sin_family = hp->h_addrtype;
-    sa.sin_port   = htons( (unsigned short) portnum );
+    /* manually assign port */
+    ((struct sockaddr_in *)res->ai_addr)->sin_port = htons((unsigned short)portnum);
 
     fd = socket( AF_INET, SOCK_STREAM, TCP );
     if (fd < 0) {
@@ -1697,12 +1701,12 @@ static int PMII_Connect_to_pm( char *hostname, int portnum )
     }
 
     if (setsockopt( fd, IPPROTO_TCP, TCP_NODELAY,
-		    (char *)&optval, sizeof(optval) )) {
-	perror( "Error calling setsockopt:" );
+                    (char *)&optval, sizeof(optval) )) {
+        perror( "Error calling setsockopt:" );
     }
 
     /* We wait here for the connection to succeed */
-    if (connect( fd, (struct sockaddr *)&sa, sizeof(sa) ) < 0) {
+    if (connect( fd, res->ai_addr, sizeof(struct sockaddr_in) ) < 0) {
 	switch (errno) {
 	case ECONNREFUSED:
 	    PMI2U_printf( 1, "connect failed with connection refused\n" );

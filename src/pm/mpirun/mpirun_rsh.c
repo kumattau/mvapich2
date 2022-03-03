@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -2312,7 +2312,6 @@ void spawn_srun_fast(int argc, char *argv[], char *totalview_cmd, char *env)
                 }
             }
     
-            int local_hostname = 0;
             int num_gpus = 0;
             nargv[arg_offset++] = SRUN_CMD;
             nargv[arg_offset++] = "--nodelist";

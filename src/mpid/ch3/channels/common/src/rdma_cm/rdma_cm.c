@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -56,7 +56,7 @@ struct ibv_mr *init_mr;
 struct ibv_sge init_send_sge;
 struct ibv_recv_wr init_rwr;
 struct ibv_send_wr init_swr;
-struct rdma_cm_id *tmpcmid;    
+struct rdma_cm_id *tmpcmid;
 sem_t rdma_cm_addr;
 
 /* Handle the connection events */
@@ -157,7 +157,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                 PRINT_DEBUG(DEBUG_RDMACM_verbose,"Switched into server mode for %d\n", rank);
                 break;
             }
-    
+
             if (rank < 0 || rail_index < 0) {
                 PRINT_DEBUG(DEBUG_RDMACM_verbose,"Unexpected error occurred\n");
             }
@@ -206,7 +206,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             if (!conn_param.private_data) {
                 MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
             }
-    
+
             do {
                 offset = private_data_start_offset;
                 conn_param.private_data_len = tmplen;
@@ -263,7 +263,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             }
             rank       = ((uint64_t *) event->param.conn.private_data)[offset++];
             rail_index = ((uint64_t *) event->param.conn.private_data)[offset++];
-            gotvc      = (MPIDI_VC_t *) ((uint64_t *) 
+            gotvc      = (MPIDI_VC_t *) ((uint64_t *)
                 event->param.conn.private_data)[offset];
 #else  /* OFED 1.1 */
             if (!event->private_data_len){
@@ -275,9 +275,9 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             gotvc      = (MPIDI_VC_t*) ((uint64_t *) event->private_data)[offset];
 #endif
 
-            PRINT_DEBUG(DEBUG_RDMACM_verbose,"Passive side received connect request: [%d] :[%d]" 
+            PRINT_DEBUG(DEBUG_RDMACM_verbose,"Passive side received connect request: [%d] :[%d]"
             " [vc: %p], vc->pg_rank = %d\n", rank, rail_index, gotvc, gotvc->pg_rank);
-    
+
             MPIDI_PG_Find(MPIDI_Process.my_pg->id, &pg_tmp);
             if(pg_tmp == NULL) {
                 MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -289,8 +289,8 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             vc->mrail.remote_vc_addr = (uint64_t) gotvc;
 
             /* Both ranks are trying to connect. Clearing race condition */
-            if (((vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_CLI) && (pg_rank > rank)) 
-                || vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE 
+            if (((vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_CLI) && (pg_rank > rank))
+                || vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
                 || vc->ch.state == MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING )
             {
                 PRINT_DEBUG(DEBUG_RDMACM_verbose,"Passive size rejecting connect request: "
@@ -302,10 +302,10 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                 }
                 break;
             }
-    
+
             /* Accepting the connection */
             rdma_cm_accept_count[rank]++;
-    
+
             if (proc->use_iwarp_mode)
                 vc->ch.state = MPIDI_CH3I_VC_STATE_IWARP_SRV_WAITING;
             else
@@ -315,7 +315,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             vc->state = MPIDI_VC_STATE_LOCAL_ACTIVE;
 
             vc->mrail.rails[rail_index].cm_ids = cma_id;
-        
+
             /* Create qp */
             rdma_cm_create_qp(vc, rail_index);
 
@@ -372,12 +372,12 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             }
 
 #ifndef OFED_VERSION_1_1        /* OFED 1.2 */
-            if (event->param.conn.private_data_len) 
+            if (event->param.conn.private_data_len)
                 vc->mrail.remote_vc_addr = ((uint64_t *)
                     event->param.conn.private_data)[private_data_start_offset];
 #else  /* OFED 1.1 */
-            if (event->private_data_len) 
-                vc->mrail.remote_vc_addr = ((uint64_t *) 
+            if (event->private_data_len)
+                vc->mrail.remote_vc_addr = ((uint64_t *)
                     event->private_data)[private_data_start_offset];
 #endif
 
@@ -413,7 +413,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                          vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                          vc->state = MPIDI_VC_STATE_ACTIVE;
                          MPIDI_CH3I_Process.new_conn_complete = 1;
-                         PRINT_DEBUG(DEBUG_RDMACM_verbose,"Connection Complete - Client: %d->%d\n", 
+                         PRINT_DEBUG(DEBUG_RDMACM_verbose,"Connection Complete - Client: %d->%d\n",
                              pg_rank, rank);
                          if (mv2_use_eager_fast_send &&
                              !(SMP_INIT && (vc->smp.local_nodes >= 0))) {
@@ -423,12 +423,12 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                  }
                  else {         /* Server side */
                      if (!proc->use_iwarp_mode ||
-                         (rdma_cm_iwarp_msg_count[vc->pg_rank] 
+                         (rdma_cm_iwarp_msg_count[vc->pg_rank]
                          >= rdma_num_rails)) {
 
-                         if ((vc->ch.state == 
+                         if ((vc->ch.state ==
                              MPIDI_CH3I_VC_STATE_IWARP_SRV_WAITING)
-                             || (vc->ch.state == 
+                             || (vc->ch.state ==
                              MPIDI_CH3I_VC_STATE_CONNECTING_SRV)) {
 
                              vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
@@ -460,14 +460,14 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
               */
              if (rdma_cm_connected_count && rdma_cm_num_expected_connections &&
                  (rdma_cm_connected_count == rdma_cm_num_expected_connections)) {
-                 sem_post(&proc->rdma_cm);        
+                 sem_post(&proc->rdma_cm);
              }
 
         break;
 
         case RDMA_CM_EVENT_ADDR_ERROR:
             MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "RDMA CM Address error: rdma cma event %d, error %d\n", 
+                "RDMA CM Address error: rdma cma event %d, error %d\n",
                     event->event, event->status);
         break;
         case RDMA_CM_EVENT_ROUTE_ERROR:
@@ -479,7 +479,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
         break;
         case RDMA_CM_EVENT_CONNECT_ERROR:
             MPIR_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "RDMA CM Connect error: rdma cma event %d, error %d\n", 
+                "RDMA CM Connect error: rdma cma event %d, error %d\n",
                     event->event, event->status);
         break;
         case RDMA_CM_EVENT_UNREACHABLE:
@@ -493,7 +493,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
          * ops.
          */
         case RDMA_CM_EVENT_REJECTED:
-        PRINT_DEBUG(DEBUG_RDMACM_verbose,"RDMA CM Reject Event %d, error %d\n", event->event, 
+        PRINT_DEBUG(DEBUG_RDMACM_verbose,"RDMA CM Reject Event %d, error %d\n", event->event,
             event->status);
         break;
 
@@ -502,7 +502,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
 
         case RDMA_CM_EVENT_TIMEWAIT_EXIT:
         PRINT_DEBUG(DEBUG_RDMACM_verbose,"caught RDMA_CM_EVENT_TIMEWAIT_EXIT \n");
-        break;  
+        break;
 
         case RDMA_CM_EVENT_DEVICE_REMOVAL:
 #endif
@@ -524,7 +524,7 @@ fn_fail:
 void *cm_thread(void *arg)
 {
     struct rdma_cm_event *event = NULL;
-    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;    
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
     int mpi_errno;
 
     while (1) {
@@ -544,7 +544,7 @@ void *cm_thread(void *arg)
 
         PRINT_DEBUG(DEBUG_RDMACM_verbose,"rdma cm event[id: %p]: %d\n", event->id, event->event);
         {
-         
+
             MPICM_lock();
             mpi_errno = ib_cma_event_handler(event->id, event);
             MPICM_unlock();
@@ -572,7 +572,7 @@ static int get_base_listen_port(int pg_rank, int* port)
     {
         maxPort = atoi(cMaxPort);
 
-        if (maxPort > MV2_RDMA_CM_MAX_PORT_LIMIT || 
+        if (maxPort > MV2_RDMA_CM_MAX_PORT_LIMIT ||
             maxPort < MV2_RDMA_CM_MIN_PORT_LIMIT)
         {
             MPIR_ERR_SETANDJUMP3(
@@ -594,7 +594,7 @@ static int get_base_listen_port(int pg_rank, int* port)
     {
         minPort = atoi(cMinPort);
 
-        if (minPort > MV2_RDMA_CM_MAX_PORT_LIMIT || 
+        if (minPort > MV2_RDMA_CM_MAX_PORT_LIMIT ||
             minPort < MV2_RDMA_CM_MIN_PORT_LIMIT)
         {
             MPIR_ERR_SETANDJUMP3(
@@ -638,7 +638,7 @@ static int get_base_listen_port(int pg_rank, int* port)
             srand(seed.tv_usec);    /* Random seed for the port */
             rdma_cm_default_port = (rand() % (maxPort - minPort + 1)) + minPort;
         }
-        else if (rdma_cm_default_port > maxPort || 
+        else if (rdma_cm_default_port > maxPort ||
             rdma_cm_default_port <= minPort)
         {
             MPIR_ERR_SETANDJUMP1(
@@ -859,7 +859,7 @@ int ib_init_rdma_cm(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     }
 
     /* Create the listen cm_id */
-    ret = rdma_ops.create_id(proc->cm_channel, 
+    ret = rdma_ops.create_id(proc->cm_channel,
         &proc->cm_listen_id, proc, RDMA_PS_TCP);
     if (ret) {
         MPIR_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER,
@@ -924,14 +924,14 @@ int rdma_cm_connect_all(int pg_rank, MPIDI_PG_t *pg)
                 for (j = 0; j < rdma_num_hcas*rdma_num_ports; j++){
                     for (k = 0; k < rdma_num_qp_per_port; k++){
                         rail_index = j * rdma_num_qp_per_port + k;
-                        mpi_errno = rdma_cm_connect_to_server(vc, 
+                        mpi_errno = rdma_cm_connect_to_server(vc,
                             (i*max_num_ips + j), rail_index);
                         if (mpi_errno) MPIR_ERR_POP (mpi_errno);
                     }
                 }
             }
         }
-    
+
         /* Wait for all connections to complete */
         if (rdma_cm_num_expected_connections > 0)
             sem_wait(&proc->rdma_cm);
@@ -1065,7 +1065,7 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
         init_attr.cap.max_recv_sge = rdma_default_max_sg_list;
         init_attr.cap.max_send_sge = rdma_default_max_sg_list;
         init_attr.cap.max_inline_data = rdma_max_inline_size;
-    
+
         init_attr.cap.max_send_wr = rdma_default_max_send_wqe;
         if (rdma_iwarp_use_multiple_cq &&
             MV2_IS_CHELSIO_IWARP_CARD(proc->hca_type) &&
@@ -1136,7 +1136,7 @@ int rdma_cm_exchange_hostid(MPIDI_PG_t *pg, int pg_rank, int pg_size)
     if (!hostid_all){
         MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
     }
-    
+
     memset(mv2_pmi_key, 0, mv2_pmi_max_keylen);
     MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "HOST-%d", pg_rank);
 
@@ -1161,7 +1161,7 @@ int rdma_cm_exchange_hostid(MPIDI_PG_t *pg, int pg_rank, int pg_size)
                 "**pmi_barrier %d", mpi_errno);
     }
 
-    for (i = 0; i < pg_size; i++){    
+    for (i = 0; i < pg_size; i++){
         if(i != pg_rank) {
             MPL_snprintf(mv2_pmi_key, mv2_pmi_max_keylen, "HOST-%d", i);
             mpi_errno = UPMI_KVS_GET(pg->ch.kvs_name, mv2_pmi_key, mv2_pmi_val, mv2_pmi_max_vallen);
@@ -1196,7 +1196,7 @@ int rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
     char rank[16];
     char *buffer = NULL;
     int pg_size = MPIDI_PG_Get_size(pg);
-    int max_num_ips = rdma_num_hcas * rdma_num_ports; 
+    int max_num_ips = rdma_num_hcas * rdma_num_ports;
 
     MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_GET_HOSTNAMES);
     MPIDI_FUNC_ENTER(MPID_STATE_RDMA_CM_GET_HOSTNAMES);
@@ -1223,7 +1223,7 @@ int rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
             MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
         }
     }
-    
+
     sprintf(rank, "ip-%d", pg_rank);
 #ifdef _MULTI_SUBNET_SUPPORT_
     int k = 0;
@@ -1329,7 +1329,7 @@ int rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
             }
         }
     }
-    PRINT_DEBUG(DEBUG_RDMACM_verbose,"Number of SMP peers for %d is %d\n", pg_rank, 
+    PRINT_DEBUG(DEBUG_RDMACM_verbose,"Number of SMP peers for %d is %d\n", pg_rank,
         g_num_smp_peers);
 
 fn_fail:
@@ -1353,7 +1353,7 @@ int rdma_cm_get_verbs_ip(int *num_interfaces)
     int index = 0;
     int mpi_errno = MPI_SUCCESS;
     char *value = getenv("MV2_IBA_HCA");
- 
+
     *num_interfaces = num_ip_enabled_devices;
     rdma_cm_local_ips = MPIU_Malloc((rdma_num_hcas*rdma_num_ports) * sizeof(int));
     for(index = 0; index < (*num_interfaces); index++){
@@ -1364,10 +1364,15 @@ int rdma_cm_get_verbs_ip(int *num_interfaces)
         PRINT_DEBUG(DEBUG_RDMACM_verbose, "Assigning ip of: device %s,\
         ip address %s\n", ip_address_enabled_devices[index].device_name,\
         ip_address_enabled_devices[index].ip_address);
-        rdma_cm_local_ips[index] = inet_addr(ip_address_enabled_devices[index].ip_address);
+        int success = inet_pton(AF_INET, ip_address_enabled_devices[index].ip_address,
+                        &rdma_cm_local_ips[index]);
+        MPIR_ERR_CHKANDJUMP(success != 1, mpi_errno, MPI_ERR_OTHER, "**inet_pton");
     }
 
+fn_exit:
     return mpi_errno;
+fn_fail:
+    goto fn_exit;
 }
 
 /* Gets the ip address in network byte order */
@@ -1408,7 +1413,8 @@ int rdma_cm_get_local_ip(int *num_interfaces)
         rdma_cm_local_ips = MPIU_Malloc(rdma_num_hcas*rdma_num_ports*sizeof(int));
 
         while ((fscanf(fp_port, "%s\n", ip)) != EOF && (i < (rdma_num_hcas*rdma_num_ports))){
-            rdma_cm_local_ips[i] = inet_addr(ip);
+            int success = inet_pton(AF_INET, ip, &rdma_cm_local_ips[i]);
+            MPIR_ERR_CHKANDJUMP(success != 1, mpi_errno, MPI_ERR_OTHER, "**inet_pton");
             i++;
         }
         fclose(fp_port);
@@ -1416,6 +1422,7 @@ int rdma_cm_get_local_ip(int *num_interfaces)
 
     *num_interfaces = i;
 
+fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_GET_LOCAL_IP);
     return mpi_errno;
 }
@@ -1425,10 +1432,10 @@ int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int offset, int rail_index){
     struct sockaddr_in sin;
     mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
 
-    /* store VC used for connection in the context, 
-     * so we get back vc at event callbacks 
+    /* store VC used for connection in the context,
+     * so we get back vc at event callbacks
      */
-    mpi_errno = rdma_ops.create_id(proc->cm_channel, 
+    mpi_errno = rdma_ops.create_id(proc->cm_channel,
         &(vc->mrail.rails[rail_index].cm_ids), vc, RDMA_PS_TCP);
     if (mpi_errno) {
         MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -1555,9 +1562,9 @@ int rdma_cm_init_pd_cq()
                     NULL,
                     NULL,
                     0);
-    
+
                 if (!proc->send_cq_hndl[i]) {
-                   /*Falling back to smaller cq size if creation failed*/ 
+                   /*Falling back to smaller cq size if creation failed*/
                     if(rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE) {
                        rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
                        proc->send_cq_hndl[i] = ibv_ops.create_cq(
@@ -1575,7 +1582,7 @@ int rdma_cm_init_pd_cq()
                                "**fail %s", "Error allocating CQ");
                    }
                 }
-    
+
                 if (ibv_req_notify_cq(proc->send_cq_hndl[i], 0)) {
                     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                             "**fail %s", "Request notify for CQ failed\n");
@@ -1587,7 +1594,7 @@ int rdma_cm_init_pd_cq()
                     NULL,
                     NULL,
                     0);
-    
+
                 if (!proc->recv_cq_hndl[i]) {
                     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                         "**fail %s", "Error allocating CQ");
@@ -1604,10 +1611,10 @@ int rdma_cm_init_pd_cq()
                     NULL,
                     proc->comp_channel[i],
                     0);
-    
+
                 if (!proc->cq_hndl[i]) {
                     /*Falling back to smaller cq size if creation failed*/
-                    if((rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE) 
+                    if((rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE)
                              && MV2_IS_CHELSIO_IWARP_CARD(proc->hca_type)) {
                         rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
                         proc->send_cq_hndl[i] = ibv_ops.create_cq(
@@ -1625,7 +1632,7 @@ int rdma_cm_init_pd_cq()
                             "**fail %s", "Error allocating CQ");
                     }
                 }
-    
+
                 if (ibv_req_notify_cq(proc->cq_hndl[i], 0)) {
                     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                             "**fail %s", "Request notify for CQ failed\n");
@@ -1645,7 +1652,7 @@ int rdma_cm_init_pd_cq()
                     NULL,
                     NULL,
                     0);
-    
+
                 if (!proc->send_cq_hndl[i]) {
                     /*Falling back to smaller cq size if creation failed*/
                     if(rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE) {
@@ -1665,14 +1672,14 @@ int rdma_cm_init_pd_cq()
                                 "**fail %s", "Error allocating CQ");
                     }
                 }
-    
+
                 proc->recv_cq_hndl[i] = ibv_ops.create_cq(
                     proc->nic_context[i],
                     rdma_default_max_cq_size,
                     NULL,
                     NULL,
                     0);
-    
+
                 if (!proc->recv_cq_hndl[i]) {
                     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                             "**fail %s", "Error allocating CQ");
@@ -1684,7 +1691,7 @@ int rdma_cm_init_pd_cq()
                     NULL,
                     NULL,
                     0);
-    
+
                 if (!proc->cq_hndl[i]) {
                     /*Falling back to smaller cq size if creation failed*/
                     if((rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE)
@@ -1727,7 +1734,7 @@ int get_remote_rank(struct rdma_cm_id *cmid)
     return -1;
 }
 
-int get_remote_rail(struct rdma_cm_id *cmid) 
+int get_remote_rail(struct rdma_cm_id *cmid)
 {
     int pg_size, pg_rank, i, rail_index = 0;
     MPIDI_VC_t  *vc = (MPIDI_VC_t *) cmid->context;
@@ -1768,7 +1775,7 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
 
         for (i = 0; i < pg_size; i++) {
 
-            MPIDI_PG_Get_vc(pg, i, &vc); 
+            MPIDI_PG_Get_vc(pg, i, &vc);
             if ((qp_required(vc, pg_rank, i)) &&
                 (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE)) {
                 for (rail_index = 0; rail_index < rdma_num_rails; rail_index++){
@@ -1780,7 +1787,7 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
                 }
             }
         }
-    
+
         for (i = 0; i < rdma_num_hcas; i++) {
             if (mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]) {
                 ibv_ops.destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);

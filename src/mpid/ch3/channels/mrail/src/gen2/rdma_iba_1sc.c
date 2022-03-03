@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1652,7 +1652,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
         /* Post remaining data as length < rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize 
          * Still stripe if length > rdma_large_msg_rail_sharing_threshold*/
         if (length < rdma_large_msg_rail_sharing_threshold) { 
-           rail = MRAILI_Send_select_rail(vc_ptr);
+           rail = MRAILI_Send_select_rail(vc_ptr, length);
            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
            if (NULL == v) {
                MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
@@ -1720,7 +1720,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
            }
         }
     } else if (rail_select == SINGLE) { /* send on a single rail */
-        rail = MRAILI_Send_select_rail(vc_ptr);
+        rail = MRAILI_Send_select_rail(vc_ptr, length);
 
         if (*allocated_v == NULL) { 
             GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
@@ -1879,7 +1879,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
         /* Post remaining data as length < rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize 
          * Still stripe if length > rdma_large_msg_rail_sharing_threshold*/
         if (length < rdma_large_msg_rail_sharing_threshold) { 
-           rail = MRAILI_Send_select_rail(vc_ptr);
+           rail = MRAILI_Send_select_rail(vc_ptr, length);
            GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
            if (NULL == v) {
                MPIR_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
@@ -1948,7 +1948,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
            }
         }
     } else if (rail_select == SINGLE) { /* send on a single rail */
-        rail = MRAILI_Send_select_rail(vc_ptr);
+        rail = MRAILI_Send_select_rail(vc_ptr, length);
  
         if (*allocated_v == NULL) { 
             GET_VBUF_BY_OFFSET_WITHOUT_LOCK(v, MV2_SMALL_DATA_VBUF_POOL_OFFSET);
@@ -1962,7 +1962,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
         v->list = (void *)(&(winptr->put_get_list[index]));
         v->vc = (void *)vc_ptr;
 
-        winptr->put_get_list[index].completion = 1;
+        ++(winptr->put_get_list[index].completion);
         ++(winptr->put_get_list_size);
         ++(winptr->rma_issued);
         ++(winptr->put_get_list_size_per_process[target]);
@@ -2008,12 +2008,14 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
                         --(list_entry->completion);
                         if (list_entry->completion == 0) {
                             dreg_unregister(dreg_tmp);
+                            list_entry->status = FREE;
                         }
+                    } else {
+                        list_entry->status = FREE;
                     }
                     --(list_win_ptr->put_get_list_size);
                     --(list_win_ptr->rma_issued);
                     --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
-                    list_entry->status = FREE;
                     break;
                 }
             case (SIGNAL_FOR_GET):
@@ -2029,15 +2031,18 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
                         if (list_entry->completion == 0){
                             dreg_unregister(dreg_tmp);
                         }
+                        if (list_entry->completion == 0) {
+                            list_entry->status = FREE;
+                        }
                     } else {
                         MPIU_Assert(size <= rdma_eagersize_1sc);
                         MPIU_Assert(target_addr != NULL);
                         MPIU_Memcpy(target_addr, origin_addr, size);
+                        list_entry->status = FREE;
                     }
                     --(list_win_ptr->put_get_list_size);
                     --(list_win_ptr->rma_issued);
                     --(list_win_ptr->put_get_list_size_per_process[list_entry->target_rank]);
-                    list_entry->status = FREE;
                     break;
                 }
             case (SIGNAL_FOR_COMPARE_AND_SWAP):

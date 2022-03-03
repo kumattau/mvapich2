@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -229,7 +229,7 @@ struct shmem_coll_mgmt {
 struct shmem_coll_mgmt mv2_shmem_coll_obj = { NULL, -1 };
 
 int mv2_enable_knomial_2level_bcast = 1;
-int mv2_inter_node_knomial_factor = 4;
+int mv2_inter_node_knomial_factor = MV2_DEFAULT_INTER_NODE_KNOMIAL_FACTOR;
 int mv2_knomial_2level_bcast_message_size_threshold = 2048;
 int mv2_knomial_2level_bcast_system_size_threshold = 64;
 int mv2_enable_zcpy_bcast=1; 
@@ -326,8 +326,8 @@ int mv2_knomial_inter_leader_threshold = 64 * 1024;
 int mv2_bcast_two_level_system_size = 64;
 int mv2_pipelined_knomial_factor = 2;
 int mv2_pipelined_zcpy_knomial_factor = -1;
-int zcpy_knomial_factor = 2;
-int mv2_intra_node_knomial_factor = 4;
+int zcpy_knomial_factor = MV2_DEFAULT_ZCPY_KNOMIAL_FACTOR;
+int mv2_intra_node_knomial_factor = MV2_DEFAULT_INTRA_NODE_KNOMIAL_FACTOR;
 int mv2_shmem_coll_spin_count = 5;
 
 int mv2_enable_socket_aware_collectives = 0;
@@ -956,7 +956,18 @@ static int tuning_runtime_init()
 
     /* if MV2_INTER_RED_SCAT_TUNING is define */
     if (mv2_user_red_scat_inter != NULL) {
-        MV2_internode_Red_scat_is_define(mv2_user_red_scat_inter);
+        if ((atoi(mv2_user_red_scat_inter) == RED_SCAT_BASIC) &&
+            (atoi(mv2_user_reduce_inter) == REDUCE_ALLREDUCE)) {
+            int rank = 0;
+            UPMI_GET_RANK(&rank);
+            PRINT_INFO(!rank, "WARNING: MV2_INTER_REDUCE_TUNING=%d is "
+                              "incompatible with MV2_INTER_RED_SCAT_TUNING=%d."
+                              "\n Ignoring user selected Reduce_scatter "
+                              "algorithm in favor of Reduce\n",
+                              REDUCE_ALLREDUCE, RED_SCAT_BASIC);
+        } else {
+            MV2_internode_Red_scat_is_define(mv2_user_red_scat_inter);
+        }
     }
 
     /* if MV2_INTER_RED_SCAT_BLOCK_TUNING is define */
@@ -3041,14 +3052,20 @@ void MV2_Read_env_vars(void)
            mv2_pipelined_zcpy_knomial_factor = flag;
     }
     if ((value = getenv("MV2_USE_ZCOPY_BCAST")) != NULL) {
-        flag = (int) atoi(value);
-        if (flag >= 0)
-           mv2_enable_zcpy_bcast = flag;
+#ifdef _ENABLE_UD_
+        if (!rdma_enable_hybrid)
+#endif
+        {
+            mv2_enable_zcpy_bcast = !!atoi(value);
+        }
     }
     if ((value = getenv("MV2_USE_ZCOPY_REDUCE")) != NULL) {
-        flag = (int) atoi(value);
-        if (flag >= 0)
-           mv2_enable_zcpy_reduce = flag;
+#ifdef _ENABLE_UD_
+        if (!rdma_enable_hybrid)
+#endif
+        {
+            mv2_enable_zcpy_reduce = !!atoi(value);
+        }
     }
     
     if ((value = getenv("MV2_GATHERV_SSEND_THRESHOLD")) != NULL) {
@@ -3255,10 +3272,31 @@ void MV2_Read_env_vars(void)
     if ((value = getenv("MV2_ENABLE_SHARP_REDUCE")) != NULL) {
         mv2_enable_sharp_reduce = atoi(value);
     }
+    if ((value = getenv("MV2_ENABLE_SHARP_SCATTER")) != NULL) {
+        mv2_enable_sharp_scatter = atoi(value);
+    }
+    if ((value = getenv("MV2_ENABLE_SHARP_SCATTERV")) != NULL) {
+        mv2_enable_sharp_scatterv = atoi(value);
+    }
+    if ((value = getenv("MV2_ENABLE_SHARP_IALLREDUCE")) != NULL) {
+        mv2_enable_sharp_iallreduce = atoi(value);
+    }
+    if ((value = getenv("MV2_ENABLE_SHARP_IREDUCE")) != NULL) {
+        mv2_enable_sharp_ireduce = atoi(value);
+    }
+    if ((value = getenv("MV2_ENABLE_SHARP_IBCAST")) != NULL) {
+        mv2_enable_sharp_ibcast = atoi(value);
+    }
+    if ((value = getenv("MV2_ENABLE_SHARP_IBARRIER")) != NULL) {
+        mv2_enable_sharp_ibarrier = atoi(value);
+    }
 #endif
 
     if ((value = getenv("MV2_ENABLE_SOCKET_AWARE_COLLECTIVES")) !=NULL) {
         mv2_enable_socket_aware_collectives = !!atoi(value);
+        if (mv2_enable_socket_aware_collectives) {
+            mv2_enable_topo_aware_collectives = 0;
+        }
     }
 
     if ((value = getenv("MV2_USE_SOCKET_AWARE_ALLREDUCE")) !=NULL) {
@@ -3267,7 +3305,7 @@ void MV2_Read_env_vars(void)
 
     if ((value = getenv("MV2_ENABLE_TOPO_AWARE_COLLECTIVES")) !=NULL) {
         mv2_enable_topo_aware_collectives = !!atoi(value);
-        if(mv2_enable_topo_aware_collectives) {
+        if (mv2_enable_topo_aware_collectives) {
             mv2_enable_socket_aware_collectives = 0;
         }
     }
@@ -4119,7 +4157,7 @@ void mv2_shm_barrier_gather(shmem_info_t * shmem)
 
 void mv2_shm_barrier_bcast(shmem_info_t * shmem)
 {
-    int i, nspin = 0;
+    int nspin = 0;
     int idx = shmem->read % mv2_shm_window_size;
     if (shmem->local_rank == 0) {
         WRITEBAR();
@@ -4585,7 +4623,7 @@ int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
 #ifdef CHANNEL_NEMESIS_IB
                 rail = MPIDI_nem_ib_send_select_rail(vc);
 #else
-                rail = MRAILI_Send_select_rail(vc);
+                rail = MRAILI_Send_select_rail(vc, len);
 #endif
                 hca_num = rail / (rdma_num_rails / rdma_num_hcas);
 
@@ -5047,7 +5085,7 @@ int mv2_shm_zcpy_reduce(shmem_info_t * shmem,
 #ifdef CHANNEL_NEMESIS_IB
             rail = MPIDI_nem_ib_send_select_rail(vc);
 #else
-            rail = MRAILI_Send_select_rail(vc);
+            rail = MRAILI_Send_select_rail(vc, len);
 #endif
             hca_num = rail / (rdma_num_rails / rdma_num_hcas);
 

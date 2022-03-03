@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -61,6 +61,8 @@ enum {
 
 static inline void mv2_ud_ext_sendq_queue(message_queue_t *q, vbuf *v)
 {
+    MPIU_Assert(!(v->in_ud_ext_sendq));
+    v->in_ud_ext_sendq = 1;
     v->desc.next = NULL;
     if (q->head == NULL) {
         q->head = v;
@@ -70,7 +72,8 @@ static inline void mv2_ud_ext_sendq_queue(message_queue_t *q, vbuf *v)
     q->tail = v;
     q->count++;
     rdma_global_ext_sendq_size++;
-    PRINT_DEBUG(DEBUG_UD_verbose>1,"queued to ext send queue, queue len:%d seqnum:%d\n", q->count, v->seqnum);
+    PRINT_DEBUG(DEBUG_UD_verbose>1, "Queue msg to rank %d, queue len:%d seqnum:%d\n",
+                ((MPIDI_VC_t*)(v->vc))->pg_rank, q->count, v->seqnum);
 }
 
 static inline void mv2_ud_ext_window_add(message_queue_t *q, vbuf *v)
@@ -122,7 +125,11 @@ static inline void mv2_ud_unack_queue_add(message_queue_t *q, vbuf *v)
     if (q->head == NULL) {
         q->head = v;
         v->unack_msg.prev = NULL;
+        PRINT_DEBUG(DEBUG_UD_verbose>1, "Add head seqnum:%d to rank %d, retry : %d \n",
+                 v->seqnum, ((MPIDI_VC_t*)(v->vc))->pg_rank, v->retry_count);
     } else {
+        PRINT_DEBUG(DEBUG_UD_verbose>1, "Add tail tail-seqnum: %d, seqnum:%d to rank %d, retry : %d \n",
+                 q->tail->seqnum, v->seqnum, ((MPIDI_VC_t*)(v->vc))->pg_rank, v->retry_count);
         (q->tail)->unack_msg.next = v;
         v->unack_msg.prev = q->tail;
     }
@@ -135,6 +142,9 @@ static inline void mv2_ud_unack_queue_remove(message_queue_t *q, vbuf *v)
 {
     vbuf *next = v->unack_msg.next;
     vbuf *prev = v->unack_msg.prev;
+
+    PRINT_DEBUG(DEBUG_UD_verbose>1, "Remove seqnum:%d to rank %d, retry : %d \n",
+                 v->seqnum, ((MPIDI_VC_t*)(v->vc))->pg_rank, v->retry_count);
 
     if (prev == NULL) {
         q->head = next;
@@ -170,6 +180,7 @@ static inline void mv2_ud_track_send(mv2_ud_reliability_info_t *ud_vc, message_q
 static inline void mv2_ud_unackq_traverse(message_queue_t *q)
 {
     int r;
+    int resend = 0;
     long  delay;
     double timestamp = mv2_get_time_us();
     vbuf *cur = q->head;
@@ -182,12 +193,19 @@ static inline void mv2_ud_unackq_traverse(message_queue_t *q)
         } else {
             r = 1;
         }
-        if ((delay > (rdma_ud_retry_timeout * r)) 
-               || (delay > rdma_ud_max_retry_timeout)) {
-            mv2_ud_resend(cur);
-            PRINT_DEBUG(DEBUG_UD_verbose>1,"resend seqnum:%d retry : %d \n",cur->seqnum, cur->retry_count);
-            cur->timestamp = timestamp;
+        if ((delay > (rdma_ud_retry_timeout * r)) ||
+            (delay > rdma_ud_max_retry_timeout)) {
+            resend = mv2_ud_resend(cur);
+            if (resend) {
+                PRINT_DEBUG(DEBUG_UD_verbose>1,"Resent seqnum:%d retry : %d \n",cur->seqnum, cur->retry_count);
+                cur->timestamp = timestamp;
+            } else {
+                PRINT_DEBUG(DEBUG_UD_verbose>1,"Couldn't resend seqnum:%d retry : %d \n",cur->seqnum, cur->retry_count);
+            }
             timestamp = mv2_get_time_us();
+        } else {
+            PRINT_DEBUG(DEBUG_UD_verbose>1, "Skip seqnum:%d to rank %d, retry : %d \n",
+                        cur->seqnum, ((MPIDI_VC_t*)(cur->vc))->pg_rank, cur->retry_count);
         }
         cur = cur->unack_msg.next;
     } 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -54,7 +54,7 @@ int deregister_memory(struct ibv_mr * mr)
 }
 
 /* Rail selection policy */
-int MRAILI_Send_select_rail(MPIDI_VC_t * vc)
+int MRAILI_Send_select_rail(MPIDI_VC_t * vc, uint32_t size)
 {
     static int i = 0;
 
@@ -138,6 +138,11 @@ int mv2_free_prealloc_rdma_fp_bufs()
     if (mv2_vbuf_rdma_buf) {
         dreg_unregister(mv2_rdma_fp_dreg);
         mv2_rdma_fp_dreg = NULL;
+#if defined(_ENABLE_CUDA_)
+        if (mv2_enable_device && rdma_eager_devicehost_reg) {
+            ibv_device_unregister(mv2_vbuf_rdma_buf);
+        }
+#endif
         MPIU_Memalign_Free(mv2_vbuf_rdma_buf);
         mv2_vbuf_rdma_buf = NULL;
     }
@@ -166,8 +171,12 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 
     if (num_rdma_buffer) {
 
-    if (mv2_rdma_fast_path_preallocate_buffers &&
-        (mv2_rdma_fp_prealloc_buf_index < rdma_polling_set_limit)) {
+    if (mv2_rdma_fast_path_preallocate_buffers) {
+        if (mv2_rdma_fp_prealloc_buf_index >= rdma_polling_set_limit) {
+            /* We have reached the maximum number of RDMA_FP connections */
+            mpi_errno = MPI_ERR_INTERN;
+            goto fn_exit;
+        }
         int ctrl_buf_offset = (sizeof(struct vbuf) * num_rdma_buffer) * mv2_rdma_fp_prealloc_buf_index;
         int data_buf_offset = (num_rdma_buffer * rdma_fp_buffer_size) * mv2_rdma_fp_prealloc_buf_index;
 
@@ -179,7 +188,7 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
         }
         mv2_rdma_fp_prealloc_buf_index++;
     } else {
-	/* allocate vbuf struct buffers */
+        /* allocate vbuf struct buffers */
         if(MPIU_Memalign((void **) &vbuf_ctrl_buf, 64,
             sizeof(struct vbuf) * num_rdma_buffer)) {
             DEBUG_PRINT("malloc failed: vbuf in vbuf_fast_rdma_alloc\n");
@@ -269,7 +278,7 @@ fn_fail:
             MPIU_Memalign_Free(vbuf_ctrl_buf);
         }
     }
-    mpi_errno = -1;
+    mpi_errno = MPI_ERR_INTERN;
     goto fn_exit;
 }
 

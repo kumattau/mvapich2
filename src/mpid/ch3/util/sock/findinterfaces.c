@@ -14,35 +14,38 @@
 
 static int GetLocalIPs(int32_t *pIP, int max)
 {
-    char hostname[100], **hlist;
-    struct hostent *h = NULL;
+    char hostname[100];
+    struct addrinfo *info = null;
+    struct addrinfo *info_list = NULL;
     int n = 0;
+    int mpi_errno = 0;
 
     MPID_Get_processor_name( hostname, sizeof(hostname), 0 );
 
-    h = gethostbyname(hostname);
-    if (h == NULL)
-    {
-	return 0;
+    struct addrinfo hints = { .ai_family = AF_INET };
+    mpi_errno = getaddrinfo(hostname, NULL, &hints, &info_list);
+    if (mpi_errno != 0) {
+        return 0;
     }
-    
-    hlist = h->h_addr_list;
-    while (*hlist != NULL && n<max)
+
+    info = info_list;
+    while (*info != NULL && n<max)
     {
-	pIP[n] = *(int32_t*)(*hlist);
+        pIP[n] = &((struct sockaddr_in *)info->ai_addr)->sin_addr;
 
-	/*{	
-	unsigned int a, b, c, d;
-	a = ((unsigned char *)(&pIP[n]))[0];
-	b = ((unsigned char *)(&pIP[n]))[1];
-	c = ((unsigned char *)(&pIP[n]))[2];
-	d = ((unsigned char *)(&pIP[n]))[3];
-	MPIU_DBG_PRINTF(("ip: %u.%u.%u.%u\n", a, b, c, d));
-	}*/
+        /*{	
+        unsigned int a, b, c, d;
+        a = ((unsigned char *)(&pIP[n]))[0];
+        b = ((unsigned char *)(&pIP[n]))[1];
+        c = ((unsigned char *)(&pIP[n]))[2];
+        d = ((unsigned char *)(&pIP[n]))[3];
+        MPIU_DBG_PRINTF(("ip: %u.%u.%u.%u\n", a, b, c, d));
+        }*/
 
-	hlist++;
-	n++;
+        info = info->ai_next;
+        n++;
     }
+    freeaddrinfo(info_list);
     return n;
 }
 

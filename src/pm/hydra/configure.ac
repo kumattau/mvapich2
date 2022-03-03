@@ -190,7 +190,7 @@ AC_CHECK_HEADERS(unistd.h strings.h sys/types.h sys/socket.h sched.h sys/stat.h 
 # These functions are in additional libraries on some platforms (like Solaris).
 # Check to see if they are needed.
 AC_SEARCH_LIBS(socket,socket,)
-AC_SEARCH_LIBS(gethostbyname,nsl,)
+AC_SEARCH_LIBS(getaddrinfo,nsl,)
 AC_SEARCH_LIBS(hstrerror, resolv,)
 
 # Check for necessary functions

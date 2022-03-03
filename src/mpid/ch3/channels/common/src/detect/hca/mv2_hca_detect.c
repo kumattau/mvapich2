@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  * Copyright (c) 2016, Intel, Inc. All rights reserved.
  *
@@ -734,21 +734,12 @@ mv2_arch_hca_type mv2_get_arch_hca_type (void *dev)
 }
 #endif
 
-#if defined(HAVE_LIBIBVERBS)
+#if defined(HAVE_LIBIBVERBS) && defined(CHANNEL_MRAIL)
+extern int rdma_num_hcas;
 mv2_multirail_info_type mv2_get_multirail_info()
 {
     if ( mv2_num_rail_unknown == g_mv2_multirail_info ) {
-        int num_devices;
-        struct ibv_device **dev_list = NULL;
-
-        /* Get the number of rails */
-#if CHANNEL_MRAIL
-        dev_list = ibv_ops.get_device_list(&num_devices);
-#elif CHANNEL_PSM
-        dev_list = ibv_get_device_list(&num_devices);
-#endif
-
-        switch (num_devices){
+        switch (rdma_num_hcas){
             case 1:
                 g_mv2_multirail_info = mv2_num_rail_1;
                 break;
@@ -764,13 +755,6 @@ mv2_multirail_info_type mv2_get_multirail_info()
             default:
                 g_mv2_multirail_info = mv2_num_rail_unknown;
                 break;
-        }
-        if (dev_list) {
-#if CHANNEL_MRAIL
-            ibv_ops.free_device_list(dev_list);
-#elif CHANNEL_PSM
-            ibv_free_device_list(dev_list);
-#endif
         }
     }
     return g_mv2_multirail_info;

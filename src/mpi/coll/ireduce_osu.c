@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -15,6 +15,9 @@
 
 #include "ireduce_tuning.h"
 
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_ireduce_sharp);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_ireduce_sharp);
+
 #if defined(CHANNEL_MRAIL) || defined(CHANNEL_PSM)
 
 int (*MV2_Ireduce_function) (const void *sendbuf, void *recvbuf, int count,
@@ -24,6 +27,47 @@ int (*MV2_Ireduce_function) (const void *sendbuf, void *recvbuf, int count,
 int (*MV2_Ireduce_intra_node_function) (const void *sendbuf, void *recvbuf, int count,
                              MPI_Datatype datatype, MPI_Op op, int root,
                              MPID_Comm *comm_ptr, MPID_Sched_t s) = NULL;
+
+#if defined (_SHARP_SUPPORT_)
+#undef FUNCNAME
+#define FUNCNAME "MPIR_Sharp_Ireduce_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+/* Currently implemented on top of iallreduce. Ideally should use lower level S
+ * calls to achieve the same once avaliable*/
+int MPIR_Sharp_Ireduce_MV2(const void *sendbuf,
+                          void *recvbuf,
+                          int count,
+                          MPI_Datatype datatype,
+                          MPI_Op op,
+                          int root,
+                          MPID_Comm * comm_ptr,
+                          MPIR_Errflag_t *errflag, MPID_Request **req)
+{
+    MPIR_TIMER_START(coll,ireduce,sharp);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_ireduce_sharp, 1);
+    int mpi_errno = MPI_SUCCESS;
+    void *new_recvbuf = NULL;
+    int rank = comm_ptr->rank;
+
+    if (rank != root) {
+        new_recvbuf = (void *) comm_ptr->dev.ch.coll_tmp_buf;
+    } else {
+        new_recvbuf = (void *) recvbuf;
+    }
+    mpi_errno = MPIR_Sharp_Iallreduce_MV2(sendbuf, new_recvbuf, count,
+                                         datatype, op, comm_ptr, (int *) errflag, req);
+    if (mpi_errno) {
+        MPIR_ERR_POP(mpi_errno);
+    }
+
+fn_exit:
+    MPIR_TIMER_END(coll,ireduce,sharp);
+    return (mpi_errno);
+fn_fail:
+    goto fn_exit;
+}
+#endif /* End of sharp support */
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ireduce_tune_helper_MV2

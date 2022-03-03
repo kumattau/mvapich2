@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001-2021, The Ohio State University. All rights
+ * Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,7 +29,6 @@ extern "C" {
 #endif
 
 #define UPMI_SUCCESS                0
-#define UPMI_FAIL                   -1
 #define UPMI_ERR_INIT               1
 #define UPMI_ERR_NOMEM              2
 #define UPMI_ERR_INVALID_ARG        3
@@ -44,6 +43,7 @@ extern "C" {
 #define UPMI_ERR_INVALID_KEYVALP    12
 #define UPMI_ERR_INVALID_SIZE       13
 #define UPMI_ERR_OTHER              14
+#define UPMI_FAIL                   16 /* MPI_ERR_INTERN */
 
 struct MPID_Info;
 

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -51,6 +51,14 @@ do {                                                          \
 
 #define DEVICE_NAME_LENGTH 10
 #define IP_ADDRESS_LENGTH 32
+
+#define GID_ATTR_PATH "/sys/class/infiniband/%s/ports/%d/gid_attrs/types/%d"
+#define MV2_MAX_GID_PATH_LEN 256
+#define MV2_HCA_BOARD_ID_PATH "/sys/class/infiniband/%s/board_id"
+#define MV2_ROCKPORT_FW_BOARD_ID "RCP0000000001"
+#define MV2_MAX_HCA_BOARD_ID_PATH_LEN 128
+#define MV2_MAX_HCA_BOARD_ID_LEN 64
+
 /* cluster size */
 enum {VERY_SMALL_CLUSTER, SMALL_CLUSTER, MEDIUM_CLUSTER, LARGE_CLUSTER};
 
@@ -412,6 +420,7 @@ do {                                                    \
     if (!(vc->mrail.state & MRAILI_RC_CONNECTING)) {    \
         rdma_hybrid_pending_rc_conn++;                  \
         vc->mrail.state |= MRAILI_RC_CONNECTING;        \
+        vc->use_eager_fast_fn = 0;                      \
     }                                                   \
 }while(0)
 #else
@@ -484,7 +493,8 @@ int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type);
 int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
                            struct ibv_device **usable_dev_list,
                            struct ibv_device **usable_devs_on_my_sock,
-                           int *num_usable_hcas, int *num_usable_hcas_on_my_sock);
+                           int *num_usable_hcas, int *num_usable_hcas_on_my_sock,
+                           uint8_t *all_link_type);
 int  rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 void  rdma_set_default_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 void rdma_get_user_parameters(int num_proc, int me);
@@ -532,7 +542,7 @@ void MRAILI_RDMA_Get(MPIDI_VC_t * vc, vbuf *v,
                      char * local_addr, uint32_t lkey,
                      char * remote_addr, uint32_t rkey,
                      int nbytes, int subrail);
-int MRAILI_Send_select_rail(MPIDI_VC_t * vc);
+int MRAILI_Send_select_rail(MPIDI_VC_t * vc, uint32_t size);
 void vbuf_address_send(MPIDI_VC_t *vc);
 void vbuf_address_reply_send(MPIDI_VC_t *vc, uint8_t);
 int vbuf_fast_rdma_alloc (struct MPIDI_VC *, int dir);

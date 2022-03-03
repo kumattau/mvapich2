@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -9,6 +9,8 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
+
+/* FIXME: Fix these comments! What are these?? */
 
 // for pwrite()
 #ifndef _GNU_SOURCE
@@ -359,8 +361,7 @@ void *ibsrv_listen_port(void *arg)
     }
     //char* pn = inet_ntop(srv.sin_addr);
     //char* pn = inet_ntop(AF_INET, (void*)&(srv.sin_addr), msg, INET_ADDRSTRLEN);
-    dbg("Server listening on port %d\n",    /// inet_ntoa(srv.sin_addr), 
-        ntohs(srv.sin_port));
+    dbg("Server listening on port %d\n", ntohs(srv.sin_port));
 
     /////////////////////////////////////// 
     struct sockaddr_in cli_addr;
@@ -582,24 +583,37 @@ int exchange_with_server(char *srvname, int srvport, struct ib_connection *conn)
 
     int cli_sock = socket(AF_INET, SOCK_STREAM, 0);
 
+    /* getaddrinfo hints struct */
+    struct addrinfo addr_hint = {
+        .ai_flags = AI_CANONNAME,
+        .ai_family = AF_INET,
+        .ai_socktype = 0,
+        .ai_protocol = 0,
+        .ai_addrlen = 0,
+        .ai_addr = NULL,
+        .ai_canonname = NULL,
+        .ai_next = NULL
+    };
+    struct addrinfo *res;
+    int err;
+
     // now setup srv's addr
     srv_addr.sin_family = AF_INET;
     srv_addr.sin_port = htons(srvport);
 
-    hp = gethostbyname(srvname);    // get srv's addr
-    if (!hp) {                  // fail to get srv's addr
-        error("fail at gethostbyname: %s\n", srvname);
+    err = getaddrinfo(srvname, NULL, &addr_hint, &res);
+    if (err) {                  // fail to get srv's addr
+        error("fail at getaddrinfo: %s\n", srvname);
         return -1;
     }
-    memcpy(&(srv_addr.sin_addr.s_addr), hp->h_addr, hp->h_length);
 
     /// now connect to srv
-    if (connect(cli_sock, (struct sockaddr *) &srv_addr, sizeof(srv_addr)) < 0) {
+    if (connect(cli_sock, res->ai_addr, sizeof(struct sockaddr_in)) < 0) {
         error("%s: fail to connect to srv\n", __func__);
         return -1;
     }
 
-    inet_ntop(AF_INET, (void *) &(srv_addr.sin_addr), msg, 64);
+    inet_ntop(AF_INET, &((struct sockaddr_in *)res->ai_addr)->sin_addr, msg, 64);
 
     printf("cli connect to srv %s:: %s : %d\n", srvname, msg, ntohs(srv_addr.sin_port));
 

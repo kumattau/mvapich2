@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -40,7 +40,7 @@ extern int mv2_g_shmem_coll_blocks;
 pthread_t thread_reg[MAX_NUM_THREADS];
 
 extern int mv2_intra_node_cluster_at_level[];
-extern int get_numa_bound_info(int *socket_bound, int *num_sockets, int *num_cores_socket, int *is_uniform);
+extern int get_numa_bound_info(int *numa_bound, int *num_numas, int *num_cores_numa, int *is_uniform);
 extern void mv2_flush_all_zcpy_barrier_requests(shmem_info_t *shmem);
 
 void clear_2level_comm (MPID_Comm* comm_ptr)
@@ -1653,7 +1653,7 @@ int create_sharp_comm(MPI_Comm comm, int size, int my_rank)
         sharp_coll_info->sharp_comm_module = NULL;
         sharp_coll_info->sharp_conf = MPIU_Malloc(sizeof(sharp_conf_t));
         
-        sharp_coll_log_early_init();  
+        sharp_ops.coll_log_early_init();  
         mpi_errno = mv2_setup_sharp_env(sharp_coll_info->sharp_conf, MPI_COMM_WORLD);
         if (mpi_errno) {
            MPIR_ERR_POP(mpi_errno);  
@@ -1855,7 +1855,6 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     MPID_Node_id_t node_id;
     int blocked = 0;
     int up = 0;
-    int down = 0;
     int prev = -1;
     int shmem_size;
     int local_topo_comms_ok = 0, global_topo_comms_ok = 0; 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -174,60 +174,51 @@ int MV2_set_ialltoall_tuning_table(int heterogeneity)
       MPIU_Memcpy(mv2_ialltoall_thresholds_table, mv2_tmp_ialltoall_thresholds_table,
 		  mv2_size_ialltoall_tuning_table * sizeof (mv2_ialltoall_tuning_table));
     }
+    else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                MV2_ARCH_INTEL_XEON_E5_2697A_V4_2S_32, MV2_HCA_MLX_CX_EDR) && !heterogeneity) {
+
+        /*Thor (HPCAC)*/
+        mv2_size_ialltoall_tuning_table = 1;
+        mv2_ialltoall_thresholds_table = MPIU_Malloc(mv2_size_ialltoall_tuning_table *
+                sizeof (mv2_ialltoall_tuning_table));
+        mv2_ialltoall_tuning_table mv2_tmp_ialltoall_thresholds_table[] = {
+            {8,
+                8192,
+                {0},
+                3, {
+                    {0, 256, &MPIR_Ialltoall_bruck, -1},
+                    {256, 32768, &MPIR_Ialltoall_perm_sr, -1},
+                    {32768, -1, &MPIR_Ialltoall_pairwise, -1}
+                },
+                1, {{0, -1, NULL, -1}}
+            }
+        };
+
+        MPIU_Memcpy(mv2_ialltoall_thresholds_table, mv2_tmp_ialltoall_thresholds_table,
+                mv2_size_ialltoall_tuning_table * sizeof (mv2_ialltoall_tuning_table));
+    }
     else
     {
         
-	/*RI*/
-	mv2_size_ialltoall_tuning_table = 7;
-	mv2_ialltoall_thresholds_table = MPIU_Malloc(mv2_size_ialltoall_tuning_table *
-						  sizeof (mv2_ialltoall_tuning_table));
-	mv2_ialltoall_tuning_table mv2_tmp_ialltoall_thresholds_table[] = {
-	    {8,
-	     8192,
-	     {0},
-	     1, {{0, -1, &MPIR_Ialltoall_perm_sr, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {16,
-	     8192,
-	     {0},
-	     1, {{0, -1, &MPIR_Ialltoall_perm_sr, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {32,
-	     8192,
-	     {0},
-	     1, {{0, -1, &MPIR_Ialltoall_perm_sr, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {64,
-	     8192,
-	     {0},
-	     1, {{0, -1, &MPIR_Ialltoall_perm_sr, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {128,
-	     8192,
-	     {0},
-	     1, {{0, -1, &MPIR_Ialltoall_perm_sr, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {256,
-	     8192,
-	     {0},
-	     1, {{0, -1, &MPIR_Ialltoall_perm_sr, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    },
-	    {512,
-	     8192,
-	     {0},
-	     1, {{0, -1, &MPIR_Ialltoall_bruck, -1}},
-	     1, {{0, -1, NULL, -1}}
-	    }
-      };
-    
-      MPIU_Memcpy(mv2_ialltoall_thresholds_table, mv2_tmp_ialltoall_thresholds_table,
-		  mv2_size_ialltoall_tuning_table * sizeof (mv2_ialltoall_tuning_table));
+        /*Thor (HPCAC)*/
+        mv2_size_ialltoall_tuning_table = 1;
+        mv2_ialltoall_thresholds_table = MPIU_Malloc(mv2_size_ialltoall_tuning_table *
+                sizeof (mv2_ialltoall_tuning_table));
+        mv2_ialltoall_tuning_table mv2_tmp_ialltoall_thresholds_table[] = {
+            {8,
+                8192,
+                {0},
+                3, {
+                    {0, 256, &MPIR_Ialltoall_bruck, -1},
+                    {256, 32768, &MPIR_Ialltoall_perm_sr, -1},
+                    {32768, -1, &MPIR_Ialltoall_pairwise, -1}
+                },
+                1, {{0, -1, NULL, -1}}
+            }
+        };
+
+        MPIU_Memcpy(mv2_ialltoall_thresholds_table, mv2_tmp_ialltoall_thresholds_table,
+                mv2_size_ialltoall_tuning_table * sizeof (mv2_ialltoall_tuning_table));
     }
 #else /* defined(CHANNEL_MRAIL) && !defined(CHANNEL_PSM) */
         

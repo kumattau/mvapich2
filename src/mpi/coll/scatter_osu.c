@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,6 +20,11 @@
 #include "common_tuning.h"
 #include "bcast_tuning.h"
 #include "scatter_tuning.h"
+#if defined (_SHARP_SUPPORT_)
+#include "api/sharp_coll.h"
+#include "ibv_sharp.h"
+extern int mv2_sharp_tuned_msg_size;
+#endif
 
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_mcast);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_binomial);
@@ -27,6 +32,7 @@ MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_direct);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_direct_blk);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_two_level_binomial);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_two_level_direct);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL_EXTERN(MV2, mv2_coll_timer_scatter_sharp);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_scatter_mcast);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_scatter_binomial);
@@ -34,6 +40,7 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_scatter_direct);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_scatter_direct_blk);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_scatter_two_level_binomial);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_scatter_two_level_direct);
+MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_scatter_sharp);
 
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_scatter_mcast_bytes_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_scatter_mcast_bytes_recv);
@@ -77,6 +84,76 @@ int (*MV2_Scatter_function) (const void *sendbuf, int sendcount, MPI_Datatype se
 int (*MV2_Scatter_intra_function) (const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                              void *recvbuf, int recvcount, MPI_Datatype recvtype,
                              int root, MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag)=NULL;
+
+
+#if defined (_SHARP_SUPPORT_)
+#undef FUNCNAME
+#define FUNCNAME "MPIR_Sharp_Scatter_MV2"
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Sharp_Scatter_MV2 (const void *sendbuf, int sendcount,
+                            MPI_Datatype sendtype,void *recvbuf,
+                            int recvcount, MPI_Datatype recvtype,
+                            int root, MPID_Comm * comm_ptr,
+                            MPIR_Errflag_t *errflag)
+{
+    MPIR_TIMER_START(coll,scatter,sharp);
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_scatter_sharp, 1);
+    int mpi_errno = MPI_SUCCESS;
+    MPI_Aint type_size = 0;
+    /* Get size of data */
+    MPID_Datatype_get_size_macro(sendtype, type_size);
+    MPIDI_msg_sz_t nbytes = (MPIDI_msg_sz_t)sendcount * (type_size);
+    int rank = comm_ptr->rank;
+    int size = comm_ptr->local_size;
+    void *buffer = NULL;
+    int copy_offset;
+
+    if (rank == root) {
+        buffer = (void *) sendbuf;
+    } else {
+        buffer = (void *) comm_ptr->dev.ch.coll_tmp_buf;
+    }
+
+    if (nbytes * size > mv2_coll_tmp_buf_size) {
+        mpi_errno = MPI_ERR_NO_MEM;
+        PRINT_DEBUG(DEBUG_Sharp_verbose, "coll_tmp_buf out of mem (%d), "
+                                         "need %d, continue without SHARP\n",
+                                         mv2_coll_tmp_buf_size, nbytes*size);
+        MPIR_ERR_SETANDJUMP2(mpi_errno, MPI_ERR_INTERN, "**sharpcoll", 
+                            "coll_tmp_buf out of mem (%d), need %d, "
+                            "continue without SHARP\n", mv2_coll_tmp_buf_size,
+                            nbytes * size);
+    }
+
+    mpi_errno = MPIR_Bcast_MV2(buffer, sendcount*size,
+                               sendtype, root, comm_ptr, errflag);
+    if (mpi_errno) {
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**sharpcoll");
+    }
+
+    if(rank == root) {
+        if(recvbuf != MPI_IN_PLACE) {
+            copy_offset = type_size * sendcount * rank;
+            mpi_errno = MPIR_Localcopy((char *)buffer + copy_offset,
+                                        sendcount, sendtype,
+                                        recvbuf, recvcount, recvtype);
+        }
+    } else {
+        copy_offset = type_size * recvcount * rank;
+        mpi_errno = MPIR_Localcopy((char *)buffer + copy_offset,
+                                    nbytes, MPI_BYTE, recvbuf, recvcount,
+                                    recvtype);
+    }
+
+  fn_exit:
+    MPIR_TIMER_END(coll, scatter, sharp);
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+#endif
 
 /* This is the default implementation of scatter. The algorithm is:
    
@@ -1499,9 +1576,24 @@ int MPIR_Scatter_index_tuned_intra_MV2(const void *sendbuf,
         nbytes = recvcnt * recvtype_size;
     }
 
+#if defined (_SHARP_SUPPORT_)
+    if (comm_ptr->dev.ch.is_sharp_ok == 1 && 
+        nbytes <= mv2_sharp_tuned_msg_size / 2 && 
+        mv2_enable_sharp_coll == 1 && mv2_enable_sharp_scatter) {
+        /* Direct flat algorithm in which every process calls Sharp
+         * MV2_ENABLE_SHARP should be set to 1 */
+        mpi_errno = MPIR_Sharp_Scatter_MV2 (sendbuf, sendcnt, sendtype,
+                                             recvbuf, recvcnt, recvtype,
+                                             root, comm_ptr, errflag);
+        if (mpi_errno == MPI_SUCCESS) {
+            return mpi_errno;
+        }    
+        /* SHArP collective is not supported, continue without using SHArP */
+    }    
+#endif /* end of defined (_SHARP_SUPPORT_) */
+
     /* check if safe to use partial subscription mode */
     if (comm_ptr->dev.ch.shmem_coll_ok == 1 && comm_ptr->dev.ch.is_uniform) {
-    
         shmem_comm = comm_ptr->dev.ch.shmem_comm;
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
         local_size = shmem_commptr->local_size;

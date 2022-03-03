@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2021, The Ohio State University. All rights
+/* Copyright (c) 2001-2022, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -170,7 +170,7 @@ static inline int mpirun_get_launcher(char *launcher_arg)
             USE_SRUN = 1;
             DBG(fprintf(stderr, "srun => use_rsh: %d, USE_SRUN: %d\n", use_rsh, USE_SRUN));
             break;
-        defaut:
+        default:
             fprintf(stderr, "Invalid launcher selected. Launcher must be one of:\n");
             for (i = 0; i < launchers; i++) {
                 fprintf(stderr, "\t%s\n", mpirun_launcher_options[i]);
