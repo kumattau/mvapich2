@@ -32,7 +32,7 @@
 #define LIMIC_COLL_NUM_COMM  128
 #endif /* #if defined(_SMP_LIMIC_) */ 
 
-#define MV2_SHMEM_MAX_MSG_SIZE 128*1024
+#define MV2_SHMEM_MAX_MSG_SIZE 32*1024
 #define MV2_SHMEM_COLL_BLOCKS 32
 
 #define PID_CHAR_LEN 22

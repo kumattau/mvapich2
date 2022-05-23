@@ -1273,6 +1273,15 @@ int MPIDI_CH3I_SHMEM_Helper_fn(MPIDI_PG_t * pg, int local_id, char **filename,
         /* set file size, without touching pages */
         if (ftruncate(*fd, file_size)) {
             /* to clean up tmp shared file */
+            if ((int)file_size < 0) {
+                PRINT_INFO(!local_id, "WARNING: shmem_coll_size is too large! "
+                                      "Please run again with a lower value for "
+                                      "MV2_SHMEM_COLL_MAX_MSG_SIZE (currently: "
+                                      "%d) or MV2_SHMEM_COLL_NUM_COMM "
+                                      "(currently: %d)\n",
+                                      mv2_g_shmem_coll_max_msg_size,
+                                      mv2_g_shmem_coll_blocks);
+            }
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                              FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
                                              "%s: %s", "ftruncate", strerror(errno));

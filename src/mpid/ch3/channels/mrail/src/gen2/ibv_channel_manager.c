@@ -509,6 +509,9 @@ static inline int handle_cqe(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
 #ifdef _ENABLE_WC_DRV2_
                           wc.opcode == IBV_WC_DRIVER2 ||
 #endif /* _ENABLE_WC_DRV2_ */
+#ifdef _ENABLE_WC_DRV3_
+                          wc.opcode == IBV_WC_DRIVER3 ||
+#endif /* _ENABLE_WC_DRV2_ */
                           wc.opcode == IBV_WC_COMP_SWAP);
 
     /* iWARP has the need for multiple CQ's, IB does not */

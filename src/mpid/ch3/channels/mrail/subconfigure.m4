@@ -236,6 +236,11 @@ if test "x$wc_drv2_found" = "xyes"; then
     AC_DEFINE([_ENABLE_WC_DRV2_], [1], [Define to enable support for IBV_WC_DRIVER2])
 fi
 
+AC_CHECK_DECLS([IBV_WC_DRIVER3],[wc_drv3_found=yes],[wc_drv3_found=no],[[#include <infiniband/verbs.h>]])
+if test "x$wc_drv3_found" = "xyes"; then
+    AC_DEFINE([_ENABLE_WC_DRV3_], [1], [Define to enable support for IBV_WC_DRIVER3])
+fi
+
 if test "x$enable_ibv_dlopen" = "xyes"; then
     AC_DEFINE([_ENABLE_IBV_DLOPEN_], [1], [Define to enable abstraction of calls to IB Verbs])
     if test "x$enable_xrc" = "xcheck"; then
